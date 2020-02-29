@@ -1,0 +1,9 @@
+[
+  {
+    "name": "ozstar",
+    "host_name": "localhost",
+    "key": "ozstar_gwcloud.pem",
+    "user_name": "bilby",
+    "client_path": "/home/lewis/Projects/gwcloud_job_client/"
+  }
+]
