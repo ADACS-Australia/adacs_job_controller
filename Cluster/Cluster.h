@@ -10,8 +10,10 @@
 #include <boost/uuid/uuid.hpp>
 #include "../WebSocket/WebSocketServer.h"
 #include "../Lib/Messaging/Message.h"
+#include <boost/lockfree/queue.hpp>
 
 class ClusterManager;
+class MessageScheduler;
 
 class Cluster {
 public:
@@ -23,12 +25,19 @@ public:
 
     void setConnection(WsServer::Connection *pConnection);
 
-    void queueMessage(std::vector<uint8_t>* data, Message::Priority priority);
+    void queueMessage(std::string source, std::vector<uint8_t>* data, Message::Priority priority);
 
 private:
+    void run();
+
     std::string name;
     WsServer::Connection* pConnection = nullptr;
     ClusterManager* pClusterManager = nullptr;
+
+    mutable std::mutex mutex_;
+    std::condition_variable conditionVariable;
+    std::list<std::map<std::string, boost::lockfree::queue<std::vector<uint8_t>*>>> queue;
+    std::thread schedulerThread;
 };
 
 

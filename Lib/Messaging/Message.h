@@ -16,9 +16,9 @@ class Cluster;
 class Message {
 public:
     enum Priority {
-        Lowest = 0,
+        Lowest = 19,
         Medium = 10,
-        Highest = 19
+        Highest = 0
     };
 
     Message(Priority priority);

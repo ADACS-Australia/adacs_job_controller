@@ -10,7 +10,7 @@
 
 BOOST_AUTO_TEST_CASE( test_primitive_ubyte )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_ubyte(1);
     msg.push_ubyte(5);
@@ -23,7 +23,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_ubyte )
 
 BOOST_AUTO_TEST_CASE( test_primitive_byte )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_byte(1);
     msg.push_byte(-120);
@@ -36,7 +36,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_byte )
 
 BOOST_AUTO_TEST_CASE( test_primitive_ushort )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_ushort(0x1);
     msg.push_ushort(0x1200);
@@ -49,7 +49,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_ushort )
 
 BOOST_AUTO_TEST_CASE( test_primitive_short )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_short(0x1);
     msg.push_short(-0x1200);
@@ -62,7 +62,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_short )
 
 BOOST_AUTO_TEST_CASE( test_primitive_uint )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_uint(0x1);
     msg.push_uint(0x12345678);
@@ -75,7 +75,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_uint )
 
 BOOST_AUTO_TEST_CASE( test_primitive_int )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_int(0x1);
     msg.push_int(-0x12345678);
@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_int )
 
 BOOST_AUTO_TEST_CASE( test_primitive_ulong )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_ulong(0x1);
     msg.push_ulong(0x1234567812345678);
@@ -101,7 +101,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_ulong )
 
 BOOST_AUTO_TEST_CASE( test_primitive_long )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_long(0x1);
     msg.push_long(-0x1234567812345678);
@@ -114,7 +114,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_long )
 
 BOOST_AUTO_TEST_CASE( test_primitive_float, * boost::unit_test::tolerance(0.00001) )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_float(0.1f);
     msg.push_float(0.1234567812345678f);
@@ -127,7 +127,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_float, * boost::unit_test::tolerance(0.0000
 
 BOOST_AUTO_TEST_CASE( test_primitive_double, * boost::unit_test::tolerance(0.00001) )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     msg.push_double(0.1);
     msg.push_double(0.1234567812345678);
@@ -140,7 +140,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_double, * boost::unit_test::tolerance(0.000
 
 BOOST_AUTO_TEST_CASE( test_primitive_string )
 {
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
 
     auto s1 = std::string("Hello!");
     auto s2 = std::string("Hello again!");
@@ -162,7 +162,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes ) {
     for (auto i = 0; i < 512; i++)
         data.push_back(engine());
 
-    auto msg = Message();
+    auto msg = Message(Message::Priority::Highest);
     msg.push_bytes(data);
 
     auto result = msg.pop_bytes();
@@ -189,7 +189,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes_rate )
         data.push_back(engine());
 
     {
-        auto msg = Message();
+        auto msg = Message(Message::Priority::Highest);
         msg.push_bytes(data);
 
         auto result = msg.pop_bytes();
@@ -200,7 +200,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes_rate )
     uint64_t counter = 0;
     while (get_millis() < time_next)
     {
-        auto msg = Message();
+        auto msg = Message(Message::Priority::Highest);
         msg.push_bytes(data);
 
         auto result = msg.pop_bytes();
@@ -220,7 +220,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes_rate )
     counter = 0;
     while (get_millis() < time_next)
     {
-        auto msg = Message();
+        auto msg = Message(Message::Priority::Highest);
         msg.push_bytes(data);
 
         auto result = msg.pop_bytes();

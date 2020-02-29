@@ -18,7 +18,9 @@ set(USE_OPENSSL OFF)
 add_subdirectory(Lib/Simple-Web-Server-v3.0.2/)
 add_subdirectory(Lib/Simple-WebSocket-Server-v2.0.0/)
 
-add_executable(gwcloud_job_server main.cpp HTTP/HttpServer.cpp HTTP/HttpServer.h WebSocket/WebSocketServer.cpp WebSocket/WebSocketServer.h Lib/Messaging/Message.cpp Lib/Messaging/Message.h Cluster/ClusterManager.cpp Cluster/ClusterManager.h Cluster/Cluster.cpp Cluster/Cluster.h Cluster/MessageScheduler.cpp Cluster/MessageScheduler.h)
-add_executable (Boost_Tests_run Lib/Messaging/tests.cpp Lib/Messaging/Message.cpp Cluster/ClusterManager.cpp Cluster/ClusterManager.h Cluster/Cluster.cpp Cluster/Cluster.h Cluster/MessageScheduler.cpp Cluster/MessageScheduler.h)
+add_compile_options(-pthread)
+
+add_executable(gwcloud_job_server main.cpp HTTP/HttpServer.cpp HTTP/HttpServer.h WebSocket/WebSocketServer.cpp WebSocket/WebSocketServer.h Lib/Messaging/Message.cpp Lib/Messaging/Message.h Cluster/ClusterManager.cpp Cluster/ClusterManager.h Cluster/Cluster.cpp Cluster/Cluster.h)
+add_executable (Boost_Tests_run Lib/Messaging/tests.cpp Lib/Messaging/Message.cpp Cluster/ClusterManager.cpp Cluster/ClusterManager.h Cluster/Cluster.cpp Cluster/Cluster.h)
 
 target_link_libraries(gwcloud_job_server simple-web-server simple-websocket-server)
