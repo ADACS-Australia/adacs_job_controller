@@ -10,7 +10,13 @@
 #include <boost/uuid/uuid.hpp>
 #include "../WebSocket/WebSocketServer.h"
 #include "../Lib/Messaging/Message.h"
-#include <boost/lockfree/queue.hpp>
+#include <vector>
+#include <boost/concept_check.hpp>
+
+#define FOLLY_NO_CONFIG
+#define FOLLY_HAVE_MEMRCHR true
+#include "../Lib/folly/folly/concurrency/UnboundedQueue.h"
+#include "../Lib/folly/folly/concurrency/ConcurrentHashMap.h"
 
 class ClusterManager;
 class MessageScheduler;
@@ -19,13 +25,15 @@ class Cluster {
 public:
     Cluster(std::string name, ClusterManager* pClusterManager);
 
-    void connect(std::string token);
+    void connect(const std::string& token);
 
     std::string getName() { return name; }
 
     void setConnection(WsServer::Connection *pConnection);
 
     void queueMessage(std::string source, std::vector<uint8_t>* data, Message::Priority priority);
+
+    void handleMessage(Message &message);
 
 private:
     void run();
@@ -34,10 +42,19 @@ private:
     WsServer::Connection* pConnection = nullptr;
     ClusterManager* pClusterManager = nullptr;
 
-    mutable std::mutex mutex_;
-    std::condition_variable conditionVariable;
-    std::list<std::map<std::string, boost::lockfree::queue<std::vector<uint8_t>*>>> queue;
+    mutable std::shared_mutex mutex_;
+    mutable std::mutex dataCVMutex;
+    bool dataReady{};
+    std::condition_variable dataCV;
+    std::vector<folly::ConcurrentHashMap<std::string, folly::UMPSCQueue<std::vector<uint8_t>*, false, 8>*>> queue;
+
+    // Threads
     std::thread schedulerThread;
+    std::thread pruneThread;
+
+    void pruneSources();
+
+    bool doesHigherPriorityDataExist(uint64_t maxPriority);
 };
 
 

@@ -26,27 +26,14 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
         if (!cluster)
             return;
 
-        cout << "WS Message from " << cluster->getName() << endl;
+        // Get the string representation of the message
+        auto s = in_message->string();
 
-        auto out_message = in_message->string();
+        // Convert the string to a vector and create the message object
+        auto m = Message(vector<uint8_t>(s.begin(), s.end()));
 
-        cout << "Server: Message received: \"" << out_message << "\" from " << connection.get() << endl;
-
-        cout << "Server: Sending message \"" << out_message << "\" to " << connection.get() << endl;
-
-        // connection->send is an asynchronous function
-        connection->send(out_message, [](const SimpleWeb::error_code &ec) {
-            if(ec) {
-                cout << "Server: Error sending message. " <<
-                     // See http://www.boost.org/doc/libs/1_55_0/doc/html/boost_asio/reference.html, Error Codes for error code meanings
-                     "Error: " << ec << ", error message: " << ec.message() << endl;
-            }
-        });
-
-        // Alternatively use streams:
-        // auto out_message = make_shared<WsServer::OutMessage>();
-        // *out_message << in_message->string();
-        // connection->send(out_message);
+        // Handle the message
+        cluster->handleMessage(m);
     };
 
     echo.on_open = [this](const shared_ptr<WsServer::Connection>& connection) {
@@ -72,8 +59,10 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
             cout << "WS: Opened connection " << connection.get() << endl;
 
             // Tell the client that we are ready
-            Message msg(Message::Priority::Highest);
-            msg.push_uint(1234);
+            Message msg(SERVER_READY, Message::Priority::Highest, SYSTEM_SOURCE);
+            msg.send(cluster);
+
+            msg = Message(SERVER_READY, Message::Priority::Medium, SYSTEM_SOURCE);
             msg.send(cluster);
         } else {
             // Invalid Token

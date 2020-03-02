@@ -9,7 +9,7 @@
 #ifndef DEPRECATED
 #define DEPRECATED
 #endif
-#include "../Lib/Simple-WebSocket-Server-v2.0.0/server_ws.hpp"
+#include "../Lib/Simple-WebSocket-Server/server_ws.hpp"
 
 using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 class ClusterManager;

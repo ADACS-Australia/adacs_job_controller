@@ -9,7 +9,7 @@
 
 using namespace std;
 
-Message::Message(Message::Priority priority) {
+Message::Message(uint32_t msgId, Message::Priority priority, const std::string& source) {
     // Resize the data array to 64kb
     data.reserve(1024 * 64);
 
@@ -18,11 +18,24 @@ Message::Message(Message::Priority priority) {
 
     // Set the priority
     this->priority = priority;
+
+    // Set the source
+    this->source = source;
+
+    // Push the source
+    push_string(source);
+
+    // Push the id
+    push_uint(msgId);
 }
 
 Message::Message(vector<uint8_t> vdata) {
     data = std::move(vdata);
     index = 0;
+    priority = Message::Priority::Lowest;
+
+    source = pop_string();
+    id = pop_uint();
 }
 
 void Message::push_ubyte(uint8_t v) {
@@ -103,7 +116,7 @@ std::vector<uint8_t> Message::pop_bytes() {
 }
 
 void Message::send(Cluster* pCluster) {
-    pCluster->queueMessage(&data, priority);
+    pCluster->queueMessage(source, &data, priority);
 }
 
 

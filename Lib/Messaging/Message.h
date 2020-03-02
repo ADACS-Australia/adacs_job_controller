@@ -11,6 +11,10 @@
 #include <string>
 #include "../../WebSocket/WebSocketServer.h"
 
+#define SYSTEM_SOURCE "system"
+
+#define SERVER_READY 1000
+
 class Cluster;
 
 class Message {
@@ -21,8 +25,8 @@ public:
         Highest = 0
     };
 
-    Message(Priority priority);
-    Message(std::vector<unsigned char> vdata);
+    Message(uint32_t msgId, Priority priority, const std::string& source);
+    explicit Message(std::vector<unsigned char> vdata);
 
     void push_ubyte(uint8_t v);
     void push_byte(int8_t v);
@@ -52,10 +56,14 @@ public:
 
     void send(Cluster* pCluster);
 
+    uint32_t getId() {return id; }
+
 private:
     std::vector<uint8_t> data;
     uint64_t index;
     Priority priority;
+    std::string source;
+    uint32_t id;
 };
 
 
