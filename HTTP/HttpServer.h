@@ -10,6 +10,8 @@
 
 using HttpServerImpl = SimpleWeb::Server<SimpleWeb::HTTP>;
 
+extern void JobApi(std::string path, HttpServerImpl* server);
+
 class HttpServer {
 public:
     HttpServer();

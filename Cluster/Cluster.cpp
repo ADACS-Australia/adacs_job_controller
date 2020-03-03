@@ -195,6 +195,9 @@ bool Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) {
                 // It's not empty so data does exist
                 return true;
             }
+
+            // Increment the iterator
+            ++s;
         }
     }
 
