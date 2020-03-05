@@ -15,6 +15,7 @@
 
 #define FOLLY_NO_CONFIG
 #define FOLLY_HAVE_MEMRCHR true
+#define FOLLY_HAVE_LIBGFLAGS true
 #include "../Lib/folly/folly/concurrency/UnboundedQueue.h"
 #include "../Lib/folly/folly/concurrency/ConcurrentHashMap.h"
 

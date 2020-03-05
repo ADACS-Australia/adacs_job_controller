@@ -7,3 +7,12 @@
 [submodule "Lib/Simple-WebSocket-Server"]
 	path = Lib/Simple-WebSocket-Server
 	url = https://gitlab.com/eidheim/Simple-WebSocket-Server.git
+[submodule "Lib/sqlpp11"]
+	path = Lib/sqlpp11
+	url = https://github.com/rbock/sqlpp11.git
+[submodule "Lib/sqlpp11-connector-mysql"]
+	path = Lib/sqlpp11-connector-mysql
+	url = https://github.com/rbock/sqlpp11-connector-mysql.git
+[submodule "Lib/date"]
+	path = Lib/date
+	url = https://github.com/HowardHinnant/date.git

@@ -30,6 +30,8 @@ void ClusterManager::start() {
 }
 
 void ClusterManager::run() {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
     while (true) {
         for (auto &cluster : clusters) {
             // Check if the cluster is online
@@ -46,6 +48,7 @@ void ClusterManager::run() {
         // Wait 1 minute to check again
         std::this_thread::sleep_for(std::chrono::seconds(60));
     }
+#pragma clang diagnostic pop
 }
 
 Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection, const std::string &uuid) {

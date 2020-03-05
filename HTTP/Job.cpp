@@ -3,7 +3,11 @@
 //
 
 #include "HttpServer.h"
+#include "../DB/MySqlConnector.h"
+#include "../Lib/jobserver_schema.h"
+
 using namespace std;
+using namespace schema;
 
 void JobApi(std::string path, HttpServerImpl* server) {
     // Get      -> Get job status (job id)
@@ -29,6 +33,17 @@ void JobApi(std::string path, HttpServerImpl* server) {
     };
 
     server->resource["^/info$"]["GET"] = [](shared_ptr<HttpServerImpl::Response> response, shared_ptr<HttpServerImpl::Request> request) {
+
+        auto db = MySqlConnector();
+        JobserverJob tab;
+
+        db->run(insert_into(tab).set(tab.parameters = "Even more params!", tab.state = 5));
+
+        for(const auto& row : db->run(sqlpp::select(all_of(tab)).from(tab).unconditionally()))
+        {
+            std::cerr << "row.id: " << row.id << ", row.parameters: " << row.parameters << std::endl;
+        };
+
         stringstream stream;
         stream << "<h1>Request from " << request->remote_endpoint_address() << ":" << request->remote_endpoint_port() << "</h1>";
 
