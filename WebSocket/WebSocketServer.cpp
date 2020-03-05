@@ -54,7 +54,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
         auto cluster = this->clusterManager->handle_new_connection(connection.get(), (*qp.begin()).second);
         if (cluster) {
             // Everything is fine
-            cout << "WS: Opened connection " << connection.get() << endl;
+            cout << "WS: Opened connection from " << cluster->getName() << endl;
 
             // Tell the client that we are ready
             Message msg(SERVER_READY, Message::Priority::Highest, SYSTEM_SOURCE);
