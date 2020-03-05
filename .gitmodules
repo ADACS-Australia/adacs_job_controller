@@ -16,3 +16,6 @@
 [submodule "Lib/date"]
 	path = Lib/date
 	url = https://github.com/HowardHinnant/date.git
+[submodule "Lib/cpp-jwt"]
+	path = Lib/cpp-jwt
+	url = https://github.com/arun11299/cpp-jwt.git

@@ -8,6 +8,7 @@
 #include <sqlpp11/mysql/connection_config.h>
 #include <sqlpp11/mysql/connection.h>
 #include <sqlpp11/sqlpp11.h>
+#include "../Settings.h"
 
 namespace mysql = sqlpp::mysql;
 
@@ -15,10 +16,16 @@ class MySqlConnector {
 public:
     MySqlConnector() {
         auto config = std::make_shared<mysql::connection_config>();
-        config->user = "jobserver";
-        config->database = "jobserver";
-        config->password = "jobserver";
+        config->user = DATABASE_USER;
+        config->database = DATABASE_SCHEMA;
+        config->password = DATABASE_PASSWORD;
+        config->host = DATABASE_HOST;
+        config->port = DATABASE_PORT;
+#ifdef NDEBUG
+        config->debug = false;
+#else
         config->debug = true;
+#endif
         db = new mysql::connection(config);
     }
 
