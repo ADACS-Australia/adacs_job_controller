@@ -15,6 +15,8 @@
 
 #define SERVER_READY 1000
 
+#define SUBMIT_JOB 2000
+
 class Cluster;
 
 class Message {

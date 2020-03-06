@@ -5,7 +5,7 @@
 
 int main() {
     auto clusterManager = new ClusterManager();
-    auto httpServer = new HttpServer();
+    auto httpServer = new HttpServer(clusterManager);
     auto websocketServer = new WebSocketServer(clusterManager);
 
     // Start the websocket server

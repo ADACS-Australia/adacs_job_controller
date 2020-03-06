@@ -10,11 +10,14 @@
 
 using HttpServerImpl = SimpleWeb::Server<SimpleWeb::HTTP>;
 
-extern void JobApi(std::string path, HttpServerImpl* server);
+class ClusterManager;
+
+extern void JobApi(std::string path, HttpServerImpl* server, ClusterManager* clusterManager);
+
 
 class HttpServer {
 public:
-    HttpServer();
+    explicit HttpServer(ClusterManager* clusterManager);
     void start();
 private:
     HttpServerImpl server;

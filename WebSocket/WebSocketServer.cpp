@@ -17,7 +17,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
 
     echo.on_message = [this](const shared_ptr<WsServer::Connection>& connection, const shared_ptr<WsServer::InMessage>& in_message) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->get_cluster(connection.get());
+        auto cluster = this->clusterManager->getCluster(connection.get());
         if (!cluster) {
             // What?
             connection->send_close(1000, "Bye.");
@@ -69,7 +69,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
     // See RFC 6455 7.4.1. for status codes
     echo.on_close = [this](const shared_ptr<WsServer::Connection>& connection, int status, const string & /*reason*/) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->get_cluster(connection.get());
+        auto cluster = this->clusterManager->getCluster(connection.get());
 
         // Remove the cluster from the connected list
         this->clusterManager->remove_connection(connection.get());
@@ -81,7 +81,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
     // See http://www.boost.org/doc/libs/1_55_0/doc/html/boost_asio/reference.html, Error Codes for error code meanings
     echo.on_error = [this](const shared_ptr<WsServer::Connection>& connection, const SimpleWeb::error_code &ec) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->get_cluster(connection.get());
+        auto cluster = this->clusterManager->getCluster(connection.get());
 
         // Remove the cluster from the connected list
         this->clusterManager->remove_connection(connection.get());

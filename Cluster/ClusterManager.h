@@ -17,7 +17,8 @@ public:
     void start();
     Cluster* handle_new_connection(WsServer::Connection* connection, const std::string& uuid);
     void remove_connection(WsServer::Connection *connection);
-    Cluster *get_cluster(WsServer::Connection *connection);
+    Cluster *getCluster(WsServer::Connection *connection);
+    Cluster* getCluster(const std::string& cluster);
 
 private:
     void run();

@@ -75,7 +75,7 @@ Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection,
 
 void ClusterManager::remove_connection(WsServer::Connection* connection) {
     // Reset the cluster's connection
-    get_cluster(connection)->setConnection(nullptr);
+    getCluster(connection)->setConnection(nullptr);
 
     // Remove the specified connection from the connected clusters
     connected_clusters.erase(connection);
@@ -94,10 +94,20 @@ bool ClusterManager::is_cluster_online(Cluster* cluster) {
     return false;
 }
 
-Cluster* ClusterManager::get_cluster(WsServer::Connection* connection) {
+Cluster* ClusterManager::getCluster(WsServer::Connection* connection) {
     // Try to find the connection
     auto result = connected_clusters.find(connection);
 
     // Return the cluster if the connection was found
     return result != connected_clusters.end() ? result->second : nullptr;
+}
+
+Cluster* ClusterManager::getCluster(const std::string& cluster) {
+    // Find the cluster by name
+    for (auto & i : clusters) {
+        if (i->getName() == cluster)
+            return i;
+    }
+
+    return nullptr;
 }

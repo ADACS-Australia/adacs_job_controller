@@ -6,11 +6,11 @@
 
 using namespace std;
 
-HttpServer::HttpServer() {
+HttpServer::HttpServer(ClusterManager* clusterManager) {
     server.config.port = 8000;
 
     // Add the various API's
-    JobApi("/job/", &server);
+    JobApi("/job/", &server, clusterManager);
 }
 
 void HttpServer::start() {
