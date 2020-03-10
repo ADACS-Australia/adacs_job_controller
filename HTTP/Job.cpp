@@ -58,8 +58,6 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
     server->resource["^" + path + "$"]["POST"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
                                                                   shared_ptr<HttpServerImpl::Request> request) {
 
-        std::cout << "1" << std::endl;
-
         nlohmann::json jwt;
         try {
             jwt = isAuthorized(request);
