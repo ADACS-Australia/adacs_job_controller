@@ -19,3 +19,6 @@
 [submodule "Lib/cpp-jwt"]
 	path = Lib/cpp-jwt
 	url = https://github.com/arun11299/cpp-jwt.git
+[submodule "Lib/json"]
+	path = Lib/json
+	url = https://github.com/nlohmann/json.git

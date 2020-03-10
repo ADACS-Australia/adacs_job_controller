@@ -10,7 +10,7 @@ HttpServer::HttpServer(ClusterManager* clusterManager) {
     server.config.port = 8000;
 
     // Add the various API's
-    JobApi("/job/", &server, clusterManager);
+    JobApi("/apiv1/job/", &server, clusterManager);
 }
 
 void HttpServer::start() {

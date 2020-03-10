@@ -95,6 +95,93 @@ namespace schema
       };
     };
   };
+  namespace JobserverFiledownload_
+  {
+    struct Id
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T id;
+            T& operator()() { return id; }
+            const T& operator()() const { return id; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::must_not_insert, sqlpp::tag::must_not_update>;
+    };
+    struct User
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "user";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T user;
+            T& operator()() { return user; }
+            const T& operator()() const { return user; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    };
+    struct Uuid
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "uuid";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T uuid;
+            T& operator()() { return uuid; }
+            const T& operator()() const { return uuid; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct Timestamp
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "timestamp";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T timestamp;
+            T& operator()() { return timestamp; }
+            const T& operator()() const { return timestamp; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::time_point, sqlpp::tag::require_insert>;
+    };
+  } // namespace JobserverFiledownload_
+
+  struct JobserverFiledownload: sqlpp::table_t<JobserverFiledownload,
+               JobserverFiledownload_::Id,
+               JobserverFiledownload_::User,
+               JobserverFiledownload_::Uuid,
+               JobserverFiledownload_::Timestamp>
+  {
+    struct _alias_t
+    {
+      static constexpr const char _literal[] =  "jobserver_filedownload";
+      using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+      template<typename T>
+      struct _member_t
+      {
+        T jobserverFiledownload;
+        T& operator()() { return jobserverFiledownload; }
+        const T& operator()() const { return jobserverFiledownload; }
+      };
+    };
+  };
   namespace JobserverJob_
   {
     struct Id
@@ -129,6 +216,76 @@ namespace schema
       };
       using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::require_insert>;
     };
+    struct User
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "user";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T user;
+            T& operator()() { return user; }
+            const T& operator()() const { return user; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    };
+  } // namespace JobserverJob_
+
+  struct JobserverJob: sqlpp::table_t<JobserverJob,
+               JobserverJob_::Id,
+               JobserverJob_::Parameters,
+               JobserverJob_::User>
+  {
+    struct _alias_t
+    {
+      static constexpr const char _literal[] =  "jobserver_job";
+      using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+      template<typename T>
+      struct _member_t
+      {
+        T jobserverJob;
+        T& operator()() { return jobserverJob; }
+        const T& operator()() const { return jobserverJob; }
+      };
+    };
+  };
+  namespace JobserverJobhistory_
+  {
+    struct Id
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T id;
+            T& operator()() { return id; }
+            const T& operator()() const { return id; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::must_not_insert, sqlpp::tag::must_not_update>;
+    };
+    struct Timestamp
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "timestamp";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T timestamp;
+            T& operator()() { return timestamp; }
+            const T& operator()() const { return timestamp; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::time_point, sqlpp::tag::require_insert>;
+    };
     struct State
     {
       struct _alias_t
@@ -145,23 +302,57 @@ namespace schema
       };
       using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
     };
-  } // namespace JobserverJob_
+    struct Details
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "details";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T details;
+            T& operator()() { return details; }
+            const T& operator()() const { return details; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::require_insert>;
+    };
+    struct JobId
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "job_id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T jobId;
+            T& operator()() { return jobId; }
+            const T& operator()() const { return jobId; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    };
+  } // namespace JobserverJobhistory_
 
-  struct JobserverJob: sqlpp::table_t<JobserverJob,
-               JobserverJob_::Id,
-               JobserverJob_::Parameters,
-               JobserverJob_::State>
+  struct JobserverJobhistory: sqlpp::table_t<JobserverJobhistory,
+               JobserverJobhistory_::Id,
+               JobserverJobhistory_::Timestamp,
+               JobserverJobhistory_::State,
+               JobserverJobhistory_::Details,
+               JobserverJobhistory_::JobId>
   {
     struct _alias_t
     {
-      static constexpr const char _literal[] =  "jobserver_job";
+      static constexpr const char _literal[] =  "jobserver_jobhistory";
       using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
       template<typename T>
       struct _member_t
       {
-        T jobserverJob;
-        T& operator()() { return jobserverJob; }
-        const T& operator()() const { return jobserverJob; }
+        T jobserverJobhistory;
+        T& operator()() { return jobserverJobhistory; }
+        const T& operator()() const { return jobserverJobhistory; }
       };
     };
   };

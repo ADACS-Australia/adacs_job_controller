@@ -6,7 +6,6 @@
 #define GWCLOUD_JOB_SERVER_CLUSTERMANAGER_H
 
 #include <thread>
-#include "../Lib/json.hpp"
 #include "Cluster.h"
 #include "../WebSocket/WebSocketServer.h"
 

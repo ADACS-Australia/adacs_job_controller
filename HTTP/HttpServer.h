@@ -12,7 +12,7 @@ using HttpServerImpl = SimpleWeb::Server<SimpleWeb::HTTP>;
 
 class ClusterManager;
 
-extern void JobApi(std::string path, HttpServerImpl* server, ClusterManager* clusterManager);
+extern void JobApi(const std::string& path, HttpServerImpl* server, ClusterManager* clusterManager);
 
 
 class HttpServer {
