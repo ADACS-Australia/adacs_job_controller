@@ -42,7 +42,7 @@ nlohmann::json isAuthorized(const shared_ptr<HttpServerImpl::Request> &request) 
 
     // If there is any error code, the user is not authorized
     if (ec)
-        exception();
+        throw exception();
 
     // Everything is fine
     return dec_obj.payload().create_json_obj();

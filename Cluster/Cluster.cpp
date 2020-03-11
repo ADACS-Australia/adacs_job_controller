@@ -232,6 +232,8 @@ void Cluster::updateJob(Message &message) {
     // Get the job history table
     JobserverJobhistory jobHistoryTable;
 
+    // Todo: Verify the job id belongs to this cluster, and that the status is valid
+
     // Create the first state object
     db->run(
             insert_into(jobHistoryTable)
