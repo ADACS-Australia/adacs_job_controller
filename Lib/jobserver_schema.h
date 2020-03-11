@@ -232,12 +232,46 @@ namespace schema
       };
       using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
     };
+    struct Bundle
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "bundle";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T bundle;
+            T& operator()() { return bundle; }
+            const T& operator()() const { return bundle; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct Cluster
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "cluster";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T cluster;
+            T& operator()() { return cluster; }
+            const T& operator()() const { return cluster; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
   } // namespace JobserverJob_
 
   struct JobserverJob: sqlpp::table_t<JobserverJob,
                JobserverJob_::Id,
                JobserverJob_::Parameters,
-               JobserverJob_::User>
+               JobserverJob_::User,
+               JobserverJob_::Bundle,
+               JobserverJob_::Cluster>
   {
     struct _alias_t
     {

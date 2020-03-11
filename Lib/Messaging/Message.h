@@ -16,6 +16,7 @@
 #define SERVER_READY 1000
 
 #define SUBMIT_JOB 2000
+#define UPDATE_JOB 2001
 
 class Cluster;
 

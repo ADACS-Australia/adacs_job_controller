@@ -87,7 +87,9 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
                     insert_into(jobTable)
                             .set(
                                     jobTable.user = (uint32_t) jwt["userId"],
-                                    jobTable.parameters = std::string(post_data["parameters"])
+                                    jobTable.parameters = std::string(post_data["parameters"]),
+                                    jobTable.cluster = std::string(post_data["cluster"]),
+                                    jobTable.bundle = std::string(post_data["bundle"])
                             )
             );
 

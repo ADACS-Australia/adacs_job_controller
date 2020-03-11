@@ -8,6 +8,12 @@ class Job(models.Model):
     # The parameters for this job (Use base64 if you need to store binary)
     parameters = models.TextField()
 
+    # The cluster the job ran on
+    cluster = models.CharField(max_length=200)
+
+    # The bundle for this job
+    bundle = models.CharField(max_length=128)
+
 
 class JobHistory(models.Model):
     # The job this history object belongs to

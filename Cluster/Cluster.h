@@ -56,6 +56,8 @@ private:
     void pruneSources();
 
     bool doesHigherPriorityDataExist(uint64_t maxPriority);
+
+    void updateJob(Message &message);
 };
 
 

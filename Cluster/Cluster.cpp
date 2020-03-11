@@ -3,6 +3,8 @@
 //
 
 #include "Cluster.h"
+#include "../DB/MySqlConnector.h"
+#include "../Lib/jobserver_schema.h"
 
 #include <utility>
 #include <iostream>
@@ -18,6 +20,8 @@
 // Track sources in the map, add them when required - delete them after some amount (1 minute?) of inactivity.
 
 // Send sources round robin, starting from the highest priority
+
+using namespace schema;
 
 Cluster::Cluster(std::string name, ClusterManager *pClusterManager) {
     this->name = std::move(name);
@@ -208,7 +212,34 @@ void Cluster::handleMessage(Message &message) {
     auto msgId = message.getId();
 
     switch (msgId) {
+        case UPDATE_JOB:
+            this->updateJob(message);
+            break;
         default:
             std::cout << "Got invalid message ID " << msgId << " from " << name << std::endl;
     };
+}
+
+void Cluster::updateJob(Message &message) {
+    // Read the details from the message
+    auto jobId = message.pop_uint();
+    auto status = message.pop_uint();
+    auto details = message.pop_string();
+
+    // Create a database connection
+    auto db = MySqlConnector();
+
+    // Get the job history table
+    JobserverJobhistory jobHistoryTable;
+
+    // Create the first state object
+    db->run(
+            insert_into(jobHistoryTable)
+                    .set(
+                            jobHistoryTable.jobId = jobId,
+                            jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                            jobHistoryTable.state = status,
+                            jobHistoryTable.details = details
+                    )
+    );
 }
