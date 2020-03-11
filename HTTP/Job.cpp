@@ -3,50 +3,22 @@
 //
 #include <exception>
 #include <jwt/jwt.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
 #include "HttpServer.h"
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
 #include "../Cluster/ClusterManager.h"
 #include "../Lib/JobStatus.h"
+#include "HttpUtils.h"
+#include <sqlpp11/sqlpp11.h>
+#include "date/date.h"
+
+nlohmann::json getJob(uint32_t id);
+nlohmann::json getJobs(const std::vector<uint32_t> &ids);
 
 using namespace std;
 using namespace schema;
-
-std::string getHeader(const shared_ptr<HttpServerImpl::Request> &request, const std::string &header) {
-    // Iterate over the headers
-    for (const auto &h : request->header) {
-        // Check if the header matches
-        if (h.first == header) {
-            // Return the header value
-            return h.second;
-        }
-    }
-
-    // Return an empty string
-    return std::string();
-}
-
-nlohmann::json isAuthorized(const shared_ptr<HttpServerImpl::Request> &request) {
-    // Get the Authorization header from the request
-    auto jwt = getHeader(request, "Authorization");
-
-    // Check if the header existed
-    if (jwt.empty())
-        // Not authorized
-        throw exception();
-
-    // Decode the token
-    std::error_code ec;
-    auto dec_obj = jwt::decode(jwt, jwt::params::algorithms({"HS256"}), ec, jwt::params::secret(JWT_SECRET),
-                               jwt::params::verify(true));
-
-    // If there is any error code, the user is not authorized
-    if (ec)
-        throw exception();
-
-    // Everything is fine
-    return dec_obj.payload().create_json_obj();
-}
 
 void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clusterManager) {
     // Get      -> Get job status (job id)
@@ -58,6 +30,7 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
     server->resource["^" + path + "$"]["POST"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
                                                                   shared_ptr<HttpServerImpl::Request> request) {
 
+        // Verify that the user is authorized
         nlohmann::json jwt;
         try {
             jwt = isAuthorized(request);
@@ -106,7 +79,8 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
 
             // Submit the job to the cluster
             auto cluster = clusterManager->getCluster(post_data["cluster"]);
-            auto msg = Message(SUBMIT_JOB, Message::Priority::Medium, std::to_string(jobId) + "_" + std::string(post_data["cluster"]));
+            auto msg = Message(SUBMIT_JOB, Message::Priority::Medium,
+                               std::to_string(jobId) + "_" + std::string(post_data["cluster"]));
             msg.push_uint(jobId);
             msg.push_string(post_data["bundle"]);
             msg.push_string(post_data["parameters"]);
@@ -133,25 +107,182 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
         }
     };
 
-    server->resource["^/info$"]["GET"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
-                                                          shared_ptr<HttpServerImpl::Request> request) {
+    server->resource["^" + path + "$"]["GET"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+                                                                 shared_ptr<HttpServerImpl::Request> request) {
 
+        // With jobId: fetch just that job
+        // With jobIdArray: fetch array of jobs
 
-        stringstream stream;
-        stream << "<h1>Request from " << request->remote_endpoint_address() << ":" << request->remote_endpoint_port()
-               << "</h1>";
+        // Verify that the user is authorized
+        nlohmann::json jwt;
+        try {
+            jwt = isAuthorized(request);
+        } catch (...) {
+            // Invalid request
+            response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
+            return;
+        }
 
-        stream << request->method << " " << request->path << " HTTP/" << request->http_version;
+        try {
+            // Process the query parameters
+            auto query_fields = request->parse_query_string();
 
-        stream << "<h2>Query Fields</h2>";
-        auto query_fields = request->parse_query_string();
-        for (auto &field : query_fields)
-            stream << field.first << ": " << field.second << "<br>";
+            // Check if jobId is provided
+            auto jobIdPtr = query_fields.find("jobId");
+            auto jobId = 0;
+            if (jobIdPtr != query_fields.end())
+                jobId = std::stoi(jobIdPtr->second);
 
-        stream << "<h2>Header Fields</h2>";
-        for (auto &field : request->header)
-            stream << field.first << ": " << field.second << "<br>";
+            // Check if jobIdArray is provided
+            auto jobIdArrayPtr = query_fields.find("jobIdArray");
+            std::vector<uint32_t> jobIdArray;
+            if (jobIdArrayPtr != query_fields.end()) {
+                std::vector<std::string> sJobIdArray;
+                boost::split(sJobIdArray, jobIdArrayPtr->second, boost::is_any_of(", "), boost::token_compress_on);
 
-        response->write(stream);
+                for (const auto &id : sJobIdArray) {
+                    jobIdArray.push_back(std::stoi(id));
+                }
+            }
+
+            nlohmann::json result;
+
+            SimpleWeb::CaseInsensitiveMultimap headers;
+            headers.emplace("Content-Type", "application/json");
+
+            // Process jobId
+            if (jobId) {
+                // Get the job as a json object
+                result = getJob(jobId);
+                response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+                return;
+            }
+
+            // Process jobIdArray
+            if (!jobIdArray.empty()) {
+                // Get the jobs as an array of json object
+                result = getJobs(jobIdArray);
+                response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+                return;
+            }
+
+            // Not a valid request
+            throw exception();
+        } catch (...) {
+            // Report bad request
+            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+        }
     };
+}
+
+nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
+    // Fetches multiple jobs from the database
+    nlohmann::json result;
+
+    // Create a database connection
+    auto db = MySqlConnector();
+
+    // Get the tables
+    JobserverJob jobTable;
+    JobserverJobhistory jobHistoryTable;
+
+    // Select the jobs from the database
+    auto jobResults =
+            db->run(
+                    select(all_of(jobTable))
+                            .from(jobTable)
+                            .where(jobTable.id.in(sqlpp::value_list(ids)))
+            );
+
+    auto jobHistoryResults =
+            db->run(
+                    select(all_of(jobHistoryTable))
+                            .from(jobHistoryTable)
+                            .where(jobHistoryTable.jobId.in(sqlpp::value_list(ids)))
+                            .order_by(jobHistoryTable.timestamp.desc())
+            );
+
+    // Iterate over the jobs
+    for (auto &job : jobResults) {
+        nlohmann::json jsonJob;
+
+        // Write the job details
+        jsonJob["id"] = (uint32_t) job.id;
+        jsonJob["user"] = (uint32_t) job.user;
+        jsonJob["parameters"] = job.parameters;
+        jsonJob["cluster"] = job.cluster;
+        jsonJob["bundle"] = job.bundle;
+        jsonJob["history"] = nlohmann::json::array();
+
+        // Write the job history
+        for (auto &h : jobHistoryResults) {
+            if (h.jobId == job.id) {
+                nlohmann::json history;
+                history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());
+                history["state"] = (uint32_t) h.state;
+                history["details"] = h.details;
+
+                jsonJob["history"].push_back(history);
+            }
+        }
+
+        result.push_back(jsonJob);
+    }
+
+    return result;
+}
+
+nlohmann::json getJob(uint32_t id) {
+    // Fetches a single job from the database
+
+    nlohmann::json result;
+
+    // Create a database connection
+    auto db = MySqlConnector();
+
+    // Get the tables
+    JobserverJob jobTable;
+    JobserverJobhistory jobHistoryTable;
+
+    // Select the jobs from the database
+    auto jobResults =
+            db->run(
+                    select(all_of(jobTable))
+                            .from(jobTable)
+                            .where(jobTable.id == id)
+            );
+
+    auto jobHistoryResults =
+            db->run(
+                    select(all_of(jobHistoryTable))
+                            .from(jobHistoryTable)
+                            .where(jobHistoryTable.jobId == id)
+                            .order_by(jobHistoryTable.timestamp.desc())
+            );
+
+
+    for (auto &job : jobResults) {
+        std::cout << job.bundle << std::endl;
+
+        // Write the job details
+        result["id"] = (uint32_t) job.id;
+        result["user"] = (uint32_t) job.user;
+        result["parameters"] = job.parameters;
+        result["cluster"] = job.cluster;
+        result["bundle"] = std::string(job.bundle);
+        result["history"] = nlohmann::json::array();
+
+        // Write the job history
+        for (auto &h : jobHistoryResults) {
+            if (h.jobId == job.id) {
+                nlohmann::json history;
+                history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());;
+                history["state"] = (uint32_t) h.state;
+                history["details"] = h.details;
+
+                result["history"].push_back(history);
+            }
+        }
+    }
+    return result;
 }
