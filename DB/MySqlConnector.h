@@ -36,6 +36,9 @@ public:
     mysql::connection *operator->() const
     { return db; }
 
+    mysql::connection * getDb() const
+    { return db; }
+
 private:
     mysql::connection* db;
 };

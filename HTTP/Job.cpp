@@ -72,22 +72,29 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
                             .set(
                                     jobHistoryTable.jobId = jobId,
                                     jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                    jobHistoryTable.state = (uint32_t) JobStatus::SUBMITTING,
+                                    jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                     jobHistoryTable.details = "Job submitting"
                             )
             );
 
-            // Submit the job to the cluster
-            auto cluster = clusterManager->getCluster(post_data["cluster"]);
-            auto msg = Message(SUBMIT_JOB, Message::Priority::Medium,
-                               std::to_string(jobId) + "_" + std::string(post_data["cluster"]));
-            msg.push_uint(jobId);
-            msg.push_string(post_data["bundle"]);
-            msg.push_string(post_data["parameters"]);
-            msg.send(cluster);
-
             // Commit the changes in the database
             db->commit_transaction();
+
+            // Get the cluster to submit to
+            auto cluster = clusterManager->getCluster(post_data["cluster"]);
+
+            // Tell the client to submit the job if it's online
+            // If the cluster is not online - the resendMessages function in Cluster.cpp will
+            // submit the job when the client comes online
+            if (cluster->isOnline()) {
+                // Submit the job to the cluster
+                auto msg = Message(SUBMIT_JOB, Message::Priority::Medium,
+                                   std::to_string(jobId) + "_" + std::string(post_data["cluster"]));
+                msg.push_uint(jobId);
+                msg.push_string(post_data["bundle"]);
+                msg.push_string(post_data["parameters"]);
+                msg.send(cluster);
+            }
 
             // Report success
             nlohmann::json result;
@@ -173,6 +180,8 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
     };
+
+    // todo: Cancel and delete
 }
 
 nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
@@ -261,9 +270,8 @@ nlohmann::json getJob(uint32_t id) {
             );
 
 
+    // There's only one job, but I found I had to iterate it to get the single record, as front gave me corrupted results
     for (auto &job : jobResults) {
-        std::cout << job.bundle << std::endl;
-
         // Write the job details
         result["id"] = (uint32_t) job.id;
         result["user"] = (uint32_t) job.user;

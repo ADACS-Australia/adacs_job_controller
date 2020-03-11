@@ -38,4 +38,3 @@ class FileDownload(models.Model):
 
     # When the file download was created
     timestamp = models.DateTimeField()
-

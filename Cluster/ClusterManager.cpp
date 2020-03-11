@@ -34,17 +34,7 @@ void ClusterManager::run() {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
     while (true) {
-        for (auto &cluster : clusters) {
-            // Check if the cluster is online
-            if (!is_cluster_online(cluster)) {
-                // If the cluster is not online, try to connect it
-                auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-                // Record the valid uuid for this cluster
-                valid_uuids[uuid] = cluster;
-                // Try to connect the remote client
-                cluster->connect(uuid);
-            }
-        }
+        reconnectClusters();
 
         // Wait 1 minute to check again
         std::this_thread::sleep_for(std::chrono::seconds(60));
@@ -52,8 +42,24 @@ void ClusterManager::run() {
 #pragma clang diagnostic pop
 }
 
+void ClusterManager::reconnectClusters() {
+    // Try to reconnect all cluster
+    for (auto &cluster : clusters) {
+        // Check if the cluster is online
+        if (!is_cluster_online(cluster)) {
+            // If the cluster is not online, try to connect it
+            auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+            // Record the valid uuid for this cluster
+            valid_uuids[uuid] = cluster;
+            // Try to connect the remote client
+            cluster->connect(uuid);
+        }
+    }
+}
+
 Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection, const std::string &uuid) {
     // Check if the uuid is valid
+    // todo: Expire tokens after 60 seconds
     if (!valid_uuids.contains(uuid))
         // Nope
         return nullptr;
@@ -75,11 +81,17 @@ Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection,
 }
 
 void ClusterManager::remove_connection(WsServer::Connection* connection) {
+    // Get the cluster for this connection
+    auto pCluster = getCluster(connection);
+
     // Reset the cluster's connection
-    getCluster(connection)->setConnection(nullptr);
+    pCluster->setConnection(nullptr);
 
     // Remove the specified connection from the connected clusters
     connected_clusters.erase(connection);
+
+    // Try to reconnect the cluster in case it's a temporary network failure
+    reconnectClusters();
 }
 
 bool ClusterManager::is_cluster_online(Cluster* cluster) {

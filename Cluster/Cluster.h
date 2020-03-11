@@ -36,6 +36,8 @@ public:
 
     void handleMessage(Message &message);
 
+    bool isOnline();
+
 private:
     void run();
 
@@ -52,12 +54,16 @@ private:
     // Threads
     std::thread schedulerThread;
     std::thread pruneThread;
+    std::thread resendThread;
 
     void pruneSources();
+    void resendMessages();
 
     bool doesHigherPriorityDataExist(uint64_t maxPriority);
 
     void updateJob(Message &message);
+
+    void checkUnsubmittedJobs();
 };
 
 

@@ -28,6 +28,8 @@ private:
     std::map<WsServer::Connection*, Cluster*> connected_clusters;
 
     bool is_cluster_online(Cluster *cluster);
+
+    void reconnectClusters();
 };
 
 

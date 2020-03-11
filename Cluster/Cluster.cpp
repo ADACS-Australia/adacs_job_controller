@@ -5,6 +5,7 @@
 #include "Cluster.h"
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
+#include "../Lib/JobStatus.h"
 
 #include <utility>
 #include <iostream>
@@ -40,15 +41,26 @@ Cluster::Cluster(std::string name, ClusterManager *pClusterManager) {
     pruneThread = std::thread([this] {
         this->pruneSources();
     });
+
+    // Start the resend thread
+    resendThread = std::thread([this] {
+        this->resendMessages();
+    });
 }
 
-void Cluster::connect(const std::string& token) {
+void Cluster::connect(const std::string &token) {
     std::cout << "Attempting to connect cluster " << name << " with token " << token << std::endl;
     std::system(("cd ./utils/keyserver; ./keyserver " + name + " " + token).c_str());
 }
 
 void Cluster::setConnection(WsServer::Connection *pConnection) {
     this->pConnection = pConnection;
+
+    if (pConnection != nullptr)
+    {
+        // See if there are any pending jobs that should be sent
+        checkUnsubmittedJobs();
+    }
 }
 
 void Cluster::queueMessage(std::string source, std::vector<uint8_t> *data, Message::Priority priority) {
@@ -80,14 +92,14 @@ void Cluster::pruneSources() {
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
     while (true) {
         // Wait 1 minute until the next prune
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::seconds(60));
 
         // Aquire the exclusive lock to prevent more data being pushed on while we are pruning
         {
             std::unique_lock<std::shared_mutex> lock(mutex_);
 
             // Iterate over the priorities
-            for (auto & p : queue) {
+            for (auto &p : queue) {
                 // Get a pointer to the relevant map
                 auto pMap = &p;
 
@@ -151,15 +163,24 @@ void Cluster::run() {
                         // Pop the next item from the queue
                         auto data = (*s).second->try_dequeue();
 
-                        // data should never be null as we're checking for empty
-                        if (data) {
-                            // Convert the message
-                            auto o = std::make_shared<WsServer::OutMessage>((*data)->size());
-                            std::ostream_iterator<uint8_t> iter(*o);
-                            std::copy((*data)->begin(), (*data)->end(), iter);
+                        try {
+                            // data should never be null as we're checking for empty
+                            if (data) {
+                                // Convert the message
+                                auto o = std::make_shared<WsServer::OutMessage>((*data)->size());
+                                std::ostream_iterator<uint8_t> iter(*o);
+                                std::copy((*data)->begin(), (*data)->end(), iter);
 
-                            // Send the message on the websocket
-                            pConnection->send(o, nullptr, 130);
+                                // Send the message on the websocket
+                                if (pConnection)
+                                    pConnection->send(o, nullptr, 130);
+                                else
+                                    std::cout << "SCHED: Discarding packet because connection is closed";
+                            }
+                        } catch (...) {
+                            // Cluster has gone offline, reset the connection. Missed packets shouldn't matter too much,
+                            // they should be resent by other threads after some time
+                            setConnection(nullptr);
                         }
 
                         // Clean up the message
@@ -244,4 +265,85 @@ void Cluster::updateJob(Message &message) {
                             jobHistoryTable.details = details
                     )
     );
+}
+
+bool Cluster::isOnline() {
+    return pConnection != nullptr;
+}
+
+void Cluster::resendMessages() {
+    // Iterate forever
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
+    while (true) {
+        // Wait 1 minute until the next check
+        std::this_thread::sleep_for(std::chrono::seconds(60));
+
+        // Check for jobs that need to be resubmitted
+        checkUnsubmittedJobs();
+    }
+#pragma clang diagnostic pop
+}
+
+void Cluster::checkUnsubmittedJobs() {
+    // Check if the cluster is online and resend the submit messages
+    if (!isOnline())
+        return;
+
+    // Create a database connection
+    auto db = MySqlConnector();
+
+    // Get the tables
+    JobserverJob jobTable;
+    JobserverJobhistory jobHistoryTable;
+
+    // Select all jobTables where the most recent jobHistoryTable is
+    // pending or submitting and is more than a minute old
+
+    // Find any jobs in submitting state older than 60 seconds
+    auto jobResults =
+            db->run(
+                    select(all_of(jobTable))
+                            .from(jobTable)
+                            .where(
+                                    jobTable.id == select(jobHistoryTable.jobId)
+                                            .from(jobHistoryTable)
+                                            .where(
+                                                    jobHistoryTable.state.in(
+                                                            sqlpp::value_list(
+                                                                    std::vector<uint32_t>(
+                                                                            {
+                                                                                    (uint32_t) PENDING,
+                                                                                    (uint32_t) SUBMITTING
+                                                                            }
+                                                                    )
+                                                            )
+                                                    )
+                                                    and
+                                                    jobHistoryTable.id == select(jobHistoryTable.id)
+                                                            .from(jobHistoryTable)
+                                                            .where(
+                                                                    jobHistoryTable.jobId == jobTable.id
+                                                                    and
+                                                                    jobHistoryTable.timestamp <=
+                                                                    std::chrono::system_clock::now() +
+                                                                    std::chrono::seconds(60)
+                                                            )
+                                                            .order_by(jobHistoryTable.timestamp.desc())
+                                                            .limit(1u)
+                                            )
+                            )
+            );
+
+    for (auto &job : jobResults) {
+        std::cout << "Resubmitting: " << job.id << std::endl;
+
+        // Submit the job to the cluster
+        auto msg = Message(SUBMIT_JOB, Message::Priority::Medium,
+                           std::to_string(job.id) + "_" + std::string(job.cluster));
+        msg.push_uint(job.id);
+        msg.push_string(job.bundle);
+        msg.push_string(job.parameters);
+        msg.send(this);
+    }
 }
