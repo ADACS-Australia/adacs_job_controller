@@ -17,13 +17,13 @@ class Job(models.Model):
 
 class JobHistory(models.Model):
     # The job this history object belongs to
-    job = models.ForeignKey(Job, on_delete=models.CASCADE)
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, db_index=True)
 
     # When this update occurred
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(db_index=True)
 
     # The state for the update
-    state = models.IntegerField()
+    state = models.IntegerField(db_index=True)
 
     # Any additional details
     details = models.TextField()
@@ -33,8 +33,14 @@ class FileDownload(models.Model):
     # The if of the user for this job
     user = models.IntegerField()
 
+    # The job this download is for
+    job = models.ForeignKey(Job, on_delete=models.CASCADE)
+
     # The UUID of this file download
-    uuid = models.CharField(max_length=36)
+    uuid = models.CharField(max_length=36, db_index=True, unique=True)
+
+    # The path to the file to download (Relative to the job working directory)
+    path = models.TextField()
 
     # When the file download was created
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField(db_index=True)

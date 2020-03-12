@@ -28,7 +28,7 @@ CREATE TABLE `django_migrations` (
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `applied` datetime(6) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -43,7 +43,13 @@ CREATE TABLE `jobserver_filedownload` (
   `user` int(11) NOT NULL,
   `uuid` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `timestamp` datetime(6) NOT NULL,
-  PRIMARY KEY (`id`)
+  `job_id` int(11) NOT NULL,
+  `path` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `jobserver_filedownload_uuid_20de5691_uniq` (`uuid`),
+  KEY `jobserver_filedownload_job_id_4ff13ecc_fk_jobserver_job_id` (`job_id`),
+  KEY `jobserver_filedownload_timestamp_f4d33e0e` (`timestamp`),
+  CONSTRAINT `jobserver_filedownload_job_id_4ff13ecc_fk_jobserver_job_id` FOREIGN KEY (`job_id`) REFERENCES `jobserver_job` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -61,7 +67,7 @@ CREATE TABLE `jobserver_job` (
   `bundle` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
   `cluster` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=25 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -79,8 +85,10 @@ CREATE TABLE `jobserver_jobhistory` (
   `job_id` int(11) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `jobserver_jobhistory_job_id_01bbd7b0_fk_jobserver_job_id` (`job_id`),
+  KEY `jobserver_jobhistory_state_e95ac866` (`state`),
+  KEY `jobserver_jobhistory_timestamp_d038c893` (`timestamp`),
   CONSTRAINT `jobserver_jobhistory_job_id_01bbd7b0_fk_jobserver_job_id` FOREIGN KEY (`job_id`) REFERENCES `jobserver_job` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=30 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=71 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -92,4 +100,4 @@ CREATE TABLE `jobserver_jobhistory` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2020-03-12  5:08:23
+-- Dump completed on 2020-03-12 10:14:50

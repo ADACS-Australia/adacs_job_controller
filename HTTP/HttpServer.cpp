@@ -11,13 +11,13 @@ HttpServer::HttpServer(ClusterManager* clusterManager) {
 
     // Add the various API's
     JobApi("/apiv1/job/", &server, clusterManager);
+    FileApi("/apiv1/file/", &server, clusterManager);
 }
 
 void HttpServer::start() {
-    auto server_ptr = &server;
-    server_thread = thread([&server_ptr]() {
+    server_thread = thread([this]() {
         // Start server
-        server_ptr->start();
+        this->server.start();
     });
 
     cout << "API: Server listening on port " << server.config.port << endl << endl;

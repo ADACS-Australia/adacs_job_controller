@@ -12,10 +12,11 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
     this->clusterManager = clusterManager;
 
     server.config.port = 8001;
+//    server.config.thread_pool_size = 8;
 
-    auto &echo = server.endpoint["^/ws/?$"];
+    auto &wsEp = server.endpoint["^/ws/?$"];
 
-    echo.on_message = [this](const shared_ptr<WsServer::Connection>& connection, const shared_ptr<WsServer::InMessage>& in_message) {
+    wsEp.on_message = [this](const shared_ptr<WsServer::Connection>& connection, const shared_ptr<WsServer::InMessage>& in_message) {
         // Try to get the cluster from the connection
         auto cluster = this->clusterManager->getCluster(connection.get());
         if (!cluster) {
@@ -34,7 +35,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
         cluster->handleMessage(m);
     };
 
-    echo.on_open = [this](const shared_ptr<WsServer::Connection>& connection) {
+    wsEp.on_open = [this](const shared_ptr<WsServer::Connection>& connection) {
         // Parse the query string so we can obtain the token
         auto qp = SimpleWeb::QueryString::parse(connection->query_string);
 
@@ -67,7 +68,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
     };
 
     // See RFC 6455 7.4.1. for status codes
-    echo.on_close = [this](const shared_ptr<WsServer::Connection>& connection, int status, const string & /*reason*/) {
+    wsEp.on_close = [this](const shared_ptr<WsServer::Connection>& connection, int status, const string & /*reason*/) {
         // Try to get the cluster from the connection
         auto cluster = this->clusterManager->getCluster(connection.get());
 
@@ -79,7 +80,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
     };
 
     // See http://www.boost.org/doc/libs/1_55_0/doc/html/boost_asio/reference.html, Error Codes for error code meanings
-    echo.on_error = [this](const shared_ptr<WsServer::Connection>& connection, const SimpleWeb::error_code &ec) {
+    wsEp.on_error = [this](const shared_ptr<WsServer::Connection>& connection, const SimpleWeb::error_code &ec) {
         // Try to get the cluster from the connection
         auto cluster = this->clusterManager->getCluster(connection.get());
 
@@ -118,10 +119,9 @@ bool WebSocketServer::accepting_connections(unsigned short port) {
 }
 
 void WebSocketServer::start() {
-    auto server_ptr = &server;
-    server_thread = thread([&server_ptr]() {
+    server_thread = thread([this]() {
         // Start server
-        server_ptr->start();
+        this->server.start();
     });
 
     // Wait a for the server to initialise

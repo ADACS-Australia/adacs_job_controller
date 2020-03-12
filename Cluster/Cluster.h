@@ -22,6 +22,19 @@
 class ClusterManager;
 class MessageScheduler;
 
+struct sFileDownload {
+    folly::USPSCQueue<std::vector<uint8_t>*, false, 8> queue;
+    uint64_t fileSize = -1;
+    bool error = false;
+    std::string errorDetails;
+    mutable std::mutex dataCVMutex;
+    bool dataReady = false;
+    std::condition_variable dataCV;
+    bool receivedData = false;
+};
+
+extern folly::ConcurrentHashMap<std::string, sFileDownload*> fileDownloadMap;
+
 class Cluster {
 public:
     Cluster(std::string name, ClusterManager* pClusterManager);
@@ -64,6 +77,12 @@ private:
     void updateJob(Message &message);
 
     void checkUnsubmittedJobs();
+
+    static void handleFileError(Message &message);
+
+    static void handleFileDetails(Message &message);
+
+    static void handleFileChunk(Message &message);
 };
 
 

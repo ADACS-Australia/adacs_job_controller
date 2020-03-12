@@ -161,13 +161,47 @@ namespace schema
       };
       using _traits = sqlpp::make_traits<sqlpp::time_point, sqlpp::tag::require_insert>;
     };
+    struct JobId
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "job_id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T jobId;
+            T& operator()() { return jobId; }
+            const T& operator()() const { return jobId; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    };
+    struct Path
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "path";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T path;
+            T& operator()() { return path; }
+            const T& operator()() const { return path; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::require_insert>;
+    };
   } // namespace JobserverFiledownload_
 
   struct JobserverFiledownload: sqlpp::table_t<JobserverFiledownload,
                JobserverFiledownload_::Id,
                JobserverFiledownload_::User,
                JobserverFiledownload_::Uuid,
-               JobserverFiledownload_::Timestamp>
+               JobserverFiledownload_::Timestamp,
+               JobserverFiledownload_::JobId,
+               JobserverFiledownload_::Path>
   {
     struct _alias_t
     {

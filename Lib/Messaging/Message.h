@@ -18,6 +18,15 @@
 #define SUBMIT_JOB 2000
 #define UPDATE_JOB 2001
 
+#define REQUEST_BUNDLE 3000
+
+#define DOWNLOAD_FILE 4000
+#define FILE_DETAILS 4001
+#define FILE_ERROR 4002
+#define FILE_CHUNK 4003
+#define PAUSE_FILE_CHUNK_STREAM 4004
+#define RESUME_FILE_CHUNK_STREAM 4005
+
 class Cluster;
 
 class Message {

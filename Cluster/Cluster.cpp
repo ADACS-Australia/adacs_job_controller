@@ -10,7 +10,7 @@
 #include <utility>
 #include <iostream>
 
-// Queue is a:
+// Packet Queue is a:
 //  list of priorities - doesn't need any sync because it never changes
 //      -> map of sources - needs sync when adding/removing sources
 //          -> vector of packets - make this a MPSC queue
@@ -21,6 +21,9 @@
 // Track sources in the map, add them when required - delete them after some amount (1 minute?) of inactivity.
 
 // Send sources round robin, starting from the highest priority
+
+// Define a global map that can be used for
+folly::ConcurrentHashMap<std::string, sFileDownload*> fileDownloadMap;
 
 using namespace schema;
 
@@ -46,6 +49,27 @@ Cluster::Cluster(std::string name, ClusterManager *pClusterManager) {
     resendThread = std::thread([this] {
         this->resendMessages();
     });
+}
+
+void Cluster::handleMessage(Message &message) {
+    auto msgId = message.getId();
+
+    switch (msgId) {
+        case UPDATE_JOB:
+            this->updateJob(message);
+            break;
+        case FILE_ERROR:
+            Cluster::handleFileError(message);
+            break;
+        case FILE_DETAILS:
+            Cluster::handleFileDetails(message);
+            break;
+        case FILE_CHUNK:
+            this->handleFileChunk(message);
+            break;
+        default:
+            std::cout << "Got invalid message ID " << msgId << " from " << name << std::endl;
+    };
 }
 
 void Cluster::connect(const std::string &token) {
@@ -176,15 +200,15 @@ void Cluster::run() {
                                     pConnection->send(o, nullptr, 130);
                                 else
                                     std::cout << "SCHED: Discarding packet because connection is closed";
+
+                                // Clean up the message
+                                delete (*data);
                             }
                         } catch (...) {
                             // Cluster has gone offline, reset the connection. Missed packets shouldn't matter too much,
                             // they should be resent by other threads after some time
                             setConnection(nullptr);
                         }
-
-                        // Clean up the message
-                        delete (*data);
 
                         // Data existed
                         hadData = true;
@@ -227,18 +251,6 @@ bool Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) {
     }
 
     return false;
-}
-
-void Cluster::handleMessage(Message &message) {
-    auto msgId = message.getId();
-
-    switch (msgId) {
-        case UPDATE_JOB:
-            this->updateJob(message);
-            break;
-        default:
-            std::cout << "Got invalid message ID " << msgId << " from " << name << std::endl;
-    };
 }
 
 void Cluster::updateJob(Message &message) {
@@ -346,4 +358,57 @@ void Cluster::checkUnsubmittedJobs() {
         msg.push_string(job.parameters);
         msg.send(this);
     }
+}
+
+void Cluster::handleFileError(Message &message) {
+    auto uuid = message.pop_string();
+    auto detail = message.pop_string();
+
+    // Check that the uuid is valid
+    if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
+        return;
+
+    // Set the error
+    fileDownloadMap[uuid]->errorDetails = detail;
+    fileDownloadMap[uuid]->error = true;
+
+    // Trigger the file transfer event
+    fileDownloadMap[uuid]->dataReady = true;
+    fileDownloadMap[uuid]->dataCV.notify_one();
+}
+
+void Cluster::handleFileDetails(Message &message) {
+    auto uuid = message.pop_string();
+    auto fileSize = message.pop_ulong();
+
+    // Check that the uuid is valid
+    if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
+        return;
+
+    // Set the file size
+    fileDownloadMap[uuid]->fileSize = fileSize;
+    fileDownloadMap[uuid]->receivedData = true;
+
+    // Trigger the file transfer event
+    fileDownloadMap[uuid]->dataReady = true;
+    fileDownloadMap[uuid]->dataCV.notify_one();
+}
+uint64_t size = 0;
+void Cluster::handleFileChunk(Message &message) {
+    auto uuid = message.pop_string();
+    auto chunk = message.pop_bytes();
+
+    // Check that the uuid is valid
+    if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
+        return;
+
+    size += chunk.size();
+    how
+
+    // Copy the chunk and push it on to the queue
+    fileDownloadMap[uuid]->queue.enqueue(new std::vector<uint8_t>(chunk));
+
+    // Trigger the file transfer event
+    fileDownloadMap[uuid]->dataReady = true;
+    fileDownloadMap[uuid]->dataCV.notify_one();
 }
