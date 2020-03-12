@@ -19,6 +19,3 @@
 [submodule "Lib/json"]
 	path = Lib/json
 	url = https://github.com/nlohmann/json.git
-[submodule "Lib/Simple-WebSocket-Server"]
-	path = Lib/Simple-WebSocket-Server
-	url = https://gitlab.com/llakerink/Simple-WebSocket-Server.git
