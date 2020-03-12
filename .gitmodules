@@ -1,9 +1,6 @@
 [submodule "Lib/folly"]
 	path = Lib/folly
 	url = https://github.com/facebook/folly.git
-[submodule "Lib/Simple-Web-Server"]
-	path = Lib/Simple-Web-Server
-	url = https://gitlab.com/eidheim/Simple-Web-Server.git
 [submodule "Lib/sqlpp11"]
 	path = Lib/sqlpp11
 	url = https://github.com/rbock/sqlpp11.git
