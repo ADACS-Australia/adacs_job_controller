@@ -19,3 +19,6 @@
 [submodule "Lib/Simple-WebSocket-Server"]
 	path = Lib/Simple-WebSocket-Server
 	url = https://gitlab.com/llakerink/Simple-WebSocket-Server.git
+[submodule "Lib/Simple-Web-Server"]
+	path = Lib/Simple-Web-Server
+	url = https://gitlab.com/llakerink/Simple-Web-Server.git
