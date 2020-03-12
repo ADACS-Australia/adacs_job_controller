@@ -25,11 +25,8 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
             return;
         }
 
-        // Get the string representation of the message
-        auto s = in_message->string();
-
         // Convert the string to a vector and create the message object
-        auto m = Message(vector<uint8_t>(s.begin(), s.end()));
+        auto m = Message(in_message->data());
 
         // Handle the message
         cluster->handleMessage(m);

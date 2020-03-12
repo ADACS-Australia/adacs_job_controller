@@ -403,7 +403,6 @@ void Cluster::handleFileChunk(Message &message) {
         return;
 
     size += chunk.size();
-    how
 
     // Copy the chunk and push it on to the queue
     fileDownloadMap[uuid]->queue.enqueue(new std::vector<uint8_t>(chunk));

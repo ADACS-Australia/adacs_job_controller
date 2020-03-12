@@ -243,7 +243,6 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
 
             // Check for error, or all data sent
             while (!fdObj->error && bytesSent < fdObj->fileSize) {
-                std::cout << "OUT: " << bytesSent << std::endl;
                 {
                     // Wait for the server to send back data, or in 10 seconds fail
                     std::unique_lock<std::mutex> lock(fdObj->dataCVMutex);
