@@ -22,8 +22,11 @@
 
 // Send sources round robin, starting from the highest priority
 
-// Define a global map that can be used for
+// Define a global map that can be used for storing information about file downloads
 folly::ConcurrentHashMap<std::string, sFileDownload *> fileDownloadMap;
+
+// Define a global map that can be used for storing information about file lists
+folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
 
 using namespace schema;
 
@@ -66,6 +69,9 @@ void Cluster::handleMessage(Message &message) {
             break;
         case FILE_CHUNK:
             this->handleFileChunk(message);
+            break;
+        case FILE_LIST:
+            this->handleFileList(message);
             break;
         default:
             std::cout << "Got invalid message ID " << msgId << " from " << name << std::endl;
@@ -425,4 +431,31 @@ void Cluster::handleFileChunk(Message &message) {
             msg.send(this);
         }
     }
+}
+
+void Cluster::handleFileList(Message &message) {
+    auto uuid = message.pop_string();
+
+    // Check that the uuid is valid
+    if (fileListMap.find(uuid) == fileListMap.end())
+        return;
+
+    // Get the number of files in the message
+    auto numFiles = message.pop_uint();
+
+    // Iterate over the files and add them to the file list map
+    for (auto i = 0; i < numFiles; i++) {
+        sFile s;
+        // todo: Need to get file permissions
+        s.fileName = message.pop_string();
+        s.isDirectory = message.pop_bool();
+        s.fileSize = message.pop_ulong();
+
+        // Add the file to the list
+        fileListMap[uuid]->files.push_back(s);
+    }
+
+    // Tell the HTTP side that the data is ready
+    fileListMap[uuid]->dataReady = true;
+    fileListMap[uuid]->dataCV.notify_one();
 }

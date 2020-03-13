@@ -38,6 +38,15 @@ Message::Message(vector<uint8_t> vdata) {
     id = pop_uint();
 }
 
+void Message::push_bool(bool v) {
+    push_ubyte(v ? 1 : 0);
+}
+
+bool Message::pop_bool() {
+    auto result = pop_ubyte();
+    return result == 1;
+}
+
 void Message::push_ubyte(uint8_t v) {
     data.push_back(v);
 }

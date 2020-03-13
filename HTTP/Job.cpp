@@ -181,7 +181,82 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
         }
     };
 
-    // todo: Cancel and delete
+    server->resource["^" + path + "$"]["DELETE"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+                                                                 shared_ptr<HttpServerImpl::Request> request) {
+
+        // todo: Not implemented yet
+        return;
+        // With jobId: Job to cancel
+
+        // Verify that the user is authorized
+        nlohmann::json jwt;
+        try {
+            jwt = isAuthorized(request);
+        } catch (...) {
+            // Invalid request
+            response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
+            return;
+        }
+
+        // Create a database connection
+        auto db = MySqlConnector();
+
+        // Start a transaction
+        db->start_transaction();
+
+        try {
+            // Create a new job record and submit the job
+            JobserverJob jobTable;
+            JobserverJobhistory jobHistoryTable;
+
+            // Read the json from the post body
+            nlohmann::json post_data;
+            request->content >> post_data;
+
+            // Process the query parameters
+            auto query_fields = request->parse_query_string();
+
+            // Check if jobId is provided
+            auto jobIdPtr = query_fields.find("jobId");
+            auto jobId = 0;
+            if (jobIdPtr != query_fields.end())
+                jobId = std::stoi(jobIdPtr->second);
+
+            // Check that the job id was provided
+            if (!jobId)
+                throw exception();
+
+            auto jobHistoryResults =
+                    db->run(
+                            select(all_of(jobHistoryTable))
+                                    .from(jobHistoryTable)
+                                    .where(jobHistoryTable.jobId == jobId)
+                                    .order_by(jobHistoryTable.timestamp.desc())
+                    );
+
+            // Check that at least one record exists for this job
+            if (jobHistoryResults.empty())
+                throw exception();
+
+            // Commit the changes in the database
+            db->commit_transaction();
+
+            // Report success
+            nlohmann::json result;
+            result["cancelled"] = jobId;
+
+            SimpleWeb::CaseInsensitiveMultimap headers;
+            headers.emplace("Content-Type", "application/json");
+
+            response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+        } catch (...) {
+            // Abort the transaction
+            db->rollback_transaction(false);
+
+            // Report bad request
+            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+        }
+    };
 }
 
 nlohmann::json getJobs(const std::vector<uint32_t> &ids) {

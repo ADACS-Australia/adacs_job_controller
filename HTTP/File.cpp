@@ -295,4 +295,121 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
     };
+
+    // List files in the specified directory
+    server->resource["^" + path + "$"]["PATCH"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+                                                                  shared_ptr<HttpServerImpl::Request> request) {
+
+        // Verify that the user is authorized
+        nlohmann::json jwt;
+        try {
+            jwt = isAuthorized(request);
+        } catch (...) {
+            // Invalid request
+            response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
+            return;
+        }
+
+        // Create a database connection
+        auto db = MySqlConnector();
+
+        // Get the tables
+        JobserverJob jobTable;
+
+        // Create a new file download object
+        auto flObj = new sFileList{};
+
+        try {
+            // Read the json from the post body
+            nlohmann::json post_data;
+            request->content >> post_data;
+
+            // Get the job to fetch files for
+            auto jobId = post_data["jobId"];
+
+            // Get the job to fetch files for
+            auto bRecursive = post_data["recursive"];
+
+            // Get the path to the file to fetch (relative to the project)
+            auto filePath = post_data["path"];
+
+            // Look up the job
+            auto jobResults =
+                    db->run(
+                            select(all_of(jobTable))
+                                    .from(jobTable)
+                                    .where(jobTable.id == (uint32_t) jobId)
+                    );
+
+            // Get the cluster and bundle from the job
+            std::string sCluster, sBundle;
+
+            // There's only one job, but I found I had to iterate it to get the single record, as front gave me corrupted results
+            for (auto &job : jobResults) {
+                sCluster = std::string(job.cluster);
+                sBundle = std::string(job.bundle);
+            }
+
+            // Check that the cluster is online
+            // Get the cluster to submit to
+            auto cluster = clusterManager->getCluster(sCluster);
+
+            // If the cluster isn't online then there isn't anything to do
+            if (!cluster->isOnline()) {
+                response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
+                return;
+            }
+
+            // Generate a UUID for the message source
+            auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+
+            // Cluster is online, create the file list object
+            fileListMap.emplace(uuid, flObj);
+
+            // Send a message to the client to initiate the file list
+            auto msg = Message(FILE_LIST, Message::Priority::Highest, uuid);
+            msg.push_uint(jobId);
+            msg.push_string(uuid);
+            msg.push_string(sBundle);
+            msg.push_string(filePath);
+            msg.push_bool(bRecursive);
+            msg.send(cluster);
+
+            {
+                // Wait for the server to send back data, or in 10 seconds fail
+                std::unique_lock<std::mutex> lock(flObj->dataCVMutex);
+
+                // Wait for data to be ready to send
+                flObj->dataCV.wait_for(lock, std::chrono::seconds(10), [flObj] { return flObj->dataReady; });
+            }
+
+            // Check if the server received an error about the file list
+            if (flObj->error) {
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj->errorDetails);
+                return;
+            }
+
+            // Iterate over the files and generate the result
+            nlohmann::json result;
+            result["files"] = nlohmann::json::array();
+            for (auto f : flObj->files) {
+                nlohmann::json jFile;
+                jFile["path"] = f.fileName;
+                jFile["isDir"] = f.isDirectory;
+                jFile["fileSize"] = f.fileSize;
+                jFile["permissions"] = f.permissions;
+
+                result["files"].push_back(jFile);
+            }
+
+            // Return the result
+            SimpleWeb::CaseInsensitiveMultimap headers;
+            headers.emplace("Content-Type", "application/json");
+
+            response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+        } catch (...) {
+            // Report bad request
+            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+        }
+    };
 }

@@ -26,6 +26,8 @@
 #define FILE_CHUNK 4003
 #define PAUSE_FILE_CHUNK_STREAM 4004
 #define RESUME_FILE_CHUNK_STREAM 4005
+#define FILE_LIST 4006
+#define FILE_LIST_ERROR 4007
 
 class Cluster;
 
@@ -40,6 +42,7 @@ public:
     Message(uint32_t msgId, Priority priority, const std::string& source);
     explicit Message(std::vector<unsigned char> vdata);
 
+    void push_bool(bool v);
     void push_ubyte(uint8_t v);
     void push_byte(int8_t v);
     void push_ushort(uint16_t v);
@@ -53,6 +56,7 @@ public:
     void push_string(std::string v);
     void push_bytes(std::vector<uint8_t> v);
 
+    bool pop_bool();
     uint8_t pop_ubyte();
     int8_t pop_byte();
     uint16_t pop_ushort();

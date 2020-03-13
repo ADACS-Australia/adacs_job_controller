@@ -36,7 +36,24 @@ struct sFileDownload {
     bool clientPaused = false;
 };
 
+struct sFile {
+    std::string fileName;
+    uint64_t fileSize;
+    uint32_t permissions;
+    bool isDirectory;
+};
+
+struct sFileList {
+    std::vector<sFile> files;
+    bool error = false;
+    std::string errorDetails;
+    mutable std::mutex dataCVMutex;
+    bool dataReady = false;
+    std::condition_variable dataCV;
+};
+
 extern folly::ConcurrentHashMap<std::string, sFileDownload*> fileDownloadMap;
+extern folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
 
 class Cluster {
 public:
@@ -86,6 +103,8 @@ private:
     static void handleFileDetails(Message &message);
 
     void handleFileChunk(Message &message);
+
+    static void handleFileList(Message &message);
 };
 
 
