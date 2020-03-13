@@ -122,13 +122,16 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
         JobserverJob jobTable;
         JobserverFiledownload fileDownloadTable;
 
+        // Create a new file download object
+        auto fdObj = new sFileDownload{};
+        std::string uuid;
+
         try {
             // Process the query parameters
             auto query_fields = request->parse_query_string();
 
             // Check if jobId is provided
             auto uuidPtr = query_fields.find("fileId");
-            std::string uuid;
             if (uuidPtr != query_fields.end())
                 uuid = uuidPtr->second;
 
@@ -191,8 +194,6 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
                 return;
             }
 
-            auto fdObj = new sFileDownload{};
-
             // Cluster is online, create the file hash object
             fileDownloadMap.emplace(uuid, fdObj);
 
@@ -238,11 +239,8 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
             // Write the headers
             response->write(headers);
 
-            // Now start sending chunks to the client
-            uint64_t bytesSent = 0;
-
             // Check for error, or all data sent
-            while (!fdObj->error && bytesSent < fdObj->fileSize) {
+            while (!fdObj->error && fdObj->sentBytes < fdObj->fileSize) {
                 {
                     // Wait for the server to send back data, or in 10 seconds fail
                     std::unique_lock<std::mutex> lock(fdObj->dataCVMutex);
@@ -260,19 +258,38 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
                     // If there was one, send it to the client
                     if (data) {
                         // Increment the traffic counter
-                        bytesSent += (*data)->size();
+                        fdObj->sentBytes += (*data)->size();
 
                         // Send the data
                         response->write((const char*) (*data)->data(), (*data)->size());
 
                         // Clean up the data
                         delete (*data);
+
+                        // Check if we need to resume the client file transfer
+                        if (fdObj->clientPaused) {
+                            // Check if the buffer is smaller than the setting
+                            if (fdObj->receivedBytes - fdObj->sentBytes < MIN_FILE_BUFFER_SIZE) {
+                                // Ask the client to resume the file transfer
+                                fdObj->clientPaused = false;
+
+                                auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
+                                resumeMsg.push_string(uuid);
+                                resumeMsg.send(cluster);
+                            }
+                        }
                     }
                 }
             }
         } catch (...) {
             // Abort the transaction
             db->rollback_transaction(false);
+
+            // Destroy the file download object
+            if (fileDownloadMap.find(uuid) != fileDownloadMap.end()) {
+                fileDownloadMap.erase(uuid);
+                delete fdObj;
+            }
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");

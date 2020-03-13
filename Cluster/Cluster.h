@@ -31,6 +31,9 @@ struct sFileDownload {
     bool dataReady = false;
     std::condition_variable dataCV;
     bool receivedData = false;
+    uint64_t receivedBytes = 0;
+    uint64_t sentBytes = 0;
+    bool clientPaused = false;
 };
 
 extern folly::ConcurrentHashMap<std::string, sFileDownload*> fileDownloadMap;
@@ -82,7 +85,7 @@ private:
 
     static void handleFileDetails(Message &message);
 
-    static void handleFileChunk(Message &message);
+    void handleFileChunk(Message &message);
 };
 
 

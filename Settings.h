@@ -15,4 +15,6 @@
 
 #define JWT_SECRET                  (GET_ENV("JWT_SECRET") : "^zzul@u)rxayk67^%3kf^59!pw&-vfv0lnv6#6h)w6!eyjzz!g")
 
+#define MAX_FILE_BUFFER_SIZE        (std::stoi(GET_ENV("MAX_FILE_BUFFER_SIZE") : std::to_string(1024*1024*50)))
+#define MIN_FILE_BUFFER_SIZE        (std::stoi(GET_ENV("MIN_FILE_BUFFER_SIZE") : std::to_string(1024*1024*10)))
 #endif //GWCLOUD_JOB_SERVER_SETTINGS_H

@@ -23,7 +23,7 @@
 // Send sources round robin, starting from the highest priority
 
 // Define a global map that can be used for
-folly::ConcurrentHashMap<std::string, sFileDownload*> fileDownloadMap;
+folly::ConcurrentHashMap<std::string, sFileDownload *> fileDownloadMap;
 
 using namespace schema;
 
@@ -80,8 +80,7 @@ void Cluster::connect(const std::string &token) {
 void Cluster::setConnection(WsServer::Connection *pConnection) {
     this->pConnection = pConnection;
 
-    if (pConnection != nullptr)
-    {
+    if (pConnection != nullptr) {
         // See if there are any pending jobs that should be sent
         checkUnsubmittedJobs();
     }
@@ -393,7 +392,7 @@ void Cluster::handleFileDetails(Message &message) {
     fileDownloadMap[uuid]->dataReady = true;
     fileDownloadMap[uuid]->dataCV.notify_one();
 }
-uint64_t size = 0;
+uint64_t max;
 void Cluster::handleFileChunk(Message &message) {
     auto uuid = message.pop_string();
     auto chunk = message.pop_bytes();
@@ -402,7 +401,7 @@ void Cluster::handleFileChunk(Message &message) {
     if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
         return;
 
-    size += chunk.size();
+    fileDownloadMap[uuid]->receivedBytes += chunk.size();
 
     // Copy the chunk and push it on to the queue
     fileDownloadMap[uuid]->queue.enqueue(new std::vector<uint8_t>(chunk));
@@ -410,4 +409,20 @@ void Cluster::handleFileChunk(Message &message) {
     // Trigger the file transfer event
     fileDownloadMap[uuid]->dataReady = true;
     fileDownloadMap[uuid]->dataCV.notify_one();
+
+    if (fileDownloadMap[uuid]->receivedBytes - fileDownloadMap[uuid]->sentBytes > max) {
+        max = fileDownloadMap[uuid]->receivedBytes - fileDownloadMap[uuid]->sentBytes;
+    }
+
+    if (!fileDownloadMap[uuid]->clientPaused) {
+        // Check if our buffer is too big
+        if (fileDownloadMap[uuid]->receivedBytes - fileDownloadMap[uuid]->sentBytes > MAX_FILE_BUFFER_SIZE) {
+            // Ask the client to pause the file transfer
+            fileDownloadMap[uuid]->clientPaused = true;
+
+            auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
+            msg.push_string(uuid);
+            msg.send(this);
+        }
+    }
 }
