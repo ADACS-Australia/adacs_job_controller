@@ -1,24 +1,24 @@
 [submodule "Lib/folly"]
-	path = Lib/folly
+	path = src/Lib/folly
 	url = https://github.com/facebook/folly.git
 [submodule "Lib/sqlpp11"]
-	path = Lib/sqlpp11
+	path = src/Lib/sqlpp11
 	url = https://github.com/rbock/sqlpp11.git
 [submodule "Lib/sqlpp11-connector-mysql"]
-	path = Lib/sqlpp11-connector-mysql
+	path = src/Lib/sqlpp11-connector-mysql
 	url = https://github.com/rbock/sqlpp11-connector-mysql.git
 [submodule "Lib/date"]
-	path = Lib/date
+	path = src/Lib/date
 	url = https://github.com/HowardHinnant/date.git
 [submodule "Lib/cpp-jwt"]
-	path = Lib/cpp-jwt
+	path = src/Lib/cpp-jwt
 	url = https://github.com/arun11299/cpp-jwt.git
 [submodule "Lib/json"]
-	path = Lib/json
+	path = src/Lib/json
 	url = https://github.com/nlohmann/json.git
 [submodule "Lib/Simple-WebSocket-Server"]
-	path = Lib/Simple-WebSocket-Server
+	path = src/Lib/Simple-WebSocket-Server
 	url = https://gitlab.com/llakerink/Simple-WebSocket-Server.git
 [submodule "Lib/Simple-Web-Server"]
-	path = Lib/Simple-Web-Server
+	path = src/Lib/Simple-Web-Server
 	url = https://gitlab.com/llakerink/Simple-Web-Server.git
