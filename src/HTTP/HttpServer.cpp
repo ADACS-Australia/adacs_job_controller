@@ -8,10 +8,11 @@ using namespace std;
 
 HttpServer::HttpServer(ClusterManager* clusterManager) {
     server.config.port = 8000;
+    server.config.address = "0.0.0.0";
 
     // Add the various API's
-    JobApi("/apiv1/job/", &server, clusterManager);
-    FileApi("/apiv1/file/", &server, clusterManager);
+    JobApi("/job/apiv1/job/", &server, clusterManager);
+    FileApi("/job/apiv1/file/", &server, clusterManager);
 }
 
 void HttpServer::start() {

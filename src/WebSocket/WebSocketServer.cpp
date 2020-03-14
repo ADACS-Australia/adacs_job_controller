@@ -12,9 +12,10 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
     this->clusterManager = clusterManager;
 
     server.config.port = 8001;
+    server.config.address = "0.0.0.0";
 //    server.config.thread_pool_size = 8;
 
-    auto &wsEp = server.endpoint["^/ws/?$"];
+    auto &wsEp = server.endpoint["^/job/ws/$"];
 
     wsEp.on_message = [this](const shared_ptr<WsServer::Connection>& connection, const shared_ptr<WsServer::InMessage>& in_message) {
         // Try to get the cluster from the connection

@@ -6,5 +6,3 @@ utils/schema/venv/bin/python utils/schema/manage.py migrate;
 
 # Run the jobserver
 ./gwcloud_job_server 2>&1 | tee ./logs/logfile
-
-sleep 5000

@@ -115,9 +115,6 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
         // Create a database connection
         auto db = MySqlConnector();
 
-        // Start a transaction
-        db->start_transaction();
-
         // Get the tables
         JobserverJob jobTable;
         JobserverFiledownload fileDownloadTable;
@@ -282,9 +279,6 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
                 }
             }
         } catch (...) {
-            // Abort the transaction
-            db->rollback_transaction(false);
-
             // Destroy the file download object
             if (fileDownloadMap.find(uuid) != fileDownloadMap.end()) {
                 fileDownloadMap.erase(uuid);
