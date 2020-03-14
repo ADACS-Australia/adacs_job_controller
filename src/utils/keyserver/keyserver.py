@@ -1,10 +1,11 @@
 import sys
-import logging
 import os.path
 import json
 import traceback
 import subprocess
 import paramiko
+import io
+import time
 
 cluster = sys.argv[1]
 token = sys.argv[2]
@@ -42,7 +43,7 @@ def get_cluster_config():
         if c['name'] == cluster:
             return c
 
-    return None;
+    return None
 
 
 def get_key(key_file):
@@ -69,6 +70,7 @@ def try_connect():
     host_name = cluster_json['host_name']
     client_path = cluster_json['client_path']
     key_file = cluster_json['key']
+    user_name = cluster_json['user_name']
 
     # Check if the host is localhost
     if host_name == 'localhost':
@@ -100,15 +102,15 @@ def try_connect():
                 stderr += ssh.recv_stderr(1000)
             if ssh.exit_status_ready():  # If completed
                 break
-            sleep(0.1)
+            time.sleep(0.1)
 
         # Close the conneciton
         ssh.close()
         client.close()
 
-        logger.info("SSH command {} returned:".format(command))
-        logger.info("Stdout: {}".format(stdout))
-        logger.info("Stderr: {}".format(stderr))
+        print("SSH command {} returned:".format(command))
+        print("Stdout: {}".format(stdout))
+        print("Stderr: {}".format(stderr))
 
 
 try:
@@ -120,15 +122,15 @@ try:
 
 except Exception as e:
     # An exception occurred, log the exception to the log
-    logging.error("Error initiating the remote client")
-    logging.error(type(e))
-    logging.error(e.args)
-    logging.error(e)
+    print("Error initiating the remote client")
+    print(type(e))
+    print(e.args)
+    print(e)
 
     # Also log the stack trace
     exc_type, exc_value, exc_traceback = sys.exc_info()
     lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-    logging.error(''.join('!! ' + line for line in lines))
+    print(''.join('!! ' + line for line in lines))
 
     # Exit with failure status
     exit(1)

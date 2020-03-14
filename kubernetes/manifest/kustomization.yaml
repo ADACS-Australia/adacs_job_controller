@@ -1,0 +1,6 @@
+resources:
+  - secret.yaml
+  - gwcloud_job_server_db_deployment.yaml
+  - gwcloud_job_server_db_service.yaml
+  - gwcloud_job_server_deployment.yaml
+  - gwcloud_job_server_service.yaml

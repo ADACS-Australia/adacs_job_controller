@@ -1,0 +1,45 @@
+---
+# 
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: gwcloud-job-server
+  namespace: gwcloud
+  labels:
+    name: gwcloud-job-server
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        name: gwcloud-job-server
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_DATABASE
+          value: jobserver
+        - name: MYSQL_HOST
+          value: gwcloud-job-server-db
+        - name: MYSQL_PASSWORD
+          value: jobserver
+        - name: MYSQL_ROOT_PASSWORD
+          value: jobserver
+        - name: MYSQL_USER
+          value: jobserver
+        name: gwcloud-job-server
+        image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.1
+        ports:
+        - name: http
+          containerPort: 8000
+        - name: websocket
+          containerPort: 8001
+        resources: {}
+        tty: true
+      imagePullSecrets:
+      - name: regcred
+... 
