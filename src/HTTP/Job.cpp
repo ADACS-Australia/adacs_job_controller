@@ -40,6 +40,8 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
             return;
         }
 
+        // TODO: Need to check parameters are valid - such as cluster
+
         // Create a database connection
         auto db = MySqlConnector();
 
@@ -72,6 +74,7 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
                             .set(
                                     jobHistoryTable.jobId = jobId,
                                     jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                    jobHistoryTable.what = "system",
                                     jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                     jobHistoryTable.details = "Job submitting"
                             )
@@ -86,7 +89,7 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
             // Tell the client to submit the job if it's online
             // If the cluster is not online - the resendMessages function in Cluster.cpp will
             // submit the job when the client comes online
-            if (cluster->isOnline()) {
+            if (cluster && cluster->isOnline()) {
                 // Submit the job to the cluster
                 auto msg = Message(SUBMIT_JOB, Message::Priority::Medium,
                                    std::to_string(jobId) + "_" + std::string(post_data["cluster"]));
@@ -303,6 +306,7 @@ nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
             if (h.jobId == job.id) {
                 nlohmann::json history;
                 history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());
+                history["what"] = h.what;
                 history["state"] = (uint32_t) h.state;
                 history["details"] = h.details;
 
@@ -359,7 +363,8 @@ nlohmann::json getJob(uint32_t id) {
         for (auto &h : jobHistoryResults) {
             if (h.jobId == job.id) {
                 nlohmann::json history;
-                history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());;
+                history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());
+                history["what"] = h.what;
                 history["state"] = (uint32_t) h.state;
                 history["details"] = h.details;
 

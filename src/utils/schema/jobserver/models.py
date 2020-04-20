@@ -12,7 +12,7 @@ class Job(models.Model):
     cluster = models.CharField(max_length=200)
 
     # The bundle for this job
-    bundle = models.CharField(max_length=128)
+    bundle = models.CharField(max_length=40)
 
 
 class JobHistory(models.Model):
@@ -21,6 +21,9 @@ class JobHistory(models.Model):
 
     # When this update occurred
     timestamp = models.DateTimeField(db_index=True)
+
+    # What this update was for. Usually a job step or system
+    what = models.CharField(max_length=128)
 
     # The state for the update
     state = models.IntegerField(db_index=True)

@@ -28,7 +28,7 @@ CREATE TABLE `django_migrations` (
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `applied` datetime(6) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -64,10 +64,10 @@ CREATE TABLE `jobserver_job` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `parameters` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
   `user` int(11) NOT NULL,
-  `bundle` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `bundle` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
   `cluster` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=25 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=99 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -83,12 +83,13 @@ CREATE TABLE `jobserver_jobhistory` (
   `state` int(11) NOT NULL,
   `details` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
   `job_id` int(11) NOT NULL,
+  `what` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`id`),
   KEY `jobserver_jobhistory_job_id_01bbd7b0_fk_jobserver_job_id` (`job_id`),
   KEY `jobserver_jobhistory_state_e95ac866` (`state`),
   KEY `jobserver_jobhistory_timestamp_d038c893` (`timestamp`),
   CONSTRAINT `jobserver_jobhistory_job_id_01bbd7b0_fk_jobserver_job_id` FOREIGN KEY (`job_id`) REFERENCES `jobserver_job` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=71 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=308 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -100,4 +101,4 @@ CREATE TABLE `jobserver_jobhistory` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2020-03-12 10:14:50
+-- Dump completed on 2020-04-09 13:17:13

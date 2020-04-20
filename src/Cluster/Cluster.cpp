@@ -261,6 +261,7 @@ bool Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) {
 void Cluster::updateJob(Message &message) {
     // Read the details from the message
     auto jobId = message.pop_uint();
+    auto what = message.pop_string();
     auto status = message.pop_uint();
     auto details = message.pop_string();
 
@@ -278,6 +279,7 @@ void Cluster::updateJob(Message &message) {
                     .set(
                             jobHistoryTable.jobId = jobId,
                             jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                            jobHistoryTable.what = what,
                             jobHistoryTable.state = status,
                             jobHistoryTable.details = details
                     )
@@ -398,7 +400,7 @@ void Cluster::handleFileDetails(Message &message) {
     fileDownloadMap[uuid]->dataReady = true;
     fileDownloadMap[uuid]->dataCV.notify_one();
 }
-uint64_t max;
+
 void Cluster::handleFileChunk(Message &message) {
     auto uuid = message.pop_string();
     auto chunk = message.pop_bytes();
@@ -415,10 +417,6 @@ void Cluster::handleFileChunk(Message &message) {
     // Trigger the file transfer event
     fileDownloadMap[uuid]->dataReady = true;
     fileDownloadMap[uuid]->dataCV.notify_one();
-
-    if (fileDownloadMap[uuid]->receivedBytes - fileDownloadMap[uuid]->sentBytes > max) {
-        max = fileDownloadMap[uuid]->receivedBytes - fileDownloadMap[uuid]->sentBytes;
-    }
 
     if (!fileDownloadMap[uuid]->clientPaused) {
         // Check if our buffer is too big

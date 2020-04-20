@@ -402,6 +402,22 @@ namespace schema
       };
       using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
     };
+    struct What
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "what";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T what;
+            T& operator()() { return what; }
+            const T& operator()() const { return what; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
   } // namespace JobserverJobhistory_
 
   struct JobserverJobhistory: sqlpp::table_t<JobserverJobhistory,
@@ -409,7 +425,8 @@ namespace schema
                JobserverJobhistory_::Timestamp,
                JobserverJobhistory_::State,
                JobserverJobhistory_::Details,
-               JobserverJobhistory_::JobId>
+               JobserverJobhistory_::JobId,
+               JobserverJobhistory_::What>
   {
     struct _alias_t
     {
