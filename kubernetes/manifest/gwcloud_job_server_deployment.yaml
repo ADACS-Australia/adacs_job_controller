@@ -39,7 +39,6 @@ spec:
             secretKeyRef:
               name: jobserver-secret
               key: MYSQL_PASSWORD
-          value: jobserver
         - name: DATABASE_USER
           valueFrom:
             secretKeyRef:
