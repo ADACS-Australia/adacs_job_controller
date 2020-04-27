@@ -45,7 +45,6 @@ spec:
             secretKeyRef:
               name: jobserver-secret
               key: MYSQL_USER
-          value: jobserver
         name: gwcloud-job-server
         image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.10
         ports:
