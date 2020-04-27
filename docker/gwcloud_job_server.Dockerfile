@@ -20,6 +20,7 @@ RUN cp gwcloud_job_server /jobserver/
 RUN mkdir /jobserver/logs
 
 # Build the suid binary
+RUN rm -Rf /src/utils/keyserver/build
 RUN mkdir /src/utils/keyserver/build
 WORKDIR /src/utils/keyserver/build
 RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
@@ -31,11 +32,13 @@ RUN cp /src/utils/keyserver/build/keyserver /jobserver/utils/keyserver/
 
 # Set up the keyserver venv
 RUN cp /src/utils/keyserver/keyserver.py /jobserver/utils/keyserver/
+RUN rm -Rf /jobserver/utils/keyserver/venv
 RUN virtualenv -p python3 /jobserver/utils/keyserver/venv
 RUN /jobserver/utils/keyserver/venv/bin/pip install -r /src/utils/keyserver/requirements.txt
 
 # Set up the schema project
 RUN rsync -arv /src/utils/schema /jobserver/utils/
+RUN rm -Rf /jobserver/utils/schema/venv
 RUN virtualenv -p python3 /jobserver/utils/schema/venv
 RUN /jobserver/utils/schema/venv/bin/pip install -r /src/utils/schema/requirements.txt
 
