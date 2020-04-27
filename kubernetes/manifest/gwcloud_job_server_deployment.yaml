@@ -9,6 +9,9 @@ metadata:
     name: gwcloud-job-server
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+        name: gwcloud-job-server
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -22,15 +25,29 @@ spec:
       containers:
       - env:
         - name: DATABASE_SCHEMA
-          value: jobserver
+          valueFrom:
+            secretKeyRef:
+              name: django-secret
+              key: DATABASE_SCHEMA
         - name: DATABASE_HOST
-          value: gwcloud-job-server-db
+          valueFrom:
+            secretKeyRef:
+              name: django-secret
+              key: DATABASE_HOST
         - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: django-secret
+              key: MYSQL_PASSWORD
           value: jobserver
         - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: django-secret
+              key: MYSQL_USER
           value: jobserver
         name: gwcloud-job-server
-        image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.1
+        image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.10
         ports:
         - name: http
           containerPort: 8000
