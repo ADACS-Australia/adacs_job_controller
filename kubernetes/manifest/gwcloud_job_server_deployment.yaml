@@ -27,23 +27,23 @@ spec:
         - name: DATABASE_SCHEMA
           valueFrom:
             secretKeyRef:
-              name: django-secret
+              name: jobserver-secret
               key: DATABASE_SCHEMA
         - name: DATABASE_HOST
           valueFrom:
             secretKeyRef:
-              name: django-secret
+              name: jobserver-secret
               key: DATABASE_HOST
         - name: DATABASE_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: django-secret
+              name: jobserver-secret
               key: MYSQL_PASSWORD
           value: jobserver
         - name: DATABASE_USER
           valueFrom:
             secretKeyRef:
-              name: django-secret
+              name: jobserver-secret
               key: MYSQL_USER
           value: jobserver
         name: gwcloud-job-server

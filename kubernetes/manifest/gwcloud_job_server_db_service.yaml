@@ -14,5 +14,3 @@ spec:
     io.kompose.service: gwcloud-job-server-db
   sessionAffinity: None
   type: ClusterIP
-status:
-  loadBalancer: {}

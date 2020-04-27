@@ -7,15 +7,15 @@ metadata:
   namespace: gwcloud
 spec:
   ports:
-  - port: 8000
+  - name: http
+    port: 8000
     protocol: TCP
     targetPort: 8000
-  - port: 8001
+  - name: websocket
+    port: 8001
     protocol: TCP
     targetPort: 8001
   selector:
     name: gwcloud-job-server
   sessionAffinity: None
   type: ClusterIP
-status:
-  loadBalancer: {}
