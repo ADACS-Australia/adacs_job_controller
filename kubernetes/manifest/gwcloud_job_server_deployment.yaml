@@ -22,10 +22,10 @@ spec:
       labels:
         name: gwcloud-job-server
     spec:
-      securityContext:
-        privileged: true
       containers:
-        - env:
+        - securityContext:
+            privileged: true
+          env:
           - name: DATABASE_SCHEMA
             valueFrom:
               secretKeyRef:
@@ -72,9 +72,9 @@ spec:
 #            - "bin/sh"
 #            - "-c"
 #            - "sh /usr/sbin/watchnotify.sh"
-        - name: coredump-collector
-          image: ubuntu:18.04
-          command: ["/bin/sleep","3600"]
+#        - name: coredump-collector
+#          image: ubuntu:18.04
+#          command: ["/bin/sleep","3600"]
       imagePullSecrets:
       - name: regcred
 ... 
