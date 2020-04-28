@@ -44,6 +44,11 @@ spec:
             secretKeyRef:
               name: jobserver-secret
               key: MYSQL_USER
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: django-secret
+              key: SECRET_KEY
         name: gwcloud-job-server
         image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.11
         ports:
