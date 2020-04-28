@@ -74,7 +74,7 @@ spec:
           image: ubuntu:18.04
           command: ["/bin/sleep","3600"]
           volumeMounts:
-          - mountPath: /tmp/cores
+          - mountPath: /var/lib/systemd/coredump/
             name: core-path
       imagePullSecrets:
       - name: regcred
