@@ -17,6 +17,8 @@ spec:
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
+  SecurityContext:
+    privileged: true
   template:
     metadata:
       labels:
@@ -73,8 +75,6 @@ spec:
         - name: coredump-collector
           image: ubuntu:18.04
           command: ["/bin/sleep","3600"]
-          SecurityContext:
-            privileged: true
       imagePullSecrets:
       - name: regcred
 ... 
