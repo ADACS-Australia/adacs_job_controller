@@ -17,13 +17,13 @@ spec:
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
-  securityContext:
-    privileged: true
   template:
     metadata:
       labels:
         name: gwcloud-job-server
     spec:
+      securityContext:
+        privileged: true
       containers:
         - env:
           - name: DATABASE_SCHEMA
