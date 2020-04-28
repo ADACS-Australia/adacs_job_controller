@@ -73,9 +73,6 @@ spec:
         - name: coredump-collector
           image: ubuntu:18.04
           command: ["/bin/sleep","3600"]
-          volumeMounts:
-          - mountPath: /var/lib/systemd/coredump/
-            name: core-path
       imagePullSecrets:
       - name: regcred
 ... 
