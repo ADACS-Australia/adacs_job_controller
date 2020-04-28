@@ -64,12 +64,18 @@ spec:
               memory: "4Gi"
               cpu: "2000m"
           tty: true
-        - name: coredump-agent
-          image: gcr.io/projects-jayant/coredump/coredump0.1:1
-          command:
-            - "bin/sh"
-            - "-c"
-            - "sh /usr/sbin/watchnotify.sh"
+#        - name: coredump-agent
+#          image: gcr.io/projects-jayant/coredump/coredump0.1:1
+#          command:
+#            - "bin/sh"
+#            - "-c"
+#            - "sh /usr/sbin/watchnotify.sh"
+        - name: coredump-collector
+          image: ubuntu:18.04
+          command: ["/bin/sleep","3600"]
+          volumeMounts:
+          - mountPath: /tmp/cores
+            name: core-path
       imagePullSecrets:
       - name: regcred
 ... 
