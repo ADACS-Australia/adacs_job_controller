@@ -23,58 +23,36 @@ spec:
         name: gwcloud-job-server
     spec:
       containers:
-        - securityContext:
-            privileged: true
-          env:
-          - name: DATABASE_SCHEMA
-            valueFrom:
-              secretKeyRef:
-                name: jobserver-secret
-                key: DATABASE_SCHEMA
-          - name: DATABASE_HOST
-            valueFrom:
-              secretKeyRef:
-                name: jobserver-secret
-                key: DATABASE_HOST
-          - name: DATABASE_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: jobserver-secret
-                key: MYSQL_PASSWORD
-          - name: DATABASE_USER
-            valueFrom:
-              secretKeyRef:
-                name: jobserver-secret
-                key: MYSQL_USER
-          - name: JWT_SECRET
-            valueFrom:
-              secretKeyRef:
-                name: django-secret
-                key: SECRET_KEY
-          name: gwcloud-job-server
-          image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.11
-          ports:
-          - name: http
-            containerPort: 8000
-          - name: websocket
-            containerPort: 8001
-          resources:
-            requests:
-              memory: "4Gi"
-              cpu: "2000m"
-            limits:
-              memory: "4Gi"
-              cpu: "2000m"
-          tty: true
-#        - name: coredump-agent
-#          image: gcr.io/projects-jayant/coredump/coredump0.1:1
-#          command:
-#            - "bin/sh"
-#            - "-c"
-#            - "sh /usr/sbin/watchnotify.sh"
-#        - name: coredump-collector
-#          image: ubuntu:18.04
-#          command: ["/bin/sleep","3600"]
+      - env:
+        - name: DATABASE_SCHEMA
+          valueFrom:
+            secretKeyRef:
+              name: jobserver-secret
+              key: DATABASE_SCHEMA
+        - name: DATABASE_HOST
+          valueFrom:
+            secretKeyRef:
+              name: jobserver-secret
+              key: DATABASE_HOST
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: jobserver-secret
+              key: MYSQL_PASSWORD
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: jobserver-secret
+              key: MYSQL_USER
+        name: gwcloud-job-server
+        image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.14
+        ports:
+        - name: http
+          containerPort: 8000
+        - name: websocket
+          containerPort: 8001
+        resources: {}
+        tty: true
       imagePullSecrets:
       - name: regcred
 ... 

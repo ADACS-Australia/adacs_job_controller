@@ -38,9 +38,11 @@ static bool mExceptionStackTrace = true;
 // sub-libraries and independent of the object thrown). This works
 // only for gcc and only with a bit of trickery
 extern "C" {
-void print_exception_info(const std::type_info *aExceptionInfo) {
+void print_exception_info(const std::type_info *aExceptionInfo, void* thrown_exception) {
     int vDemangleStatus;
     char *vDemangledExceptionName;
+
+    auto except = (std::exception*) thrown_exception;
 
     if (aExceptionInfo != NULL) {
         // Demangle the name of the exception using the GNU C++ ABI:
@@ -61,6 +63,9 @@ void print_exception_info(const std::type_info *aExceptionInfo) {
         fprintf(stderr, "\n");
         fprintf(stderr, "Caught exception:\n");
     }
+
+    // Print the description of the exception
+    fprintf(stderr, "What: %s\n\n", except->what());
 }
 
 void libunwind_print_backtrace(const int aFramesToIgnore) {
@@ -232,7 +237,7 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
 void __cxa_throw(void *thrown_exception, std::type_info *info, void (*dest)(void *)) {
     // print the stack trace to stderr:
     if (mExceptionStackTrace) {
-        print_exception_info(info);
+        print_exception_info(info, thrown_exception);
         libunwind_print_backtrace(1);
     }
 

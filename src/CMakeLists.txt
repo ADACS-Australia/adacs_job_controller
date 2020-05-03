@@ -32,7 +32,7 @@ add_subdirectory(Lib/cpp-jwt)
 
 include_directories(Lib/json/include Lib/date/include Lib/sqlpp11/include Lib/sqlpp11-connector-mysql/include Lib/folly Lib/Simple-Web-Server Lib/Simple-WebSocket-Server Lib/cpp-jwt/include)
 
-add_executable(gwcloud_job_server main.cpp HTTP/HttpServer.cpp HTTP/HttpServer.h WebSocket/WebSocketServer.cpp WebSocket/WebSocketServer.h Lib/Messaging/Message.cpp Lib/Messaging/Message.h Cluster/ClusterManager.cpp Cluster/ClusterManager.h Cluster/Cluster.cpp Cluster/Cluster.h HTTP/Job.cpp DB/MySqlConnector.h Lib/stacktrace.cpp Settings.h Lib/JobStatus.h HTTP/HttpUtils.cpp HTTP/File.cpp)
-add_executable (Boost_Tests_run Lib/Messaging/tests.cpp Lib/Messaging/Message.cpp Cluster/ClusterManager.cpp Cluster/ClusterManager.h Cluster/Cluster.cpp Cluster/Cluster.h HTTP/Job.cpp Lib/stacktrace.cpp Settings.h Lib/JobStatus.h HTTP/File.cpp)
+add_executable(gwcloud_job_server main.cpp HTTP/HttpServer.cpp HTTP/HttpServer.h WebSocket/WebSocketServer.cpp WebSocket/WebSocketServer.h Lib/Messaging/Message.cpp Lib/Messaging/Message.h Cluster/ClusterManager.cpp Cluster/ClusterManager.h Cluster/Cluster.cpp Cluster/Cluster.h HTTP/Job.cpp DB/MySqlConnector.h Lib/stacktrace.cpp Settings.h Lib/JobStatus.h HTTP/HttpUtils.cpp HTTP/File.cpp Lib/segvcatch.h Lib/segvcatch.cpp Lib/x86_64-signal.h)
+add_executable (Boost_Tests_run Lib/Messaging/tests.cpp Lib/Messaging/Message.cpp Cluster/ClusterManager.cpp Cluster/ClusterManager.h Cluster/Cluster.cpp Cluster/Cluster.h HTTP/Job.cpp Lib/stacktrace.cpp Settings.h Lib/JobStatus.h HTTP/File.cpp Lib/segvcatch.h)
 
 target_link_libraries(gwcloud_job_server simple-web-server simple-websocket-server folly sqlpp-mysql mysqlclient dl dw)
