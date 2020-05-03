@@ -45,7 +45,7 @@ spec:
               name: jobserver-secret
               key: MYSQL_USER
         name: gwcloud-job-server
-        image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.13
+        image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.14
         ports:
         - name: http
           containerPort: 8000
