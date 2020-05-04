@@ -1,5 +1,7 @@
 resources:
   # - secret.yaml # implies secret has been predeployed
+  - gwcloud_job_server_db_pv.yaml
+  - gwcloud_job_server_db_pvc.yaml
   - gwcloud_job_server_db_deployment.yaml
   - gwcloud_job_server_db_service.yaml
   - gwcloud_job_server_deployment.yaml
