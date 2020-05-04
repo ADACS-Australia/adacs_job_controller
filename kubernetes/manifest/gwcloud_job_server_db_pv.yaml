@@ -12,6 +12,6 @@ spec:
   capacity:
     storage: 4Gi
   nfs:
-    server: 10.8.0.37
+    server: 10.8.41.12
     path: "/mnt/sharedfolder/gwcloud/jobserver/db"
 ...
