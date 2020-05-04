@@ -184,6 +184,10 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
             // Check that the cluster is online
             // Get the cluster to submit to
             auto cluster = clusterManager->getCluster(sCluster);
+            if (!cluster) {
+                // Invalid cluster
+                throw std::runtime_error("Invalid cluster");
+            }
 
             // If the cluster isn't online then there isn't anything to do
             if (!cluster->isOnline()) {
@@ -347,6 +351,10 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
             // Check that the cluster is online
             // Get the cluster to submit to
             auto cluster = clusterManager->getCluster(sCluster);
+            if (!cluster) {
+                // Invalid cluster
+                throw std::runtime_error("Invalid cluster");
+            }
 
             // If the cluster isn't online then there isn't anything to do
             if (!cluster->isOnline()) {

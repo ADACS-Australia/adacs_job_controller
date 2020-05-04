@@ -57,6 +57,13 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
             nlohmann::json post_data;
             request->content >> post_data;
 
+            // Get the cluster to submit to
+            auto cluster = clusterManager->getCluster(post_data["cluster"]);
+            if (!cluster) {
+                // Invalid cluster
+                throw std::runtime_error("Invalid cluster");
+            }
+
             // Create the new job object
             auto jobId = db->run(
                     insert_into(jobTable)
@@ -82,9 +89,6 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
 
             // Commit the changes in the database
             db->commit_transaction();
-
-            // Get the cluster to submit to
-            auto cluster = clusterManager->getCluster(post_data["cluster"]);
 
             // Tell the client to submit the job if it's online
             // If the cluster is not online - the resendMessages function in Cluster.cpp will
