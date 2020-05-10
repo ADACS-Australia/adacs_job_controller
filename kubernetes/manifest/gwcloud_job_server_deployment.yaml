@@ -23,36 +23,20 @@ spec:
         name: gwcloud-job-server
     spec:
       containers:
-      - env:
-        - name: DATABASE_SCHEMA
-          valueFrom:
-            secretKeyRef:
-              name: jobserver-secret
-              key: DATABASE_SCHEMA
-        - name: DATABASE_HOST
-          valueFrom:
-            secretKeyRef:
-              name: jobserver-secret
-              key: DATABASE_HOST
-        - name: DATABASE_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: jobserver-secret
-              key: MYSQL_PASSWORD
-        - name: DATABASE_USER
-          valueFrom:
-            secretKeyRef:
-              name: jobserver-secret
-              key: MYSQL_USER
-        name: gwcloud-job-server
-        image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.15
-        ports:
-        - name: http
-          containerPort: 8000
-        - name: websocket
-          containerPort: 8001
-        resources: {}
-        tty: true
-      imagePullSecrets:
-      - name: regcred
+        - envFrom:
+            - secretRef:
+                name: gwcloud-auth
+            - secretRef:
+                name: common
+          name: gwcloud-job-server
+          image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.15
+          ports:
+            - name: http
+              containerPort: 8000
+            - name: websocket
+              containerPort: 8001
+          resources: {}
+          tty: true
+        imagePullSecrets:
+        - name: regcred
 ... 
