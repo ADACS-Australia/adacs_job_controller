@@ -37,6 +37,6 @@ spec:
               containerPort: 8001
           resources: {}
           tty: true
-        imagePullSecrets:
-        - name: regcred
+      imagePullSecrets:
+      - name: regcred
 ... 
