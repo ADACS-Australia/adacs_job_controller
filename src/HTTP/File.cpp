@@ -134,6 +134,13 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
 
             if (uuid.empty()) {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
+
+                // Clean up the file download object
+                if (fdObj) {
+                    delete fdObj;
+                    fdObj = nullptr;
+                }
+
                 return;
             }
 
@@ -155,6 +162,13 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
             // Check that the uuid existed in the database
             if (dlResults.empty()) {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
+
+                // Clean up the file download object
+                if (fdObj) {
+                    delete fdObj;
+                    fdObj = nullptr;
+                }
+
                 return;
             }
 
@@ -192,6 +206,13 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
             // If the cluster isn't online then there isn't anything to do
             if (!cluster->isOnline()) {
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
+
+                // Clean up the file download object
+                if (fdObj) {
+                    delete fdObj;
+                    fdObj = nullptr;
+                }
+
                 return;
             }
 
@@ -216,11 +237,32 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
             // Check if the server received an error about the file
             if (fdObj->error) {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, fdObj->errorDetails);
+
+                // Destroy the file download object
+                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                    fileDownloadMap.erase(uuid);
+
+                // Clean up the file download object
+                if (fdObj) {
+                    delete fdObj;
+                    fdObj = nullptr;
+                }
+
                 return;
             }
 
             // Check if the server received details about the file
             if (!fdObj->receivedData) {
+                // Destroy the file download object
+                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                    fileDownloadMap.erase(uuid);
+
+                // Clean up the file download object
+                if (fdObj) {
+                    delete fdObj;
+                    fdObj = nullptr;
+                }
+
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
             }
@@ -282,11 +324,26 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
                     }
                 }
             }
+
+            // Destroy the file download object
+            if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                fileDownloadMap.erase(uuid);
+
+            // Clean up the file download object
+            if (fdObj) {
+                delete fdObj;
+                fdObj = nullptr;
+            }
+
         } catch (...) {
             // Destroy the file download object
-            if (fileDownloadMap.find(uuid) != fileDownloadMap.end()) {
+            if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
                 fileDownloadMap.erase(uuid);
+
+            // Clean up the file download object
+            if (fdObj) {
                 delete fdObj;
+                fdObj = nullptr;
             }
 
             // Report bad request
