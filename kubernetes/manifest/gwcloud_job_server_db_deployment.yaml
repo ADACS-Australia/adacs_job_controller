@@ -20,7 +20,7 @@ spec:
       containers:
         - envFrom:
             - secretRef:
-                name: gwcloud-auth
+                name: job-server
           image: mysql:5.7
           name: mysql-gwcloud-job-server
           resources: {}

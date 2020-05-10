@@ -25,7 +25,7 @@ spec:
       containers:
         - envFrom:
             - secretRef:
-                name: gwcloud-auth
+                name: job-server
             - secretRef:
                 name: common
           name: gwcloud-job-server
