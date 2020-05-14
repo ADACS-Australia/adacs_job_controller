@@ -5,6 +5,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
+#include "boost/filesystem.hpp"
 #include "HttpServer.h"
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
@@ -279,9 +280,9 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
 
             // Check if we need to tell the browser to force the download
             if (forceDownload)
-                headers.emplace("Content-Disposition", "attachment; filename=\"" + p.stem() + "\"");
+                headers.emplace("Content-Disposition", "attachment; filename=\"" + fp.filename().string() + "\"");
             else
-                headers.emplace("Content-Disposition", "filename=\"" + p.stem() + "\"");
+                headers.emplace("Content-Disposition", "filename=\"" + fp.filename().string() + "\"");
 
             // Set the content size
             headers.emplace("Content-Length", std::to_string(fdObj->fileSize));

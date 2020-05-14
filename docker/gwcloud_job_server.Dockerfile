@@ -1,9 +1,9 @@
-from ubuntu:eoan
+from ubuntu:focal
 
 # Update the container and install the required packages
 RUN apt-get update
-RUN apt-get -y dist-upgrade
-RUN apt-get -y install rsync sudo python3-dev python-virtualenv libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -y dist-upgrade
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install rsync sudo python3-dev python3-virtualenv libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git
 
 # Copy in the source directory
 COPY src /src
@@ -12,7 +12,7 @@ COPY src /src
 RUN mkdir /src/build
 WORKDIR /src/build
 RUN cmake -DCMAKE_BUILD_TYPE=Debug .. || true
-RUN cmake --build . --target gwcloud_job_server -- -j 6
+RUN cmake --build . --target gwcloud_job_server -- -j `grep -c ^processor /proc/cpuinfo`
 
 # Create the install directory and copy the job server in
 RUN mkdir -p /jobserver
