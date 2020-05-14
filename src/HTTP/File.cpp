@@ -273,9 +273,16 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
 
             SimpleWeb::CaseInsensitiveMultimap headers;
             headers.emplace("Content-Type", "application/octet-stream");
+
+            // Get the filename from the download
+            boost::filesystem::path fp(sFilePath);
+
             // Check if we need to tell the browser to force the download
             if (forceDownload)
-                headers.emplace("Content-Disposition", "application/octet-stream");
+                headers.emplace("Content-Disposition", "attachment; filename=\"" + p.stem() + "\"");
+            else
+                headers.emplace("Content-Disposition", "filename=\"" + p.stem() + "\"");
+
             // Set the content size
             headers.emplace("Content-Length", std::to_string(fdObj->fileSize));
 
