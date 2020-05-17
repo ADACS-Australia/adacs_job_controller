@@ -102,7 +102,7 @@ Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection,
             remove_from(clusterUuidTable)
                     .where(
                             clusterUuidTable.timestamp <=
-                            std::chrono::system_clock::now() +
+                            std::chrono::system_clock::now() -
                             std::chrono::seconds(60)
                     )
 

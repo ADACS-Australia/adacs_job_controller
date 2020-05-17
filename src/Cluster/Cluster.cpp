@@ -345,7 +345,7 @@ void Cluster::checkUnsubmittedJobs() {
                                                                     jobHistoryTable.jobId == jobTable.id
                                                                     and
                                                                     jobHistoryTable.timestamp <=
-                                                                    std::chrono::system_clock::now() +
+                                                                    std::chrono::system_clock::now() -
                                                                     std::chrono::seconds(60)
                                                             )
                                                             .order_by(jobHistoryTable.timestamp.desc())

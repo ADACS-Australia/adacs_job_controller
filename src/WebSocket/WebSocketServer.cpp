@@ -71,7 +71,8 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
         auto cluster = this->clusterManager->getCluster(connection.get());
 
         // Remove the cluster from the connected list
-        this->clusterManager->remove_connection(connection.get());
+        if (cluster)
+            this->clusterManager->remove_connection(connection.get());
 
         // Log this
         cout << "WS: Closed connection with " << std::string(cluster ? cluster->getName() : "unknown?") << " with status code " << status << endl;
@@ -83,7 +84,8 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
         auto cluster = this->clusterManager->getCluster(connection.get());
 
         // Remove the cluster from the connected list
-        this->clusterManager->remove_connection(connection.get());
+        if (cluster)
+            this->clusterManager->remove_connection(connection.get());
 
         // Log this
         cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "
