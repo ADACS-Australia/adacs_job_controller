@@ -60,7 +60,7 @@ void ClusterManager::reconnectClusters() {
 Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection, const std::string &uuid) {
     // Check if the uuid is valid
     // todo: Expire tokens after 60 seconds
-    if (!valid_uuids.contains(uuid))
+    if (valid_uuids.find(uuid) == valid_uuids.end())
         // Nope
         return nullptr;
 
