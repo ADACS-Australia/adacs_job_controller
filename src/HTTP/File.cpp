@@ -170,7 +170,7 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
                     remove_from(fileDownloadTable)
                             .where(
                                     fileDownloadTable.timestamp <=
-                                    std::chrono::system_clock::now() +
+                                    std::chrono::system_clock::now() -
                                     std::chrono::seconds(FILE_DOWNLOAD_EXPIRY_TIME)
                             )
 
