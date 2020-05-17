@@ -29,7 +29,7 @@ spec:
             - secretRef:
                 name: common
           name: gwcloud-job-server
-          image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.18
+          image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.19
           ports:
             - name: http
               containerPort: 8000

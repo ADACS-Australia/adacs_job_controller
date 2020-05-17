@@ -5,7 +5,7 @@ services:
     build:
       dockerfile: ./docker/gwcloud_job_server.Dockerfile
       context: .
-    image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.18
+    image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.19
     container_name: gwcloud_job_server
     environment:
       DATABASE_SCHEMA: jobserver
