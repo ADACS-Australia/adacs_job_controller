@@ -17,4 +17,6 @@
 
 #define MAX_FILE_BUFFER_SIZE        std::stoi(GET_ENV("MAX_FILE_BUFFER_SIZE", std::to_string(1024*1024*50)))
 #define MIN_FILE_BUFFER_SIZE        std::stoi(GET_ENV("MIN_FILE_BUFFER_SIZE", std::to_string(1024*1024*10)))
+
+#define FILE_DOWNLOAD_EXPIRY_TIME   std::stoi(GET_ENV("FILE_DOWNLOAD_EXPIRY_TIME", std::to_string(60*60*24)))
 #endif //GWCLOUD_JOB_SERVER_SETTINGS_H

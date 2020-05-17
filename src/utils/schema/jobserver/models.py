@@ -47,3 +47,14 @@ class FileDownload(models.Model):
 
     # When the file download was created
     timestamp = models.DateTimeField(db_index=True)
+
+
+class ClusterUuid(models.Model):
+    # The cluster this uuid is for
+    cluster = models.CharField(max_length=200)
+
+    # The UUID
+    uuid = models.CharField(max_length=36, db_index=True, unique=True)
+
+    # The timestamp when this uuid was created
+    timestamp = models.DateTimeField(db_index=True)

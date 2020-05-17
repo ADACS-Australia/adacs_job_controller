@@ -1,8 +1,8 @@
--- MariaDB dump 10.17  Distrib 10.4.12-MariaDB, for Linux (x86_64)
+-- MariaDB dump 10.17  Distrib 10.4.13-MariaDB, for Linux (x86_64)
 --
 -- Host: localhost    Database: jobserver
 -- ------------------------------------------------------
--- Server version	10.4.12-MariaDB
+-- Server version	10.4.13-MariaDB
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -28,7 +28,25 @@ CREATE TABLE `django_migrations` (
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `applied` datetime(6) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `jobserver_clusteruuid`
+--
+
+DROP TABLE IF EXISTS `jobserver_clusteruuid`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `jobserver_clusteruuid` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `cluster` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `uuid` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `timestamp` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uuid` (`uuid`),
+  KEY `jobserver_clusteruuid_timestamp_8f6c293c` (`timestamp`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -67,7 +85,7 @@ CREATE TABLE `jobserver_job` (
   `bundle` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
   `cluster` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=99 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -89,7 +107,7 @@ CREATE TABLE `jobserver_jobhistory` (
   KEY `jobserver_jobhistory_state_e95ac866` (`state`),
   KEY `jobserver_jobhistory_timestamp_d038c893` (`timestamp`),
   CONSTRAINT `jobserver_jobhistory_job_id_01bbd7b0_fk_jobserver_job_id` FOREIGN KEY (`job_id`) REFERENCES `jobserver_job` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=308 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -101,4 +119,4 @@ CREATE TABLE `jobserver_jobhistory` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2020-04-09 13:17:13
+-- Dump completed on 2020-05-18  8:34:41

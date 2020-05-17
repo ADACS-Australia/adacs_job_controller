@@ -73,23 +73,37 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
                 sBundle = std::string(job.bundle);
             }
 
-            // Generate a UUID for the download
-            auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+            // Because UUID's very occasionally collide, we try to generate a few UUID's in a row
+            int i = 0;
+            std::string uuid;
+            for (; i < 10; i++) {
+                try {
+                    // Generate a UUID for the download
+                    uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
-            // Save the file download in the database
-            db->run(
-                    insert_into(fileDownloadTable)
-                            .set(
-                                    fileDownloadTable.user = (uint32_t) jwt["userId"],
-                                    fileDownloadTable.jobId = (uint32_t) jobId,
-                                    fileDownloadTable.uuid = uuid,
-                                    fileDownloadTable.path = std::string(filePath),
-                                    fileDownloadTable.timestamp = std::chrono::system_clock::now()
-                            )
-            );
+                    // Save the file download in the database
+                    db->run(
+                            insert_into(fileDownloadTable)
+                                    .set(
+                                            fileDownloadTable.user = (uint32_t) jwt["userId"],
+                                            fileDownloadTable.jobId = (uint32_t) jobId,
+                                            fileDownloadTable.uuid = uuid,
+                                            fileDownloadTable.path = std::string(filePath),
+                                            fileDownloadTable.timestamp = std::chrono::system_clock::now()
+                                    )
+                    );
 
-            // Commit the changes in the database
-            db->commit_transaction();
+                    // Commit the changes in the database
+                    db->commit_transaction();
+
+                    // The insert was successful
+                    break;
+                } catch (sqlpp::exception&) {}
+            }
+
+            // Check if the insert was successful
+            if (i == 10)
+                throw std::runtime_error("Unable to insert a UUID for file download " + std::string(filePath));
 
             // Report success
             nlohmann::json result;
@@ -151,7 +165,16 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
             if (fdPtr != query_fields.end())
                 forceDownload = true;
 
-            // todo: expire old downloads
+            // Expire any old file downloads
+            db->run(
+                    remove_from(fileDownloadTable)
+                            .where(
+                                    fileDownloadTable.timestamp <=
+                                    std::chrono::system_clock::now() +
+                                    std::chrono::seconds(FILE_DOWNLOAD_EXPIRY_TIME)
+                            )
+
+            );
 
             // Look up the file download
             auto dlResults = db->run(

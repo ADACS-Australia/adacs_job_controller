@@ -95,6 +95,93 @@ namespace schema
       };
     };
   };
+  namespace JobserverClusteruuid_
+  {
+    struct Id
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T id;
+            T& operator()() { return id; }
+            const T& operator()() const { return id; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::must_not_insert, sqlpp::tag::must_not_update>;
+    };
+    struct Cluster
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "cluster";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T cluster;
+            T& operator()() { return cluster; }
+            const T& operator()() const { return cluster; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct Uuid
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "uuid";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T uuid;
+            T& operator()() { return uuid; }
+            const T& operator()() const { return uuid; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct Timestamp
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "timestamp";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T timestamp;
+            T& operator()() { return timestamp; }
+            const T& operator()() const { return timestamp; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::time_point, sqlpp::tag::require_insert>;
+    };
+  } // namespace JobserverClusteruuid_
+
+  struct JobserverClusteruuid: sqlpp::table_t<JobserverClusteruuid,
+               JobserverClusteruuid_::Id,
+               JobserverClusteruuid_::Cluster,
+               JobserverClusteruuid_::Uuid,
+               JobserverClusteruuid_::Timestamp>
+  {
+    struct _alias_t
+    {
+      static constexpr const char _literal[] =  "jobserver_clusteruuid";
+      using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+      template<typename T>
+      struct _member_t
+      {
+        T jobserverClusteruuid;
+        T& operator()() { return jobserverClusteruuid; }
+        const T& operator()() const { return jobserverClusteruuid; }
+      };
+    };
+  };
   namespace JobserverFiledownload_
   {
     struct Id

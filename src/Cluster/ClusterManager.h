@@ -24,7 +24,6 @@ private:
 
     std::thread clusterThread;
     std::vector<Cluster*> clusters;
-    std::map<std::string, Cluster*> valid_uuids;
     std::map<WsServer::Connection*, Cluster*> connected_clusters;
 
     bool is_cluster_online(Cluster *cluster);
