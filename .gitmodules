@@ -1,9 +1,6 @@
 [submodule "Lib/folly"]
 	path = src/Lib/folly
 	url = https://github.com/facebook/folly.git
-[submodule "Lib/sqlpp11"]
-	path = src/Lib/sqlpp11
-	url = https://github.com/rbock/sqlpp11.git
 [submodule "Lib/sqlpp11-connector-mysql"]
 	path = src/Lib/sqlpp11-connector-mysql
 	url = https://github.com/rbock/sqlpp11-connector-mysql.git
