@@ -19,3 +19,6 @@
 [submodule "Lib/Simple-Web-Server"]
 	path = src/Lib/Simple-Web-Server
 	url = https://gitlab.com/llakerink/Simple-Web-Server.git
+[submodule "src/Lib/sqlpp11"]
+	path = src/Lib/sqlpp11
+	url = https://github.com/rbock/sqlpp11.git

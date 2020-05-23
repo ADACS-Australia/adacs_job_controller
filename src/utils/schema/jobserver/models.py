@@ -23,7 +23,7 @@ class JobHistory(models.Model):
     timestamp = models.DateTimeField(db_index=True)
 
     # What this update was for. Usually a job step or system
-    what = models.CharField(max_length=128)
+    what = models.CharField(max_length=128, db_index=True)
 
     # The state for the update
     state = models.IntegerField(db_index=True)
