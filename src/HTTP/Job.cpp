@@ -3,8 +3,6 @@
 //
 #include <exception>
 #include <jwt/jwt.hpp>
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/classification.hpp>
 #include "HttpServer.h"
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
@@ -13,9 +11,24 @@
 #include "HttpUtils.h"
 #include <sqlpp11/sqlpp11.h>
 #include "date/date.h"
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
 
-nlohmann::json getJob(uint32_t id);
+
 nlohmann::json getJobs(const std::vector<uint32_t> &ids);
+
+nlohmann::json filterJobs(
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1,
+                1 >>> *startTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1,
+                1 >>> *startTimeLt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1,
+                1 >>> *endTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1,
+                1 >>> *endTimeLt,
+        std::vector<unsigned long> *jobIds,
+        std::map<std::string, unsigned int> *jobSteps
+);
 
 using namespace std;
 using namespace schema;
@@ -124,8 +137,22 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
     server->resource["^" + path + "$"]["GET"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
                                                                  shared_ptr<HttpServerImpl::Request> request) {
 
-        // With jobId: fetch just that job
-        // With jobIdArray: fetch array of jobs
+        // Query parameters (All optional)
+        // jobIds:          fetch array of jobs
+        // startTimeGt:     start time greater than this (Newer than this) (Integer epoch time)
+        // startTimeLt:     start time less than this (Older than this) (Integer epoch time)
+        // endTimeGt:       end time greater than this (Newer than this) (Integer epoch time)
+        // endTimeLt:       end time less than this (Older than this) (Integer epoch time)
+        // Job Step filtering (Must include a job step id and at least one filter parameter). Job step filtering filters
+        // by the provided job step's MOST RECENT state.
+        // jobSteps:        csv list of:-
+        //      jobStepId:  the name of the job step id to filter on
+        //      state:      the state of the job step
+
+        // Job steps are combined using OR
+
+        // So a job filter might look like
+        // ?jobIDs=50,51,52&startTimeLt=1589838778&endTimeGt=1589836778&jobSteps=jid0,500,jid1,500
 
         // Verify that the user is authorized
         nlohmann::json jwt;
@@ -141,47 +168,66 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
             // Process the query parameters
             auto query_fields = request->parse_query_string();
 
-            // Check if jobId is provided
-            auto jobIdPtr = query_fields.find("jobId");
-            auto jobId = 0;
-            if (jobIdPtr != query_fields.end())
-                jobId = std::stoi(jobIdPtr->second);
+            // Parse query parameters
+            auto startTimeGt = date::sys_seconds{
+                    std::chrono::seconds(getQueryParamAsInt(query_fields, "startTimeGt"))
+            };
 
-            // Check if jobIdArray is provided
-            auto jobIdArrayPtr = query_fields.find("jobIdArray");
-            std::vector<uint32_t> jobIdArray;
-            if (jobIdArrayPtr != query_fields.end()) {
-                std::vector<std::string> sJobIdArray;
-                boost::split(sJobIdArray, jobIdArrayPtr->second, boost::is_any_of(", "), boost::token_compress_on);
+            auto startTimeLt = date::sys_seconds{
+                    std::chrono::seconds(getQueryParamAsInt(query_fields, "startTimeLt"))
+            };
 
-                for (const auto &id : sJobIdArray) {
-                    jobIdArray.push_back(std::stoi(id));
-                }
+            auto endTimeGt = date::sys_seconds{
+                    std::chrono::seconds(getQueryParamAsInt(query_fields, "endTimeGt"))
+            };
+
+            auto endTimeLt = date::sys_seconds{
+                    std::chrono::seconds(getQueryParamAsInt(query_fields, "endTimeLt"))
+            };
+
+            auto jobIds = getQueryParamAsVectorInt(query_fields, "jobIds");
+            auto sJobSteps = getQueryParamAsString(query_fields, "jobSteps");
+
+
+            // Parse the the job step string to key value pairs
+            std::map<std::string, unsigned int> jobSteps;
+            if (hasQueryParam(query_fields, "jobSteps")) {
+                std::vector<std::string> sJobStepsArray;
+                auto bits = boost::split(sJobStepsArray, sJobSteps, boost::is_any_of(", "), boost::token_compress_on);
+
+                for (unsigned int i = 0; i < sJobStepsArray.size(); i += 2)
+                    jobSteps[sJobStepsArray[i]] = stoi(sJobStepsArray[i + 1]);
             }
 
-            nlohmann::json result;
+            auto result = filterJobs(
+                    hasQueryParam(query_fields, "startTimeGt") ? &startTimeGt : nullptr,
+                    hasQueryParam(query_fields, "startTimeLt") ? &startTimeLt : nullptr,
+                    hasQueryParam(query_fields, "endTimeGt") ? &endTimeGt : nullptr,
+                    hasQueryParam(query_fields, "endTimeLt") ? &endTimeLt : nullptr,
+                    hasQueryParam(query_fields, "jobIds") ? &jobIds : nullptr,
+                    hasQueryParam(query_fields, "jobSteps") ? &jobSteps : nullptr
+            );
 
             SimpleWeb::CaseInsensitiveMultimap headers;
             headers.emplace("Content-Type", "application/json");
 
-            // Process jobId
-            if (jobId) {
-                // Get the job as a json object
-                result = getJob(jobId);
-                response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-                return;
-            }
+            response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
 
-            // Process jobIdArray
-            if (!jobIdArray.empty()) {
-                // Get the jobs as an array of json object
-                result = getJobs(jobIdArray);
-                response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-                return;
-            }
+//            // Process jobId
+//            if (jobId) {
+//                // Get the job as a json object
+//                result = getJob(jobId);
 
-            // Not a valid request
-            throw exception();
+//                return;
+//            }
+//
+//            // Process jobIdArray
+//            if (!jobIdArray.empty()) {
+//                // Get the jobs as an array of json object
+//                result = getJobs(jobIdArray);
+//                response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+//                return;
+//            }
         } catch (...) {
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
@@ -189,7 +235,7 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
     };
 
     server->resource["^" + path + "$"]["DELETE"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
-                                                                 shared_ptr<HttpServerImpl::Request> request) {
+                                                                    shared_ptr<HttpServerImpl::Request> request) {
 
         // todo: Not implemented yet
         return;
@@ -266,6 +312,139 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
     };
 }
 
+nlohmann::json filterJobs(
+        chrono::time_point<chrono::system_clock, chrono::duration<long, ratio<1, 1 >>> *startTimeGt,
+        chrono::time_point<chrono::system_clock, chrono::duration<long, ratio<1, 1 >>> *startTimeLt,
+        chrono::time_point<chrono::system_clock, chrono::duration<long, ratio<1, 1 >>> *endTimeGt,
+        chrono::time_point<chrono::system_clock, chrono::duration<long, ratio<1, 1 >>> *endTimeLt,
+        vector<unsigned long> *jobIds,
+        map<string, unsigned int> *jobSteps
+) {
+    // Check for valid parameters
+    if (endTimeGt && endTimeLt)
+        throw std::runtime_error("Can't have both endTimeGt and endTimeLt");
+
+    if (startTimeGt && startTimeLt)
+        throw std::runtime_error("Can't have both startTimeGt and startTimeLt");
+
+    // Create a database connection
+    auto db = MySqlConnector();
+
+    // Get the tables
+    JobserverJob jobTable;
+    JobserverJobhistory jobHistoryTable;
+
+    // Create a sub query to find the first "system" entry for each job id
+    auto systemStartTimeFilterAggregate = select(
+            // As crazy as this line is, for sqlpp to work, this field will not work unless it too is an aggregate.
+            // min() in this case will return exactly the same thing as there is only going to be one "id" returned
+            // for each of the first "system" of each job_id
+            min(jobHistoryTable.id).as(jobHistoryTable.id),
+
+            // This is what actually does the heavy lifting here to find the earliest timestamp for each job id as
+            // group_by'd later
+            min(jobHistoryTable.timestamp)
+    )
+            .from(jobHistoryTable)
+                    // Filter by system job histories
+            .where(jobHistoryTable.what == "system")
+                    // For each job id
+            .group_by(jobHistoryTable.jobId)
+                    // Alias this for use later
+            .as(sqlpp::alias::a);
+
+    // Next create the dynamic query to handle getting jobId's that match the start time criteria
+    auto systemStartTimeFilter = sqlpp::dynamic_select(*db.getDb())
+            // Select only the job id
+            .columns(jobHistoryTable.jobId)
+            .dynamic_from(
+                    // Join with the aggregate filter to filter on min timestamp for system histories
+                    jobHistoryTable.join(
+                            systemStartTimeFilterAggregate).on(
+                            // Match the job history id with the aggregate history id
+                            jobHistoryTable.id == systemStartTimeFilterAggregate.id
+                    )
+            )
+            .dynamic_where();
+
+    // Note that if neither start time gt or lt is provided, then the query will match all jobs, as all jobs have an
+    // initial system history created at job creation time
+
+    // If the greater than start time is provided, add the condition to the where statement
+    if (startTimeGt)
+        systemStartTimeFilter.where.add(jobHistoryTable.timestamp >= *startTimeGt);
+
+    // If the less than start time is provided add the condition to the where statement
+    if (startTimeLt)
+        systemStartTimeFilter.where.add(jobHistoryTable.timestamp <= *startTimeLt);
+
+    // Create a temporary history filter, true here as it is combined below with AND if an end time is not provided
+    auto endTimeFilter = sqlpp::boolean_expression<mysql::connection>(true);
+    if (endTimeGt)
+        // Create the end time greater than comparison
+        endTimeFilter = sqlpp::boolean_expression<mysql::connection>(
+                jobHistoryTable.what == "_job_completion_" and jobHistoryTable.timestamp >= *endTimeGt
+        );
+
+    if (endTimeLt)
+        // endTimeLt and endTimeGt are mutually exclusive, so no problem with reassigning
+        endTimeFilter = sqlpp::boolean_expression<mysql::connection>(
+                jobHistoryTable.what == "_job_completion_" and jobHistoryTable.timestamp <= *endTimeLt
+        );
+
+    // Next filter by job step histories
+    // Create an initial value filter of false as we will compare with OR. If job steps is not supplied, the default
+    // comparison should be true
+    auto jobStepFilter = sqlpp::boolean_expression<mysql::connection>(jobSteps == nullptr);
+
+    if (jobSteps) {
+        for (const auto &s : *jobSteps) {
+            jobStepFilter = sqlpp::boolean_expression<mysql::connection>(
+                    (jobHistoryTable.what == s.first and jobHistoryTable.state == s.second) or jobStepFilter
+            );
+        }
+    }
+
+    // Get all the unique job ids from the query above
+    auto historyResultsFilter = sqlpp::dynamic_select(*db.getDb())
+            // Select only the job id
+            .columns(jobHistoryTable.jobId)
+            .from(jobHistoryTable)
+            .dynamic_where()
+            .dynamic_group_by();
+
+    // Set up the where filters
+    historyResultsFilter.where.add(
+            // Filter by the job steps
+            jobStepFilter
+            // Then by the end time if there is any
+            and jobHistoryTable.jobId.in(
+                    select(jobHistoryTable.jobId).from(jobHistoryTable).where(endTimeFilter)
+            )
+            // Then by the start time if there is one
+            and jobHistoryTable.jobId.in(systemStartTimeFilter)
+    );
+
+    // If the user has provided a list of job id's add that to the filter
+    if (jobIds)
+        historyResultsFilter.where.add(jobHistoryTable.jobId.in(sqlpp::value_list(*jobIds)));
+
+    // Group by the job id to eliminate duplicate job ids
+    historyResultsFilter.group_by.add(jobHistoryTable.jobId);
+
+    // Get job histories that match the filter
+    auto historyResults = db->run(historyResultsFilter);
+
+    // Get all the job ids that match
+    std::vector<uint32_t> filteredJobIds;
+    for (auto &h : historyResults) {
+        filteredJobIds.push_back(h.jobId);
+    }
+
+    // Return the job details for the matched ids
+    return getJobs(filteredJobIds);
+}
+
 nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
     // Fetches multiple jobs from the database
     nlohmann::json result;
@@ -321,60 +500,5 @@ nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
         result.push_back(jsonJob);
     }
 
-    return result;
-}
-
-nlohmann::json getJob(uint32_t id) {
-    // Fetches a single job from the database
-
-    nlohmann::json result;
-
-    // Create a database connection
-    auto db = MySqlConnector();
-
-    // Get the tables
-    JobserverJob jobTable;
-    JobserverJobhistory jobHistoryTable;
-
-    // Select the jobs from the database
-    auto jobResults =
-            db->run(
-                    select(all_of(jobTable))
-                            .from(jobTable)
-                            .where(jobTable.id == id)
-            );
-
-    auto jobHistoryResults =
-            db->run(
-                    select(all_of(jobHistoryTable))
-                            .from(jobHistoryTable)
-                            .where(jobHistoryTable.jobId == id)
-                            .order_by(jobHistoryTable.timestamp.desc())
-            );
-
-
-    // There's only one job, but I found I had to iterate it to get the single record, as front gave me corrupted results
-    for (auto &job : jobResults) {
-        // Write the job details
-        result["id"] = (uint32_t) job.id;
-        result["user"] = (uint32_t) job.user;
-        result["parameters"] = job.parameters;
-        result["cluster"] = job.cluster;
-        result["bundle"] = std::string(job.bundle);
-        result["history"] = nlohmann::json::array();
-
-        // Write the job history
-        for (auto &h : jobHistoryResults) {
-            if (h.jobId == job.id) {
-                nlohmann::json history;
-                history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());
-                history["what"] = h.what;
-                history["state"] = (uint32_t) h.state;
-                history["details"] = h.details;
-
-                result["history"].push_back(history);
-            }
-        }
-    }
     return result;
 }
