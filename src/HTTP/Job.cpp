@@ -472,6 +472,19 @@ nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
                             .order_by(jobHistoryTable.timestamp.desc())
             );
 
+    // Convert the histories in to json objects
+    std::vector<nlohmann::json> histories;
+    for (auto &h : jobHistoryResults) {
+        nlohmann::json history;
+        history["jobId"] = (uint32_t) h.jobId;
+        history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());
+        history["what"] = h.what;
+        history["state"] = (uint32_t) h.state;
+        history["details"] = h.details;
+
+        histories.push_back(history);
+    }
+
     // Iterate over the jobs
     for (auto &job : jobResults) {
         nlohmann::json jsonJob;
@@ -485,15 +498,9 @@ nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
         jsonJob["history"] = nlohmann::json::array();
 
         // Write the job history
-        for (auto &h : jobHistoryResults) {
-            if (h.jobId == job.id) {
-                nlohmann::json history;
-                history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());
-                history["what"] = h.what;
-                history["state"] = (uint32_t) h.state;
-                history["details"] = h.details;
-
-                jsonJob["history"].push_back(history);
+        for (auto &h : histories) {
+            if ((uint32_t) h["jobId"] == job.id) {
+                jsonJob["history"].push_back(h);
             }
         }
 
