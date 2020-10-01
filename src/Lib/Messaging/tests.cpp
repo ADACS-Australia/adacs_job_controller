@@ -7,14 +7,91 @@
 #include <boost/test/unit_test.hpp>
 #include <random>
 #include <chrono>
+#include "../../Cluster/Cluster.h"
+
+// Define an override cluster that can be used to mutate a message
+class TestCluster : public Cluster {
+public:
+    TestCluster(const std::string &name, ClusterManager *pClusterManager) : Cluster(name, pClusterManager) {}
+
+    std::vector<uint8_t> vData;
+    std::string sSource;
+    Message::Priority ePriority;
+
+private:
+    virtual void queueMessage(std::string source, std::vector<uint8_t>* data, Message::Priority priority) {
+        vData = *data;
+        sSource = source;
+        ePriority = priority;
+    }
+};
+
+TestCluster testCluster = TestCluster("", nullptr);
+
+BOOST_AUTO_TEST_CASE( test_message_attributes )
+{
+    auto msg = Message(0, Message::Priority::Highest, "test");
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
+
+    BOOST_CHECK_EQUAL(msg.getId(), 0);
+    BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Highest);
+    BOOST_CHECK_EQUAL(testCluster.sSource, "test");
+
+    msg = Message(101, Message::Priority::Highest, "test");
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
+
+    BOOST_CHECK_EQUAL(msg.getId(), 101);
+    BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Highest);
+    BOOST_CHECK_EQUAL(testCluster.sSource, "test");
+
+    msg = Message(0, Message::Priority::Medium, "test");
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
+
+    BOOST_CHECK_EQUAL(msg.getId(), 0);
+    BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Medium);
+    BOOST_CHECK_EQUAL(testCluster.sSource, "test");
+
+    msg = Message(0, Message::Priority::Highest, "test_again");
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
+
+    BOOST_CHECK_EQUAL(msg.getId(), 0);
+    BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Highest);
+    BOOST_CHECK_EQUAL(testCluster.sSource, "test_again");
+
+    msg = Message(123, Message::Priority::Lowest, "test_1");
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
+
+    BOOST_CHECK_EQUAL(msg.getId(), 123);
+    BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Lowest);
+    BOOST_CHECK_EQUAL(testCluster.sSource, "test_1");
+}
 
 BOOST_AUTO_TEST_CASE( test_primitive_ubyte )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_ubyte(1);
     msg.push_ubyte(5);
     msg.push_ubyte(245);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_ubyte(), 1);
     BOOST_CHECK_EQUAL(msg.pop_ubyte(), 5);
@@ -23,11 +100,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_ubyte )
 
 BOOST_AUTO_TEST_CASE( test_primitive_byte )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_byte(1);
     msg.push_byte(-120);
     msg.push_byte(120);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_byte(), 1);
     BOOST_CHECK_EQUAL(msg.pop_byte(), -120);
@@ -36,11 +117,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_byte )
 
 BOOST_AUTO_TEST_CASE( test_primitive_ushort )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_ushort(0x1);
     msg.push_ushort(0x1200);
     msg.push_ushort(0xffff);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_ushort(), 0x1);
     BOOST_CHECK_EQUAL(msg.pop_ushort(), 0x1200);
@@ -49,11 +134,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_ushort )
 
 BOOST_AUTO_TEST_CASE( test_primitive_short )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_short(0x1);
     msg.push_short(-0x1200);
     msg.push_short(0x2020);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_short(), 0x1);
     BOOST_CHECK_EQUAL(msg.pop_short(), -0x1200);
@@ -62,11 +151,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_short )
 
 BOOST_AUTO_TEST_CASE( test_primitive_uint )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_uint(0x1);
     msg.push_uint(0x12345678);
     msg.push_uint(0xffff1234);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_uint(), 0x1);
     BOOST_CHECK_EQUAL(msg.pop_uint(), 0x12345678);
@@ -75,11 +168,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_uint )
 
 BOOST_AUTO_TEST_CASE( test_primitive_int )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_int(0x1);
     msg.push_int(-0x12345678);
     msg.push_int(0x12345678);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_int(), 0x1);
     BOOST_CHECK_EQUAL(msg.pop_int(), -0x12345678);
@@ -88,11 +185,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_int )
 
 BOOST_AUTO_TEST_CASE( test_primitive_ulong )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_ulong(0x1);
     msg.push_ulong(0x1234567812345678);
     msg.push_ulong(0xffff123412345678);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_ulong(), 0x1);
     BOOST_CHECK_EQUAL(msg.pop_ulong(), 0x1234567812345678);
@@ -101,11 +202,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_ulong )
 
 BOOST_AUTO_TEST_CASE( test_primitive_long )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_long(0x1);
     msg.push_long(-0x1234567812345678);
     msg.push_long(0x1234567812345678);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_long(), 0x1);
     BOOST_CHECK_EQUAL(msg.pop_long(), -0x1234567812345678);
@@ -114,11 +219,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_long )
 
 BOOST_AUTO_TEST_CASE( test_primitive_float, * boost::unit_test::tolerance(0.00001) )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_float(0.1f);
     msg.push_float(0.1234567812345678f);
     msg.push_float(-0.1234123f);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_float(), 0.1f);
     BOOST_CHECK_EQUAL(msg.pop_float(), 0.1234567812345678f);
@@ -127,11 +236,15 @@ BOOST_AUTO_TEST_CASE( test_primitive_float, * boost::unit_test::tolerance(0.0000
 
 BOOST_AUTO_TEST_CASE( test_primitive_double, * boost::unit_test::tolerance(0.00001) )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     msg.push_double(0.1);
     msg.push_double(0.1234567812345678);
     msg.push_double(-0.1234567812345678);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_double(), 0.1);
     BOOST_CHECK_EQUAL(msg.pop_double(), 0.1234567812345678);
@@ -140,7 +253,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_double, * boost::unit_test::tolerance(0.000
 
 BOOST_AUTO_TEST_CASE( test_primitive_string )
 {
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
 
     auto s1 = std::string("Hello!");
     auto s2 = std::string("Hello again!");
@@ -149,6 +262,10 @@ BOOST_AUTO_TEST_CASE( test_primitive_string )
     msg.push_string(s1);
     msg.push_string(s2);
     msg.push_string(s3);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     BOOST_CHECK_EQUAL(msg.pop_string(), s1);
     BOOST_CHECK_EQUAL(msg.pop_string(), s2);
@@ -162,8 +279,12 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes ) {
     for (auto i = 0; i < 512; i++)
         data.push_back(engine());
 
-    auto msg = Message(Message::Priority::Highest);
+    auto msg = Message(0, Message::Priority::Highest, "test");
     msg.push_bytes(data);
+
+    // Transmute the message into a received message
+    msg.send(&testCluster);
+    msg = Message(testCluster.vData);
 
     auto result = msg.pop_bytes();
 
@@ -171,7 +292,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes ) {
 }
 
 std::chrono::milliseconds get_millis() {
-    return duration_cast<std::chrono::milliseconds >(
+    return std::chrono::duration_cast<std::chrono::milliseconds >(
             std::chrono::system_clock::now().time_since_epoch()
     );
 }
@@ -189,8 +310,12 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes_rate )
         data.push_back(engine());
 
     {
-        auto msg = Message(Message::Priority::Highest);
+        auto msg = Message(0, Message::Priority::Highest, "test");
         msg.push_bytes(data);
+
+        // Transmute the message into a received message
+        msg.send(&testCluster);
+        msg = Message(testCluster.vData);
 
         auto result = msg.pop_bytes();
 
@@ -200,8 +325,12 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes_rate )
     uint64_t counter = 0;
     while (get_millis() < time_next)
     {
-        auto msg = Message(Message::Priority::Highest);
+        auto msg = Message(0, Message::Priority::Highest, "test");
         msg.push_bytes(data);
+
+        // Transmute the message into a received message
+        msg.send(&testCluster);
+        msg = Message(testCluster.vData);
 
         auto result = msg.pop_bytes();
         counter += result.size();
@@ -209,7 +338,7 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes_rate )
 
     std::cout << "Message raw bytes throughput 512b chunks Mb/s: " << counter/1024.f/1024.f/5 << std::endl;
 
-    // First try 1Mb chunks
+    // Now try 1Mb chunks
     time_now = get_millis();
     time_next = time_now + std::chrono::seconds(5);
 
@@ -220,8 +349,12 @@ BOOST_AUTO_TEST_CASE( test_primitive_bytes_rate )
     counter = 0;
     while (get_millis() < time_next)
     {
-        auto msg = Message(Message::Priority::Highest);
+        auto msg = Message(0, Message::Priority::Highest, "test");
         msg.push_bytes(data);
+
+        // Transmute the message into a received message
+        msg.send(&testCluster);
+        msg = Message(testCluster.vData);
 
         auto result = msg.pop_bytes();
         counter += result.size();

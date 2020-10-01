@@ -65,7 +65,8 @@ public:
 
     void setConnection(WsServer::Connection *pConnection);
 
-    void queueMessage(std::string source, std::vector<uint8_t>* data, Message::Priority priority);
+    // virtual here so that we can override this function for testing
+    virtual void queueMessage(std::string source, std::vector<uint8_t>* data, Message::Priority priority);
 
     void handleMessage(Message &message);
 
