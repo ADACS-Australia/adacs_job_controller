@@ -1,15 +1,17 @@
 import sys
 import os.path
-import json
 import traceback
 import subprocess
 import paramiko
 import io
 import time
 
-cluster = sys.argv[1]
-token = sys.argv[2]
-current_directory = os.path.dirname(os.path.realpath(__file__))
+# Read environment variables passed down from the host
+ssh_host_name = os.getenv("SSH_HOST")
+ssh_user_name = os.getenv("SSH_USERNAME")
+ssh_path = os.getenv("SSH_PATH")
+ssh_key = os.getenv("SSH_KEY")
+ssh_token = os.getenv("SSH_TOKEN")
 
 
 def get_ssh_connection(host_name, user_name, key):
@@ -29,65 +31,24 @@ def get_ssh_connection(host_name, user_name, key):
     return ssh, ssh.get_transport().open_channel("session")
 
 
-def get_cluster_config():
-    """
-    Returns the json configuration dictionary for the cluster specified as the first parameter
-    :return: A json object representing the specified cluster details
-    """
-    # Open the cluster json config
-    with open(os.path.join(current_directory, '..', 'cluster_config.json')) as f:
-        cluster_config = json.load(f)
-
-    # Get the config for the specified cluster
-    for c in cluster_config:
-        if c['name'] == cluster:
-            return c
-
-    return None
-
-
-def get_key(key_file):
-    """
-    Loads the specified key files and returns the key as text
-    :param key_file: The filename of the key
-    :return: The key's text content
-    """
-    # Open the key file
-    with open(os.path.join(current_directory, 'keys', key_file)) as f:
-        # Read all the content and return it
-        return f.read()
-
-
 def try_connect():
     """
     Attempts to connect to the specified cluster
     :return: Nothing
     """
-    # Get the cluster json configuration dictionary
-    cluster_json = get_cluster_config()
-
-    # Read the relevant data
-    host_name = cluster_json['host_name']
-    client_path = cluster_json['client_path']
-    key_file = cluster_json['key']
-    user_name = cluster_json['user_name']
-
-    # Check if the host is localhost
-    if host_name == 'localhost':
+    # Check if the host is localhost - there is no need to initiate SSH when running locally
+    if ssh_host_name == 'localhost':
         # Use subprocess to start the client locally
         subprocess.check_output(
-            "cd {}; . venv/bin/activate; python client.py {}".format(client_path, token),
+            "cd {}; . venv/bin/activate; python client.py {}".format(ssh_path, ssh_token),
             shell=True
         )
     else:
-        # Try to load the key
-        key = get_key(key_file)
-
         # Try to create the ssh connection
-        client, ssh = get_ssh_connection(host_name, user_name, key)
+        client, ssh = get_ssh_connection(ssh_host_name, ssh_user_name, ssh_key)
 
         # Construct the command
-        command = "cd {}; . venv/bin/activate; python client.py {}".format(client_path, token)
+        command = "cd {}; . venv/bin/activate; python client.py {}".format(ssh_path, ssh_token)
 
         # Execute the remote command to start the daemon
         ssh.exec_command(command)

@@ -6,29 +6,29 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include "boost/filesystem.hpp"
-#include "HttpServer.h"
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
 #include "../Cluster/ClusterManager.h"
 #include "HttpUtils.h"
+#include "HttpServer.h"
 
 using namespace std;
 using namespace schema;
 
-void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *clusterManager) {
+void FileApi(const std::string &path, HttpServer* server, ClusterManager *clusterManager) {
     // Get      -> Download file (file uuid)
     // Post     -> Create new file download
     // Delete   -> Delete file download (file uuid)
     // Patch    -> List files in directory
 
     // Create a new file download
-    server->resource["^" + path + "$"]["POST"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+    server->getServer().resource["^" + path + "$"]["POST"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
                                                                   shared_ptr<HttpServerImpl::Request> request) {
 
         // Verify that the user is authorized
         nlohmann::json jwt;
         try {
-            jwt = isAuthorized(request);
+            jwt = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
@@ -124,7 +124,7 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
     };
 
     // Download file
-    server->resource["^" + path + "$"]["GET"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
                                                                  shared_ptr<HttpServerImpl::Request> request) {
 
         // Create a database connection
@@ -383,13 +383,13 @@ void FileApi(const std::string &path, HttpServerImpl *server, ClusterManager *cl
     };
 
     // List files in the specified directory
-    server->resource["^" + path + "$"]["PATCH"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+    server->getServer().resource["^" + path + "$"]["PATCH"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
                                                                   shared_ptr<HttpServerImpl::Request> request) {
 
         // Verify that the user is authorized
         nlohmann::json jwt;
         try {
-            jwt = isAuthorized(request);
+            jwt = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");

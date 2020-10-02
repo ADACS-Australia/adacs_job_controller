@@ -74,6 +74,8 @@ set(
         Lib/segvcatch.h
         Lib/segvcatch.cpp
         Lib/x86_64-signal.h
+        Lib/GeneralUtils.h
+        Lib/GeneralUtils.cpp
 )
 
 # Set the main executable and source files
@@ -89,6 +91,9 @@ add_executable(
         ${SOURCE_FILES}
         test_main.cpp
         Lib/Messaging/tests.cpp
+        Cluster/tests/cluster_tests.cpp
+        Cluster/tests/cluster_manager_tests.cpp
+        HTTP/tests/httpserver_tests.cpp
 )
 
 # Set the link libraries
@@ -108,5 +113,5 @@ target_link_libraries(gwcloud_job_server ${LINK_LIBRARIES})
 target_link_libraries(Boost_Tests_run ${LINK_LIBRARIES})
 
 # Configure custom definitions for testing
-target_compile_definitions(Boost_Tests_run PUBLIC -DNO_THREADS_FOR_TESTING)
+target_compile_definitions(Boost_Tests_run PUBLIC -DBUILD_TESTS)
 target_compile_options(Boost_Tests_run PUBLIC -fprofile-arcs -ftest-coverage -fPIC)

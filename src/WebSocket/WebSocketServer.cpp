@@ -50,7 +50,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
         }
 
         // Check that the token is valid
-        auto cluster = this->clusterManager->handle_new_connection(connection.get(), (*qp.begin()).second);
+        auto cluster = this->clusterManager->handleNewConnection(connection.get(), (*qp.begin()).second);
         if (cluster) {
             // Everything is fine
             cout << "WS: Opened connection from " << cluster->getName() << endl;
@@ -72,7 +72,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
 
         // Remove the cluster from the connected list
         if (cluster)
-            this->clusterManager->remove_connection(connection.get());
+            this->clusterManager->removeConnection(connection.get());
 
         // Log this
         cout << "WS: Closed connection with " << std::string(cluster ? cluster->getName() : "unknown?") << " with status code " << status << endl;
@@ -85,7 +85,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
 
         // Remove the cluster from the connected list
         if (cluster)
-            this->clusterManager->remove_connection(connection.get());
+            this->clusterManager->removeConnection(connection.get());
 
         // Log this
         cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "

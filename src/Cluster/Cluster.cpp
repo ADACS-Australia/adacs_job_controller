@@ -30,15 +30,15 @@ folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
 
 using namespace schema;
 
-Cluster::Cluster(std::string name, ClusterManager *pClusterManager) {
-    this->name = std::move(name);
+Cluster::Cluster(sClusterDetails* details, ClusterManager *pClusterManager) {
+    this->pClusterDetails = details;
     this->pClusterManager = pClusterManager;
 
     // Create the list of priorities in order
     for (auto i = (uint32_t) Message::Priority::Highest; i <= (uint32_t) Message::Priority::Lowest; i++)
         queue.emplace_back();
 
-#ifndef NO_THREADS_FOR_TESTING
+#ifndef BUILD_TESTS
     std::cout << "Running threads" << std::endl;
     // Start the scheduler thread
     schedulerThread = std::thread([this] {
@@ -77,13 +77,8 @@ void Cluster::handleMessage(Message &message) {
             this->handleFileList(message);
             break;
         default:
-            std::cout << "Got invalid message ID " << msgId << " from " << name << std::endl;
+            std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << std::endl;
     };
-}
-
-void Cluster::connect(const std::string &token) {
-    std::cout << "Attempting to connect cluster " << name << " with token " << token << std::endl;
-    std::system(("cd ./utils/keyserver; ./keyserver " + name + " " + token).c_str());
 }
 
 void Cluster::setConnection(WsServer::Connection *pConnection) {

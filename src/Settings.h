@@ -13,10 +13,12 @@
 #define DATABASE_HOST               GET_ENV("DATABASE_HOST", "localhost")
 #define DATABASE_PORT               std::stoi(GET_ENV("DATABASE_PORT", "3306"))
 
-#define JWT_SECRET                  GET_ENV("JWT_SECRET", "^zzul@u)rxayk67^%3kf^59!pw&-vfv0lnv6#6h)w6!eyjzz!g")
-
 #define MAX_FILE_BUFFER_SIZE        std::stoi(GET_ENV("MAX_FILE_BUFFER_SIZE", std::to_string(1024*1024*50)))
 #define MIN_FILE_BUFFER_SIZE        std::stoi(GET_ENV("MIN_FILE_BUFFER_SIZE", std::to_string(1024*1024*10)))
 
 #define FILE_DOWNLOAD_EXPIRY_TIME   std::stoi(GET_ENV("FILE_DOWNLOAD_EXPIRY_TIME", std::to_string(60*60*24)))
+
+#define CLUSTER_CONFIG_ENV_VARIABLE "CLUSTER_CONFIG"
+#define ACCESS_SECRET_ENV_VARIABLE  "ACCESS_SECRET_CONFIG"
+
 #endif //GWCLOUD_JOB_SERVER_SETTINGS_H

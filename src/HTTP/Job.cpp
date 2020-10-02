@@ -2,8 +2,6 @@
 // Created by lewis on 3/4/20.
 //
 #include <exception>
-#include <jwt/jwt.hpp>
-#include "HttpServer.h"
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
 #include "../Cluster/ClusterManager.h"
@@ -13,6 +11,8 @@
 #include "date/date.h"
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
+
+#include "HttpServer.h"
 
 
 nlohmann::json getJobs(const std::vector<uint32_t> &ids);
@@ -33,20 +33,20 @@ nlohmann::json filterJobs(
 using namespace std;
 using namespace schema;
 
-void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clusterManager) {
+void JobApi(const std::string &path, HttpServer* server, ClusterManager *clusterManager) {
     // Get      -> Get job status (job id)
     // Post     -> Create new job
     // Delete   -> Delete job (job id)
     // Patch    -> Cancel job (job id)
 
     // Create a new job
-    server->resource["^" + path + "$"]["POST"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+    server->getServer().resource["^" + path + "$"]["POST"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
                                                                   shared_ptr<HttpServerImpl::Request> request) {
 
         // Verify that the user is authorized
         nlohmann::json jwt;
         try {
-            jwt = isAuthorized(request);
+            jwt = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
@@ -134,7 +134,7 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
         }
     };
 
-    server->resource["^" + path + "$"]["GET"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
                                                                  shared_ptr<HttpServerImpl::Request> request) {
 
         // Query parameters (All optional)
@@ -157,7 +157,7 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
         // Verify that the user is authorized
         nlohmann::json jwt;
         try {
-            jwt = isAuthorized(request);
+            jwt = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
@@ -234,7 +234,7 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
         }
     };
 
-    server->resource["^" + path + "$"]["DELETE"] = [clusterManager](shared_ptr<HttpServerImpl::Response> response,
+    server->getServer().resource["^" + path + "$"]["DELETE"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
                                                                     shared_ptr<HttpServerImpl::Request> request) {
 
         // todo: Not implemented yet
@@ -244,7 +244,7 @@ void JobApi(const std::string &path, HttpServerImpl *server, ClusterManager *clu
         // Verify that the user is authorized
         nlohmann::json jwt;
         try {
-            jwt = isAuthorized(request);
+            jwt = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");

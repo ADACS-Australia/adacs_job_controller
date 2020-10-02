@@ -20,17 +20,7 @@ RUN cmake --build . --target gwcloud_job_server -- -j `grep -c ^processor /proc/
 RUN mkdir -p /jobserver
 RUN cp gwcloud_job_server /jobserver/
 RUN mkdir /jobserver/logs
-
-# Build the suid binary
-RUN rm -Rf /src/utils/keyserver/build
-RUN mkdir /src/utils/keyserver/build
-WORKDIR /src/utils/keyserver/build
-RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
-RUN cmake --build . --target keyserver -- -j 6
-
-# Copy the keyserver
-RUN mkdir -p /jobserver/utils/keyserver
-RUN cp /src/utils/keyserver/build/keyserver /jobserver/utils/keyserver/
+RUN mkdir -p /jobserver/utils/keyserver/
 
 # Set up the keyserver venv
 RUN cp /src/utils/keyserver/keyserver.py /jobserver/utils/keyserver/
@@ -49,28 +39,15 @@ RUN rm -Rf /src
 RUN apt-get remove --purge -y build-essential git cmake rsync
 RUN apt-get autoremove -y --purge
 
-# Copy keys
-COPY config/keys /jobserver/utils/keyserver/keys
-COPY config/cluster_config.json /jobserver/utils/
-
 # Create jobserver user
 RUN useradd -r jobserver
 
 # Set permissions for the job server
-RUN chown -R jobserver:jobserver /jobserver/gwcloud_job_server
-RUN chown -R jobserver:jobserver /jobserver/logs
-RUN chown -R jobserver:jobserver /jobserver/utils/schema
-
-# Set permissions for the keyserver
-RUN chown -R root:root /jobserver/utils/keyserver
-RUN chmod -R o=- /jobserver/utils/keyserver
-RUN chmod o=x /jobserver/utils/keyserver
-RUN chmod u+s /jobserver/utils/keyserver/keyserver
-RUN chmod o+x /jobserver/utils/keyserver/keyserver
+RUN chown -R jobserver:jobserver /jobserver
 
 WORKDIR /jobserver
 
-COPY ./runserver.sh /runserver.sh
+COPY ./docker/scripts/runserver.sh /runserver.sh
 RUN chmod +x /runserver.sh
 
 EXPOSE 8000

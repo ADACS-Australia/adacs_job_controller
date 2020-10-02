@@ -12,21 +12,21 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
 // Define an override cluster that can be used to mutate a message
     class TestCluster : public Cluster {
     public:
-        TestCluster(const std::string &name, ClusterManager *pClusterManager) : Cluster(name, pClusterManager) {}
+        TestCluster() : Cluster(nullptr, nullptr) {}
 
         std::vector<uint8_t> vData;
         std::string sSource;
         Message::Priority ePriority;
 
     private:
-        virtual void queueMessage(std::string source, std::vector<uint8_t> *data, Message::Priority priority) {
+        void queueMessage(std::string source, std::vector<uint8_t> *data, Message::Priority priority) override {
             vData = *data;
             sSource = source;
             ePriority = priority;
         }
     };
 
-    TestCluster testCluster = TestCluster("", nullptr);
+    auto testCluster = TestCluster();
 
     BOOST_AUTO_TEST_CASE(test_message_attributes) {
         auto msg = Message(0, Message::Priority::Highest, "test");
@@ -364,4 +364,4 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         std::cout << "Message raw bytes throughput 1Mb chunks Mb/s: " << counter / 1024.f / 1024.f / 5 << std::endl;
     }
 
-BOOST_AUTO_TEST_SUITE_END();
+BOOST_AUTO_TEST_SUITE_END()

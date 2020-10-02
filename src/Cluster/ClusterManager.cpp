@@ -8,60 +8,65 @@
 #include "Cluster.h"
 #include "../Lib/jobserver_schema.h"
 #include "../DB/MySqlConnector.h"
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/lexical_cast.hpp>
+#include "../Lib/GeneralUtils.h"
 #include <nlohmann/json.hpp>
+#include <boost/process.hpp>
 
 using namespace nlohmann;
 using namespace schema;
 
 ClusterManager::ClusterManager() {
-    // Read the cluster json config
-    std::ifstream i("utils/cluster_config.json");
-    json jsonClusters;
-    i >> jsonClusters;
+    // Read the cluster configuration from the environment
+    auto jsonClusters = nlohmann::json::parse(
+            base64Decode(
+                    GET_ENV(
+                            CLUSTER_CONFIG_ENV_VARIABLE,
+                            base64Encode("{}")
+                    )
+            )
+    );
 
     // Create the cluster instances from the config
-    for (auto jc : jsonClusters) {
-        auto cluster = new Cluster(jc["name"], this);
-        clusters.push_back(cluster);
+    for (const auto &jc : jsonClusters) {
+        // Get the cluster details from the cluster config
+        auto details = new sClusterDetails(jc);
+        auto cluster = new Cluster(details, this);
+        vClusters.push_back(cluster);
     }
 }
 
 void ClusterManager::start() {
-    clusterThread = std::thread(&ClusterManager::run, this);
+    iClusterThread = std::thread(&ClusterManager::run, this);
 }
 
-void ClusterManager::run() {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-noreturn"
+[[noreturn]] void ClusterManager::run() {
     while (true) {
         reconnectClusters();
 
         // Wait 1 minute to check again
         std::this_thread::sleep_for(std::chrono::seconds(60));
     }
-#pragma clang diagnostic pop
 }
 
 void ClusterManager::reconnectClusters() {
     // Try to reconnect all cluster
-    for (auto &cluster : clusters) {
+    for (auto &cluster : vClusters) {
         // Check if the cluster is online
-        if (!is_cluster_online(cluster)) {
+        if (!isClusterOnline(cluster)) {
             // Create a database connection
             auto db = MySqlConnector();
 
             // Get the tables
             JobserverClusteruuid clusterUuidTable;
 
+            // todo: Delete any existing uuids for this cluster
+
             // Because UUID's very occasionally collide, so try to generate a few UUID's in a row
             int i = 0;
             for (; i < 10; i++) {
                 try {
                     // Generate a UUID for this connection
-                    auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+                    auto uuid = generateUUID();
 
                     // Insert the UUID in the database
                     db->run(
@@ -76,11 +81,14 @@ void ClusterManager::reconnectClusters() {
                     // The insert was successful
 
                     // Try to connect the remote client
-                    cluster->connect(uuid);
+                    // Here we provide parameters by copy rather than reference
+                    new std::thread([cluster, uuid] {
+                        connectCluster(cluster, uuid);
+                    });
 
                     // Nothing more to do
                     break;
-                } catch (sqlpp::exception&) {}
+                } catch (sqlpp::exception &) {}
             }
 
             // Check if the insert was successful
@@ -90,7 +98,7 @@ void ClusterManager::reconnectClusters() {
     }
 }
 
-Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection, const std::string &uuid) {
+Cluster *ClusterManager::handleNewConnection(WsServer::Connection *connection, const std::string &uuid) {
     // Get the tables
     JobserverClusteruuid clusterUuidTable;
 
@@ -127,11 +135,11 @@ Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection,
     if (sCluster.empty())
         return nullptr;
 
-    // Delete the uuid from the database
+    // Delete all records from the database for the provided cluster
     db->run(
             remove_from(clusterUuidTable)
                     .where(
-                            clusterUuidTable.uuid == uuid
+                            clusterUuidTable.cluster == sCluster
                     )
 
     );
@@ -144,7 +152,7 @@ Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection,
         return nullptr;
 
     // Record the connected cluster
-    connected_clusters[connection] = cluster;
+    mConnectedClusters[connection] = cluster;
 
     // Configure the cluster
     cluster->setConnection(connection);
@@ -153,47 +161,56 @@ Cluster *ClusterManager::handle_new_connection(WsServer::Connection *connection,
     return cluster;
 }
 
-void ClusterManager::remove_connection(WsServer::Connection *connection) {
+void ClusterManager::removeConnection(WsServer::Connection *connection) {
     // Get the cluster for this connection
     auto pCluster = getCluster(connection);
 
     // Reset the cluster's connection
-    pCluster->setConnection(nullptr);
+    if (pCluster)
+        pCluster->setConnection(nullptr);
 
     // Remove the specified connection from the connected clusters
-    connected_clusters.erase(connection);
+    mConnectedClusters.erase(connection);
 
     // Try to reconnect the cluster in case it's a temporary network failure
     reconnectClusters();
 }
 
-bool ClusterManager::is_cluster_online(Cluster *cluster) {
-    // Iterate over the connected clusters
-    for (auto c : connected_clusters) {
-        // Check if the cluster was found
-        if (c.second == cluster)
-            // Yes, the cluster is online
-            return true;
-    }
-
-    // No, the cluster is not online
-    return false;
+bool ClusterManager::isClusterOnline(Cluster *cluster) {
+    // Check if any connected clusters matches the provided cluster
+    return std::any_of(mConnectedClusters.begin(), mConnectedClusters.end(),
+                       [cluster](auto c) { return c.second == cluster; });
 }
 
 Cluster *ClusterManager::getCluster(WsServer::Connection *connection) {
     // Try to find the connection
-    auto result = connected_clusters.find(connection);
+    auto result = mConnectedClusters.find(connection);
 
     // Return the cluster if the connection was found
-    return result != connected_clusters.end() ? result->second : nullptr;
+    return result != mConnectedClusters.end() ? result->second : nullptr;
 }
 
 Cluster *ClusterManager::getCluster(const std::string &cluster) {
     // Find the cluster by name
-    for (auto &i : clusters) {
+    for (auto &i : vClusters) {
         if (i->getName() == cluster)
             return i;
     }
 
     return nullptr;
 }
+
+void ClusterManager::connectCluster(Cluster *cluster, const std::string &token) {
+    std::cout << "Attempting to connect cluster " << cluster->getName() << " with token " << token << std::endl;
+#ifndef BUILD_TESTS
+    boost::process::system(
+            "./utils/keyserver/venv/bin/python ./utils/keyserver/keyserver.py",
+            boost::process::env["SSH_HOST"] = cluster->getClusterDetails()->getSshHost(),
+            boost::process::env["SSH_USERNAME"] = cluster->getClusterDetails()->getSshUsername(),
+            boost::process::env["SSH_KEY"] = cluster->getClusterDetails()->getSshKey(),
+            boost::process::env["SSH_PATH"] = cluster->getClusterDetails()->getSshPath(),
+            boost::process::env["SSH_TOKEN"] = token
+    );
+#endif
+}
+
