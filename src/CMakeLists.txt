@@ -87,6 +87,7 @@ add_executable(
 add_executable(
         Boost_Tests_run
         ${SOURCE_FILES}
+        test_main.cpp
         Lib/Messaging/tests.cpp
 )
 
@@ -100,7 +101,12 @@ set(
         mysqlclient
         dl
         dw
+        gcov
 )
 
 target_link_libraries(gwcloud_job_server ${LINK_LIBRARIES})
 target_link_libraries(Boost_Tests_run ${LINK_LIBRARIES})
+
+# Configure custom definitions for testing
+target_compile_definitions(Boost_Tests_run PUBLIC -DNO_THREADS_FOR_TESTING)
+target_compile_options(Boost_Tests_run PUBLIC -fprofile-arcs -ftest-coverage -fPIC)

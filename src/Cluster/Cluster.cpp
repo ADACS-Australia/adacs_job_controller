@@ -38,6 +38,8 @@ Cluster::Cluster(std::string name, ClusterManager *pClusterManager) {
     for (auto i = (uint32_t) Message::Priority::Highest; i <= (uint32_t) Message::Priority::Lowest; i++)
         queue.emplace_back();
 
+#ifndef NO_THREADS_FOR_TESTING
+    std::cout << "Running threads" << std::endl;
     // Start the scheduler thread
     schedulerThread = std::thread([this] {
         this->run();
@@ -52,6 +54,7 @@ Cluster::Cluster(std::string name, ClusterManager *pClusterManager) {
     resendThread = std::thread([this] {
         this->resendMessages();
     });
+#endif
 }
 
 void Cluster::handleMessage(Message &message) {

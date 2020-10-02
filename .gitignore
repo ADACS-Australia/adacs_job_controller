@@ -5,3 +5,4 @@ venv
 *.pyc
 config/keys/*
 CMakeFiles
+test_report/

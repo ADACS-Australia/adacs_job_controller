@@ -1,9 +1,11 @@
 from ubuntu:focal
 
 # Update the container and install the required packages
+ENV DEBIAN_FRONTEND="noninteractive"
+
 RUN apt-get update
-RUN DEBIAN_FRONTEND="noninteractive" apt-get -y dist-upgrade
-RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install rsync sudo python3-dev python3-virtualenv libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git
+RUN apt-get -y dist-upgrade
+RUN apt-get -y install rsync sudo python3-dev python3-virtualenv libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git
 
 # Copy in the source directory
 COPY src /src

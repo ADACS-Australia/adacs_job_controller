@@ -4,7 +4,7 @@ services:
   web:
     build:
       dockerfile: ./docker/gwcloud_job_server.Dockerfile
-      context: .
+      context: ..
     image: nexus.gw-cloud.org/gwcloud-dev/gwcloud_job_server:0.22
     container_name: gwcloud_job_server
     environment:
