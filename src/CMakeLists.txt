@@ -94,6 +94,8 @@ add_executable(
         Cluster/tests/cluster_tests.cpp
         Cluster/tests/cluster_manager_tests.cpp
         HTTP/tests/httpserver_tests.cpp
+        HTTP/tests/job_tests.cpp
+        HTTP/tests/file_tests.cpp
 )
 
 # Set the link libraries

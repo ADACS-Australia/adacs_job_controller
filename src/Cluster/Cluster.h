@@ -92,7 +92,7 @@ public:
 
     auto getClusterDetails() { return pClusterDetails; }
 
-    void setConnection(WsServer::Connection *pConnection);
+    void setConnection(WsServer::Connection *pCon);
 
     void handleMessage(Message &message);
 
@@ -102,7 +102,7 @@ public:
     virtual void queueMessage(std::string source, std::vector<uint8_t> *data, Message::Priority priority);
 
 private:
-    void run();
+    [[noreturn]] void run();
 
     sClusterDetails *pClusterDetails = nullptr;
     WsServer::Connection *pConnection = nullptr;
@@ -119,9 +119,9 @@ private:
     std::thread pruneThread;
     std::thread resendThread;
 
-    void pruneSources();
+    [[noreturn]] void pruneSources();
 
-    void resendMessages();
+    [[noreturn]] void resendMessages();
 
     bool doesHigherPriorityDataExist(uint64_t maxPriority);
 
@@ -138,7 +138,7 @@ private:
     static void handleFileList(Message &message);
 
 // Testing
-EXPOSE_PROPERTY_FOR_TESTING(pConnection);
+    EXPOSE_PROPERTY_FOR_TESTING(pConnection);
 };
 
 

@@ -385,6 +385,22 @@ namespace schema
       };
       using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
     };
+    struct Application
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "application";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T application;
+            T& operator()() { return application; }
+            const T& operator()() const { return application; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
   } // namespace JobserverJob_
 
   struct JobserverJob: sqlpp::table_t<JobserverJob,
@@ -392,7 +408,8 @@ namespace schema
                JobserverJob_::Parameters,
                JobserverJob_::User,
                JobserverJob_::Bundle,
-               JobserverJob_::Cluster>
+               JobserverJob_::Cluster,
+               JobserverJob_::Application>
   {
     struct _alias_t
     {

@@ -7,6 +7,7 @@
 #include "HttpUtils.h"
 #include "../Lib/GeneralUtils.h"
 #include <jwt/jwt.hpp>
+#include <memory>
 
 #include "HttpServer.h"
 
@@ -43,11 +44,18 @@ void HttpServer::start() {
     });
 
     cout << "API: Server listening on port " << server.config.port << endl << endl;
+}
 
+void HttpServer::join() {
     server_thread.join();
 }
 
-nlohmann::json HttpServer::isAuthorized(SimpleWeb::CaseInsensitiveMultimap& headers) {
+void HttpServer::stop() {
+    server.stop();
+    join();
+}
+
+std::unique_ptr<sAuthorizationResult> HttpServer::isAuthorized(SimpleWeb::CaseInsensitiveMultimap &headers) {
     // Get the Authorization header from the request
     auto sAuthHeader = getHeader(headers, "Authorization");
 
@@ -60,19 +68,27 @@ nlohmann::json HttpServer::isAuthorized(SimpleWeb::CaseInsensitiveMultimap& head
     // error_code, then the user is authorized
     jwt::jwt_object decodedToken;
 
-    auto authorized = std::any_of(vJwtSecrets.begin(), vJwtSecrets.end(), [sAuthHeader, &decodedToken](auto secret) {
+    for (auto &secret : vJwtSecrets) {
         // Decode the token
         std::error_code ec;
-        decodedToken = jwt::decode(sAuthHeader, jwt::params::algorithms({"HS256"}), ec, jwt::params::secret(secret.secret),
-                                   jwt::params::verify(true));
+        decodedToken = jwt::decode(
+                sAuthHeader,
+                jwt::params::algorithms({"HS256"}),
+                ec,
+                jwt::params::secret(secret.secret()),
+                jwt::params::verify(true)
+        );
 
-        return !ec;
-    });
+        // Check if this token was valid
+        if (!ec) {
+            // Everything is fine
+            return std::make_unique<sAuthorizationResult>(
+                    decodedToken.payload().create_json_obj(),
+                    secret
+            );
+        }
+    };
 
     // If the user is not authorized, raise an exception
-    if (!authorized)
-        throw eNotAuthorized();
-
-    // Everything is fine
-    return decodedToken.payload().create_json_obj();
+    throw eNotAuthorized();
 }

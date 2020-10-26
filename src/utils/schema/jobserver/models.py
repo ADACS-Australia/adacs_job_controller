@@ -2,7 +2,7 @@ from django.db import models
 
 
 class Job(models.Model):
-    # The id of the user for this job
+    # The id of the user for this job. This is set from the userId field of the JWT payload
     user = models.IntegerField()
 
     # The parameters for this job (Use base64 if you need to store binary)
@@ -13,6 +13,9 @@ class Job(models.Model):
 
     # The bundle for this job
     bundle = models.CharField(max_length=40)
+
+    # The application this job is for. This is set from the name associated with the secret that created the job
+    application = models.CharField(max_length=32)
 
 
 class JobHistory(models.Model):

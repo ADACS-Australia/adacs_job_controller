@@ -123,17 +123,12 @@ Cluster *ClusterManager::handleNewConnection(WsServer::Connection *connection, c
                     .where(clusterUuidTable.uuid == uuid)
     );
 
-    // Get the cluster from the uuid
-    std::string sCluster;
-
-    // I found I had to iterate it to get the single record, as front gave me corrupted results
-    for (auto &rUuid : uuidResults) {
-        sCluster = std::string(rUuid.cluster);
-    }
-
     // Check that the uuid was valid
-    if (sCluster.empty())
+    if (uuidResults.empty())
         return nullptr;
+
+    // Get the cluster from the uuid
+    std::string sCluster = uuidResults.front().cluster;
 
     // Delete all records from the database for the provided cluster
     db->run(

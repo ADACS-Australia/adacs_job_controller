@@ -18,35 +18,30 @@
 nlohmann::json getJobs(const std::vector<uint32_t> &ids);
 
 nlohmann::json filterJobs(
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1,
-                1 >>> *startTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1,
-                1 >>> *startTimeLt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1,
-                1 >>> *endTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1,
-                1 >>> *endTimeLt,
-        std::vector<unsigned long> *jobIds,
-        std::map<std::string, unsigned int> *jobSteps
-);
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *startTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *startTimeLt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *endTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *endTimeLt,
+        std::vector<unsigned long> *jobIds, std::map<std::string, unsigned int> *jobSteps,
+        std::vector<std::string> &applications);
 
-using namespace std;
 using namespace schema;
 
-void JobApi(const std::string &path, HttpServer* server, ClusterManager *clusterManager) {
+void JobApi(const std::string &path, HttpServer *server, ClusterManager *clusterManager) {
     // Get      -> Get job status (job id)
     // Post     -> Create new job
     // Delete   -> Delete job (job id)
     // Patch    -> Cancel job (job id)
 
     // Create a new job
-    server->getServer().resource["^" + path + "$"]["POST"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
-                                                                  shared_ptr<HttpServerImpl::Request> request) {
+    server->getServer().resource["^" + path + "$"]["POST"] = [clusterManager, server](
+            const std::shared_ptr<HttpServerImpl::Response> &response,
+            const std::shared_ptr<HttpServerImpl::Request> &request) {
 
         // Verify that the user is authorized
-        nlohmann::json jwt;
+        std::unique_ptr<sAuthorizationResult> authResult;
         try {
-            jwt = server->isAuthorized(request->header);
+            authResult = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
@@ -77,14 +72,28 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
                 throw std::runtime_error("Invalid cluster");
             }
 
+            // Check that this secret has access to the specified cluster
+            if (std::find(
+                    authResult->secret().clusters().begin(),
+                    authResult->secret().clusters().end(),
+                    post_data["cluster"]
+            ) == authResult->secret().clusters().end()) {
+                // Invalid cluster
+                throw std::runtime_error(
+                        "Application " + authResult->secret().name() + " does not have access to cluster " +
+                        std::string(post_data["cluster"])
+                );
+            }
+
             // Create the new job object
             auto jobId = db->run(
                     insert_into(jobTable)
                             .set(
-                                    jobTable.user = (uint32_t) jwt["userId"],
+                                    jobTable.user = (uint32_t) authResult->payload()["userId"],
                                     jobTable.parameters = std::string(post_data["parameters"]),
                                     jobTable.cluster = std::string(post_data["cluster"]),
-                                    jobTable.bundle = std::string(post_data["bundle"])
+                                    jobTable.bundle = std::string(post_data["bundle"]),
+                                    jobTable.application = authResult->secret().name()
                             )
             );
 
@@ -106,7 +115,7 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
             // Tell the client to submit the job if it's online
             // If the cluster is not online - the resendMessages function in Cluster.cpp will
             // submit the job when the client comes online
-            if (cluster && cluster->isOnline()) {
+            if (cluster->isOnline()) {
                 // Submit the job to the cluster
                 auto msg = Message(SUBMIT_JOB, Message::Priority::Medium,
                                    std::to_string(jobId) + "_" + std::string(post_data["cluster"]));
@@ -134,8 +143,9 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
         }
     };
 
-    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
-                                                                 shared_ptr<HttpServerImpl::Request> request) {
+    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](
+            const std::shared_ptr<HttpServerImpl::Response> &response,
+            const std::shared_ptr<HttpServerImpl::Request> &request) {
 
         // Query parameters (All optional)
         // jobIds:          fetch array of jobs
@@ -155,9 +165,9 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
         // ?jobIDs=50,51,52&startTimeLt=1589838778&endTimeGt=1589836778&jobSteps=jid0,500,jid1,500
 
         // Verify that the user is authorized
-        nlohmann::json jwt;
+        std::unique_ptr<sAuthorizationResult> authResult;
         try {
-            jwt = server->isAuthorized(request->header);
+            authResult = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
@@ -188,7 +198,6 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
             auto jobIds = getQueryParamAsVectorInt(query_fields, "jobIds");
             auto sJobSteps = getQueryParamAsString(query_fields, "jobSteps");
 
-
             // Parse the the job step string to key value pairs
             std::map<std::string, unsigned int> jobSteps;
             if (hasQueryParam(query_fields, "jobSteps")) {
@@ -199,52 +208,43 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
                     jobSteps[sJobStepsArray[i]] = stoi(sJobStepsArray[i + 1]);
             }
 
+            // Create a vector which includes the application from the secret, and any other applications it has access to
+            auto applications = std::vector<std::string>({authResult->secret().name()});
+            std::copy(authResult->secret().applications().begin(), authResult->secret().applications().end(),
+                      std::back_inserter(applications));
+
             auto result = filterJobs(
                     hasQueryParam(query_fields, "startTimeGt") ? &startTimeGt : nullptr,
                     hasQueryParam(query_fields, "startTimeLt") ? &startTimeLt : nullptr,
                     hasQueryParam(query_fields, "endTimeGt") ? &endTimeGt : nullptr,
                     hasQueryParam(query_fields, "endTimeLt") ? &endTimeLt : nullptr,
                     hasQueryParam(query_fields, "jobIds") ? &jobIds : nullptr,
-                    hasQueryParam(query_fields, "jobSteps") ? &jobSteps : nullptr
+                    hasQueryParam(query_fields, "jobSteps") ? &jobSteps : nullptr,
+                    applications
             );
 
             SimpleWeb::CaseInsensitiveMultimap headers;
             headers.emplace("Content-Type", "application/json");
 
             response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-
-//            // Process jobId
-//            if (jobId) {
-//                // Get the job as a json object
-//                result = getJob(jobId);
-
-//                return;
-//            }
-//
-//            // Process jobIdArray
-//            if (!jobIdArray.empty()) {
-//                // Get the jobs as an array of json object
-//                result = getJobs(jobIdArray);
-//                response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-//                return;
-//            }
         } catch (...) {
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
     };
 
-    server->getServer().resource["^" + path + "$"]["DELETE"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
-                                                                    shared_ptr<HttpServerImpl::Request> request) {
+    server->getServer().resource["^" + path + "$"]["DELETE"] = [clusterManager, server](
+            const std::shared_ptr<HttpServerImpl::Response> &response,
+            const std::shared_ptr<HttpServerImpl::Request> &request) {
 
         // todo: Not implemented yet
         return;
         // With jobId: Job to cancel
 
         // Verify that the user is authorized
-        nlohmann::json jwt;
+        std::unique_ptr<sAuthorizationResult> authResult;
         try {
-            jwt = server->isAuthorized(request->header);
+            authResult = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
@@ -277,7 +277,7 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
 
             // Check that the job id was provided
             if (!jobId)
-                throw exception();
+                throw std::exception();
 
             auto jobHistoryResults =
                     db->run(
@@ -289,7 +289,7 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
 
             // Check that at least one record exists for this job
             if (jobHistoryResults.empty())
-                throw exception();
+                throw std::exception();
 
             // Commit the changes in the database
             db->commit_transaction();
@@ -313,13 +313,12 @@ void JobApi(const std::string &path, HttpServer* server, ClusterManager *cluster
 }
 
 nlohmann::json filterJobs(
-        chrono::time_point<chrono::system_clock, chrono::duration<long, ratio<1, 1 >>> *startTimeGt,
-        chrono::time_point<chrono::system_clock, chrono::duration<long, ratio<1, 1 >>> *startTimeLt,
-        chrono::time_point<chrono::system_clock, chrono::duration<long, ratio<1, 1 >>> *endTimeGt,
-        chrono::time_point<chrono::system_clock, chrono::duration<long, ratio<1, 1 >>> *endTimeLt,
-        vector<unsigned long> *jobIds,
-        map<string, unsigned int> *jobSteps
-) {
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *startTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *startTimeLt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *endTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *endTimeLt,
+        std::vector<unsigned long> *jobIds, std::map<std::string, unsigned int> *jobSteps,
+        std::vector<std::string> &applications) {
     // Check for valid parameters
     if (endTimeGt && endTimeLt)
         throw std::runtime_error("Can't have both endTimeGt and endTimeLt");
@@ -412,6 +411,13 @@ nlohmann::json filterJobs(
             .from(jobHistoryTable)
             .dynamic_where()
             .dynamic_group_by();
+
+    // Set up the application filter
+    historyResultsFilter.where.add(
+            jobHistoryTable.jobId.in(
+                    select(jobTable.id).from(jobTable).where(jobTable.application.in(sqlpp::value_list(applications)))
+            )
+    );
 
     // Set up the where filters
     historyResultsFilter.where.add(

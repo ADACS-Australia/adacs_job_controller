@@ -15,20 +15,21 @@
 using namespace std;
 using namespace schema;
 
-void FileApi(const std::string &path, HttpServer* server, ClusterManager *clusterManager) {
+void FileApi(const std::string &path, HttpServer *server, ClusterManager *clusterManager) {
     // Get      -> Download file (file uuid)
     // Post     -> Create new file download
     // Delete   -> Delete file download (file uuid)
     // Patch    -> List files in directory
 
     // Create a new file download
-    server->getServer().resource["^" + path + "$"]["POST"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
-                                                                  shared_ptr<HttpServerImpl::Request> request) {
+    server->getServer().resource["^" + path + "$"]["POST"] = [clusterManager, server](
+            const shared_ptr<HttpServerImpl::Response> &response,
+            const shared_ptr<HttpServerImpl::Request> &request) {
 
         // Verify that the user is authorized
-        nlohmann::json jwt;
+        std::unique_ptr<sAuthorizationResult> authResult;
         try {
-            jwt = server->isAuthorized(request->header);
+            authResult = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
@@ -41,6 +42,11 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
         // Start a transaction
         db->start_transaction();
 
+        // Create a vector which includes the application from the secret, and any other applications it has access to
+        auto applications = std::vector<std::string>({authResult->secret().name()});
+        std::copy(authResult->secret().applications().begin(), authResult->secret().applications().end(),
+                  std::back_inserter(applications));
+
         // Get the tables
         JobserverJob jobTable;
         JobserverFiledownload fileDownloadTable;
@@ -51,27 +57,31 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
             request->content >> post_data;
 
             // Get the job to fetch files for
-            auto jobId = post_data["jobId"];
+            auto jobId = (uint32_t) post_data["jobId"];
 
             // Get the path to the file to fetch (relative to the project)
-            auto filePath = post_data["path"];
+            auto filePath = std::string(post_data["path"]);
 
             // Look up the job
             auto jobResults =
                     db->run(
                             select(all_of(jobTable))
                                     .from(jobTable)
-                                    .where(jobTable.id == (uint32_t) jobId)
+                                    .where(
+                                            jobTable.id == (uint32_t) jobId
+                                            and jobTable.application.in(sqlpp::value_list(applications))
+                                    )
                     );
 
-            // Get the cluster and bundle from the job
-            std::string sCluster, sBundle;
-
-            // There's only one job, but I found I had to iterate it to get the single record, as front gave me corrupted results
-            for (auto &job : jobResults) {
-                sCluster = std::string(job.cluster);
-                sBundle = std::string(job.bundle);
+            // Check that a job was actually found
+            if (jobResults.empty()) {
+                throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) + " for application " + authResult->secret().name());
             }
+
+            // Get the cluster and bundle from the job
+            auto job = &jobResults.front();
+            auto sCluster = std::string(job->cluster);
+            auto sBundle = std::string(job->bundle);
 
             // Because UUID's very occasionally collide, we try to generate a few UUID's in a row
             int i = 0;
@@ -85,7 +95,7 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
                     db->run(
                             insert_into(fileDownloadTable)
                                     .set(
-                                            fileDownloadTable.user = (uint32_t) jwt["userId"],
+                                            fileDownloadTable.user = (uint32_t) authResult->payload()["userId"],
                                             fileDownloadTable.jobId = (uint32_t) jobId,
                                             fileDownloadTable.uuid = uuid,
                                             fileDownloadTable.path = std::string(filePath),
@@ -98,12 +108,13 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
 
                     // The insert was successful
                     break;
-                } catch (sqlpp::exception&) {}
+                } catch (sqlpp::exception &) {}
             }
 
             // Check if the insert was successful
-            if (i == 10)
+            if (i == 10) {
                 throw std::runtime_error("Unable to insert a UUID for file download " + std::string(filePath));
+            }
 
             // Report success
             nlohmann::json result;
@@ -124,8 +135,9 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
     };
 
     // Download file
-    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
-                                                                 shared_ptr<HttpServerImpl::Request> request) {
+    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](
+            const shared_ptr<HttpServerImpl::Response> &response,
+            const shared_ptr<HttpServerImpl::Request> &request) {
 
         // Create a database connection
         auto db = MySqlConnector();
@@ -135,6 +147,7 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
         JobserverFiledownload fileDownloadTable;
 
         // Create a new file download object
+        // TODO: Change fdObj to use a std::*_ptr
         auto fdObj = new sFileDownload{};
         std::string uuid;
 
@@ -197,27 +210,22 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
             }
 
             // Get the cluster and bundle from the job
-            std::string sCluster, sBundle, sFilePath;
-            uint32_t jobId = 0;
+            auto dl = &dlResults.front();
 
-            // I found I had to iterate it to get the single record, as front gave me corrupted results
-            for (auto &dl : dlResults) {
-                // Look up the job
-                auto jobResults =
-                        db->run(
-                                select(all_of(jobTable))
-                                        .from(jobTable)
-                                        .where(jobTable.id == (uint32_t) dl.jobId)
-                        );
+            // Look up the job
+            auto jobResults =
+                    db->run(
+                            select(all_of(jobTable))
+                                    .from(jobTable)
+                                    .where(jobTable.id == (uint32_t) dl->jobId)
+                    );
 
-                for (auto &job : jobResults) {
-                    sCluster = std::string(job.cluster);
-                    sBundle = std::string(job.bundle);
-                }
+            auto job = &jobResults.front();
+            auto sCluster = std::string(job->cluster);
+            auto sBundle = std::string(job->bundle);
 
-                sFilePath = std::string(dl.path);
-                jobId = (uint32_t) dl.jobId;
-            }
+            auto sFilePath = std::string(dl->path);
+            auto jobId = (uint32_t) dl->jobId;
 
             // Check that the cluster is online
             // Get the cluster to submit to
@@ -335,7 +343,7 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
                         fdObj->sentBytes += (*data)->size();
 
                         // Send the data
-                        response->write((const char*) (*data)->data(), (*data)->size());
+                        response->write((const char *) (*data)->data(), (*data)->size());
 
                         // Clean up the data
                         delete (*data);
@@ -383,13 +391,14 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
     };
 
     // List files in the specified directory
-    server->getServer().resource["^" + path + "$"]["PATCH"] = [clusterManager, server](shared_ptr<HttpServerImpl::Response> response,
-                                                                  shared_ptr<HttpServerImpl::Request> request) {
+    server->getServer().resource["^" + path + "$"]["PATCH"] = [clusterManager, server](
+            const shared_ptr<HttpServerImpl::Response> &response,
+            const shared_ptr<HttpServerImpl::Request> &request) {
 
         // Verify that the user is authorized
-        nlohmann::json jwt;
+        std::unique_ptr<sAuthorizationResult> authResult;
         try {
-            jwt = server->isAuthorized(request->header);
+            authResult = server->isAuthorized(request->header);
         } catch (...) {
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
@@ -399,10 +408,16 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
         // Create a database connection
         auto db = MySqlConnector();
 
+        // Create a vector which includes the application from the secret, and any other applications it has access to
+        auto applications = std::vector<std::string>({authResult->secret().name()});
+        std::copy(authResult->secret().applications().begin(), authResult->secret().applications().end(),
+                  std::back_inserter(applications));
+
         // Get the tables
         JobserverJob jobTable;
 
         // Create a new file download object
+        // TODO: Currently not cleaned up - need to rework this, maybe using std::*_ptr objects
         auto flObj = new sFileList{};
 
         try {
@@ -411,30 +426,34 @@ void FileApi(const std::string &path, HttpServer* server, ClusterManager *cluste
             request->content >> post_data;
 
             // Get the job to fetch files for
-            auto jobId = post_data["jobId"];
+            auto jobId = (uint32_t) post_data["jobId"];
 
             // Get the job to fetch files for
-            auto bRecursive = post_data["recursive"];
+            auto bRecursive = (bool) post_data["recursive"];
 
             // Get the path to the file to fetch (relative to the project)
-            auto filePath = post_data["path"];
+            auto filePath = std::string(post_data["path"]);
 
             // Look up the job
             auto jobResults =
                     db->run(
                             select(all_of(jobTable))
                                     .from(jobTable)
-                                    .where(jobTable.id == (uint32_t) jobId)
+                                    .where(
+                                            jobTable.id == (uint32_t) jobId
+                                            and jobTable.application.in(sqlpp::value_list(applications))
+                                    )
                     );
 
-            // Get the cluster and bundle from the job
-            std::string sCluster, sBundle;
-
-            // There's only one job, but I found I had to iterate it to get the single record, as front gave me corrupted results
-            for (auto &job : jobResults) {
-                sCluster = std::string(job.cluster);
-                sBundle = std::string(job.bundle);
+            // Check that a job was actually found
+            if (jobResults.empty()) {
+                throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) + " for application " + authResult->secret().name());
             }
+
+            // Get the cluster and bundle from the job
+            auto job = &jobResults.front();
+            auto sCluster = std::string(job->cluster);
+            auto sBundle = std::string(job->bundle);
 
             // Check that the cluster is online
             // Get the cluster to submit to

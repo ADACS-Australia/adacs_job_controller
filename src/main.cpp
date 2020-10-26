@@ -37,6 +37,7 @@ int main() {
 
     // Now finally start the http server to handle api requests
     httpServer->start();
+    httpServer->join();
 
     return 0;
 }

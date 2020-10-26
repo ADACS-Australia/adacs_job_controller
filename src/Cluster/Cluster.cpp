@@ -81,10 +81,10 @@ void Cluster::handleMessage(Message &message) {
     };
 }
 
-void Cluster::setConnection(WsServer::Connection *pConnection) {
-    this->pConnection = pConnection;
+void Cluster::setConnection(WsServer::Connection *pCon) {
+    this->pConnection = pCon;
 
-    if (pConnection != nullptr) {
+    if (pCon != nullptr) {
         // See if there are any pending jobs that should be sent
         checkUnsubmittedJobs();
     }
@@ -113,10 +113,8 @@ void Cluster::queueMessage(std::string source, std::vector<uint8_t> *data, Messa
     }
 }
 
-void Cluster::pruneSources() {
+[[noreturn]] void Cluster::pruneSources() {
     // Iterate forever
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-noreturn"
     while (true) {
         // Wait 1 minute until the next prune
         std::this_thread::sleep_for(std::chrono::seconds(60));
@@ -147,13 +145,10 @@ void Cluster::pruneSources() {
             }
         }
     }
-#pragma clang diagnostic pop
 }
 
-void Cluster::run() {
+[[noreturn]] void Cluster::run() {
     // Iterate forever
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-noreturn"
     while (true) {
         {
             std::unique_lock<std::mutex> lock(dataCVMutex);
@@ -227,7 +222,6 @@ void Cluster::run() {
             } while (hadData);
         }
     }
-#pragma clang diagnostic pop
 }
 
 bool Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) {
@@ -288,10 +282,8 @@ bool Cluster::isOnline() {
     return pConnection != nullptr;
 }
 
-void Cluster::resendMessages() {
+[[noreturn]] void Cluster::resendMessages() {
     // Iterate forever
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-noreturn"
     while (true) {
         // Wait 1 minute until the next check
         std::this_thread::sleep_for(std::chrono::seconds(60));
@@ -299,7 +291,6 @@ void Cluster::resendMessages() {
         // Check for jobs that need to be resubmitted
         checkUnsubmittedJobs();
     }
-#pragma clang diagnostic pop
 }
 
 void Cluster::checkUnsubmittedJobs() {
