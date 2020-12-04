@@ -48,7 +48,7 @@ def try_connect():
         client, ssh = get_ssh_connection(ssh_host_name, ssh_user_name, ssh_key)
 
         # Construct the command
-        command = "cd {}; . venv/bin/activate; python client.py {}".format(ssh_path, ssh_token)
+        command = "cd {}; source env.sh; source venv/bin/activate; python client.py {}".format(ssh_path, ssh_token)
 
         # Execute the remote command to start the daemon
         ssh.exec_command(command)
