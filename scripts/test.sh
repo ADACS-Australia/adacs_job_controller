@@ -4,6 +4,8 @@
 rm -Rf ./test_report
 mkdir ./test_report
 
+export DOCKER_BUILDKIT=1
+
 # Test build using docker-compose override file
 docker-compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml build
 docker-compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml run web /runtests.sh

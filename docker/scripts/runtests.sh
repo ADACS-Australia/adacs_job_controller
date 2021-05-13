@@ -10,9 +10,9 @@ done
 utils/schema/venv/bin/python utils/schema/manage.py migrate;
 
 # Run the jobserver tests
-./build/Boost_Tests_run --catch_system_error=yes --output_format=XML --log_format=XML --show_progress=no --logger=XML,all > /test_report/junit.xml
+build/Boost_Tests_run --catch_system_error=yes --output_format=XML --log_format=XML --show_progress=no --logger=XML,all > /test_report/junit.xml
 
-./build/Boost_Tests_run --logger=HRF,all --color_output=true --report_format=HRF --show_progress=no
+build/Boost_Tests_run --logger=HRF,all --color_output=true --report_format=HRF --show_progress=no
 
 # Print some whitespace
 printf "\n\n"

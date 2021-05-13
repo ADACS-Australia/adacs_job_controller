@@ -3,8 +3,9 @@ version: '3'
 services:
   web:
     build:
-      dockerfile: ./docker/gwcloud_job_server.test.Dockerfile
+      dockerfile: ./docker/gwcloud_job_server.Dockerfile
       context: ..
+      target: test
     image: gwcloud_job_server_test 
     container_name: gwcloud_job_server_test
     volumes:

@@ -1,55 +1,108 @@
-from ubuntu:focal
+FROM ubuntu:focal AS build_base
 
 # Update the container and install the required packages
 ENV DEBIAN_FRONTEND="noninteractive"
 
-RUN apt-get update
-RUN apt-get -y dist-upgrade
-RUN apt-get -y install rsync sudo python3-dev python3-virtualenv libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev
 
 # Copy in the source directory
-COPY src /src
+ADD src /src
 
-# Build the job server
+# Set up the build directory and configure the project with cmake
 RUN mkdir /src/build
 WORKDIR /src/build
-RUN cmake -DCMAKE_BUILD_TYPE=Debug .. || true
+RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
+
+
+FROM build_base AS build_production
+
+# Build the production server
 RUN cmake --build . --target gwcloud_job_server -- -j `grep -c ^processor /proc/cpuinfo`
 
-# Create the install directory and copy the job server in
-RUN mkdir -p /jobserver
-RUN cp gwcloud_job_server /jobserver/
-RUN mkdir /jobserver/logs
-RUN mkdir -p /jobserver/utils/keyserver/
 
-# Set up the keyserver venv
-RUN cp /src/utils/keyserver/keyserver.py /jobserver/utils/keyserver/
-RUN rm -Rf /jobserver/utils/keyserver/venv
-RUN virtualenv -p python3 /jobserver/utils/keyserver/venv
-RUN /jobserver/utils/keyserver/venv/bin/pip install -r /src/utils/keyserver/requirements.txt
+FROM build_base AS build_tests
 
-# Set up the schema project
-RUN rsync -arv /src/utils/schema /jobserver/utils/
-RUN rm -Rf /jobserver/utils/schema/venv
-RUN virtualenv -p python3 /jobserver/utils/schema/venv
-RUN /jobserver/utils/schema/venv/bin/pip install -r /src/utils/schema/requirements.txt
+# Build the test server
+RUN cmake --build . --target Boost_Tests_run -- -j `grep -c ^processor /proc/cpuinfo`
 
-# Clean up
-RUN rm -Rf /src
-RUN apt-get remove --purge -y build-essential git cmake rsync
-RUN apt-get autoremove -y --purge
+
+FROM ubuntu:focal AS production
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.71.0  libdouble-conversion3 libgflags2.2 libgoogle-glog0v5 libmysqlclient21 
+
+# Set the timezone
+ENV TZ=Australia/Melbourne
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+RUN dpkg-reconfigure --frontend noninteractive tzdata
 
 # Create jobserver user
 RUN useradd -r jobserver
 
-# Set permissions for the job server
-RUN chown -R jobserver:jobserver /jobserver
+# Create the jobserver directory
+RUN mkdir /jobserver
 
+# Set the working directory
 WORKDIR /jobserver
 
-COPY ./docker/scripts/runserver.sh /runserver.sh
+# Copy the schema and keyserver 
+ADD src/utils /jobserver/utils
+RUN chown -R jobserver:jobserver /jobserver
+
+# Set the user to the jobserver user
+USER jobserver
+
+# Set up the keyserver venv
+RUN python3 -m venv /jobserver/utils/keyserver/venv
+RUN /jobserver/utils/keyserver/venv/bin/pip install wheel
+RUN /jobserver/utils/keyserver/venv/bin/pip install -r /jobserver/utils/keyserver/requirements.txt
+
+# Set up the schema venv
+RUN python3 -m venv /jobserver/utils/schema/venv
+RUN /jobserver/utils/schema/venv/bin/pip install wheel
+RUN /jobserver/utils/schema/venv/bin/pip install -r /jobserver/utils/schema/requirements.txt
+
+# Make sure that the logs directory exists
+RUN mkdir /jobserver/logs
+
+# Clean up apt
+USER root
+RUN rm -rf /var/lib/apt/lists/
+
+# Copy the job server binary in and set permissions
+COPY --from=build_production /src/build/gwcloud_job_server ./
+RUN chmod +x gwcloud_job_server
+
+# Copy the run script
+ADD ./docker/scripts/runserver.sh /runserver.sh
 RUN chmod +x /runserver.sh
 
-EXPOSE 8000
-EXPOSE 8001
-CMD sudo -E -u jobserver /runserver.sh
+USER jobserver
+
+# Expose the ports and set the entrypoint
+EXPOSE 8000 8001
+CMD /runserver.sh
+
+
+FROM build_tests AS test
+
+WORKDIR /src
+
+# Set up the schema venv
+RUN python3 -m venv utils/schema/venv
+RUN utils/schema/venv/bin/pip install wheel
+RUN utils/schema/venv/bin/pip install -r utils/schema/requirements.txt
+
+# Install required packages for testing
+RUN apt-get install -y gcovr mariadb-client
+
+# Copy the run script
+ADD ./docker/scripts/runtests.sh /runtests.sh
+RUN chmod +x /runtests.sh
+
+# We run tests as root, not as jobserver
+
+# Set the entrypoint
+CMD /runtests.sh

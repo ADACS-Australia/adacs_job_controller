@@ -12,6 +12,12 @@ https://docs.djangoproject.com/en/3.0/ref/settings/
 
 import os
 
+try:
+    import pymysql
+    pymysql.install_as_MySQLdb()
+except:
+    pass
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -55,12 +61,15 @@ MYSQL_PASSWORD = os.getenv('DATABASE_PASSWORD') or "jobserver"
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
+        'ENGINE': 'mysql.connector.django',
         'NAME': MYSQL_DATABASE,
         'HOST': MYSQL_HOST,
         'USER': MYSQL_USER,
         'PORT': 3306,
         'PASSWORD': MYSQL_PASSWORD,
+        'OPTIONS': {
+            'autocommit': True,
+        },
     },
 }
 
@@ -90,6 +99,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.0/howto/static-files/
 
 STATIC_URL = '/static/'
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 try:
     from .local import *

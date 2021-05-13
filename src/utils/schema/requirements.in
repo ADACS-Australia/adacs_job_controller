@@ -1,3 +1,4 @@
-django
+django<3
+PyMySQL
 pyparsing
-mysqlclient
+mysql-connector-python
