@@ -13,6 +13,7 @@
 #include <vector>
 #include <boost/concept_check.hpp>
 #include <nlohmann/json.hpp>
+#include <shared_mutex>
 #include "../Lib/GeneralUtils.h"
 
 #define FOLLY_NO_CONFIG
@@ -102,7 +103,11 @@ public:
     virtual void queueMessage(std::string source, std::vector<uint8_t> *data, Message::Priority priority);
 
 private:
+#ifndef BUILD_TESTS
     [[noreturn]] void run();
+#else
+    void run();
+#endif
 
     sClusterDetails *pClusterDetails = nullptr;
     WsServer::Connection *pConnection = nullptr;
@@ -119,9 +124,17 @@ private:
     std::thread pruneThread;
     std::thread resendThread;
 
+#ifndef BUILD_TESTS
     [[noreturn]] void pruneSources();
+#else
+    void pruneSources();
+#endif
 
+#ifndef BUILD_TESTS
     [[noreturn]] void resendMessages();
+#else
+    void resendMessages();
+#endif
 
     bool doesHigherPriorityDataExist(uint64_t maxPriority);
 
@@ -139,6 +152,16 @@ private:
 
 // Testing
     EXPOSE_PROPERTY_FOR_TESTING(pConnection);
+    EXPOSE_PROPERTY_FOR_TESTING(pClusterDetails);
+    EXPOSE_PROPERTY_FOR_TESTING(pClusterManager);
+    EXPOSE_PROPERTY_FOR_TESTING_READONLY(queue);
+    EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataReady);
+
+    EXPOSE_FUNCTION_FOR_TESTING(pruneSources);
+    EXPOSE_FUNCTION_FOR_TESTING(run);
+    EXPOSE_FUNCTION_FOR_TESTING(resendMessages);
+
+    EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(doesHigherPriorityDataExist, uint64_t);
 };
 
 

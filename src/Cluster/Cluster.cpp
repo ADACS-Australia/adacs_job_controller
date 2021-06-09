@@ -9,6 +9,9 @@
 
 #include <utility>
 #include <iostream>
+#include <client_https.hpp>
+#include <client_http.hpp>
+#include <folly/Uri.h>
 
 // Packet Queue is a:
 //  list of priorities - doesn't need any sync because it never changes
@@ -28,9 +31,13 @@ folly::ConcurrentHashMap<std::string, sFileDownload *> fileDownloadMap;
 // Define a global map that can be used for storing information about file lists
 folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
 
+// Define a simple HTTP/S client for fetching bundles
+using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
+using HttpsClient = SimpleWeb::Client<SimpleWeb::HTTPS>;
+
 using namespace schema;
 
-Cluster::Cluster(sClusterDetails* details, ClusterManager *pClusterManager) {
+Cluster::Cluster(sClusterDetails *details, ClusterManager *pClusterManager) {
     this->pClusterDetails = details;
     this->pClusterManager = pClusterManager;
 
@@ -113,12 +120,16 @@ void Cluster::queueMessage(std::string source, std::vector<uint8_t> *data, Messa
     }
 }
 
+
+#ifndef BUILD_TESTS
 [[noreturn]] void Cluster::pruneSources() {
     // Iterate forever
     while (true) {
         // Wait 1 minute until the next prune
         std::this_thread::sleep_for(std::chrono::seconds(60));
-
+#else
+void Cluster::pruneSources() {
+#endif
         // Aquire the exclusive lock to prevent more data being pushed on while we are pruning
         {
             std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -144,12 +155,18 @@ void Cluster::queueMessage(std::string source, std::vector<uint8_t> *data, Messa
                 }
             }
         }
+#ifndef BUILD_TESTS
     }
+#endif
 }
 
+#ifndef BUILD_TESTS
 [[noreturn]] void Cluster::run() {
     // Iterate forever
     while (true) {
+#else
+void Cluster::run() {
+#endif
         {
             std::unique_lock<std::mutex> lock(dataCVMutex);
 
@@ -197,7 +214,7 @@ void Cluster::queueMessage(std::string source, std::vector<uint8_t> *data, Messa
                                 if (pConnection)
                                     pConnection->send(o, nullptr, 130);
                                 else
-                                    std::cout << "SCHED: Discarding packet because connection is closed";
+                                    std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
 
                                 // Clean up the message
                                 delete (*data);
@@ -221,7 +238,9 @@ void Cluster::queueMessage(std::string source, std::vector<uint8_t> *data, Messa
                 // Higher priority data does not exist, so keep sending data from this priority
             } while (hadData);
         }
+#ifndef BUILD_TESTS
     }
+#endif
 }
 
 bool Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) {
@@ -282,15 +301,20 @@ bool Cluster::isOnline() {
     return pConnection != nullptr;
 }
 
+#ifndef BUILD_TESTS
 [[noreturn]] void Cluster::resendMessages() {
     // Iterate forever
     while (true) {
         // Wait 1 minute until the next check
         std::this_thread::sleep_for(std::chrono::seconds(60));
-
+#else
+void Cluster::resendMessages() {
+#endif
         // Check for jobs that need to be resubmitted
         checkUnsubmittedJobs();
+#ifndef BUILD_TESTS
     }
+#endif
 }
 
 void Cluster::checkUnsubmittedJobs() {

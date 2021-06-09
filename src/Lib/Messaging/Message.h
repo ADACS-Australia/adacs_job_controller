@@ -39,6 +39,10 @@ public:
         Highest = 0
     };
 
+#ifdef BUILD_TESTS
+    Message(uint32_t msgId);
+#endif
+
     Message(uint32_t msgId, Priority priority, const std::string& source);
     explicit Message(std::vector<unsigned char> vdata);
 
@@ -72,7 +76,7 @@ public:
 
     void send(Cluster* pCluster);
 
-    uint32_t getId() {return id; }
+    uint32_t getId() const { return id; }
 
 private:
     std::vector<uint8_t> data;

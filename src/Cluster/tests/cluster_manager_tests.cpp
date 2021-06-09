@@ -39,6 +39,7 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
 
     BOOST_AUTO_TEST_CASE(test_constructor) {
         // First check that instantiating ClusterManager with no cluster config works as expected
+        unsetenv(CLUSTER_CONFIG_ENV_VARIABLE);
         auto mgr = ClusterManager();
         BOOST_CHECK_EQUAL(mgr.getvClusters()->size(), 0);
 

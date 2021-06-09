@@ -234,10 +234,10 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
     }
 }
 
-void __cxa_throw(void *thrown_exception, std::type_info *info, void (*dest)(void *)) {
+void __cxa_throw(void *thrown_exception, void *info, void (*dest)(void *)) {
     // print the stack trace to stderr:
     if (mExceptionStackTrace) {
-        print_exception_info(info, thrown_exception);
+        print_exception_info((std::type_info*) info, thrown_exception);
         libunwind_print_backtrace(1);
     }
 

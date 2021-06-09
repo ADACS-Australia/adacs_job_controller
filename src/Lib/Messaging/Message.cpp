@@ -9,6 +9,21 @@
 
 using namespace std;
 
+#ifdef BUILD_TESTS
+Message::Message(uint32_t msgId) {
+    // Constructor only used for testing
+
+    // Resize the data array to 64kb
+    data.reserve(1024 * 64);
+
+    // Reset the index
+    index = 0;
+
+    // Store the id
+    id = msgId;
+}
+#endif
+
 Message::Message(uint32_t msgId, Message::Priority priority, const std::string& source) {
     // Resize the data array to 64kb
     data.reserve(1024 * 64);
