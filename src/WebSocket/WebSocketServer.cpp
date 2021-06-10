@@ -129,3 +129,12 @@ void WebSocketServer::start() {
 
     cout << "WS: Server listening on port " << server.config.port << endl;
 }
+
+void WebSocketServer::join() {
+    server_thread.join();
+}
+
+void WebSocketServer::stop() {
+    server.stop();
+    join();
+}

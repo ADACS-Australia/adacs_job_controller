@@ -19,6 +19,8 @@ public:
     WebSocketServer(ClusterManager *clusterManager);
 
     void start();
+    void join();
+    void stop();
 
 private:
     WsServer server;

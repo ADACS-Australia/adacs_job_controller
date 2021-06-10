@@ -89,13 +89,14 @@ add_executable(
 add_executable(
         Boost_Tests_run
         ${SOURCE_FILES}
-        test_main.cpp
+        tests/test_main.cpp
         Lib/Messaging/tests.cpp
         Cluster/tests/cluster_tests.cpp
         Cluster/tests/cluster_manager_tests.cpp
         HTTP/tests/httpserver_tests.cpp
         HTTP/tests/job_tests.cpp
         HTTP/tests/file_tests.cpp
+        tests/test_file_transfer.cpp
 )
 
 # Set the link libraries

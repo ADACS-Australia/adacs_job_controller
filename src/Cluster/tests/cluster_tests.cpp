@@ -20,14 +20,25 @@
 #include "test.key.h"
 #include "test.crt.h"
 
-std::default_random_engine rng(time(nullptr));
-std::vector<uint8_t>* generateRandomData() {
-    std::uniform_int_distribution<int> rng_dist(0, 255);
-    auto count = static_cast<uint8_t>(rng_dist(rng));
+std::default_random_engine rng;
+bool bSeeded = false;
 
+uint32_t randomInt(uint32_t start, uint32_t end) {
+    if (!bSeeded) {
+        bSeeded = true;
+        rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
+    }
+
+    std::uniform_int_distribution<uint32_t> rng_dist(start, end);
+    return rng_dist(rng);
+}
+
+std::vector<uint8_t> *generateRandomData(uint32_t count) {
     auto result = new std::vector<uint8_t>();
-    for (int i = -1; i < count; i++) {
-        result->push_back(static_cast<uint8_t>(rng_dist(rng)));
+    result->reserve(count);
+
+    for (uint32_t i = 0; i < count; i++) {
+        result->push_back(randomInt(0, 255));
     }
 
     return result;
@@ -36,12 +47,12 @@ std::vector<uint8_t>* generateRandomData() {
 void writeCertFiles() {
     std::ofstream crt;
     crt.open("test.crt", std::ios::out);
-    crt.write((char*) test_crt, test_crt_len);
+    crt.write((char *) test_crt, test_crt_len);
     crt.close();
 
     std::ofstream key;
     key.open("test.key", std::ios::out);
-    key.write((char*) test_key, test_key_len);
+    key.write((char *) test_key, test_key_len);
     key.close();
 }
 
@@ -96,7 +107,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(*cluster->getpClusterManager(), manager);
 
         // Check that the right number of queue levels are created (+1 because 0 is a priority level itself)
-        BOOST_CHECK_EQUAL(cluster->getqueue()->size(), (uint32_t) Message::Priority::Lowest - (uint32_t) Message::Priority::Highest + 1);
+        BOOST_CHECK_EQUAL(cluster->getqueue()->size(),
+                          (uint32_t) Message::Priority::Lowest - (uint32_t) Message::Priority::Highest + 1);
 
         // Cleanup
         delete cluster;
@@ -215,56 +227,69 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto cluster = new Cluster(details, manager);
 
         // Check the source doesn't exist
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") == (*cluster->getqueue())[Message::Priority::Highest].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
+                          (*cluster->getqueue())[Message::Priority::Highest].end(), true);
 
-        auto s1_d1 = generateRandomData();
+        auto s1_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
 
-        auto s2_d1 = generateRandomData();
+        auto s2_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s2", s2_d1, Message::Priority::Lowest);
 
-        auto s3_d1 = generateRandomData();
+        auto s3_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         // s1 should only exist in the highest priority queue
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") == (*cluster->getqueue())[Message::Priority::Highest].end(), false);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find("s1") == (*cluster->getqueue())[Message::Priority::Medium].end(), true);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s1") == (*cluster->getqueue())[Message::Priority::Lowest].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
+                          (*cluster->getqueue())[Message::Priority::Highest].end(), false);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find("s1") ==
+                          (*cluster->getqueue())[Message::Priority::Medium].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s1") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), true);
 
         // s2 should only exist in the lowest priority queue
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s2") == (*cluster->getqueue())[Message::Priority::Highest].end(), true);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find("s2") == (*cluster->getqueue())[Message::Priority::Medium].end(), true);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s2") == (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s2") ==
+                          (*cluster->getqueue())[Message::Priority::Highest].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find("s2") ==
+                          (*cluster->getqueue())[Message::Priority::Medium].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s2") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
 
         // s3 should only exist in the lowest priority queue
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s3") == (*cluster->getqueue())[Message::Priority::Highest].end(), true);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find("s3") == (*cluster->getqueue())[Message::Priority::Medium].end(), true);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s3") == (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s3") ==
+                          (*cluster->getqueue())[Message::Priority::Highest].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find("s3") ==
+                          (*cluster->getqueue())[Message::Priority::Medium].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s3") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
 
         auto find_s1 = (*cluster->getqueue())[Message::Priority::Highest].find("s1");
         // s1 should have been put in the queue exactly once
         BOOST_CHECK_EQUAL(find_s1->second->size(), 1);
         // The found s1 should exactly equal s1_d1
-        BOOST_CHECK_EQUAL_COLLECTIONS((*find_s1->second->try_peek())->begin(), (*find_s1->second->try_peek())->end(), s1_d1->begin(), s1_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS((*find_s1->second->try_peek())->begin(), (*find_s1->second->try_peek())->end(),
+                                      s1_d1->begin(), s1_d1->end());
 
         auto find_s2 = (*cluster->getqueue())[Message::Priority::Lowest].find("s2");
         // s2 should have been put in the queue exactly once
         BOOST_CHECK_EQUAL(find_s2->second->size(), 1);
         // The found s2 should exactly equal s2_d1
-        BOOST_CHECK_EQUAL_COLLECTIONS((*find_s2->second->try_peek())->begin(), (*find_s2->second->try_peek())->end(), s2_d1->begin(), s2_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS((*find_s2->second->try_peek())->begin(), (*find_s2->second->try_peek())->end(),
+                                      s2_d1->begin(), s2_d1->end());
 
         auto find_s3 = (*cluster->getqueue())[Message::Priority::Lowest].find("s3");
         // s2 should have been put in the queue exactly once
         BOOST_CHECK_EQUAL(find_s3->second->size(), 1);
         // The found s2 should exactly equal s2_d1
-        BOOST_CHECK_EQUAL_COLLECTIONS((*find_s3->second->try_peek())->begin(), (*find_s3->second->try_peek())->end(), s3_d1->begin(), s3_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS((*find_s3->second->try_peek())->begin(), (*find_s3->second->try_peek())->end(),
+                                      s3_d1->begin(), s3_d1->end());
 
-        auto s1_d2 = generateRandomData();
+        auto s1_d2 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d2, Message::Priority::Highest);
         // s1 should 2 items
         BOOST_CHECK_EQUAL(find_s1->second->size(), 2);
 
-        auto s1_d3 = generateRandomData();
+        auto s1_d3 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d3, Message::Priority::Highest);
 
         // s1 should have 3 items
@@ -285,23 +310,23 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s1_d3->begin(), s1_d3->end());
         delete d;
 
-        auto s2_d2 = generateRandomData();
+        auto s2_d2 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s2", s2_d2, Message::Priority::Lowest);
         // s2 should 2 items
         BOOST_CHECK_EQUAL(find_s2->second->size(), 2);
 
-        auto s2_d3 = generateRandomData();
+        auto s2_d3 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s2", s2_d3, Message::Priority::Lowest);
 
         // s2 should have 3 items
         BOOST_CHECK_EQUAL(find_s2->second->size(), 3);
 
-        auto s3_d2 = generateRandomData();
+        auto s3_d2 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d2, Message::Priority::Lowest);
         // s3 should 2 items
         BOOST_CHECK_EQUAL(find_s3->second->size(), 2);
 
-        auto s3_d3 = generateRandomData();
+        auto s3_d3 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d3, Message::Priority::Lowest);
 
         // s3 should have 3 items
@@ -352,21 +377,24 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto cluster = new Cluster(details, manager);
 
         // Create several sources and insert data in the queue
-        auto s1_d1 = generateRandomData();
+        auto s1_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
 
-        auto s2_d1 = generateRandomData();
+        auto s2_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s2", s2_d1, Message::Priority::Lowest);
 
-        auto s3_d1 = generateRandomData();
+        auto s3_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         // Pruning the sources should not perform any action since all sources have one item in the queue
         cluster->callpruneSources();
 
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") == (*cluster->getqueue())[Message::Priority::Highest].end(), false);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s2") == (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s3") == (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
+                          (*cluster->getqueue())[Message::Priority::Highest].end(), false);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s2") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s3") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
 
         // Dequeue an item from s2, which will leave s2 with 0 items
         (*cluster->getqueue())[Message::Priority::Lowest].find("s2")->second->dequeue();
@@ -374,9 +402,12 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Now pruning the sources should remove s2, but not s1 or s3
         cluster->callpruneSources();
 
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") == (*cluster->getqueue())[Message::Priority::Highest].end(), false);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s2") == (*cluster->getqueue())[Message::Priority::Lowest].end(), true);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s3") == (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
+                          (*cluster->getqueue())[Message::Priority::Highest].end(), false);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s2") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s3") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
 
         // Dequeue the remaining items from s1 and s3
         (*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->dequeue();
@@ -386,9 +417,12 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         cluster->callpruneSources();
 
         // There should now be no items left in the queue
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") == (*cluster->getqueue())[Message::Priority::Highest].end(), true);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s2") == (*cluster->getqueue())[Message::Priority::Lowest].end(), true);
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s3") == (*cluster->getqueue())[Message::Priority::Lowest].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
+                          (*cluster->getqueue())[Message::Priority::Highest].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s2") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), true);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].find("s3") ==
+                          (*cluster->getqueue())[Message::Priority::Lowest].end(), true);
 
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].size(), 0);
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].size(), 0);
@@ -414,7 +448,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         auto &wsTest = server.endpoint["^/ws/?$"];
 
-        wsTest.on_open = [&](const std::shared_ptr<WsServer::Connection>& connection) {
+        wsTest.on_open = [&](const std::shared_ptr<WsServer::Connection> &connection) {
             cluster->setConnection(connection.get());
         };
 
@@ -431,7 +465,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         std::vector<std::vector<uint8_t>> receivedMessages;
 
-        wsClient.on_message = [&receivedMessages](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
+        wsClient.on_message = [&receivedMessages](const std::shared_ptr<WsClient::Connection> &connection,
+                                                  const std::shared_ptr<WsClient::InMessage> &in_message) {
             auto data = in_message->string();
             receivedMessages.emplace_back(std::vector<uint8_t>(data.begin(), data.end()));
         };
@@ -444,46 +479,46 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Create several sources and insert data in the queue
-        auto s1_d1 = generateRandomData();
+        auto s1_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
 
-        auto s1_d2 = generateRandomData();
+        auto s1_d2 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d2, Message::Priority::Highest);
 
-        auto s2_d1 = generateRandomData();
+        auto s2_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s2", s2_d1, Message::Priority::Highest);
 
-        auto s3_d1 = generateRandomData();
+        auto s3_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
-        auto s3_d2 = generateRandomData();
+        auto s3_d2 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d2, Message::Priority::Lowest);
 
-        auto s3_d3 = generateRandomData();
+        auto s3_d3 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d3, Message::Priority::Lowest);
 
-        auto s3_d4 = generateRandomData();
+        auto s3_d4 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d4, Message::Priority::Lowest);
 
-        auto s4_d1 = generateRandomData();
+        auto s4_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s4", s4_d1, Message::Priority::Lowest);
 
-        auto s4_d2 = generateRandomData();
+        auto s4_d2 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s4", s4_d2, Message::Priority::Lowest);
 
-        auto s5_d1 = generateRandomData();
+        auto s5_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s5", s5_d1, Message::Priority::Lowest);
 
-        auto s5_d2 = generateRandomData();
+        auto s5_d2 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s5", s5_d2, Message::Priority::Lowest);
 
-        auto s6_d1 = generateRandomData();
+        auto s6_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s6", s6_d1, Message::Priority::Medium);
 
-        auto s6_d2 = generateRandomData();
+        auto s6_d2 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s6", s6_d2, Message::Priority::Medium);
 
-        auto s6_d3 = generateRandomData();
+        auto s6_d3 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s6", s6_d3, Message::Priority::Medium);
 
         *cluster->getdataReady() = true;
@@ -494,22 +529,36 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // Check that the data sent was in priority/source order
         // The following order is deterministic - but sensitive.
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[0].begin(), receivedMessages[0].end(), s2_d1->begin(), s2_d1->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[1].begin(), receivedMessages[1].end(), s1_d1->begin(), s1_d1->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[2].begin(), receivedMessages[2].end(), s1_d2->begin(), s1_d2->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[0].begin(), receivedMessages[0].end(), s2_d1->begin(),
+                                      s2_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[1].begin(), receivedMessages[1].end(), s1_d1->begin(),
+                                      s1_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[2].begin(), receivedMessages[2].end(), s1_d2->begin(),
+                                      s1_d2->end());
 
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[3].begin(), receivedMessages[3].end(), s6_d1->begin(), s6_d1->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[4].begin(), receivedMessages[4].end(), s6_d2->begin(), s6_d2->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[5].begin(), receivedMessages[5].end(), s6_d3->begin(), s6_d3->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[3].begin(), receivedMessages[3].end(), s6_d1->begin(),
+                                      s6_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[4].begin(), receivedMessages[4].end(), s6_d2->begin(),
+                                      s6_d2->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[5].begin(), receivedMessages[5].end(), s6_d3->begin(),
+                                      s6_d3->end());
 
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[6].begin(), receivedMessages[6].end(), s4_d1->begin(), s4_d1->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[7].begin(), receivedMessages[7].end(), s5_d1->begin(), s5_d1->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[8].begin(), receivedMessages[8].end(), s3_d1->begin(), s3_d1->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[9].begin(), receivedMessages[9].end(), s4_d2->begin(), s4_d2->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[10].begin(), receivedMessages[10].end(), s5_d2->begin(), s5_d2->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[11].begin(), receivedMessages[11].end(), s3_d2->begin(), s3_d2->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[12].begin(), receivedMessages[12].end(), s3_d3->begin(), s3_d3->end());
-        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[13].begin(), receivedMessages[13].end(), s3_d4->begin(), s3_d4->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[6].begin(), receivedMessages[6].end(), s4_d1->begin(),
+                                      s4_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[7].begin(), receivedMessages[7].end(), s5_d1->begin(),
+                                      s5_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[8].begin(), receivedMessages[8].end(), s3_d1->begin(),
+                                      s3_d1->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[9].begin(), receivedMessages[9].end(), s4_d2->begin(),
+                                      s4_d2->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[10].begin(), receivedMessages[10].end(), s5_d2->begin(),
+                                      s5_d2->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[11].begin(), receivedMessages[11].end(), s3_d2->begin(),
+                                      s3_d2->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[12].begin(), receivedMessages[12].end(), s3_d3->begin(),
+                                      s3_d3->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[13].begin(), receivedMessages[13].end(), s3_d4->begin(),
+                                      s3_d4->end());
 
         // Stop the client and server websocket connections and threads
         wsClient.stop();
@@ -537,27 +586,27 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), false);
 
         // Insert some data
-        auto s4_d1 = generateRandomData();
+        auto s4_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s4", s4_d1, Message::Priority::Lowest);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Medium), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), false);
 
-        auto s3_d1 = generateRandomData();
+        auto s3_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s3", s3_d1, Message::Priority::Medium);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Medium), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), true);
 
-        auto s2_d1 = generateRandomData();
+        auto s2_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s2", s2_d1, Message::Priority::Highest);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Medium), true);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), true);
 
-        auto s1_d1 = generateRandomData();
+        auto s1_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
-        auto s0_d1 = generateRandomData();
+        auto s0_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s0", s0_d1, Message::Priority::Highest);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Medium), true);
@@ -599,6 +648,9 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto db = MySqlConnector();
         schema::JobserverJobhistory jobHistoryTable;
         schema::JobserverJob jobTable;
+        schema::JobserverFiledownload fileDownloadTable;
+
+        db->run(remove_from(fileDownloadTable).unconditionally());
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
 
@@ -828,7 +880,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                     insert_into(jobHistoryTable)
                             .set(
                                     jobHistoryTable.jobId = jobId,
-                                    jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
+                                    jobHistoryTable.timestamp =
+                                            std::chrono::system_clock::now() - std::chrono::seconds{60},
                                     jobHistoryTable.what = "system",
                                     jobHistoryTable.state = (uint32_t) i,
                                     jobHistoryTable.details = "Job submitting"
@@ -967,7 +1020,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // A uuid that isn't in the fileDownloadMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
-        auto chunk = generateRandomData();
+        auto chunk = generateRandomData(randomInt(0, 255));
 
         Message msg(FILE_CHUNK);
         msg.push_string(uuid);      // uuid
@@ -1003,13 +1056,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->sentBytes, 0);
         BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
 
-        BOOST_CHECK_EQUAL_COLLECTIONS(chunk->begin(), chunk->end(), (*fileDownloadMap[uuid]->queue.try_peek())->begin(), (*fileDownloadMap[uuid]->queue.try_peek())->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(chunk->begin(), chunk->end(), (*fileDownloadMap[uuid]->queue.try_peek())->begin(),
+                                      (*fileDownloadMap[uuid]->queue.try_peek())->end());
 
-        std::vector<std::vector<uint8_t>*> chunks = {chunk};
+        std::vector<std::vector<uint8_t> *> chunks = {chunk};
 
         // Fill the queue and make sure that a pause file chunk stream isn't sent until the queue is full
         while (!fileDownloadMap[uuid]->clientPaused) {
-            chunk = generateRandomData();
+            chunk = generateRandomData(randomInt(0, 255));
             chunks.push_back(chunk);
 
             if ((*cluster->getqueue())[Message::Priority::Highest].size() != 0) {
@@ -1121,4 +1175,5 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         fileListMap.erase(uuid);
 
     }
+
 BOOST_AUTO_TEST_SUITE_END()

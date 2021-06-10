@@ -78,10 +78,14 @@ void Cluster::handleMessage(Message &message) {
             Cluster::handleFileDetails(message);
             break;
         case FILE_CHUNK:
+            std::cout << "dbg: calling handle file chunk" << std::endl;
             this->handleFileChunk(message);
+            std::cout << "dbg: called handle file chunk" << std::endl;
             break;
         case FILE_LIST:
+            std::cout << "dbg: calling handle file list" << std::endl;
             this->handleFileList(message);
+            std::cout << "dbg: called handle file list" << std::endl;
             break;
         default:
             std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << std::endl;
@@ -415,33 +419,45 @@ void Cluster::handleFileDetails(Message &message) {
 }
 
 void Cluster::handleFileChunk(Message &message) {
+    std::cout << "dbg: enter" << std::endl;
     auto uuid = message.pop_string();
+    std::cout << "dbg: 1" << std::endl;
     auto chunk = message.pop_bytes();
+    std::cout << "dbg: 2" << std::endl;
 
     // Check that the uuid is valid
     if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
         return;
+    std::cout << "dbg: 3" << std::endl;
 
     fileDownloadMap[uuid]->receivedBytes += chunk.size();
+    std::cout << "dbg: 4" << std::endl;
 
     // Copy the chunk and push it on to the queue
     fileDownloadMap[uuid]->queue.enqueue(new std::vector<uint8_t>(chunk));
-
-    // Trigger the file transfer event
-    fileDownloadMap[uuid]->dataReady = true;
-    fileDownloadMap[uuid]->dataCV.notify_one();
+    std::cout << "dbg: 5" << std::endl;
 
     if (!fileDownloadMap[uuid]->clientPaused) {
+        std::cout << "dbg: 6" << std::endl;
         // Check if our buffer is too big
         if (fileDownloadMap[uuid]->receivedBytes - fileDownloadMap[uuid]->sentBytes > MAX_FILE_BUFFER_SIZE) {
+            std::cout << "dbg: 7" << std::endl;
             // Ask the client to pause the file transfer
             fileDownloadMap[uuid]->clientPaused = true;
-
+            std::cout << "dbg: 8" << std::endl;
             auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
             msg.push_string(uuid);
             msg.send(this);
         }
     }
+
+    std::cout << "dbg: 9" << std::endl;
+
+    // Trigger the file transfer event
+    fileDownloadMap[uuid]->dataReady = true;
+    fileDownloadMap[uuid]->dataCV.notify_one();
+
+    std::cout << "dbg: exit" << std::endl;
 }
 
 void Cluster::handleFileList(Message &message) {

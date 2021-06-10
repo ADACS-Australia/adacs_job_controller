@@ -44,8 +44,8 @@ Message::Message(uint32_t msgId, Message::Priority priority, const std::string& 
     push_uint(msgId);
 }
 
-Message::Message(vector<uint8_t> vdata) {
-    data = std::move(vdata);
+Message::Message(const vector<uint8_t>& vdata) {
+    data = vdata;
     index = 0;
     priority = Message::Priority::Lowest;
 
@@ -115,7 +115,7 @@ add_type(float, float)
 
 add_type(double, double)
 
-void Message::push_string(std::string v) {
+void Message::push_string(const std::string& v) {
     push_ulong(v.size());
     data.insert(data.end(), v.begin(), v.end());
 }
@@ -127,7 +127,7 @@ std::string Message::pop_string() {
     return std::string((char *) result.data());
 }
 
-void Message::push_bytes(std::vector<uint8_t> v) {
+void Message::push_bytes(const std::vector<uint8_t>& v) {
     push_ulong(v.size());
     data.insert(data.end(), v.begin(), v.end());
 }

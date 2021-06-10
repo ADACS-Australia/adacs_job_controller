@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 #include "../../WebSocket/WebSocketServer.h"
+#include "../GeneralUtils.h"
 
 #define SYSTEM_SOURCE "system"
 
@@ -44,7 +45,7 @@ public:
 #endif
 
     Message(uint32_t msgId, Priority priority, const std::string& source);
-    explicit Message(std::vector<unsigned char> vdata);
+    explicit Message(const std::vector<unsigned char>& vdata);
 
     void push_bool(bool v);
     void push_ubyte(uint8_t v);
@@ -57,8 +58,8 @@ public:
     void push_long(int64_t v);
     void push_float(float v);
     void push_double(double v);
-    void push_string(std::string v);
-    void push_bytes(std::vector<uint8_t> v);
+    void push_string(const std::string& v);
+    void push_bytes(const std::vector<uint8_t>& v);
 
     bool pop_bool();
     uint8_t pop_ubyte();
@@ -84,6 +85,8 @@ private:
     Priority priority;
     std::string source;
     uint32_t id;
+
+EXPOSE_PROPERTY_FOR_TESTING(data);
 };
 
 
