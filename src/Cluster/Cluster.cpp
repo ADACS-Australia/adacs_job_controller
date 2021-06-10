@@ -31,6 +31,9 @@ folly::ConcurrentHashMap<std::string, sFileDownload *> fileDownloadMap;
 // Define a global map that can be used for storing information about file lists
 folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
 
+// Define a mutex that can be used for safely removing entries from the fileDownloadMap
+std::mutex fileDownloadMapDeletionLockMutex;
+
 // Define a simple HTTP/S client for fetching bundles
 using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 using HttpsClient = SimpleWeb::Client<SimpleWeb::HTTPS>;
@@ -430,32 +433,53 @@ void Cluster::handleFileChunk(Message &message) {
         return;
     std::cout << "dbg: 3" << std::endl;
 
-    fileDownloadMap[uuid]->receivedBytes += chunk.size();
+    auto fdObj = fileDownloadMap[uuid];
+
+    fdObj->receivedBytes += chunk.size();
     std::cout << "dbg: 4" << std::endl;
 
     // Copy the chunk and push it on to the queue
-    fileDownloadMap[uuid]->queue.enqueue(new std::vector<uint8_t>(chunk));
+    fdObj->queue.enqueue(new std::vector<uint8_t>(chunk));
     std::cout << "dbg: 5" << std::endl;
 
-    if (!fileDownloadMap[uuid]->clientPaused) {
-        std::cout << "dbg: 6" << std::endl;
-        // Check if our buffer is too big
-        if (fileDownloadMap[uuid]->receivedBytes - fileDownloadMap[uuid]->sentBytes > MAX_FILE_BUFFER_SIZE) {
-            std::cout << "dbg: 7" << std::endl;
-            // Ask the client to pause the file transfer
-            fileDownloadMap[uuid]->clientPaused = true;
-            std::cout << "dbg: 8" << std::endl;
-            auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
-            msg.push_string(uuid);
-            msg.send(this);
+    // It's only possible for the fdObj to be deleted from now on to the end of this function. That's because in the
+    // HTTP file download code, the fdObj won't be deleted until after all bytes have been received and sent to the
+    // HTTP client. If the enqueue above is the last chunk of data, and the HTTP client is slow, then there will never
+    // be an opportunity for the dataReady check to be done by the HTTP file download code since it'll be in a loop
+    // until there are no more chunks to send. This leads to a case where the fdObj might be deleted immediately after
+    // the enqueue call above, so we need to protect any further accesses below in a unique lock.
+
+    // Acquire the lock
+    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
+
+    // Now we're in a critical section, if the UUID still exists in the fileDownloadMap, then the fdObj hasn't yet
+    // been destroyed, and we're right to continue using it. The HTTP file download code, will wait for this mutex to
+    // be released before it tries to clean up.
+
+    if (fileDownloadMap.find(uuid) != fileDownloadMap.end()) {
+        if (!fdObj->clientPaused) {
+            std::cout << "dbg: 6" << std::endl;
+            // Check if our buffer is too big
+            if (fdObj->receivedBytes - fdObj->sentBytes > MAX_FILE_BUFFER_SIZE) {
+                std::cout << "dbg: 7" << std::endl;
+                // Ask the client to pause the file transfer
+                fdObj->clientPaused = true;
+                std::cout << "dbg: 8" << std::endl;
+                auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
+                msg.push_string(uuid);
+                msg.send(this);
+            }
         }
+
+        std::cout << "dbg: 9" << std::endl;
+
+        // Trigger the file transfer event
+        fdObj->dataReady = true;
+        fdObj->dataCV.notify_one();
     }
 
-    std::cout << "dbg: 9" << std::endl;
-
-    // Trigger the file transfer event
-    fileDownloadMap[uuid]->dataReady = true;
-    fileDownloadMap[uuid]->dataCV.notify_one();
+    // Release the lock now
+    fileDownloadMapDeletionLock.unlock();
 
     std::cout << "dbg: exit" << std::endl;
 }

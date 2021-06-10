@@ -364,9 +364,19 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 }
             }
 
+            // Try to acquire the lock in case the cluster is still using it
+            std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
+
+            // It's now safe to delete the uuid from the fileDownloadMap
+
             // Destroy the file download object
             if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
                 fileDownloadMap.erase(uuid);
+
+            // The lock can now be released, because when the lock is acquired in Cluster, the first thing it will do
+            // is check for the existence of the uuid in the fileDownloadMap. But since we've removed it, Cluster is
+            // guaranteed not to use the fdObj again.
+            fileDownloadMapDeletionLock.unlock();
 
             // Clean up the file download object
             if (fdObj) {
@@ -375,9 +385,15 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             }
 
         } catch (...) {
+            // Same as above
+            std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
+
             // Destroy the file download object
             if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
                 fileDownloadMap.erase(uuid);
+
+            // Same as above
+            fileDownloadMapDeletionLock.unlock();
 
             // Clean up the file download object
             if (fdObj) {
