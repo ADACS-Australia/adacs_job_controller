@@ -60,7 +60,14 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             auto jobId = (uint32_t) post_data["jobId"];
 
             // Get the path to the file to fetch (relative to the project)
-            auto filePath = std::string(post_data["path"]);
+            bool hasPaths = false;
+            std::vector<std::string> filePaths;
+            if (post_data.contains("paths")) {
+                filePaths = post_data["paths"].get<std::vector<std::string>>();
+                hasPaths = true;
+            } else {
+                filePaths.push_back(std::string(post_data["path"]));
+            }
 
             // Look up the job
             auto jobResults =
@@ -75,7 +82,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             // Check that a job was actually found
             if (jobResults.empty()) {
-                throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) + " for application " + authResult->secret().name());
+                throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) + " for application " +
+                                         authResult->secret().name());
             }
 
             // Get the cluster and bundle from the job
@@ -83,42 +91,87 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             auto sCluster = std::string(job->cluster);
             auto sBundle = std::string(job->bundle);
 
-            // Because UUID's very occasionally collide, we try to generate a few UUID's in a row
-            int i = 0;
-            std::string uuid;
-            for (; i < 10; i++) {
-                try {
-                    // Generate a UUID for the download
-                    uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+//            // Create a multi insert query
+//            auto insert_query = insert_into(fileDownloadTable).columns(
+//                    fileDownloadTable.user,
+//                    fileDownloadTable.jobId,
+//                    fileDownloadTable.uuid,
+//                    fileDownloadTable.path,
+//                    fileDownloadTable.timestamp
+//                );
 
-                    // Save the file download in the database
+            // Now iterate over the file paths and generate UUID's for them
+            std::vector<std::string> uuids;
+            for (const auto &path : filePaths) {
+                // Generate a UUID for the download
+                auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+
+                // Save the path
+                uuids.push_back(uuid);
+
+                // Todo: Change back to multi-row insert once https://github.com/rbock/sqlpp11/issues/367 is resolved
+                try {
                     db->run(
                             insert_into(fileDownloadTable)
                                     .set(
                                             fileDownloadTable.user = (uint32_t) authResult->payload()["userId"],
                                             fileDownloadTable.jobId = (uint32_t) jobId,
                                             fileDownloadTable.uuid = uuid,
-                                            fileDownloadTable.path = std::string(filePath),
+                                            fileDownloadTable.path = std::string(path),
                                             fileDownloadTable.timestamp = std::chrono::system_clock::now()
                                     )
                     );
+                } catch (sqlpp::exception &) {
+                    // Uh oh, an error occurred
+                    // Abort the transaction
+                    db->rollback_transaction(false);
 
-                    // Commit the changes in the database
-                    db->commit_transaction();
+                    // Report bad request
+                    response->write(
+                            SimpleWeb::StatusCode::client_error_bad_request,
+                            "Unable to insert records in the database, please try again later"
+                    );
+                    return;
+                }
 
-                    // The insert was successful
-                    break;
-                } catch (sqlpp::exception &) {}
+//                // Add the record to be inserted
+//                insert_query.values.add(
+//                        fileDownloadTable.user = (uint32_t) authResult->payload()["userId"],
+//                        fileDownloadTable.jobId = (uint32_t) jobId,
+//                        fileDownloadTable.uuid = uuid,
+//                        fileDownloadTable.path = std::string(path),
+//                        fileDownloadTable.timestamp = std::chrono::system_clock::now()
+//                );
             }
 
-            // Check if the insert was successful
-            if (i == 10) {
-                throw std::runtime_error("Unable to insert a UUID for file download " + std::string(filePath));
-            }
+            db->commit_transaction();
+
+//            // Try inserting the values in the database
+//            try {
+//                db->run(insert_query);
+//
+//                // Commit the changes in the database
+//                db->commit_transaction();
+//            } catch (sqlpp::exception &) {
+//                // Uh oh, an error occurred
+//                // Abort the transaction
+//                db->rollback_transaction(false);
+//
+//                // Report bad request
+//                response->write(
+//                        SimpleWeb::StatusCode::client_error_bad_request,
+//                        "Unable to insert records in the database, please try again later"
+//                        );
+//                return;
+//            }
 
             // Report success
             nlohmann::json result;
-            result["fileId"] = uuid;
+            if (hasPaths) {
+                result["fileIds"] = uuids;
+            } else {
+                result["fileId"] = uuids[0];
+            }
 
             SimpleWeb::CaseInsensitiveMultimap headers;
             headers.emplace("Content-Type", "application/json");
@@ -463,7 +516,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             // Check that a job was actually found
             if (jobResults.empty()) {
-                throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) + " for application " + authResult->secret().name());
+                throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) + " for application " +
+                                         authResult->secret().name());
             }
 
             // Get the cluster and bundle from the job

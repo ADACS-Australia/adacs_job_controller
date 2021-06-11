@@ -220,6 +220,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         HttpClient httpClient("localhost:8000");
         auto r = httpClient.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
+        std::cout << "Content: " << r->content.string() << std::endl;
+
         nlohmann::json result;
         r->content >> result;
 

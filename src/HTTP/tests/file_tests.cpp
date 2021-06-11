@@ -264,6 +264,43 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         BOOST_CHECK_EQUAL(r->content.string(), "Bad request");
         BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
 
+        // Test creating multiple file downloads for job1
+        jwtToken = {
+                jwt::params::algorithm("HS256"),
+                jwt::params::payload({{"userName", "User"}}),
+                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+        };
+        jwtToken.add_claim("exp", now);
+
+        // Since payload above only accepts string values, we need to set up any non-string values
+        // separately
+        jwtToken.payload().add_claim("userId", 5);
+
+        params = {
+                {"jobId", jobId1},
+                {"paths",
+                          {
+                                  "/an_awesome_path1/",
+                                  "/an_awesome_path2/",
+                                  "/an_awesome_path3/",
+                                  "/an_awesome_path4/",
+                                  "/an_awesome_path5/"
+                          }
+                }
+        };
+
+        r = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+
+        r->content >> result;
+
+        BOOST_CHECK_MESSAGE(result.find("fileIds") != result.end(),
+                            "result.find(\"fileIds\") != result.end() was not the expected value");
+
+        BOOST_CHECK_MESSAGE(result["fileIds"].size() == 5,
+                            "result[\"fileIds\"].size() == 5 was not the expected value");
+
         // Finished with the server
         svr.stop();
 
