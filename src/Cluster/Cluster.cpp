@@ -49,7 +49,6 @@ Cluster::Cluster(sClusterDetails *details, ClusterManager *pClusterManager) {
         queue.emplace_back();
 
 #ifndef BUILD_TESTS
-    std::cout << "Running threads" << std::endl;
     // Start the scheduler thread
     schedulerThread = std::thread([this] {
         this->run();
@@ -81,14 +80,10 @@ void Cluster::handleMessage(Message &message) {
             Cluster::handleFileDetails(message);
             break;
         case FILE_CHUNK:
-            std::cout << "dbg: calling handle file chunk" << std::endl;
             this->handleFileChunk(message);
-            std::cout << "dbg: called handle file chunk" << std::endl;
             break;
         case FILE_LIST:
-            std::cout << "dbg: calling handle file list" << std::endl;
             this->handleFileList(message);
-            std::cout << "dbg: called handle file list" << std::endl;
             break;
         default:
             std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << std::endl;
@@ -422,25 +417,19 @@ void Cluster::handleFileDetails(Message &message) {
 }
 
 void Cluster::handleFileChunk(Message &message) {
-    std::cout << "dbg: enter" << std::endl;
     auto uuid = message.pop_string();
-    std::cout << "dbg: 1" << std::endl;
     auto chunk = message.pop_bytes();
-    std::cout << "dbg: 2" << std::endl;
 
     // Check that the uuid is valid
     if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
         return;
-    std::cout << "dbg: 3" << std::endl;
 
     auto fdObj = fileDownloadMap[uuid];
 
     fdObj->receivedBytes += chunk.size();
-    std::cout << "dbg: 4" << std::endl;
 
     // Copy the chunk and push it on to the queue
     fdObj->queue.enqueue(new std::vector<uint8_t>(chunk));
-    std::cout << "dbg: 5" << std::endl;
 
     // It's only possible for the fdObj to be deleted from now on to the end of this function. That's because in the
     // HTTP file download code, the fdObj won't be deleted until after all bytes have been received and sent to the
@@ -458,20 +447,16 @@ void Cluster::handleFileChunk(Message &message) {
 
     if (fileDownloadMap.find(uuid) != fileDownloadMap.end()) {
         if (!fdObj->clientPaused) {
-            std::cout << "dbg: 6" << std::endl;
             // Check if our buffer is too big
             if (fdObj->receivedBytes - fdObj->sentBytes > MAX_FILE_BUFFER_SIZE) {
-                std::cout << "dbg: 7" << std::endl;
                 // Ask the client to pause the file transfer
                 fdObj->clientPaused = true;
-                std::cout << "dbg: 8" << std::endl;
+
                 auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
                 msg.push_string(uuid);
                 msg.send(this);
             }
         }
-
-        std::cout << "dbg: 9" << std::endl;
 
         // Trigger the file transfer event
         fdObj->dataReady = true;
@@ -480,8 +465,6 @@ void Cluster::handleFileChunk(Message &message) {
 
     // Release the lock now
     fileDownloadMapDeletionLock.unlock();
-
-    std::cout << "dbg: exit" << std::endl;
 }
 
 void Cluster::handleFileList(Message &message) {
