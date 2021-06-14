@@ -91,14 +91,14 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             auto sCluster = std::string(job->cluster);
             auto sBundle = std::string(job->bundle);
 
-//            // Create a multi insert query
-//            auto insert_query = insert_into(fileDownloadTable).columns(
-//                    fileDownloadTable.user,
-//                    fileDownloadTable.jobId,
-//                    fileDownloadTable.uuid,
-//                    fileDownloadTable.path,
-//                    fileDownloadTable.timestamp
-//                );
+            // Create a multi insert query
+            auto insert_query = insert_into(fileDownloadTable).columns(
+                    fileDownloadTable.user,
+                    fileDownloadTable.jobId,
+                    fileDownloadTable.uuid,
+                    fileDownloadTable.path,
+                    fileDownloadTable.timestamp
+                );
 
             // Now iterate over the file paths and generate UUID's for them
             std::vector<std::string> uuids;
@@ -109,61 +109,37 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 // Save the path
                 uuids.push_back(uuid);
 
-                // Todo: Change back to multi-row insert once https://github.com/rbock/sqlpp11/issues/367 is resolved
-                try {
-                    db->run(
-                            insert_into(fileDownloadTable)
-                                    .set(
-                                            fileDownloadTable.user = (uint32_t) authResult->payload()["userId"],
-                                            fileDownloadTable.jobId = (uint32_t) jobId,
-                                            fileDownloadTable.uuid = uuid,
-                                            fileDownloadTable.path = std::string(path),
-                                            fileDownloadTable.timestamp = std::chrono::system_clock::now()
-                                    )
-                    );
-                } catch (sqlpp::exception &) {
-                    // Uh oh, an error occurred
-                    // Abort the transaction
-                    db->rollback_transaction(false);
-
-                    // Report bad request
-                    response->write(
-                            SimpleWeb::StatusCode::client_error_bad_request,
-                            "Unable to insert records in the database, please try again later"
-                    );
-                    return;
-                }
-
-//                // Add the record to be inserted
-//                insert_query.values.add(
-//                        fileDownloadTable.user = (uint32_t) authResult->payload()["userId"],
-//                        fileDownloadTable.jobId = (uint32_t) jobId,
-//                        fileDownloadTable.uuid = uuid,
-//                        fileDownloadTable.path = std::string(path),
-//                        fileDownloadTable.timestamp = std::chrono::system_clock::now()
-//                );
+                // Add the record to be inserted
+                insert_query.values.add(
+                        fileDownloadTable.user = (int) authResult->payload()["userId"],
+                        fileDownloadTable.jobId = (int) jobId,
+                        fileDownloadTable.uuid = uuid,
+                        fileDownloadTable.path = std::string(path),
+                        fileDownloadTable.timestamp =
+                                std::chrono::time_point_cast<std::chrono::microseconds>(
+                                        std::chrono::system_clock::now()
+                                        )
+                );
             }
 
-            db->commit_transaction();
+            // Try inserting the values in the database
+            try {
+                db->run(insert_query);
 
-//            // Try inserting the values in the database
-//            try {
-//                db->run(insert_query);
-//
-//                // Commit the changes in the database
-//                db->commit_transaction();
-//            } catch (sqlpp::exception &) {
-//                // Uh oh, an error occurred
-//                // Abort the transaction
-//                db->rollback_transaction(false);
-//
-//                // Report bad request
-//                response->write(
-//                        SimpleWeb::StatusCode::client_error_bad_request,
-//                        "Unable to insert records in the database, please try again later"
-//                        );
-//                return;
-//            }
+                // Commit the changes in the database
+                db->commit_transaction();
+            } catch (sqlpp::exception &) {
+                // Uh oh, an error occurred
+                // Abort the transaction
+                db->rollback_transaction(false);
+
+                // Report bad request
+                response->write(
+                        SimpleWeb::StatusCode::client_error_bad_request,
+                        "Unable to insert records in the database, please try again later"
+                        );
+                return;
+            }
 
             // Report success
             nlohmann::json result;
