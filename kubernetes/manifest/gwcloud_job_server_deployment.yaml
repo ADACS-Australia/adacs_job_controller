@@ -35,7 +35,13 @@ spec:
               containerPort: 8000
             - name: websocket
               containerPort: 8001
-          resources: {}
+          resources: 
+            requests:
+              memory: "2048M"
+              cpu: "2000m"
+            limits:
+              memory: "12288M"
+              cpu: "4000m"
           tty: true
       imagePullSecrets:
       - name: regcred
