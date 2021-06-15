@@ -23,13 +23,13 @@
 std::default_random_engine rng;
 bool bSeeded = false;
 
-uint32_t randomInt(uint32_t start, uint32_t end) {
+uint64_t randomInt(uint64_t start, uint64_t end) {
     if (!bSeeded) {
         bSeeded = true;
         rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
     }
 
-    std::uniform_int_distribution<uint32_t> rng_dist(start, end);
+    std::uniform_int_distribution<uint64_t> rng_dist(start, end);
     return rng_dist(rng);
 }
 

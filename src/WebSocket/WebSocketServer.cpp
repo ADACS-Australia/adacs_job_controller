@@ -13,7 +13,7 @@ WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
 
     server.config.port = 8001;
     server.config.address = "0.0.0.0";
-//    server.config.thread_pool_size = 8;
+    server.config.thread_pool_size = 32;
 
     auto &wsEp = server.endpoint["^/job/ws/$"];
 

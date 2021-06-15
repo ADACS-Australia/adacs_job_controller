@@ -98,7 +98,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                     fileDownloadTable.uuid,
                     fileDownloadTable.path,
                     fileDownloadTable.timestamp
-                );
+            );
 
             // Now iterate over the file paths and generate UUID's for them
             std::vector<std::string> uuids;
@@ -118,7 +118,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                         fileDownloadTable.timestamp =
                                 std::chrono::time_point_cast<std::chrono::microseconds>(
                                         std::chrono::system_clock::now()
-                                        )
+                                )
                 );
             }
 
@@ -137,7 +137,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 response->write(
                         SimpleWeb::StatusCode::client_error_bad_request,
                         "Unable to insert records in the database, please try again later"
-                        );
+                );
                 return;
             }
 
@@ -167,6 +167,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
     server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](
             const shared_ptr<HttpServerImpl::Response> &response,
             const shared_ptr<HttpServerImpl::Request> &request) {
+
+        // Make sure the connection is closed when finished
+        response->close_connection_after_response = true;
 
         // Create a database connection
         auto db = MySqlConnector();
@@ -349,6 +352,17 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             // Write the headers
             response->write(headers);
+            promise<SimpleWeb::error_code> headerPromise;
+            response->send([&headerPromise](const SimpleWeb::error_code &ec) {
+                headerPromise.set_value(ec);
+            });
+
+            if (auto ec = headerPromise.get_future().get()) {
+                throw std::runtime_error(
+                        "Error transmitting file transfer headers to client. Perhaps client has disconnected? "
+                        + std::to_string(ec.value()) + " " + ec.message()
+                );
+            }
 
             // Check for error, or all data sent
             while (!fdObj->error && fdObj->sentBytes < fdObj->fileSize) {
@@ -373,6 +387,17 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
                         // Send the data
                         response->write((const char *) (*data)->data(), (*data)->size());
+
+                        promise<SimpleWeb::error_code> contentPromise;
+                        response->send([&contentPromise](const SimpleWeb::error_code &ec) {
+                            contentPromise.set_value(ec);
+                        });
+
+                        if (auto ec = contentPromise.get_future().get()) {
+                            throw std::runtime_error(
+                                    "Error transmitting file content to client. Perhaps client has disconnected? "
+                                    + std::to_string(ec.value()) + " " + ec.message());
+                        }
 
                         // Clean up the data
                         delete (*data);

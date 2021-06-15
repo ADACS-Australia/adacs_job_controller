@@ -16,6 +16,7 @@ using namespace std;
 HttpServer::HttpServer(ClusterManager *clusterManager) {
     server.config.port = 8000;
     server.config.address = "0.0.0.0";
+    server.config.thread_pool_size = 32;
 
     // Ready the JWT token config from the environment
     auto jTokenConfig = nlohmann::json::parse(

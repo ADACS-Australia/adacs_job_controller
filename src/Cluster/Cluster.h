@@ -163,6 +163,7 @@ private:
     EXPOSE_FUNCTION_FOR_TESTING(run);
     EXPOSE_FUNCTION_FOR_TESTING(resendMessages);
 
+    EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(handleMessage, Message&);
     EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(doesHigherPriorityDataExist, uint64_t);
 };
 

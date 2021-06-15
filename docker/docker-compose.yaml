@@ -6,7 +6,7 @@ services:
       dockerfile: ./docker/gwcloud_job_server.Dockerfile
       context: ..
       target: production
-    image: nexus.gwdc.org.au/docker/gwcloud_job_server:0.30
+    image: nexus.gwdc.org.au/docker/gwcloud_job_server:0.31
     container_name: gwcloud_job_server
     environment:
       DATABASE_SCHEMA: jobserver
