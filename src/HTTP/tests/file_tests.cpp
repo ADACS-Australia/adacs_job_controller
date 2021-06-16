@@ -301,6 +301,24 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         BOOST_CHECK_MESSAGE(result["fileIds"].size() == 5,
                             "result[\"fileIds\"].size() == 5 was not the expected value");
 
+        // Test empty file path list doesn't cause an exception
+        params = {
+                {"jobId", jobId1},
+                {"paths", std::vector<std::string>()}
+        };
+
+        r = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+
+        r->content >> result;
+
+        BOOST_CHECK_MESSAGE(result.find("fileIds") != result.end(),
+                            "result.find(\"fileIds\") != result.end() was not the expected value");
+
+        BOOST_CHECK_MESSAGE(result["fileIds"].empty(),
+                            "result[\"fileIds\"].size() == 5 was not the expected value");
+
         // Finished with the server
         svr.stop();
 

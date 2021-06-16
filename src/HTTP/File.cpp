@@ -9,7 +9,6 @@
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
 #include "../Cluster/ClusterManager.h"
-#include "HttpUtils.h"
 #include "HttpServer.h"
 
 using namespace std;
@@ -22,7 +21,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
     // Patch    -> List files in directory
 
     // Create a new file download
-    server->getServer().resource["^" + path + "$"]["POST"] = [clusterManager, server](
+    server->getServer().resource["^" + path + "$"]["POST"] = [server](
             const shared_ptr<HttpServerImpl::Response> &response,
             const shared_ptr<HttpServerImpl::Request> &request) {
 
@@ -67,6 +66,20 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 hasPaths = true;
             } else {
                 filePaths.push_back(std::string(post_data["path"]));
+            }
+
+            // Check that there were actually file paths provided
+            if (filePaths.empty())
+            {
+                // Return an empty result, this is only possible when using "paths"
+                nlohmann::json result;
+                result["fileIds"] = std::vector<std::string>();
+
+                SimpleWeb::CaseInsensitiveMultimap headers;
+                headers.emplace("Content-Type", "application/json");
+
+                response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+                return;
             }
 
             // Look up the job
@@ -164,7 +177,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
     };
 
     // Download file
-    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](
+    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager](
             const shared_ptr<HttpServerImpl::Response> &response,
             const shared_ptr<HttpServerImpl::Request> &request) {
 
@@ -179,7 +192,6 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
         JobserverFiledownload fileDownloadTable;
 
         // Create a new file download object
-        // TODO: Change fdObj to use a std::*_ptr
         auto fdObj = new sFileDownload{};
         std::string uuid;
 
@@ -196,10 +208,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
 
                 // Clean up the file download object
-                if (fdObj) {
-                    delete fdObj;
-                    fdObj = nullptr;
-                }
+                delete fdObj;
+                fdObj = nullptr;
 
                 return;
             }
@@ -233,10 +243,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
 
                 // Clean up the file download object
-                if (fdObj) {
-                    delete fdObj;
-                    fdObj = nullptr;
-                }
+                delete fdObj;
+                fdObj = nullptr;
 
                 return;
             }
@@ -272,10 +280,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
 
                 // Clean up the file download object
-                if (fdObj) {
-                    delete fdObj;
-                    fdObj = nullptr;
-                }
+                delete fdObj;
+                fdObj = nullptr;
 
                 return;
             }
@@ -307,10 +313,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                     fileDownloadMap.erase(uuid);
 
                 // Clean up the file download object
-                if (fdObj) {
-                    delete fdObj;
-                    fdObj = nullptr;
-                }
+                delete fdObj;
+                fdObj = nullptr;
 
                 return;
             }
@@ -322,10 +326,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                     fileDownloadMap.erase(uuid);
 
                 // Clean up the file download object
-                if (fdObj) {
-                    delete fdObj;
-                    fdObj = nullptr;
-                }
+                delete fdObj;
+                fdObj = nullptr;
 
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
@@ -386,7 +388,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                         fdObj->sentBytes += (*data)->size();
 
                         // Send the data
-                        response->write((const char *) (*data)->data(), (*data)->size());
+                        response->write((const char *) (*data)->data(), (std::streamsize) (*data)->size());
 
                         promise<SimpleWeb::error_code> contentPromise;
                         response->send([&contentPromise](const SimpleWeb::error_code &ec) {
@@ -433,10 +435,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             fileDownloadMapDeletionLock.unlock();
 
             // Clean up the file download object
-            if (fdObj) {
-                delete fdObj;
-                fdObj = nullptr;
-            }
+            delete fdObj;
+            fdObj = nullptr;
 
         } catch (...) {
             // Same as above
@@ -450,10 +450,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             fileDownloadMapDeletionLock.unlock();
 
             // Clean up the file download object
-            if (fdObj) {
-                delete fdObj;
-                fdObj = nullptr;
-            }
+            delete fdObj;
+            fdObj = nullptr;
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
@@ -487,7 +485,6 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
         JobserverJob jobTable;
 
         // Create a new file download object
-        // TODO: Currently not cleaned up - need to rework this, maybe using std::*_ptr objects
         auto flObj = new sFileList{};
 
         try {
@@ -536,6 +533,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             // If the cluster isn't online then there isn't anything to do
             if (!cluster->isOnline()) {
+                delete flObj;
+                flObj = nullptr;
+
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
             }
@@ -565,6 +565,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             // Check if the server received an error about the file list
             if (flObj->error) {
+                delete flObj;
+                flObj = nullptr;
+
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj->errorDetails);
                 return;
             }
@@ -572,7 +575,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             // Iterate over the files and generate the result
             nlohmann::json result;
             result["files"] = nlohmann::json::array();
-            for (auto f : flObj->files) {
+            for (const auto& f : flObj->files) {
                 nlohmann::json jFile;
                 jFile["path"] = f.fileName;
                 jFile["isDir"] = f.isDirectory;
@@ -582,12 +585,18 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 result["files"].push_back(jFile);
             }
 
+            delete flObj;
+            flObj = nullptr;
+
             // Return the result
             SimpleWeb::CaseInsensitiveMultimap headers;
             headers.emplace("Content-Type", "application/json");
 
             response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
         } catch (...) {
+            delete flObj;
+            flObj = nullptr;
+
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }

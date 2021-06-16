@@ -37,6 +37,12 @@ struct sFileDownload {
     uint64_t receivedBytes = 0;
     uint64_t sentBytes = 0;
     bool clientPaused = false;
+
+    ~sFileDownload() {
+        // Clean up any packets still buffered in the queue
+        while (!queue.empty())
+            delete *queue.try_dequeue();
+    }
 };
 
 struct sFile {
