@@ -75,9 +75,8 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
     unw_proc_info_t pip;
     int vUnwindStatus, vDemangleStatus, i, n = 0;
     char vProcedureName[LIBUNWIND_MAX_PROCNAME_LENGTH];
-    char *vDemangledProcedureName;
-    const char *vDynObjectFileName;
-    const char *vSourceFileName;
+    char *vDemangledProcedureName = nullptr;
+    const char *vSourceFileName = nullptr;
     int vSourceFileLineNumber;
 
     // This is from libDL used for identification of the object file names:
@@ -85,39 +84,49 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
 
     // This is from DWARF for accessing the debugger information:
     Dwarf_Addr addr;
-    char *debuginfo_path = NULL;
+    char *debuginfo_path = nullptr;
     Dwfl_Callbacks callbacks = {};
-    Dwfl_Line *vDWARFObjLine;
-
+    Dwfl_Line *vDWARFObjLine = nullptr;
 
     // initialize the DWARF handling:
     callbacks.find_elf = dwfl_linux_proc_find_elf;
     callbacks.find_debuginfo = dwfl_standard_find_debuginfo;
     callbacks.debuginfo_path = &debuginfo_path;
     Dwfl *dwfl = dwfl_begin(&callbacks);
-    if (dwfl == NULL) {
+    if (dwfl == nullptr) {
         fprintf(stderr, "libunwind_print_backtrace(): Error initializing DWARF.\n");
     }
-    if ((dwfl != NULL) && (dwfl_linux_proc_report(dwfl, getpid()) != 0)) {
+    if (dwfl != nullptr && dwfl_linux_proc_report(dwfl, getpid()) != 0) {
         fprintf(stderr, "libunwind_print_backtrace(): Error initializing DWARF.\n");
-        dwfl = NULL;
+        dwfl = nullptr;
     }
-    if ((dwfl != NULL) && (dwfl_report_end(dwfl, NULL, NULL) != 0)) {
+    if (dwfl != nullptr && dwfl_report_end(dwfl, nullptr, nullptr) != 0) {
         fprintf(stderr, "libunwind_print_backtrace(): Error initializing DWARF.\n");
-        dwfl = NULL;
+        dwfl = nullptr;
     }
-
 
     // Begin stack unwinding with libunwnd:
     vUnwindStatus = unw_getcontext(&vUnwindContext);
     if (vUnwindStatus) {
         fprintf(stderr, "libunwind_print_backtrace(): Error in unw_getcontext: %d\n", vUnwindStatus);
+
+        if (dwfl) {
+            dwfl_end(dwfl);
+            dwfl = nullptr;
+        }
+
         return;
     }
 
     vUnwindStatus = unw_init_local(&vUnwindCursor, &vUnwindContext);
     if (vUnwindStatus) {
         fprintf(stderr, "libunwind_print_backtrace(): Error in unw_init_local: %d\n", vUnwindStatus);
+
+        if (dwfl) {
+            dwfl_end(dwfl);
+            dwfl = nullptr;
+        }
+
         return;
     }
 
@@ -127,9 +136,8 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
         vUnwindStatus = unw_step(&vUnwindCursor);
     }
 
-
     while (vUnwindStatus > 0) {
-        pip.unwind_info = NULL;
+        pip.unwind_info = nullptr;
         vUnwindStatus = unw_get_proc_info(&vUnwindCursor, &pip);
         if (vUnwindStatus) {
             fprintf(stderr, "libunwind_print_backtrace(): Error in unw_get_proc_info: %d\n", vUnwindStatus);
@@ -147,8 +155,8 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
         vUnwindStatus = unw_get_proc_name(&vUnwindCursor, vProcedureName, LIBUNWIND_MAX_PROCNAME_LENGTH, &off);
         if (vUnwindStatus == 0) {
             // Demangle the name of the procedure using the GNU C++ ABI:
-            vDemangledProcedureName = abi::__cxa_demangle(vProcedureName, NULL, NULL, &vDemangleStatus);
-            if (vDemangledProcedureName != NULL) {
+            vDemangledProcedureName = abi::__cxa_demangle(vProcedureName, nullptr, nullptr, &vDemangleStatus);
+            if (vDemangledProcedureName != nullptr) {
                 strncpy(vProcedureName, vDemangledProcedureName, LIBUNWIND_MAX_PROCNAME_LENGTH);
                 // Free the memory from __cxa_demangle():
                 free(vDemangledProcedureName);
@@ -169,34 +177,18 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
             vProcedureName[3] = 0;
         }
 
-
-        // Resolve the object file name using dladdr:
-        if (dladdr((void *) (pip.start_ip + off), &dlinfo) && dlinfo.dli_fname && *dlinfo.dli_fname) {
-            vDynObjectFileName = dlinfo.dli_fname;
-        } else {
-            vDynObjectFileName = "???";
-        }
-
-
         // Resolve the source file name using DWARF:
-        if (dwfl != NULL) {
+        if (dwfl != nullptr) {
             addr = (uintptr_t) (ip - 4);
-            Dwfl_Module *module = dwfl_addrmodule(dwfl, addr);
-            // Here we could also ask for the procedure name:
-            //const char* vProcedureName = dwfl_module_addrname(module, addr);
-            // Here we could also ask for the object file name:
-            //vDynObjectFileName = dwfl_module_info(module, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
             vDWARFObjLine = dwfl_getsrc(dwfl, addr);
-            if (vDWARFObjLine != NULL) {
-                vSourceFileName = dwfl_lineinfo(vDWARFObjLine, &addr, &vSourceFileLineNumber, NULL, NULL, NULL);
-                //fprintf(stderr, " %s:%d", strrchr(vSourceFileName, '/')+1, vSourceFileLineNumber);
+            if (vDWARFObjLine != nullptr) {
+                vSourceFileName = dwfl_lineinfo(vDWARFObjLine, &addr, &vSourceFileLineNumber, nullptr, nullptr, nullptr);
             }
         }
-        if (dwfl == NULL || vDWARFObjLine == NULL || vSourceFileName == NULL) {
+        if (dwfl == nullptr || vDWARFObjLine == nullptr || vSourceFileName == nullptr) {
             vSourceFileName = "???";
             vSourceFileLineNumber = 0;
         }
-
 
         // Print the stack frame number:
         fprintf(stderr, "#%2d:", ++n);
@@ -207,19 +199,11 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
         // Print the source file name:
         fprintf(stderr, " %s:%d", vSourceFileName, vSourceFileLineNumber);
 
-        // Print the dynamic object file name (that is the library name).
-        // This is typically not interesting if we have the source file name.
-        //fprintf(stderr, " %s", vDynObjectFileName);
-
         // Print the procedure name:
         fprintf(stderr, " %s", vProcedureName);
 
-        // Print the procedure offset:
-        //fprintf(stderr, " + 0x%" PRIxPTR, static_cast<uintptr_t>(off));
-
         // Print a newline to terminate the output:
         fprintf(stderr, "\n");
-
 
         // Stop the stack trace at the main method (there are some
         // uninteresting higher level functions on the stack):
@@ -231,6 +215,11 @@ void libunwind_print_backtrace(const int aFramesToIgnore) {
         if (vUnwindStatus < 0) {
             fprintf(stderr, "libunwind_print_backtrace(): Error in unw_step: %d\n", vUnwindStatus);
         }
+    }
+
+    if (dwfl) {
+        dwfl_end(dwfl);
+        dwfl = nullptr;
     }
 }
 

@@ -135,7 +135,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         auto fileData = new std::vector<uint8_t>();
         bool* bPaused = new bool;
         *bPaused = false;
-        websocketClient.on_message = [fileData, bPaused](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
+        std::thread* pThread;
+        websocketClient.on_message = [&pThread, fileData, bPaused](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
@@ -174,7 +175,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             connection->send(o, nullptr, 130);
 
             // Now send the file content in to chunks and send it to the client
-            new std::thread([bPaused, connection, fileSize, uuid, fileData]() {
+            pThread = new std::thread([bPaused, connection, fileSize, uuid, fileData]() {
                 auto CHUNK_SIZE = 1024*64;
 
                 uint64_t bytesSent = 0;
@@ -260,7 +261,12 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             BOOST_CHECK_EQUAL_COLLECTIONS(returnData.begin(), returnData.end(), fileData->begin(), fileData->end());
 
             fileData->clear();
+
+            pThread->join();
+            delete pThread;
+            pThread = nullptr;
         }
+
         // Finished with the servers and clients
         running = false;
         *mgr.getvClusters()->at(0)->getdataReady() = true;
@@ -270,6 +276,9 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         clientThread.join();
         httpSvr.stop();
         wsSrv.stop();
+
+        delete bPaused;
+        delete fileData;
 
         // Clean up
         db->run(remove_from(fileDownloadTable).unconditionally());
@@ -319,7 +328,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         bool* bPaused = new bool;
         *bPaused = false;
         uint64_t fileSize;
-        websocketClient.on_message = [bPaused, &mgr, &fileSize](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
+        std::thread* pThread;
+        websocketClient.on_message = [&pThread, bPaused, &mgr, &fileSize](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
@@ -358,7 +368,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             connection->send(o, nullptr, 130);
 
             // Now send the file content in to chunks and send it to the client
-            new std::thread([bPaused, connection, fileSize, uuid, &mgr]() {
+            pThread = new std::thread([bPaused, connection, fileSize, uuid, &mgr]() {
                 auto CHUNK_SIZE = 1024*64;
 
                 auto data = std::vector<uint8_t>();
@@ -423,20 +433,20 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         };
 
         HttpClient httpClient("localhost:8000");
-        httpClient.config.max_response_streambuf_size = 1024*1024;
         auto r = httpClient.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         nlohmann::json result;
         r->content >> result;
 
         // Try to download the file
-        uint64_t totalBytesRecieved = 0;
+        uint64_t totalBytesReceived = 0;
         bool end = false;
+        httpClient.config.max_response_streambuf_size = 1024*1024;
         httpClient.request(
             "GET",
             "/job/apiv1/file/?fileId=" + std::string(result["fileId"]),
-            [&totalBytesRecieved, &end](const std::shared_ptr<HttpClient::Response>& response, const SimpleWeb::error_code &ec) {
-                totalBytesRecieved += response->content.size();
+            [&totalBytesReceived, &end](const std::shared_ptr<HttpClient::Response>& response, const SimpleWeb::error_code &ec) {
+                totalBytesReceived += response->content.size();
                 end = response->content.end;
             }
         );
@@ -452,7 +462,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         }
 
         // Check that the total bytes received matches the total bytes sent
-        BOOST_CHECK_EQUAL(fileSize, totalBytesRecieved);
+        BOOST_CHECK_EQUAL(fileSize, totalBytesReceived);
 
         // Finished with the servers and clients
         running = false;
@@ -463,6 +473,11 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         clientThread.join();
         httpSvr.stop();
         wsSrv.stop();
+
+        pThread->join();
+        delete pThread;
+
+        delete bPaused;
 
         // Clean up
         db->run(remove_from(fileDownloadTable).unconditionally());

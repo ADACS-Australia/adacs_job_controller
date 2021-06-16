@@ -7,7 +7,6 @@
 #include "../Lib/jobserver_schema.h"
 #include "../Lib/JobStatus.h"
 
-#include <utility>
 #include <iostream>
 #include <client_https.hpp>
 #include <client_http.hpp>
@@ -33,6 +32,9 @@ folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
 
 // Define a mutex that can be used for safely removing entries from the fileDownloadMap
 std::mutex fileDownloadMapDeletionLockMutex;
+
+// Define a mutex that can be used for synchronising pause/resume messages
+std::mutex fileDownloadPauseResumeLockMutex;
 
 // Define a simple HTTP/S client for fetching bundles
 using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
@@ -64,6 +66,22 @@ Cluster::Cluster(sClusterDetails *details, ClusterManager *pClusterManager) {
         this->resendMessages();
     });
 #endif
+}
+
+Cluster::~Cluster() {
+    delete pClusterDetails;
+
+    for (auto &p : queue) {
+        auto pMap = &p;
+        for (auto s = pMap->begin(); s != pMap->end();) {
+            while (!(*s).second->empty())
+                delete *(*s).second->try_dequeue();
+
+            delete (*s).second;
+
+            s = pMap->erase(s);
+        }
+    }
 }
 
 void Cluster::handleMessage(Message &message) {
@@ -111,7 +129,13 @@ void Cluster::queueMessage(std::string source, std::vector<uint8_t> *data, Messa
         std::shared_lock<std::shared_mutex> lock(mutex_);
 
         // Make sure that this source exists in the map
-        pMap->try_emplace(source, new folly::UMPSCQueue<std::vector<uint8_t> *, false, 8>());
+        auto sQueue = new folly::UMPSCQueue<std::vector<uint8_t> *, false, 8>();
+        // try_emplace().second is a bool representing if the value was emplaced or not
+        if (!pMap->try_emplace(source, sQueue).second) {
+            // sQueue was not emplaced - so it already existed in the map, we can delete the new one
+            // TODO: new then delete might be quite inefficient - perhaps we can refactor this later
+            delete sQueue;
+        }
 
         // Write the data in the queue
         (*pMap)[source]->enqueue(pData);
@@ -446,15 +470,20 @@ void Cluster::handleFileChunk(Message &message) {
     // be released before it tries to clean up.
 
     if (fileDownloadMap.find(uuid) != fileDownloadMap.end()) {
-        if (!fdObj->clientPaused) {
-            // Check if our buffer is too big
-            if (fdObj->receivedBytes - fdObj->sentBytes > MAX_FILE_BUFFER_SIZE) {
-                // Ask the client to pause the file transfer
-                fdObj->clientPaused = true;
+        {
+            // The Pause/Resume messages must be synchronized to avoid a deadlock
+            std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
 
-                auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
-                msg.push_string(uuid);
-                msg.send(this);
+            if (!fdObj->clientPaused) {
+                // Check if our buffer is too big
+                if (fdObj->receivedBytes - fdObj->sentBytes > MAX_FILE_BUFFER_SIZE) {
+                    // Ask the client to pause the file transfer
+                    fdObj->clientPaused = true;
+
+                    auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
+                    msg.push_string(uuid);
+                    msg.send(this);
+                }
             }
         }
 

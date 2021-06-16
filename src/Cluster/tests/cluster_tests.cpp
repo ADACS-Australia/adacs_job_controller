@@ -12,7 +12,6 @@
 #include <boost/uuid/random_generator.hpp>
 #include <fstream>
 #include "../Cluster.h"
-#include "../../Settings.h"
 #include "../ClusterManager.h"
 #include "../../Lib/jobserver_schema.h"
 #include "../../DB/MySqlConnector.h"
@@ -111,9 +110,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                           (uint32_t) Message::Priority::Lowest - (uint32_t) Message::Priority::Highest + 1);
 
         // Cleanup
-        delete cluster;
         delete manager;
-        delete details;
+        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_getName) {
@@ -133,9 +131,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(cluster->getName(), details->getName());
 
         // Cleanup
-        delete cluster;
         delete manager;
-        delete details;
+        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_getClusterDetails) {
@@ -155,9 +152,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(cluster->getClusterDetails(), details);
 
         // Cleanup
-        delete cluster;
         delete manager;
-        delete details;
+        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_setConnection) {
@@ -179,9 +175,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(*cluster->getpConnection(), con);
 
         // Cleanup
-        delete cluster;
         delete manager;
-        delete details;
+        delete cluster;
         delete con;
     }
 
@@ -207,13 +202,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(cluster->isOnline(), true);
 
         // Cleanup
-        delete cluster;
         delete manager;
-        delete details;
+        delete cluster;
         delete con;
     }
 
     BOOST_AUTO_TEST_CASE(test_queueMessage) {
+        std::vector<std::vector<uint8_t>*> deletables;
+
         // Parse the cluster configuration
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
@@ -231,12 +227,15 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                           (*cluster->getqueue())[Message::Priority::Highest].end(), true);
 
         auto s1_d1 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s1_d1);
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
 
         auto s2_d1 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s2_d1);
         cluster->queueMessage("s2", s2_d1, Message::Priority::Lowest);
 
         auto s3_d1 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s3_d1);
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         // s1 should only exist in the highest priority queue
@@ -285,11 +284,13 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                                       s3_d1->begin(), s3_d1->end());
 
         auto s1_d2 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s1_d2);
         cluster->queueMessage("s1", s1_d2, Message::Priority::Highest);
         // s1 should 2 items
         BOOST_CHECK_EQUAL(find_s1->second->size(), 2);
 
         auto s1_d3 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s1_d3);
         cluster->queueMessage("s1", s1_d3, Message::Priority::Highest);
 
         // s1 should have 3 items
@@ -311,22 +312,26 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         delete d;
 
         auto s2_d2 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s2_d2);
         cluster->queueMessage("s2", s2_d2, Message::Priority::Lowest);
         // s2 should 2 items
         BOOST_CHECK_EQUAL(find_s2->second->size(), 2);
 
         auto s2_d3 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s2_d3);
         cluster->queueMessage("s2", s2_d3, Message::Priority::Lowest);
 
         // s2 should have 3 items
         BOOST_CHECK_EQUAL(find_s2->second->size(), 3);
 
         auto s3_d2 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s3_d2);
         cluster->queueMessage("s3", s3_d2, Message::Priority::Lowest);
         // s3 should 2 items
         BOOST_CHECK_EQUAL(find_s3->second->size(), 2);
 
         auto s3_d3 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s3_d3);
         cluster->queueMessage("s3", s3_d3, Message::Priority::Lowest);
 
         // s3 should have 3 items
@@ -361,9 +366,19 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(find_s1->second->size(), 0);
         BOOST_CHECK_EQUAL(find_s2->second->size(), 0);
         BOOST_CHECK_EQUAL(find_s3->second->size(), 0);
+
+        // Cleanup leftovers
+        for (auto del : deletables) {
+            delete del;
+        }
+
+        delete manager;
+        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_pruneSources) {
+        std::vector<std::vector<uint8_t>*> deletables;
+
         // Parse the cluster configuration
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
@@ -378,12 +393,15 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s1_d1);
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
 
         auto s2_d1 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s2_d1);
         cluster->queueMessage("s2", s2_d1, Message::Priority::Lowest);
 
         auto s3_d1 = generateRandomData(randomInt(0, 255));
+        deletables.push_back(s3_d1);
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         // Pruning the sources should not perform any action since all sources have one item in the queue
@@ -397,7 +415,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                           (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
 
         // Dequeue an item from s2, which will leave s2 with 0 items
-        (*cluster->getqueue())[Message::Priority::Lowest].find("s2")->second->dequeue();
+        delete (*cluster->getqueue())[Message::Priority::Lowest].find("s2")->second->dequeue();
 
         // Now pruning the sources should remove s2, but not s1 or s3
         cluster->callpruneSources();
@@ -410,8 +428,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                           (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
 
         // Dequeue the remaining items from s1 and s3
-        (*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->dequeue();
-        (*cluster->getqueue())[Message::Priority::Lowest].find("s3")->second->dequeue();
+        delete (*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->dequeue();
+        delete (*cluster->getqueue())[Message::Priority::Lowest].find("s3")->second->dequeue();
 
         // Now pruning the sources should remove both s1 and s3
         cluster->callpruneSources();
@@ -426,6 +444,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].size(), 0);
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].size(), 0);
+
+        // Cleanup leftovers
+        for (auto del : deletables) {
+            delete del;
+        }
+
+        delete manager;
+        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_run) {
@@ -476,7 +502,9 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         });
 
         // Wait for the client to connect
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        while (!*cluster->getpConnection()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
 
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
@@ -525,7 +553,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         cluster->callrun();
 
         // Give the websocket threads time to complete
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
         // Check that the data sent was in priority/source order
         // The following order is deterministic - but sensitive.
@@ -566,6 +594,16 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         server.stop();
         server_thread.join();
+
+        // Cleanup
+        for (auto del : std::vector<std::vector<uint8_t>*>{
+            s1_d1, s1_d2, s2_d1, s3_d1, s3_d2, s3_d3, s3_d4, s4_d1, s4_d2, s5_d1, s5_d2, s6_d1, s6_d2, s6_d3
+        }) {
+            delete del;
+        }
+
+        delete manager;
+        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_doesHigherPriorityDataExist) {
@@ -613,22 +651,32 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), true);
 
         // Clear all data from s2, s1 and s0
-        (*cluster->getqueue())[Message::Priority::Highest].find("s2")->second->try_dequeue();
-        (*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->try_dequeue();
-        (*cluster->getqueue())[Message::Priority::Highest].find("s0")->second->try_dequeue();
+        delete *(*cluster->getqueue())[Message::Priority::Highest].find("s2")->second->try_dequeue();
+        delete *(*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->try_dequeue();
+        delete *(*cluster->getqueue())[Message::Priority::Highest].find("s0")->second->try_dequeue();
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Medium), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), true);
 
         // Clear data from s3 and s4
-        (*cluster->getqueue())[Message::Priority::Medium].find("s3")->second->try_dequeue();
-        (*cluster->getqueue())[Message::Priority::Lowest].find("s4")->second->try_dequeue();
+        delete *(*cluster->getqueue())[Message::Priority::Medium].find("s3")->second->try_dequeue();
+        delete *(*cluster->getqueue())[Message::Priority::Lowest].find("s4")->second->try_dequeue();
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Medium), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), false);
 
         // Testing a non-standard priority that has a value greater than Lowest should now result in false
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest + 1), false);
+
+        // Cleanup
+        delete s0_d1;
+        delete s1_d1;
+        delete s2_d1;
+        delete s3_d1;
+        delete s4_d1;
+
+        delete manager;
+        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_updateJob) {
@@ -727,6 +775,10 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Finally clean up all entries from the job history table
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
+
+        // Cleanup
+        delete manager;
+        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_checkUnsubmittedJobs) {
@@ -818,7 +870,10 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto source = std::to_string(jobId) + "_test";
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
-        auto msg = Message(**(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue());
+        auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        auto msg = Message(*ptr);
+        delete ptr;
+
         BOOST_CHECK_EQUAL(msg.getId(), SUBMIT_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
         BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
@@ -834,7 +889,10 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
-        msg = Message(**(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue());
+        ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        msg = Message(*ptr);
+        delete ptr;
+
         BOOST_CHECK_EQUAL(msg.getId(), SUBMIT_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
         BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
@@ -856,7 +914,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // There is one job in pending state older than 1 minute
         cluster->callresendMessages();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
-        (*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        delete *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
 
         // Test all other job statuses to make sure nothing is incorrectly returned
         std::vector<JobStatus> noop_statuses = {
@@ -896,6 +954,11 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Finally clean up all entries from the job history table
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
+
+        // Cleanup
+        delete manager;
+        delete cluster;
+        delete con;
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileError) {
@@ -949,6 +1012,11 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
 
         fileDownloadMap.erase(uuid);
+
+        // Cleanup
+        delete manager;
+        delete cluster;
+        delete fdObj;
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileDetails) {
@@ -1002,6 +1070,11 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
 
         fileDownloadMap.erase(uuid);
+
+        // Cleanup
+        delete manager;
+        delete cluster;
+        delete fdObj;
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileChunk) {
@@ -1078,7 +1151,9 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // Check that a pause file chunk stream message was sent
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].size(), 1);
-        msg = Message(**(*cluster->getqueue())[Message::Priority::Highest].find(uuid)->second->try_dequeue());
+        auto ptr = *(*cluster->getqueue())[Message::Priority::Highest].find(uuid)->second->try_dequeue();
+        msg = Message(*ptr);
+        delete ptr;
         BOOST_CHECK_EQUAL(msg.getId(), PAUSE_FILE_CHUNK_STREAM);
         BOOST_CHECK_EQUAL(msg.pop_string(), uuid);
 
@@ -1092,6 +1167,11 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         }
 
         fileDownloadMap.erase(uuid);
+
+        // Cleanup
+        delete manager;
+        delete cluster;
+        delete fdObj;
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileList) {
@@ -1174,6 +1254,10 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         fileListMap.erase(uuid);
 
+        // Cleanup
+        delete manager;
+        delete cluster;
+        delete fdObj;
     }
 
 BOOST_AUTO_TEST_SUITE_END()

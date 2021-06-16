@@ -91,10 +91,12 @@ private:
 extern folly::ConcurrentHashMap<std::string, sFileDownload *> fileDownloadMap;
 extern folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
 extern std::mutex fileDownloadMapDeletionLockMutex;
+extern std::mutex fileDownloadPauseResumeLockMutex;
 
 class Cluster {
 public:
     Cluster(sClusterDetails *details, ClusterManager *pClusterManager);
+    ~Cluster();
 
     auto getName() { return pClusterDetails->getName(); }
 

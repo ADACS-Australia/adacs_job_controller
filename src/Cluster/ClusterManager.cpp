@@ -8,7 +8,6 @@
 #include "Cluster.h"
 #include "../Lib/jobserver_schema.h"
 #include "../DB/MySqlConnector.h"
-#include "../Lib/GeneralUtils.h"
 #include <nlohmann/json.hpp>
 #include <boost/process.hpp>
 
@@ -35,6 +34,12 @@ ClusterManager::ClusterManager() {
     }
 }
 
+ClusterManager::~ClusterManager() {
+    for (auto cluster : vClusters) {
+        delete cluster;
+    }
+}
+
 void ClusterManager::start() {
     iClusterThread = std::thread(&ClusterManager::run, this);
 }
@@ -49,6 +54,9 @@ void ClusterManager::start() {
 }
 
 void ClusterManager::reconnectClusters() {
+    // Create a list of threads we spawn
+    std::vector<std::thread *> vThreads;
+
     // Try to reconnect all cluster
     for (auto &cluster : vClusters) {
         // Check if the cluster is online
@@ -62,39 +70,41 @@ void ClusterManager::reconnectClusters() {
             // todo: Delete any existing uuids for this cluster
 
             // Because UUID's very occasionally collide, so try to generate a few UUID's in a row
-            int i = 0;
-            for (; i < 10; i++) {
-                try {
-                    // Generate a UUID for this connection
-                    auto uuid = generateUUID();
+            try {
+                // Generate a UUID for this connection
+                auto uuid = generateUUID();
 
-                    // Insert the UUID in the database
-                    db->run(
-                            insert_into(clusterUuidTable)
-                                    .set(
-                                            clusterUuidTable.cluster = cluster->getName(),
-                                            clusterUuidTable.uuid = uuid,
-                                            clusterUuidTable.timestamp = std::chrono::system_clock::now()
-                                    )
-                    );
+                // Insert the UUID in the database
+                db->run(
+                        insert_into(clusterUuidTable)
+                                .set(
+                                        clusterUuidTable.cluster = cluster->getName(),
+                                        clusterUuidTable.uuid = uuid,
+                                        clusterUuidTable.timestamp = std::chrono::system_clock::now()
+                                )
+                );
 
-                    // The insert was successful
+                // The insert was successful
 
-                    // Try to connect the remote client
-                    // Here we provide parameters by copy rather than reference
-                    new std::thread([cluster, uuid] {
-                        connectCluster(cluster, uuid);
-                    });
-
-                    // Nothing more to do
-                    break;
-                } catch (sqlpp::exception &) {}
+                // Try to connect the remote client
+                // Here we provide parameters by copy rather than reference
+                // TODO: Need to better track the created thread object and dispose of it. Perhaps we need to ensure
+                // TODO: that boost process in connectCluster times out after 30 seconds?
+                vThreads.push_back(
+                        new std::thread([cluster, uuid] {
+                            connectCluster(cluster, uuid);
+                        })
+                );
+            } catch (sqlpp::exception &) {
+                // Should only happen if an *extremely* rare UUID collision happens
             }
-
-            // Check if the insert was successful
-            if (i == 10)
-                throw std::runtime_error("Unable to insert a UUID for connecting cluster " + cluster->getName());
         }
+    }
+
+    // Wait for all connection threads to finish
+    for (auto t : vThreads) {
+        t->join();
+        delete t;
     }
 }
 
@@ -208,4 +218,3 @@ void ClusterManager::connectCluster(Cluster *cluster, const std::string &token) 
     );
 #endif
 }
-

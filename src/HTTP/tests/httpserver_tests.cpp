@@ -38,6 +38,7 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
         // First check that instantiating HttpServer with no access config works as expected
         auto svr = new HttpServer(nullptr);
         BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->size(), 0);
+        delete svr;
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
         svr = new HttpServer(nullptr);
@@ -48,6 +49,8 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
             BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->at(i - 1).name(), "app" + std::to_string(i));
             BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->at(i - 1).secret(), "super_secret" + std::to_string(i));
         }
+
+        delete svr;
     }
 
     BOOST_AUTO_TEST_CASE(test_isAuthorized) {
@@ -61,6 +64,7 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
 
         auto headers = SimpleWeb::CaseInsensitiveMultimap();
         BOOST_CHECK_THROW(svr->isAuthorized(headers), eNotAuthorized);
+        delete svr;
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
         svr = new HttpServer(nullptr);
@@ -74,7 +78,7 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
                 jwt::params::secret("notarealsecret")
         };
 
-        auto now = std::chrono::system_clock::now() + std::chrono::seconds{10};
+        auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwtToken.add_claim("exp", now);
 
         // Try using an invalid secret
@@ -123,5 +127,7 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
         headers = SimpleWeb::CaseInsensitiveMultimap();
         headers.emplace("Authorization", jwtToken.signature());
         BOOST_CHECK_THROW(svr->isAuthorized(headers), eNotAuthorized);
+
+        delete svr;
     }
 BOOST_AUTO_TEST_SUITE_END();

@@ -69,8 +69,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             }
 
             // Check that there were actually file paths provided
-            if (filePaths.empty())
-            {
+            if (filePaths.empty()) {
                 // Return an empty result, this is only possible when using "paths"
                 nlohmann::json result;
                 result["fileIds"] = std::vector<std::string>();
@@ -180,9 +179,6 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
     server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager](
             const shared_ptr<HttpServerImpl::Response> &response,
             const shared_ptr<HttpServerImpl::Request> &request) {
-
-        // Make sure the connection is closed when finished
-        response->close_connection_after_response = true;
 
         // Create a database connection
         auto db = MySqlConnector();
@@ -404,16 +400,22 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                         // Clean up the data
                         delete (*data);
 
-                        // Check if we need to resume the client file transfer
-                        if (fdObj->clientPaused) {
-                            // Check if the buffer is smaller than the setting
-                            if (fdObj->receivedBytes - fdObj->sentBytes < MIN_FILE_BUFFER_SIZE) {
-                                // Ask the client to resume the file transfer
-                                fdObj->clientPaused = false;
+                        {
+                            // The Pause/Resume messages must be synchronized to avoid a deadlock
+                            std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
 
-                                auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
-                                resumeMsg.push_string(uuid);
-                                resumeMsg.send(cluster);
+                            // Check if we need to resume the client file transfer
+                            if (fdObj->clientPaused) {
+                                // Check if the buffer is smaller than the setting
+                                if (fdObj->receivedBytes - fdObj->sentBytes < MIN_FILE_BUFFER_SIZE) {
+                                    // Ask the client to resume the file transfer
+                                    fdObj->clientPaused = false;
+
+                                    auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest,
+                                                             uuid);
+                                    resumeMsg.push_string(uuid);
+                                    resumeMsg.send(cluster);
+                                }
                             }
                         }
                     }
@@ -575,7 +577,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             // Iterate over the files and generate the result
             nlohmann::json result;
             result["files"] = nlohmann::json::array();
-            for (const auto& f : flObj->files) {
+            for (const auto &f : flObj->files) {
                 nlohmann::json jFile;
                 jFile["path"] = f.fileName;
                 jFile["isDir"] = f.isDirectory;

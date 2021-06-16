@@ -189,7 +189,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         auto r = client.request("POST", "/job/apiv1/file/", "", {{"Authorization", "not_valid"}});
         BOOST_CHECK_EQUAL(r->content.string(), "Not authorized");
 
-        auto now = std::chrono::system_clock::now() + std::chrono::seconds{10};
+        auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
@@ -428,7 +428,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         auto r = client.request("PATCH", "/job/apiv1/file/", "", {{"Authorization", "not_valid"}});
         BOOST_CHECK_EQUAL(r->content.string(), "Not authorized");
 
-        auto now = std::chrono::system_clock::now() + std::chrono::seconds{10};
+        auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),

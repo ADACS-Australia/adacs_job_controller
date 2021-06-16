@@ -40,11 +40,11 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
     BOOST_AUTO_TEST_CASE(test_constructor) {
         // First check that instantiating ClusterManager with no cluster config works as expected
         unsetenv(CLUSTER_CONFIG_ENV_VARIABLE);
-        auto mgr = ClusterManager();
-        BOOST_CHECK_EQUAL(mgr.getvClusters()->size(), 0);
+        auto mgr1 = ClusterManager();
+        BOOST_CHECK_EQUAL(mgr1.getvClusters()->size(), 0);
 
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        mgr = ClusterManager();
+        auto mgr = ClusterManager();
 
         // Double check that the cluster json was correctly parsed
         BOOST_CHECK_EQUAL(mgr.getvClusters()->size(), 3);
@@ -86,7 +86,14 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
         }
 
         // Check that getting a cluster by an invalid connection returns null
-        BOOST_CHECK_EQUAL(mgr.getCluster(new WsServer::Connection(nullptr)), nullptr);
+        auto ptr = new WsServer::Connection(nullptr);
+        BOOST_CHECK_EQUAL(mgr.getCluster(ptr), nullptr);
+        delete ptr;
+
+        // Clean up connections
+        for (auto c : connections) {
+            delete c.first;
+        }
     }
 
     BOOST_AUTO_TEST_CASE(test_isClusterOnline) {
@@ -103,6 +110,8 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
 
         // Check that the second cluster is online
         BOOST_CHECK_EQUAL(mgr.isClusterOnline(mgr.getvClusters()->at(1)), true);
+
+        delete con;
     }
 
     BOOST_AUTO_TEST_CASE(test_removeConnection) {
@@ -128,7 +137,11 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
         mgr.removeConnection(con);
 
         // Check removing an invalid connection
-        mgr.removeConnection(new WsServer::Connection(nullptr));
+        {
+            auto ptr = new WsServer::Connection(nullptr);
+            mgr.removeConnection(ptr);
+            delete ptr;
+        }
         mgr.removeConnection(nullptr);
 
         // Check that the connection has been removed correctly
@@ -144,6 +157,11 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
         // Check that remaining clusters are still connected
         BOOST_CHECK_EQUAL(mgr.getCluster(*mgr.getvClusters()->at(0)->getpConnection()), mgr.getvClusters()->at(0));
         BOOST_CHECK_EQUAL(mgr.getCluster(*mgr.getvClusters()->at(2)->getpConnection()), mgr.getvClusters()->at(2));
+
+        for (auto c : connections)
+        {
+            delete c.first;
+        }
     }
 
     BOOST_AUTO_TEST_CASE(test_reconnectClusters) {
@@ -180,6 +198,8 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
             uuidResultsCount++;
         }
         BOOST_CHECK_EQUAL(uuidResultsCount, 2);
+
+        delete con;
     }
 
     BOOST_AUTO_TEST_CASE(test_handleNewConnection) {
@@ -201,7 +221,11 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
                         )
         );
 
-        mgr.handleNewConnection(new WsServer::Connection(nullptr), "not_a_real_uuid");
+        {
+            auto ptr = new WsServer::Connection(nullptr);
+            mgr.handleNewConnection(ptr, "not_a_real_uuid");
+            delete ptr;
+        }
 
         // There should be 0 uuid records in the database
         auto uuidResults = db->run(select(all_of(clusterUuidTable)).from(clusterUuidTable).unconditionally());
@@ -221,7 +245,11 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
                         )
         );
 
-        mgr.handleNewConnection(new WsServer::Connection(nullptr), "not_a_real_uuid");
+        {
+            auto ptr = new WsServer::Connection(nullptr);
+            mgr.handleNewConnection(ptr, "not_a_real_uuid");
+            delete ptr;
+        }
 
         // There should be 1 uuid records in the database
         uuidResults = db->run(select(all_of(clusterUuidTable)).from(clusterUuidTable).unconditionally());
@@ -286,6 +314,8 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
             BOOST_CHECK_EQUAL(mgr.isClusterOnline(cluster), false);
         }
 
+        delete con;
+
         con = new WsServer::Connection(nullptr);
         mgr.handleNewConnection(con, last_uuid);
 
@@ -299,6 +329,8 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
 
         // The second cluster should now be connected
         BOOST_CHECK_EQUAL(mgr.isClusterOnline(mgr.getvClusters()->at(1)), true);
+
+        delete con;
     }
 
 BOOST_AUTO_TEST_SUITE_END()

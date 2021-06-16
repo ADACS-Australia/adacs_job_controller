@@ -13,6 +13,8 @@
 class ClusterManager {
 public:
     ClusterManager();
+    ~ClusterManager();
+
     void start();
     Cluster* handleNewConnection(WsServer::Connection* connection, const std::string& uuid);
     void removeConnection(WsServer::Connection *connection);
