@@ -36,6 +36,9 @@ std::mutex fileDownloadMapDeletionLockMutex;
 // Define a mutex that can be used for synchronising pause/resume messages
 std::mutex fileDownloadPauseResumeLockMutex;
 
+// Define a mutex that can be used for safely removing entries from the fileListMap
+std::mutex fileListMapDeletionLockMutex;
+
 // Define a simple HTTP/S client for fetching bundles
 using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 using HttpsClient = SimpleWeb::Client<SimpleWeb::HTTPS>;
@@ -410,39 +413,8 @@ void Cluster::handleFileError(Message &message) {
     auto uuid = message.pop_string();
     auto detail = message.pop_string();
 
-    // Check that the uuid is valid
-    if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
-        return;
-
-    // Set the error
-    fileDownloadMap[uuid]->errorDetails = detail;
-    fileDownloadMap[uuid]->error = true;
-
-    // Trigger the file transfer event
-    fileDownloadMap[uuid]->dataReady = true;
-    fileDownloadMap[uuid]->dataCV.notify_one();
-}
-
-void Cluster::handleFileDetails(Message &message) {
-    auto uuid = message.pop_string();
-    auto fileSize = message.pop_ulong();
-
-    // Check that the uuid is valid
-    if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
-        return;
-
-    // Set the file size
-    fileDownloadMap[uuid]->fileSize = fileSize;
-    fileDownloadMap[uuid]->receivedData = true;
-
-    // Trigger the file transfer event
-    fileDownloadMap[uuid]->dataReady = true;
-    fileDownloadMap[uuid]->dataCV.notify_one();
-}
-
-void Cluster::handleFileChunk(Message &message) {
-    auto uuid = message.pop_string();
-    auto chunk = message.pop_bytes();
+    // Acquire the lock
+    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
 
     // Check that the uuid is valid
     if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
@@ -450,10 +422,40 @@ void Cluster::handleFileChunk(Message &message) {
 
     auto fdObj = fileDownloadMap[uuid];
 
-    fdObj->receivedBytes += chunk.size();
+    // Set the error
+    fdObj->errorDetails = detail;
+    fdObj->error = true;
 
-    // Copy the chunk and push it on to the queue
-    fdObj->queue.enqueue(new std::vector<uint8_t>(chunk));
+    // Trigger the file transfer event
+    fdObj->dataReady = true;
+    fdObj->dataCV.notify_one();
+}
+
+void Cluster::handleFileDetails(Message &message) {
+    auto uuid = message.pop_string();
+    auto fileSize = message.pop_ulong();
+
+    // Acquire the lock
+    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
+
+    // Check that the uuid is valid
+    if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
+        return;
+
+    auto fdObj = fileDownloadMap[uuid];
+
+    // Set the file size
+    fdObj->fileSize = fileSize;
+    fdObj->receivedData = true;
+
+    // Trigger the file transfer event
+    fdObj->dataReady = true;
+    fdObj->dataCV.notify_one();
+}
+
+void Cluster::handleFileChunk(Message &message) {
+    auto uuid = message.pop_string();
+    auto chunk = message.pop_bytes();
 
     // It's only possible for the fdObj to be deleted from now on to the end of this function. That's because in the
     // HTTP file download code, the fdObj won't be deleted until after all bytes have been received and sent to the
@@ -469,39 +471,50 @@ void Cluster::handleFileChunk(Message &message) {
     // been destroyed, and we're right to continue using it. The HTTP file download code, will wait for this mutex to
     // be released before it tries to clean up.
 
-    if (fileDownloadMap.find(uuid) != fileDownloadMap.end()) {
-        {
-            // The Pause/Resume messages must be synchronized to avoid a deadlock
-            std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
+    // Check that the uuid is valid
+    if (fileDownloadMap.find(uuid) == fileDownloadMap.end())
+        return;
 
-            if (!fdObj->clientPaused) {
-                // Check if our buffer is too big
-                if (fdObj->receivedBytes - fdObj->sentBytes > MAX_FILE_BUFFER_SIZE) {
-                    // Ask the client to pause the file transfer
-                    fdObj->clientPaused = true;
+    auto fdObj = fileDownloadMap[uuid];
 
-                    auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
-                    msg.push_string(uuid);
-                    msg.send(this);
-                }
+    fdObj->receivedBytes += chunk.size();
+
+    // Copy the chunk and push it on to the queue
+    fdObj->queue.enqueue(new std::vector<uint8_t>(chunk));
+
+    {
+        // The Pause/Resume messages must be synchronized to avoid a deadlock
+        std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
+
+        if (!fdObj->clientPaused) {
+            // Check if our buffer is too big
+            if (fdObj->receivedBytes - fdObj->sentBytes > MAX_FILE_BUFFER_SIZE) {
+                // Ask the client to pause the file transfer
+                fdObj->clientPaused = true;
+
+                auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
+                msg.push_string(uuid);
+                msg.send(this);
             }
         }
-
-        // Trigger the file transfer event
-        fdObj->dataReady = true;
-        fdObj->dataCV.notify_one();
     }
 
-    // Release the lock now
-    fileDownloadMapDeletionLock.unlock();
+    // Trigger the file transfer event
+    fdObj->dataReady = true;
+    fdObj->dataCV.notify_one();
 }
 
 void Cluster::handleFileList(Message &message) {
     auto uuid = message.pop_string();
 
+    // Acquire the lock
+    std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+
     // Check that the uuid is valid
     if (fileListMap.find(uuid) == fileListMap.end())
         return;
+
+    auto flObj = fileListMap[uuid];
 
     // Get the number of files in the message
     auto numFiles = message.pop_uint();
@@ -515,10 +528,10 @@ void Cluster::handleFileList(Message &message) {
         s.fileSize = message.pop_ulong();
 
         // Add the file to the list
-        fileListMap[uuid]->files.push_back(s);
+        flObj->files.push_back(s);
     }
 
     // Tell the HTTP side that the data is ready
-    fileListMap[uuid]->dataReady = true;
-    fileListMap[uuid]->dataCV.notify_one();
+    flObj->dataReady = true;
+    flObj->dataCV.notify_one();
 }

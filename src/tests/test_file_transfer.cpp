@@ -125,7 +125,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         auto wsSrv = WebSocketServer(&mgr);
         wsSrv.start();
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // Try to reconnect the clusters so that we can get a connection token to use later to connect the client
         mgr.callreconnectClusters();
@@ -211,7 +211,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds (100));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // Create a job to request files for
         auto jobId = db->run(
@@ -318,7 +318,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         auto wsSrv = WebSocketServer(&mgr);
         wsSrv.start();
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // Try to reconnect the clusters so that we can get a connection token to use later to connect the client
         mgr.callreconnectClusters();
@@ -362,10 +362,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             msg.push_string(uuid);
             msg.push_ulong(fileSize);
 
-            auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->size());
-            std::ostream_iterator<uint8_t> iter(*o);
-            std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
-            connection->send(o, nullptr, 130);
+            auto smsg = Message(*msg.getdata());
+            mgr.getvClusters()->at(0)->callhandleMessage(smsg);
 
             // Now send the file content in to chunks and send it to the client
             pThread = new std::thread([bPaused, connection, fileSize, uuid, &mgr]() {
@@ -399,7 +397,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds (100));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // Create a job to request files for
         auto jobId = db->run(

@@ -188,7 +188,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
         JobserverFiledownload fileDownloadTable;
 
         // Create a new file download object
-        auto fdObj = new sFileDownload{};
+        auto fdObj = sFileDownload{};
         std::string uuid;
 
         try {
@@ -202,11 +202,6 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             if (uuid.empty()) {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
-
-                // Clean up the file download object
-                delete fdObj;
-                fdObj = nullptr;
-
                 return;
             }
 
@@ -237,11 +232,6 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             // Check that the uuid existed in the database
             if (dlResults.empty()) {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
-
-                // Clean up the file download object
-                delete fdObj;
-                fdObj = nullptr;
-
                 return;
             }
 
@@ -274,16 +264,11 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             // If the cluster isn't online then there isn't anything to do
             if (!cluster->isOnline()) {
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
-
-                // Clean up the file download object
-                delete fdObj;
-                fdObj = nullptr;
-
                 return;
             }
 
             // Cluster is online, create the file hash object
-            fileDownloadMap.emplace(uuid, fdObj);
+            fileDownloadMap.emplace(uuid, &fdObj);
 
             // Send a message to the client to initiate the file download
             auto msg = Message(DOWNLOAD_FILE, Message::Priority::Highest, uuid);
@@ -295,35 +280,35 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             {
                 // Wait for the server to send back data, or in 10 seconds fail
-                std::unique_lock<std::mutex> lock(fdObj->dataCVMutex);
+                std::unique_lock<std::mutex> lock(fdObj.dataCVMutex);
 
                 // Wait for data to be ready to send
-                fdObj->dataCV.wait_for(lock, std::chrono::seconds(10), [fdObj] { return fdObj->dataReady; });
+                fdObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&fdObj] { return fdObj.dataReady; });
             }
+
             // Check if the server received an error about the file
-            if (fdObj->error) {
-                response->write(SimpleWeb::StatusCode::client_error_bad_request, fdObj->errorDetails);
+            if (fdObj.error) {
+                {
+                    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
 
-                // Destroy the file download object
-                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                    fileDownloadMap.erase(uuid);
+                    // Destroy the file download object
+                    if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                        fileDownloadMap.erase(uuid);
+                }
 
-                // Clean up the file download object
-                delete fdObj;
-                fdObj = nullptr;
-
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, fdObj.errorDetails);
                 return;
             }
 
             // Check if the server received details about the file
-            if (!fdObj->receivedData) {
-                // Destroy the file download object
-                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                    fileDownloadMap.erase(uuid);
+            if (!fdObj.receivedData) {
+                {
+                    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
 
-                // Clean up the file download object
-                delete fdObj;
-                fdObj = nullptr;
+                    // Destroy the file download object
+                    if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                        fileDownloadMap.erase(uuid);
+                }
 
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
@@ -346,7 +331,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 headers.emplace("Content-Disposition", "filename=\"" + fp.filename().string() + "\"");
 
             // Set the content size
-            headers.emplace("Content-Length", std::to_string(fdObj->fileSize));
+            headers.emplace("Content-Length", std::to_string(fdObj.fileSize));
 
             // Write the headers
             response->write(headers);
@@ -363,25 +348,25 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             }
 
             // Check for error, or all data sent
-            while (!fdObj->error && fdObj->sentBytes < fdObj->fileSize) {
+            while (!fdObj.error && fdObj.sentBytes < fdObj.fileSize) {
                 {
-                    // Wait for the server to send back data, or in 10 seconds fail
-                    std::unique_lock<std::mutex> lock(fdObj->dataCVMutex);
+                    // Wait for the server to send back data, or in 30 seconds fail
+                    std::unique_lock<std::mutex> lock(fdObj.dataCVMutex);
 
                     // Wait for data to be ready to send
-                    fdObj->dataCV.wait_for(lock, std::chrono::seconds(10), [fdObj] { return fdObj->dataReady; });
-                    fdObj->dataReady = false;
+                    fdObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&fdObj] { return fdObj.dataReady; });
+                    fdObj.dataReady = false;
                 }
 
                 // While there is data in the queue, send to the client
-                while (!fdObj->queue.empty()) {
+                while (!fdObj.queue.empty()) {
                     // Get the next chunk from the queue
-                    auto data = fdObj->queue.try_dequeue();
+                    auto data = fdObj.queue.try_dequeue();
 
                     // If there was one, send it to the client
                     if (data) {
                         // Increment the traffic counter
-                        fdObj->sentBytes += (*data)->size();
+                        fdObj.sentBytes += (*data)->size();
 
                         // Send the data
                         response->write((const char *) (*data)->data(), (std::streamsize) (*data)->size());
@@ -405,11 +390,11 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                             std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
 
                             // Check if we need to resume the client file transfer
-                            if (fdObj->clientPaused) {
+                            if (fdObj.clientPaused) {
                                 // Check if the buffer is smaller than the setting
-                                if (fdObj->receivedBytes - fdObj->sentBytes < MIN_FILE_BUFFER_SIZE) {
+                                if (fdObj.receivedBytes - fdObj.sentBytes < MIN_FILE_BUFFER_SIZE) {
                                     // Ask the client to resume the file transfer
-                                    fdObj->clientPaused = false;
+                                    fdObj.clientPaused = false;
 
                                     auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest,
                                                              uuid);
@@ -422,38 +407,31 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 }
             }
 
-            // Try to acquire the lock in case the cluster is still using it
-            std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
+            {
+                // Try to acquire the lock in case the cluster is still using it
+                std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
 
-            // It's now safe to delete the uuid from the fileDownloadMap
+                // It's now safe to delete the uuid from the fileDownloadMap
 
-            // Destroy the file download object
-            if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                fileDownloadMap.erase(uuid);
+                // Destroy the file download object
+                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                    fileDownloadMap.erase(uuid);
 
-            // The lock can now be released, because when the lock is acquired in Cluster, the first thing it will do
-            // is check for the existence of the uuid in the fileDownloadMap. But since we've removed it, Cluster is
-            // guaranteed not to use the fdObj again.
-            fileDownloadMapDeletionLock.unlock();
-
-            // Clean up the file download object
-            delete fdObj;
-            fdObj = nullptr;
-
+                // The lock can now be released, because when the lock is acquired in Cluster, the first thing it will do
+                // is check for the existence of the uuid in the fileDownloadMap. But since we've removed it, Cluster is
+                // guaranteed not to use the fdObj again.
+            }
         } catch (...) {
-            // Same as above
-            std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
+            {
+                // Same as above
+                std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
 
-            // Destroy the file download object
-            if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                fileDownloadMap.erase(uuid);
+                // Destroy the file download object
+                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                    fileDownloadMap.erase(uuid);
 
-            // Same as above
-            fileDownloadMapDeletionLock.unlock();
-
-            // Clean up the file download object
-            delete fdObj;
-            fdObj = nullptr;
+                // Same as above
+            }
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
@@ -487,7 +465,10 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
         JobserverJob jobTable;
 
         // Create a new file download object
-        auto flObj = new sFileList{};
+        auto flObj = sFileList{};
+
+        // Generate a UUID for the message source
+        auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
         try {
             // Read the json from the post body
@@ -535,18 +516,12 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             // If the cluster isn't online then there isn't anything to do
             if (!cluster->isOnline()) {
-                delete flObj;
-                flObj = nullptr;
-
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
             }
 
-            // Generate a UUID for the message source
-            auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-
             // Cluster is online, create the file list object
-            fileListMap.emplace(uuid, flObj);
+            fileListMap.emplace(uuid, &flObj);
 
             // Send a message to the client to initiate the file list
             auto msg = Message(FILE_LIST, Message::Priority::Highest, uuid);
@@ -559,25 +534,31 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             {
                 // Wait for the server to send back data, or in 10 seconds fail
-                std::unique_lock<std::mutex> lock(flObj->dataCVMutex);
+                std::unique_lock<std::mutex> lock(flObj.dataCVMutex);
 
                 // Wait for data to be ready to send
-                flObj->dataCV.wait_for(lock, std::chrono::seconds(10), [flObj] { return flObj->dataReady; });
+                flObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&flObj] { return flObj.dataReady; });
             }
 
             // Check if the server received an error about the file list
-            if (flObj->error) {
-                delete flObj;
-                flObj = nullptr;
+            if (flObj.error) {
+                {
+                    // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
+                    std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
-                response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj->errorDetails);
+                    // Remove the file list object
+                    if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                        fileDownloadMap.erase(uuid);
+                }
+
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj.errorDetails);
                 return;
             }
 
             // Iterate over the files and generate the result
             nlohmann::json result;
             result["files"] = nlohmann::json::array();
-            for (const auto &f : flObj->files) {
+            for (const auto &f : flObj.files) {
                 nlohmann::json jFile;
                 jFile["path"] = f.fileName;
                 jFile["isDir"] = f.isDirectory;
@@ -587,8 +568,14 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 result["files"].push_back(jFile);
             }
 
-            delete flObj;
-            flObj = nullptr;
+            {
+                // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
+                std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+
+                // Remove the file list object
+                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                    fileDownloadMap.erase(uuid);
+            }
 
             // Return the result
             SimpleWeb::CaseInsensitiveMultimap headers;
@@ -596,8 +583,14 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
         } catch (...) {
-            delete flObj;
-            flObj = nullptr;
+            {
+                // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
+                std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+
+                // Remove the file list object
+                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
+                    fileDownloadMap.erase(uuid);
+            }
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");

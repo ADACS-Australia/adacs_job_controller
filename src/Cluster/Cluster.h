@@ -92,6 +92,7 @@ extern folly::ConcurrentHashMap<std::string, sFileDownload *> fileDownloadMap;
 extern folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
 extern std::mutex fileDownloadMapDeletionLockMutex;
 extern std::mutex fileDownloadPauseResumeLockMutex;
+extern std::mutex fileListMapDeletionLockMutex;
 
 class Cluster {
 public:
