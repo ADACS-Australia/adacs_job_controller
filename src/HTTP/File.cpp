@@ -533,7 +533,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             msg.send(cluster);
 
             {
-                // Wait for the server to send back data, or in 10 seconds fail
+                // Wait for the server to send back data, or in 30 seconds fail
                 std::unique_lock<std::mutex> lock(flObj.dataCVMutex);
 
                 // Wait for data to be ready to send
