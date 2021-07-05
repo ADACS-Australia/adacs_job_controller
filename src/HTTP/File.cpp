@@ -10,8 +10,8 @@
 #include "../Lib/jobserver_schema.h"
 #include "../Cluster/ClusterManager.h"
 #include "HttpServer.h"
+#include "Utils/HandleFileList.h"
 
-using namespace std;
 using namespace schema;
 
 void FileApi(const std::string &path, HttpServer *server, ClusterManager *clusterManager) {
@@ -22,8 +22,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
     // Create a new file download
     server->getServer().resource["^" + path + "$"]["POST"] = [server](
-            const shared_ptr<HttpServerImpl::Response> &response,
-            const shared_ptr<HttpServerImpl::Request> &request) {
+            const std::shared_ptr<HttpServerImpl::Response> &response,
+            const std::shared_ptr<HttpServerImpl::Request> &request) {
 
         // Verify that the user is authorized
         std::unique_ptr<sAuthorizationResult> authResult;
@@ -177,8 +177,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
     // Download file
     server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager](
-            const shared_ptr<HttpServerImpl::Response> &response,
-            const shared_ptr<HttpServerImpl::Request> &request) {
+            const std::shared_ptr<HttpServerImpl::Response> &response,
+            const std::shared_ptr<HttpServerImpl::Request> &request) {
 
         // Create a database connection
         auto db = MySqlConnector();
@@ -339,7 +339,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             // Write the headers
             response->write(headers);
-            promise<SimpleWeb::error_code> headerPromise;
+            std::promise<SimpleWeb::error_code> headerPromise;
             response->send([&headerPromise](const SimpleWeb::error_code &ec) {
                 headerPromise.set_value(ec);
             });
@@ -377,7 +377,7 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                         // Send the data
                         response->write((const char *) (*data)->data(), (std::streamsize) (*data)->size());
 
-                        promise<SimpleWeb::error_code> contentPromise;
+                        std::promise<SimpleWeb::error_code> contentPromise;
                         response->send([&contentPromise](const SimpleWeb::error_code &ec) {
                             contentPromise.set_value(ec);
                         });
@@ -446,8 +446,8 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
     // List files in the specified directory
     server->getServer().resource["^" + path + "$"]["PATCH"] = [clusterManager, server](
-            const shared_ptr<HttpServerImpl::Response> &response,
-            const shared_ptr<HttpServerImpl::Request> &request) {
+            const std::shared_ptr<HttpServerImpl::Response> &response,
+            const std::shared_ptr<HttpServerImpl::Request> &request) {
 
         // Verify that the user is authorized
         std::unique_ptr<sAuthorizationResult> authResult;
@@ -459,24 +459,12 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             return;
         }
 
-        // Create a database connection
-        auto db = MySqlConnector();
-
-        // Create a vector which includes the application from the secret, and any other applications it has access to
-        auto applications = std::vector<std::string>({authResult->secret().name()});
-        std::copy(authResult->secret().applications().begin(), authResult->secret().applications().end(),
-                  std::back_inserter(applications));
-
-        // Get the tables
-        JobserverJob jobTable;
-
-        // Create a new file download object
-        auto flObj = sFileList{};
-
-        // Generate a UUID for the message source
-        auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-
         try {
+            // Create a vector which includes the application from the secret, and any other applications it has access to
+            auto applications = std::vector<std::string>({authResult->secret().name()});
+            std::copy(authResult->secret().applications().begin(), authResult->secret().applications().end(),
+                      std::back_inserter(applications));
+
             // Read the json from the post body
             nlohmann::json post_data;
             request->content >> post_data;
@@ -490,119 +478,12 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
             // Get the path to the file to fetch (relative to the project)
             auto filePath = std::string(post_data["path"]);
 
-            // Look up the job
-            auto jobResults =
-                    db->run(
-                            select(all_of(jobTable))
-                                    .from(jobTable)
-                                    .where(
-                                            jobTable.id == (uint32_t) jobId
-                                            and jobTable.application.in(sqlpp::value_list(applications))
-                                    )
-                    );
-
-            // Check that a job was actually found
-            if (jobResults.empty()) {
-                throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) + " for application " +
-                                         authResult->secret().name());
-            }
-
-            // Get the cluster and bundle from the job
-            auto job = &jobResults.front();
-            auto sCluster = std::string(job->cluster);
-            auto sBundle = std::string(job->bundle);
-
-            // Check that the cluster is online
-            // Get the cluster to submit to
-            auto cluster = clusterManager->getCluster(sCluster);
-            if (!cluster) {
-                // Invalid cluster
-                throw std::runtime_error("Invalid cluster");
-            }
-
-            // If the cluster isn't online then there isn't anything to do
-            if (!cluster->isOnline()) {
-                response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
-                return;
-            }
-
-            // Cluster is online, create the file list object
-            fileListMap.emplace(uuid, &flObj);
-
-            // Send a message to the client to initiate the file list
-            auto msg = Message(FILE_LIST, Message::Priority::Highest, uuid);
-            msg.push_uint(jobId);
-            msg.push_string(uuid);
-            msg.push_string(sBundle);
-            msg.push_string(filePath);
-            msg.push_bool(bRecursive);
-            msg.send(cluster);
-
-            {
-                // Wait for the server to send back data, or in 30 seconds fail
-                std::unique_lock<std::mutex> lock(flObj.dataCVMutex);
-
-                // Wait for data to be ready to send
-                if (!flObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&flObj] { return flObj.dataReady; })) {
-                    // Timeout reached, set the error
-                    flObj.error = true;
-                    flObj.errorDetails = "Client too took long to respond.";
-                }
-            }
-
-            // Check if the server received an error about the file list
-            if (flObj.error) {
-                {
-                    // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-                    std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
-
-                    // Remove the file list object
-                    if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                        fileDownloadMap.erase(uuid);
-                }
-
-                response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj.errorDetails);
-                return;
-            }
-
-            // Iterate over the files and generate the result
-            nlohmann::json result;
-            result["files"] = nlohmann::json::array();
-            for (const auto &f : flObj.files) {
-                nlohmann::json jFile;
-                jFile["path"] = f.fileName;
-                jFile["isDir"] = f.isDirectory;
-                jFile["fileSize"] = f.fileSize;
-                jFile["permissions"] = f.permissions;
-
-                result["files"].push_back(jFile);
-            }
-
-            {
-                // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-                std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
-
-                // Remove the file list object
-                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                    fileDownloadMap.erase(uuid);
-            }
-
-            // Return the result
-            SimpleWeb::CaseInsensitiveMultimap headers;
-            headers.emplace("Content-Type", "application/json");
-
-            response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+            // Handle the file list request
+            handleFileList(
+                    clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
+                    response.get()
+            );
         } catch (...) {
-            {
-                // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-                std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
-
-                // Remove the file list object
-                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                    fileDownloadMap.erase(uuid);
-            }
-
-            // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
     };

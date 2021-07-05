@@ -6,6 +6,7 @@
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
 #include "../Lib/JobStatus.h"
+#include "../HTTP/HttpServer.h"
 
 #include <iostream>
 #include <client_https.hpp>
@@ -42,6 +43,12 @@ std::mutex fileListMapDeletionLockMutex;
 // Define a simple HTTP/S client for fetching bundles
 using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 using HttpsClient = SimpleWeb::Client<SimpleWeb::HTTPS>;
+
+extern void handleFileList(
+        ClusterManager *clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
+        const std::string &appName, const std::vector<std::string> &applications,
+        HttpServerImpl::Response *response
+);
 
 using namespace schema;
 
@@ -160,33 +167,34 @@ void Cluster::queueMessage(std::string source, std::vector<uint8_t> *data, Messa
         // Wait 1 minute until the next prune
         std::this_thread::sleep_for(std::chrono::seconds(60));
 #else
+
 void Cluster::pruneSources() {
 #endif
-        // Aquire the exclusive lock to prevent more data being pushed on while we are pruning
-        {
-            std::unique_lock<std::shared_mutex> lock(mutex_);
+    // Aquire the exclusive lock to prevent more data being pushed on while we are pruning
+    {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
 
-            // Iterate over the priorities
-            for (auto &p : queue) {
-                // Get a pointer to the relevant map
-                auto pMap = &p;
+        // Iterate over the priorities
+        for (auto &p : queue) {
+            // Get a pointer to the relevant map
+            auto pMap = &p;
 
-                // Iterate over the map
-                for (auto s = pMap->begin(); s != pMap->end();) {
-                    // Check if the vector for this source is empty
-                    if ((*s).second->empty()) {
-                        // Destroy the queue
-                        delete (*s).second;
+            // Iterate over the map
+            for (auto s = pMap->begin(); s != pMap->end();) {
+                // Check if the vector for this source is empty
+                if ((*s).second->empty()) {
+                    // Destroy the queue
+                    delete (*s).second;
 
-                        // Remove this source from the map and continue
-                        s = pMap->erase(s);
-                        continue;
-                    }
-                    // Manually increment the iterator
-                    ++s;
+                    // Remove this source from the map and continue
+                    s = pMap->erase(s);
+                    continue;
                 }
+                // Manually increment the iterator
+                ++s;
             }
         }
+    }
 #ifndef BUILD_TESTS
     }
 #endif
@@ -197,79 +205,80 @@ void Cluster::pruneSources() {
     // Iterate forever
     while (true) {
 #else
+
 void Cluster::run() {
 #endif
-        {
-            std::unique_lock<std::mutex> lock(dataCVMutex);
+    {
+        std::unique_lock<std::mutex> lock(dataCVMutex);
 
-            // Wait for data to be ready to send
-            dataCV.wait(lock, [this] { return this->dataReady; });
+        // Wait for data to be ready to send
+        dataCV.wait(lock, [this] { return this->dataReady; });
 
-            // Reset the condition
-            this->dataReady = false;
-        }
+        // Reset the condition
+        this->dataReady = false;
+    }
 
-        reset:
+    reset:
 
-        // Iterate over the priorities
-        for (auto p = queue.begin(); p != queue.end(); p++) {
+    // Iterate over the priorities
+    for (auto p = queue.begin(); p != queue.end(); p++) {
 
-            // Get a pointer to the relevant map
-            auto pMap = &(*p);
+        // Get a pointer to the relevant map
+        auto pMap = &(*p);
 
-            // Get the current priority
-            auto currentPriority = p - queue.begin();
+        // Get the current priority
+        auto currentPriority = p - queue.begin();
 
-            // While there is still data for this priority, send it
-            bool hadData;
-            do {
-                hadData = false;
+        // While there is still data for this priority, send it
+        bool hadData;
+        do {
+            hadData = false;
 
-                std::shared_lock<std::shared_mutex> lock(mutex_);
-                // Iterate over the map
-                for (auto s = pMap->begin(); s != pMap->end(); ++s) {
-                    // Check if the vector for this source is empty
-                    if (!(*s).second->empty()) {
+            std::shared_lock<std::shared_mutex> lock(mutex_);
+            // Iterate over the map
+            for (auto s = pMap->begin(); s != pMap->end(); ++s) {
+                // Check if the vector for this source is empty
+                if (!(*s).second->empty()) {
 
-                        // Pop the next item from the queue
-                        auto data = (*s).second->try_dequeue();
+                    // Pop the next item from the queue
+                    auto data = (*s).second->try_dequeue();
 
-                        try {
-                            // data should never be null as we're checking for empty
-                            if (data) {
-                                // Convert the message
-                                auto o = std::make_shared<WsServer::OutMessage>((*data)->size());
-                                std::ostream_iterator<uint8_t> iter(*o);
-                                std::copy((*data)->begin(), (*data)->end(), iter);
+                    try {
+                        // data should never be null as we're checking for empty
+                        if (data) {
+                            // Convert the message
+                            auto o = std::make_shared<WsServer::OutMessage>((*data)->size());
+                            std::ostream_iterator<uint8_t> iter(*o);
+                            std::copy((*data)->begin(), (*data)->end(), iter);
 
-                                // Send the message on the websocket
-                                if (pConnection)
-                                    pConnection->send(o, nullptr, 130);
-                                else
-                                    std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
+                            // Send the message on the websocket
+                            if (pConnection)
+                                pConnection->send(o, nullptr, 130);
+                            else
+                                std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
 
-                                // Clean up the message
-                                delete (*data);
-                            }
-                        } catch (...) {
-                            // Cluster has gone offline, reset the connection. Missed packets shouldn't matter too much,
-                            // they should be resent by other threads after some time
-                            setConnection(nullptr);
+                            // Clean up the message
+                            delete (*data);
                         }
-
-                        // Data existed
-                        hadData = true;
+                    } catch (...) {
+                        // Cluster has gone offline, reset the connection. Missed packets shouldn't matter too much,
+                        // they should be resent by other threads after some time
+                        setConnection(nullptr);
                     }
+
+                    // Data existed
+                    hadData = true;
                 }
+            }
 
-                // Check if there is higher priority data to send
-                if (doesHigherPriorityDataExist(currentPriority))
-                    // Yes, so start the entire send process again
-                    goto reset;
+            // Check if there is higher priority data to send
+            if (doesHigherPriorityDataExist(currentPriority))
+                // Yes, so start the entire send process again
+                goto reset;
 
-                // Higher priority data does not exist, so keep sending data from this priority
-            } while (hadData);
-        }
+            // Higher priority data does not exist, so keep sending data from this priority
+        } while (hadData);
+    }
 #ifndef BUILD_TESTS
     }
 #endif
@@ -316,7 +325,7 @@ void Cluster::updateJob(Message &message) {
 
     // Todo: Verify the job id belongs to this cluster, and that the status is valid
 
-    // Create the first state object
+    // Add the new job history record
     db->run(
             insert_into(jobHistoryTable)
                     .set(
@@ -327,6 +336,13 @@ void Cluster::updateJob(Message &message) {
                             jobHistoryTable.details = details
                     )
     );
+
+    // Check if this status update was the final job complete status, then try to cache the file list by listing the
+    // files for the job. If for some reason this call fails internally (Maybe cluster is under load, or network issues)
+    // then the next time the HTTP side requests files for the job the file list will be cached
+    if (what == "_job_completion_") {
+        ::handleFileList(pClusterManager, jobId, true, "", "job_controller", {}, nullptr);
+    }
 }
 
 bool Cluster::isOnline() {
@@ -340,10 +356,11 @@ bool Cluster::isOnline() {
         // Wait 1 minute until the next check
         std::this_thread::sleep_for(std::chrono::seconds(60));
 #else
+
 void Cluster::resendMessages() {
 #endif
-        // Check for jobs that need to be resubmitted
-        checkUnsubmittedJobs();
+    // Check for jobs that need to be resubmitted
+    checkUnsubmittedJobs();
 #ifndef BUILD_TESTS
     }
 #endif

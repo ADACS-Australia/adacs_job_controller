@@ -482,4 +482,4 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
     }
-}
+BOOST_AUTO_TEST_SUITE_END();

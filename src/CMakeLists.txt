@@ -76,6 +76,7 @@ set(
         Lib/x86_64-signal.h
         Lib/GeneralUtils.h
         Lib/GeneralUtils.cpp
+        HTTP/Utils/HandleFileList.cpp
 )
 
 # Set the main executable and source files
@@ -97,6 +98,8 @@ add_executable(
         HTTP/tests/job_tests.cpp
         HTTP/tests/file_tests.cpp
         tests/test_file_transfer.cpp
+        tests/test_file_list_caching.cpp
+        HTTP/tests/file_filter_files.cpp
 )
 
 # Set the link libraries

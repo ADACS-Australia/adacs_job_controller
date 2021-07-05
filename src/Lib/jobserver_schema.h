@@ -303,6 +303,144 @@ namespace schema
       };
     };
   };
+  namespace JobserverFilelistcache_
+  {
+    struct Id
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T id;
+            T& operator()() { return id; }
+            const T& operator()() const { return id; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::must_not_insert, sqlpp::tag::must_not_update>;
+    };
+    struct Timestamp
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "timestamp";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T timestamp;
+            T& operator()() { return timestamp; }
+            const T& operator()() const { return timestamp; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::time_point, sqlpp::tag::require_insert>;
+    };
+    struct Path
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "path";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T path;
+            T& operator()() { return path; }
+            const T& operator()() const { return path; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct IsDir
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "is_dir";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T isDir;
+            T& operator()() { return isDir; }
+            const T& operator()() const { return isDir; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::tinyint, sqlpp::tag::require_insert>;
+    };
+    struct FileSize
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "file_size";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T fileSize;
+            T& operator()() { return fileSize; }
+            const T& operator()() const { return fileSize; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::bigint, sqlpp::tag::require_insert>;
+    };
+    struct Permissions
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "permissions";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T permissions;
+            T& operator()() { return permissions; }
+            const T& operator()() const { return permissions; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    };
+    struct JobId
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "job_id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T jobId;
+            T& operator()() { return jobId; }
+            const T& operator()() const { return jobId; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    };
+  } // namespace JobserverFilelistcache_
+
+  struct JobserverFilelistcache: sqlpp::table_t<JobserverFilelistcache,
+               JobserverFilelistcache_::Id,
+               JobserverFilelistcache_::Timestamp,
+               JobserverFilelistcache_::Path,
+               JobserverFilelistcache_::IsDir,
+               JobserverFilelistcache_::FileSize,
+               JobserverFilelistcache_::Permissions,
+               JobserverFilelistcache_::JobId>
+  {
+    struct _alias_t
+    {
+      static constexpr const char _literal[] =  "jobserver_filelistcache";
+      using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+      template<typename T>
+      struct _member_t
+      {
+        T jobserverFilelistcache;
+        T& operator()() { return jobserverFilelistcache; }
+        const T& operator()() const { return jobserverFilelistcache; }
+      };
+    };
+  };
   namespace JobserverJob_
   {
     struct Id

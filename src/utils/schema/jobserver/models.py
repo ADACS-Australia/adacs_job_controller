@@ -61,3 +61,26 @@ class ClusterUuid(models.Model):
 
     # The timestamp when this uuid was created
     timestamp = models.DateTimeField(db_index=True)
+
+
+class FileListCache(models.Model):
+    class Meta:
+        unique_together = ('job', 'path')
+
+    # The job this file list cache record is for
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, db_index=True)
+
+    # The timestamp when this file list cache record was created
+    timestamp = models.DateTimeField(db_index=True)
+
+    # The file path
+    path = models.CharField(max_length=765, db_index=True)
+
+    # If the file path is a directory
+    is_dir = models.BooleanField(default=False)
+
+    # The size of the file
+    file_size = models.BigIntegerField()
+
+    # The file permissions
+    permissions = models.IntegerField()
