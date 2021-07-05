@@ -159,6 +159,7 @@ private:
     void handleFileChunk(Message &message);
 
     static void handleFileList(Message &message);
+    static void handleFileListError(Message &message);
 
 // Testing
     EXPOSE_PROPERTY_FOR_TESTING(pConnection);

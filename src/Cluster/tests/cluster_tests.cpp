@@ -1260,4 +1260,55 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         delete fdObj;
     }
 
+
+    BOOST_AUTO_TEST_CASE(test_handleFileListError) {
+        // Parse the cluster configuration
+        auto jsonClusters = nlohmann::json::parse(sClusters);
+
+        // Get the details for the first cluster
+        auto details = new sClusterDetails(jsonClusters[0]);
+
+        // Create a new cluster manager
+        auto manager = new ClusterManager();
+
+        // Create a new cluster
+        auto cluster = new Cluster(details, manager);
+
+        // A uuid that isn't in the fileDListMap should be a noop
+        auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+
+        Message msg(FILE_LIST_ERROR);
+        msg.push_string(uuid);          // uuid
+        msg.push_string("details");     // detail
+        cluster->handleMessage(msg);
+
+        BOOST_CHECK_EQUAL(fileListMap.size(), 0);
+
+        auto flObj = new sFileList{};
+        fileListMap.emplace(uuid, flObj);
+
+        // Check that the file download object is correctly created
+        BOOST_CHECK_EQUAL(fileListMap[uuid]->files.empty(), true);
+        BOOST_CHECK_EQUAL(fileListMap[uuid]->error, false);
+        BOOST_CHECK_EQUAL(fileListMap[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL(fileListMap[uuid]->dataReady, false);
+
+        msg = Message(FILE_LIST_ERROR);
+        msg.push_string(uuid);          // uuid
+        msg.push_string("details");     // detail
+        cluster->handleMessage(msg);
+
+        BOOST_CHECK_EQUAL(fileListMap[uuid]->files.empty(), true);
+        BOOST_CHECK_EQUAL(fileListMap[uuid]->error, true);
+        BOOST_CHECK_EQUAL(fileListMap[uuid]->errorDetails, "details");
+        BOOST_CHECK_EQUAL(fileListMap[uuid]->dataReady, true);
+
+        fileListMap.erase(uuid);
+
+        // Cleanup
+        delete manager;
+        delete cluster;
+        delete flObj;
+    }
+
 BOOST_AUTO_TEST_SUITE_END()

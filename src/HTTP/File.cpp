@@ -283,7 +283,11 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 std::unique_lock<std::mutex> lock(fdObj.dataCVMutex);
 
                 // Wait for data to be ready to send
-                fdObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&fdObj] { return fdObj.dataReady; });
+                if (!fdObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&fdObj] { return fdObj.dataReady; })) {
+                    // Timeout reached, set the error
+                    fdObj.error = true;
+                    fdObj.errorDetails = "Client too took long to respond.";
+                }
             }
 
             // Check if the server received an error about the file
@@ -354,7 +358,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                     std::unique_lock<std::mutex> lock(fdObj.dataCVMutex);
 
                     // Wait for data to be ready to send
-                    fdObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&fdObj] { return fdObj.dataReady; });
+                    if (!fdObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&fdObj] { return fdObj.dataReady; })) {
+                        throw std::runtime_error("Client took too long to respond.");
+                    }
                     fdObj.dataReady = false;
                 }
 
@@ -537,7 +543,11 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 std::unique_lock<std::mutex> lock(flObj.dataCVMutex);
 
                 // Wait for data to be ready to send
-                flObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&flObj] { return flObj.dataReady; });
+                if (!flObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&flObj] { return flObj.dataReady; })) {
+                    // Timeout reached, set the error
+                    flObj.error = true;
+                    flObj.errorDetails = "Client too took long to respond.";
+                }
             }
 
             // Check if the server received an error about the file list

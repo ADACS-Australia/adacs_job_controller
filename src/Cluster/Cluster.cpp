@@ -106,6 +106,9 @@ void Cluster::handleMessage(Message &message) {
         case FILE_LIST:
             this->handleFileList(message);
             break;
+        case FILE_LIST_ERROR:
+            this->handleFileListError(message);
+            break;
         default:
             std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << std::endl;
     };
@@ -429,6 +432,28 @@ void Cluster::handleFileError(Message &message) {
     // Trigger the file transfer event
     fdObj->dataReady = true;
     fdObj->dataCV.notify_one();
+}
+
+void Cluster::handleFileListError(Message &message) {
+    auto uuid = message.pop_string();
+    auto detail = message.pop_string();
+
+    // Acquire the lock
+    std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+
+    // Check that the uuid is valid
+    if (fileListMap.find(uuid) == fileListMap.end())
+        return;
+
+    auto flObj = fileListMap[uuid];
+
+    // Set the error
+    flObj->errorDetails = detail;
+    flObj->error = true;
+
+    // Trigger the file transfer event
+    flObj->dataReady = true;
+    flObj->dataCV.notify_one();
 }
 
 void Cluster::handleFileDetails(Message &message) {
