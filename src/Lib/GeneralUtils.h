@@ -10,6 +10,7 @@
 std::string base64Encode(std::string input);
 std::string base64Decode(std::string input);
 std::string generateUUID();
+void dumpExceptions(std::exception& e);
 
 #ifdef BUILD_TESTS
 #define EXPOSE_PROPERTY_FOR_TESTING(x) public: auto get##x () { return &x; } auto set##x (typeof(x) v) { x = v; }

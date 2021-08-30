@@ -42,7 +42,9 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
         std::unique_ptr<sAuthorizationResult> authResult;
         try {
             authResult = server->isAuthorized(request->header);
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
             return;
@@ -134,7 +136,10 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
 
             response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
         }
-        catch (...) {
+        catch (std::exception& e) 
+        {
+            dumpExceptions(e);
+
             // Abort the transaction
             db->rollback_transaction(false);
 
@@ -168,7 +173,9 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
         std::unique_ptr<sAuthorizationResult> authResult;
         try {
             authResult = server->isAuthorized(request->header);
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
             return;
@@ -227,7 +234,9 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
             headers.emplace("Content-Type", "application/json");
 
             response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
@@ -245,7 +254,9 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
         std::unique_ptr<sAuthorizationResult> authResult;
         try {
             authResult = server->isAuthorized(request->header);
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
             return;
@@ -302,7 +313,9 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
             headers.emplace("Content-Type", "application/json");
 
             response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             // Abort the transaction
             db->rollback_transaction(false);
 

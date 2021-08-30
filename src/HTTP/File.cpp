@@ -29,7 +29,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
         std::unique_ptr<sAuthorizationResult> authResult;
         try {
             authResult = server->isAuthorized(request->header);
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
             return;
@@ -140,7 +142,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
                 // Commit the changes in the database
                 db->commit_transaction();
-            } catch (sqlpp::exception &) {
+            } catch (sqlpp::exception &e) {
+                dumpExceptions(e);
+
                 // Uh oh, an error occurred
                 // Abort the transaction
                 db->rollback_transaction(false);
@@ -166,7 +170,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
 
             response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
 
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             // Abort the transaction
             db->rollback_transaction(false);
 
@@ -427,7 +433,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 // is check for the existence of the uuid in the fileDownloadMap. But since we've removed it, Cluster is
                 // guaranteed not to use the fdObj again.
             }
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             {
                 // Same as above
                 std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
@@ -453,7 +461,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
         std::unique_ptr<sAuthorizationResult> authResult;
         try {
             authResult = server->isAuthorized(request->header);
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
             // Invalid request
             response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
             return;
@@ -483,7 +493,9 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                     clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
                     response.get()
             );
-        } catch (...) {
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+            
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
     };

@@ -283,7 +283,9 @@ void handleFileList(
 
                 // Commit the changes in the database
                 db->commit_transaction();
-            } catch (sqlpp::exception &) {
+            } catch (sqlpp::exception& e) {
+                dumpExceptions(e);
+
                 // Uh oh, an error occurred
                 // Abort the transaction
                 db->rollback_transaction(false);
@@ -311,7 +313,9 @@ void handleFileList(
         headers.emplace("Content-Type", "application/json");
 
         if (response) response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-    } catch (...) {
+    } catch (std::exception& e) {
+        dumpExceptions(e);
+
         {
             // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
             std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);

@@ -260,7 +260,8 @@ void Cluster::run() {
                             // Clean up the message
                             delete (*data);
                         }
-                    } catch (...) {
+                    } catch (std::exception& e) {
+                        dumpExceptions(e);
                         // Cluster has gone offline, reset the connection. Missed packets shouldn't matter too much,
                         // they should be resent by other threads after some time
                         setConnection(nullptr);

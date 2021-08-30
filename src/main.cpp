@@ -4,6 +4,9 @@
 #include "Cluster/ClusterManager.h"
 #include "Lib/segvcatch.h"
 
+#include "Lib/folly/folly/experimental/exception_tracer/StackTrace.h"
+#include "Lib/folly/folly/experimental/exception_tracer/ExceptionTracer.h"
+
 using namespace segvcatch;
 
 void handle_segv()
@@ -21,7 +24,8 @@ void handle_segv()
     throw std::runtime_error("Seg Fault Error");
 }
 
-int main() {
+int main()
+{
     // Set up the crash handler
     segvcatch::init_segv(&handle_segv);
 
@@ -40,4 +44,14 @@ int main() {
     httpServer->join();
 
     return 0;
+}
+
+// To prevent the compiler optimizing away the exception tracing from folly, we need to reference it.
+extern "C" const folly::exception_tracer::StackTrace* getCaughtExceptionStackTraceStack();
+extern "C" const folly::exception_tracer::StackTraceStack* getUncaughtExceptionStackTraceStack();
+
+volatile void forceExceptionStackTraceRef()
+{
+    getCaughtExceptionStackTraceStack();
+    getUncaughtExceptionStackTraceStack();
 }

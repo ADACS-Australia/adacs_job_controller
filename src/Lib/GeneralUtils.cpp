@@ -1,3 +1,5 @@
+#include "GeneralUtils.h"
+#include <iostream>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
@@ -6,6 +8,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include "../folly/folly/experimental/exception_tracer/ExceptionTracer.h"
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
 std::string base64Encode(std::string input)
@@ -47,12 +50,21 @@ std::string base64Decode(std::string input)
         output.erase(output.end() - pad_chars, output.end());
         return output;
     }
-    catch (std::exception const&)
+    catch (std::exception& e) 
     {
+        dumpExceptions(e);
         return std::string("");
     }
 }
 
 std::string generateUUID() {
     return boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+}
+
+void dumpExceptions(std::exception& e) {
+    std::cerr << "--- Exception: " << e.what() << std::endl;
+    auto exceptions = folly::exception_tracer::getCurrentExceptions();
+    for (auto& exc : exceptions) {
+        std::cerr << exc << "\n";
+    }
 }

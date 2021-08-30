@@ -95,7 +95,8 @@ void ClusterManager::reconnectClusters() {
                             connectCluster(cluster, uuid);
                         })
                 );
-            } catch (sqlpp::exception &) {
+            } catch (std::exception& e) {
+                dumpExceptions(e);
                 // Should only happen if an *extremely* rare UUID collision happens
             }
         }
