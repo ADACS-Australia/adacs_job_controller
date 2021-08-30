@@ -127,6 +127,9 @@ void Cluster::setConnection(WsServer::Connection *pCon) {
     if (pCon != nullptr) {
         // See if there are any pending jobs that should be sent
         checkUnsubmittedJobs();
+
+        // See if there are any cancelling jobs that should be sent
+        checkCancellingJobs();
     }
 }
 
@@ -350,27 +353,22 @@ bool Cluster::isOnline() {
     return pConnection != nullptr;
 }
 
-#ifndef BUILD_TESTS
 [[noreturn]] void Cluster::resendMessages() {
     // Iterate forever
     while (true) {
         // Wait 1 minute until the next check
         std::this_thread::sleep_for(std::chrono::seconds(60));
-#else
-
-void Cluster::resendMessages() {
-#endif
-    // Check for jobs that need to be resubmitted
-    checkUnsubmittedJobs();
-#ifndef BUILD_TESTS
+        
+        // Check for jobs that need to be resubmitted
+        checkUnsubmittedJobs();
+        checkCancellingJobs();
     }
-#endif
 }
 
-void Cluster::checkUnsubmittedJobs() {
-    // Check if the cluster is online and resend the submit messages
-    if (!isOnline())
-        return;
+auto getJobsByMostRecentStatus(std::vector<uint32_t>& states) {
+    /*
+    Finds all jobs currently in a state provided by the states argument that are older than 60 seconds
+    */
 
     // Create a database connection
     auto db = MySqlConnector();
@@ -379,10 +377,7 @@ void Cluster::checkUnsubmittedJobs() {
     JobserverJob jobTable;
     JobserverJobhistory jobHistoryTable;
 
-    // Select all jobTables where the most recent jobHistoryTable is
-    // pending or submitting and is more than a minute old
-
-    // Find any jobs in submitting state older than 60 seconds
+    // Find any jobs with a state in states older than 60 seconds
     auto jobResults =
             db->run(
                     select(all_of(jobTable))
@@ -393,12 +388,7 @@ void Cluster::checkUnsubmittedJobs() {
                                             .where(
                                                     jobHistoryTable.state.in(
                                                             sqlpp::value_list(
-                                                                    std::vector<uint32_t>(
-                                                                            {
-                                                                                    (uint32_t) PENDING,
-                                                                                    (uint32_t) SUBMITTING
-                                                                            }
-                                                                    )
+                                                                    states
                                                             )
                                                     )
                                                     and
@@ -417,7 +407,27 @@ void Cluster::checkUnsubmittedJobs() {
                             )
             );
 
-    for (auto &job : jobResults) {
+    return jobResults;
+}
+
+void Cluster::checkUnsubmittedJobs() {
+    // Check if the cluster is online and resend the submit messages
+    if (!isOnline())
+        return;
+
+    // Get all jobs where the most recent job history is
+    // pending or submitting and is more than a minute old
+    auto states = std::vector<uint32_t>(
+            {
+                    (uint32_t) PENDING,
+                    (uint32_t) SUBMITTING
+            }
+    );
+
+    auto jobs = getJobsByMostRecentStatus(states);
+
+    // Resubmit any jobs that matched
+    for (auto &job : jobs) {
         std::cout << "Resubmitting: " << job.id << std::endl;
 
         // Submit the job to the cluster
@@ -426,6 +436,34 @@ void Cluster::checkUnsubmittedJobs() {
         msg.push_uint(job.id);
         msg.push_string(job.bundle);
         msg.push_string(job.parameters);
+        msg.send(this);
+    }
+}
+
+void Cluster::checkCancellingJobs() {
+        // Check if the cluster is online and resend the submit messages
+    if (!isOnline())
+        return;
+
+    // Get all jobs where the most recent job history is
+    // deleting and is more than a minute old
+    auto states = std::vector<uint32_t>(
+            {
+                    (uint32_t) CANCELLING
+            }
+    );
+
+    auto jobs = getJobsByMostRecentStatus(states);
+
+    // Resubmit any jobs that matched
+    for (auto &job : jobs) {
+        std::cout << "Recancelling: " << job.id << std::endl;
+
+        // Ask the cluster to cancel the job
+        auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
+                        std::to_string(job.id) + "_" + std::string(job.cluster));
+        msg.push_uint(job.id);
+        msg.push_string(job.bundle);
         msg.send(this);
     }
 }

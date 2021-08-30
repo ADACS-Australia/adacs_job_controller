@@ -135,17 +135,14 @@ private:
     void pruneSources();
 #endif
 
-#ifndef BUILD_TESTS
     [[noreturn]] void resendMessages();
-#else
-    void resendMessages();
-#endif
 
     bool doesHigherPriorityDataExist(uint64_t maxPriority);
 
     void updateJob(Message &message);
 
     void checkUnsubmittedJobs();
+    void checkCancellingJobs();
 
     static void handleFileError(Message &message);
 
@@ -166,7 +163,8 @@ private:
 
     EXPOSE_FUNCTION_FOR_TESTING(pruneSources);
     EXPOSE_FUNCTION_FOR_TESTING(run);
-    EXPOSE_FUNCTION_FOR_TESTING(resendMessages);
+    EXPOSE_FUNCTION_FOR_TESTING(checkUnsubmittedJobs);
+    EXPOSE_FUNCTION_FOR_TESTING(checkCancellingJobs);
 
     EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(handleMessage, Message&);
     EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(doesHigherPriorityDataExist, uint64_t);

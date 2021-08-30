@@ -128,7 +128,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId1,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
@@ -152,7 +152,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId2,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
@@ -176,7 +176,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId3,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
@@ -367,7 +367,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId1,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
@@ -391,7 +391,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId2,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
@@ -415,7 +415,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId3,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )

@@ -4,44 +4,16 @@
 
 #include <boost/test/unit_test.hpp>
 #include <random>
-#include <client_ws.hpp>
-#include <server_http.hpp>
-#include <server_https.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <fstream>
 #include "../Cluster.h"
 #include "../ClusterManager.h"
-#include "../../Lib/jobserver_schema.h"
-#include "../../DB/MySqlConnector.h"
 #include "../../Lib/JobStatus.h"
 #include "test.key.h"
 #include "test.crt.h"
-
-std::default_random_engine rng;
-bool bSeeded = false;
-
-uint64_t randomInt(uint64_t start, uint64_t end) {
-    if (!bSeeded) {
-        bSeeded = true;
-        rng.seed(std::chrono::system_clock::now().time_since_epoch().count());
-    }
-
-    std::uniform_int_distribution<uint64_t> rng_dist(start, end);
-    return rng_dist(rng);
-}
-
-std::vector<uint8_t> *generateRandomData(uint32_t count) {
-    auto result = new std::vector<uint8_t>();
-    result->reserve(count);
-
-    for (uint32_t i = 0; i < count; i++) {
-        result->push_back(randomInt(0, 255));
-    }
-
-    return result;
-}
+#include "../../tests/utils.h"
 
 void writeCertFiles() {
     std::ofstream crt;
@@ -54,11 +26,6 @@ void writeCertFiles() {
     key.write((char *) test_key, test_key_len);
     key.close();
 }
-
-typedef SimpleWeb::SocketServer<SimpleWeb::WS> WsServer;
-typedef SimpleWeb::SocketClient<SimpleWeb::WS> WsClient;
-typedef SimpleWeb::Server<SimpleWeb::HTTP> HttpServer;
-typedef SimpleWeb::Server<SimpleWeb::HTTPS> HttpsServer;
 
 BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     // Define several clusters to use for setting the cluster config environment variable
@@ -487,12 +454,12 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Create a websocket client to receive messages from the server
-        WsClient wsClient("localhost:23458/ws/");
+        TestWsClient wsClient("localhost:23458/ws/");
 
         std::vector<std::vector<uint8_t>> receivedMessages;
 
-        wsClient.on_message = [&receivedMessages](const std::shared_ptr<WsClient::Connection> &connection,
-                                                  const std::shared_ptr<WsClient::InMessage> &in_message) {
+        wsClient.on_message = [&receivedMessages](const std::shared_ptr<TestWsClient::Connection> &connection,
+                                                  const std::shared_ptr<TestWsClient::InMessage> &in_message) {
             auto data = in_message->string();
             receivedMessages.emplace_back(std::vector<uint8_t>(data.begin(), data.end()));
         };
@@ -825,14 +792,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
 
         // There are no jobs in pending state older than 1 minute
-        cluster->callresendMessages();
+        cluster->callcheckUnsubmittedJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
 
         // Delete all job histories and create a new one pending 59 seconds ago
@@ -842,14 +809,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{59},
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
 
         // There are no jobs in pending state older than 1 minute
-        cluster->callresendMessages();
+        cluster->callcheckUnsubmittedJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
 
         // Delete all job histories and create a new one pending 60 seconds ago
@@ -859,14 +826,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
 
         // There is one job in pending state older than 1 minute
-        cluster->callresendMessages();
+        cluster->callcheckUnsubmittedJobs();
         auto source = std::to_string(jobId) + "_test";
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
@@ -881,7 +848,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // If the cluster is not online, it should be a noop
         cluster->setConnection(nullptr);
-        cluster->callresendMessages();
+        cluster->callcheckUnsubmittedJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
 
         // setConnection should call checkUnsubmittedJobs
@@ -905,14 +872,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::SUBMITTING,
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
 
         // There is one job in pending state older than 1 minute
-        cluster->callresendMessages();
+        cluster->callcheckUnsubmittedJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
         delete *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
 
@@ -940,14 +907,175 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                                     jobHistoryTable.jobId = jobId,
                                     jobHistoryTable.timestamp =
                                             std::chrono::system_clock::now() - std::chrono::seconds{60},
-                                    jobHistoryTable.what = "system",
+                                    jobHistoryTable.what = SYSTEM_SOURCE,
                                     jobHistoryTable.state = (uint32_t) i,
                                     jobHistoryTable.details = "Job submitting"
                             )
             );
 
             // There should be no jobs resubmitted
-            cluster->callresendMessages();
+            cluster->callcheckUnsubmittedJobs();
+            BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
+        }
+
+        // Finally clean up all entries from the job history table
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(remove_from(jobTable).unconditionally());
+
+        // Cleanup
+        delete manager;
+        delete cluster;
+        delete con;
+    }
+
+    BOOST_AUTO_TEST_CASE(test_checkCancellingJobs) {
+        // Parse the cluster configuration
+        auto jsonClusters = nlohmann::json::parse(sClusters);
+
+        // Get the details for the first cluster
+        auto details = new sClusterDetails(jsonClusters[0]);
+
+        // Create a new cluster manager
+        auto manager = new ClusterManager();
+
+        // Create a new cluster
+        auto cluster = new Cluster(details, manager);
+
+        // Bring the cluster online
+        auto con = new WsServer::Connection(nullptr);
+        cluster->setConnection(con);
+
+        // First make sure we delete all entries from the job history table
+        auto db = MySqlConnector();
+        schema::JobserverJobhistory jobHistoryTable;
+        schema::JobserverJob jobTable;
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(remove_from(jobTable).unconditionally());
+
+        // Test CANCELLING works as expected
+
+        // Create the new job object
+        auto jobId = db->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = "test",
+                                jobTable.bundle = "whatever",
+                                jobTable.application = "test"
+                        )
+        );
+
+        // Create the first state object
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::CANCELLING,
+                                jobHistoryTable.details = "Job cancelling"
+                        )
+        );
+
+        // There are no jobs in cancelling state older than 1 minute
+        cluster->callcheckCancellingJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
+
+        // Delete all job histories and create a new one cancelling 59 seconds ago
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{59},
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::CANCELLING,
+                                jobHistoryTable.details = "Job cancelling"
+                        )
+        );
+
+        // There are no jobs in cancelling state older than 1 minute
+        cluster->callcheckCancellingJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
+
+        // Delete all job histories and create a new one cancelling 60 seconds ago
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::CANCELLING,
+                                jobHistoryTable.details = "Job cancelling"
+                        )
+        );
+
+        // There is one job in cancelling state older than 1 minute
+        cluster->callcheckCancellingJobs();
+        auto source = std::to_string(jobId) + "_test";
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
+
+        auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        auto msg = Message(*ptr);
+        delete ptr;
+
+        BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
+        BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
+        BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
+
+        // If the cluster is not online, it should be a noop
+        cluster->setConnection(nullptr);
+        cluster->callcheckCancellingJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
+
+        // setConnection should call checkUnsubmittedJobs
+        cluster->setConnection(con);
+
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
+
+        ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        msg = Message(*ptr);
+        delete ptr;
+
+        BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
+        BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
+        BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
+
+        // Test all other job statuses to make sure nothing is incorrectly returned
+        std::vector<JobStatus> noop_statuses = {
+                JobStatus::PENDING,
+                JobStatus::SUBMITTING,
+                JobStatus::SUBMITTED,
+                JobStatus::QUEUED,
+                JobStatus::RUNNING,
+                JobStatus::CANCELLED,
+                JobStatus::DELETING,
+                JobStatus::DELETED,
+                JobStatus::ERROR,
+                JobStatus::WALL_TIME_EXCEEDED,
+                JobStatus::OUT_OF_MEMORY,
+                JobStatus::COMPLETED
+        };
+
+        for (auto i : noop_statuses) {
+            // Delete all job histories and create a new one pending 60 seconds ago
+            db->run(remove_from(jobHistoryTable).unconditionally());
+            db->run(
+                    insert_into(jobHistoryTable)
+                            .set(
+                                    jobHistoryTable.jobId = jobId,
+                                    jobHistoryTable.timestamp =
+                                            std::chrono::system_clock::now() - std::chrono::seconds{60},
+                                    jobHistoryTable.what = SYSTEM_SOURCE,
+                                    jobHistoryTable.state = (uint32_t) i,
+                                    jobHistoryTable.details = "Job submitting"
+                            )
+            );
+
+            // There should be no jobs resubmitted
+            cluster->callcheckCancellingJobs();
             BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
         }
 

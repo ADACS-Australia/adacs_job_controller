@@ -89,6 +89,7 @@ add_executable(
 add_executable(
         Boost_Tests_run
         ${SOURCE_FILES}
+        tests/utils.cpp
         tests/test_main.cpp
         Lib/Messaging/tests.cpp
         Cluster/tests/cluster_tests.cpp

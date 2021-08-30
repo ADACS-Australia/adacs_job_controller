@@ -3,16 +3,13 @@
 //
 
 #include <boost/test/unit_test.hpp>
-#include <client_http.hpp>
 #include <jwt/jwt.hpp>
 #include "../../Settings.h"
 #include "../../Cluster/ClusterManager.h"
 #include "../HttpServer.h"
-#include "../../DB/MySqlConnector.h"
-#include "../../Lib/jobserver_schema.h"
 #include "../../Lib/JobStatus.h"
+#include "../../tests/utils.h"
 
-using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 
 BOOST_AUTO_TEST_SUITE(Job_test_suite)
 /*
@@ -115,7 +112,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // Set up the test client
-        HttpClient client("localhost:8000");
+        TestHttpClient client("localhost:8000");
 
         // Test unauthorized user
         auto r = client.request("POST", "/job/apiv1/job/", "", {{"Authorization", "not_valid"}});
@@ -198,7 +195,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                 );
 
         auto dbHistory = &jobHistoryResults.front();
-        BOOST_CHECK_EQUAL(dbHistory->what, "system");
+        BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
         BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::PENDING);
 
         // Finished with the server
@@ -250,7 +247,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
@@ -274,7 +271,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
@@ -298,7 +295,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobHistoryTable.jobId = jobId,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = "system",
+                                jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                 jobHistoryTable.details = "Job submitting"
                         )
@@ -308,7 +305,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // Set up the test client
-        HttpClient client("localhost:8000");
+        TestHttpClient client("localhost:8000");
 
         // Test unauthorized user
         auto r = client.request("GET", "/job/apiv1/job/", {}, {{"Authorization", "not-real"}});
@@ -376,5 +373,292 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         db->run(remove_from(fileDownloadTable).unconditionally());
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
+    }
+
+    BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job) {
+        // Create a new cluster manager
+        setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
+        auto manager = new ClusterManager();
+
+        setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
+        auto svr = HttpServer(manager);
+        svr.start();
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        // Bring the cluster online
+        auto con = new WsServer::Connection(nullptr);
+        auto cluster = manager->getCluster(svr.getvJwtSecrets()->at(0).clusters()[0]);
+        cluster->setConnection(con);
+
+        // First make sure we delete all entries from the job history table
+        auto db = MySqlConnector();
+        schema::JobserverJobhistory jobHistoryTable;
+        schema::JobserverJob jobTable;
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(remove_from(jobTable).unconditionally());
+
+        // Set up the test client
+        TestHttpClient client("localhost:8000");
+
+        // Test unauthorized user
+        auto r = client.request("PATCH", "/job/apiv1/job/", {}, {{"Authorization", "not-real"}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_forbidden);
+
+        // Test authorized user
+        auto now = std::chrono::system_clock::now() + std::chrono::seconds{10};
+        jwt::jwt_object jwtToken = {
+                jwt::params::algorithm("HS256"),
+                jwt::params::payload({{"userName", "User"}}),
+                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+        };
+        jwtToken.add_claim("exp", now);
+
+        // Test invalid input parameters
+        r = client.request("PATCH", "/job/apiv1/job/", "null", {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+
+        // Test job which doesn't exist
+        nlohmann::json params = {
+                {"jobId", 0}
+        };
+        r = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+
+        // Test cancelling a job with an invalid cluster
+        auto jobId = db->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = "not-real-cluster",
+                                jobTable.bundle = "whatever",
+                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                        )
+        );
+
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.details = "Job submitting"
+                        )
+        );
+
+        params = {
+                {"jobId", jobId}
+        };
+
+        r = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+
+        // Test cancelling a job on a cluster this application doesn't have access to
+        jobId = db->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = "cluster1",
+                                jobTable.bundle = "whatever",
+                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                        )
+        );
+
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.details = "Job submitting"
+                        )
+        );
+
+        params = {
+                {"jobId", jobId}
+        };
+
+        r = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+
+        // Test cancelling a pending job
+        jobId = db->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.bundle = "whatever",
+                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                        )
+        );
+        auto source = std::to_string(jobId) + "_" + svr.getvJwtSecrets()->at(0).clusters()[0];
+
+        // Create a pending job state, which should not trigger any websocket message
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.details = "Job submitting"
+                        )
+        );
+
+        params = {
+                {"jobId", jobId}
+        };
+
+        r = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+        BOOST_CHECK_MESSAGE(
+                (*cluster->getqueue())[Message::Priority::Medium].find(source) ==(*cluster->getqueue())[Message::Priority::Medium].end(),
+                "Queue was not empty when it should have been"
+        );
+
+        nlohmann::json result;
+        r->content >> result;
+        BOOST_CHECK_EQUAL(result["cancelled"], jobId);
+
+        // Verify that the job is now in cancelled state. A job which is pending (meaning it's not yet submitted to a
+        // cluster) transitions directly to a cancelled state rather than via a cancelling state, since there is nothing
+        // to cancel.
+        auto jobHistoryResults =
+                db->run(
+                        select(all_of(jobHistoryTable))
+                                .from(jobHistoryTable)
+                                .where(jobHistoryTable.jobId == jobId)
+                                .order_by(jobHistoryTable.timestamp.desc())
+                                .limit(1u)
+                );
+
+        auto dbHistory = &jobHistoryResults.front();
+        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::CANCELLED);
+
+        // Trying to cancel the job again should result in an error since it is now in cancelling state
+        r = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        BOOST_CHECK_MESSAGE(
+                (*cluster->getqueue())[Message::Priority::Medium].find(source) ==(*cluster->getqueue())[Message::Priority::Medium].end(),
+                "Queue was not empty when it should have been"
+        );
+
+        // Next try valid states which are able to transition to cancelling
+        auto validStates = std::vector<JobStatus>{
+                JobStatus::SUBMITTING,
+                JobStatus::SUBMITTED,
+                JobStatus::QUEUED,
+                JobStatus::RUNNING
+        };
+
+        for (auto state : validStates) {
+            // Remove any existing job history
+            db->run(remove_from(jobHistoryTable).unconditionally());
+
+            // Create a job history for this state
+            db->run(
+                    insert_into(jobHistoryTable)
+                            .set(
+                                    jobHistoryTable.jobId = jobId,
+                                    jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                    jobHistoryTable.what = SYSTEM_SOURCE,
+                                    jobHistoryTable.state = (uint32_t) state,
+                                    jobHistoryTable.details = "Job submitting"
+                            )
+            );
+
+            // Call the API to cancel the job
+            r = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
+            BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
+            BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+            BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
+
+            auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+            auto msg = Message(*ptr);
+            delete ptr;
+
+            BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
+            BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
+            BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
+
+            r->content >> result;
+            BOOST_CHECK_EQUAL(result["cancelled"], jobId);
+
+            // The job status should now be CANCELLING
+            jobHistoryResults =
+                    db->run(
+                            select(all_of(jobHistoryTable))
+                                    .from(jobHistoryTable)
+                                    .where(jobHistoryTable.jobId == jobId)
+                                    .order_by(jobHistoryTable.timestamp.desc())
+                                    .limit(1u)
+                    );
+
+            dbHistory = &jobHistoryResults.front();
+            BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::CANCELLING);
+        }
+
+        // Finally test that invalid states all raise an error
+        auto invalidStates = std::vector<JobStatus>{
+                JobStatus::CANCELLING,
+                JobStatus::CANCELLED,
+                JobStatus::COMPLETED,
+                JobStatus::DELETING,
+                JobStatus::DELETED,
+                JobStatus::ERROR,
+                JobStatus::OUT_OF_MEMORY,
+                JobStatus::WALL_TIME_EXCEEDED
+        };
+
+        for (auto state : invalidStates) {
+            // Remove any existing job history
+            db->run(remove_from(jobHistoryTable).unconditionally());
+
+            // Create a job history for this state
+            db->run(
+                    insert_into(jobHistoryTable)
+                            .set(
+                                    jobHistoryTable.jobId = jobId,
+                                    jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                    jobHistoryTable.what = SYSTEM_SOURCE,
+                                    jobHistoryTable.state = (uint32_t) state,
+                                    jobHistoryTable.details = "Job submitting"
+                            )
+            );
+
+            // Call the API to cancel the job
+            r = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
+            BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+            BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
+
+            // The job status should now be CANCELLING
+            jobHistoryResults =
+                    db->run(
+                            select(all_of(jobHistoryTable))
+                                    .from(jobHistoryTable)
+                                    .where(jobHistoryTable.jobId == jobId)
+                                    .order_by(jobHistoryTable.timestamp.desc())
+                                    .limit(1u)
+                    );
+
+            dbHistory = &jobHistoryResults.front();
+            BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) state);
+        }
+
+        // Cleanup
+        svr.stop();
+        
+        // Finally clean up all entries from the job history table
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(remove_from(jobTable).unconditionally());
+
+        // Cleanup
+        delete manager;
+        delete con;
     }
 BOOST_AUTO_TEST_SUITE_END()

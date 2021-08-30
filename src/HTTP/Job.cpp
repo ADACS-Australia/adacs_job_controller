@@ -105,7 +105,7 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
                             .set(
                                     jobHistoryTable.jobId = jobId,
                                     jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                    jobHistoryTable.what = "system",
+                                    jobHistoryTable.what = SYSTEM_SOURCE,
                                     jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
                                     jobHistoryTable.details = "Job submitting"
                             )
@@ -242,12 +242,10 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
         }
     };
 
-    server->getServer().resource["^" + path + "$"]["DELETE"] = [clusterManager, server](
+    server->getServer().resource["^" + path + "$"]["PATCH"] = [clusterManager, server](
             const std::shared_ptr<HttpServerImpl::Response> &response,
             const std::shared_ptr<HttpServerImpl::Request> &request) {
 
-        // todo: Not implemented yet
-        return;
         // With jobId: Job to cancel
 
         // Verify that the user is authorized
@@ -269,7 +267,7 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
         db->start_transaction();
 
         try {
-            // Create a new job record and submit the job
+            // Get the database tables
             JobserverJob jobTable;
             JobserverJobhistory jobHistoryTable;
 
@@ -277,30 +275,116 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
             nlohmann::json post_data;
             request->content >> post_data;
 
-            // Process the query parameters
-            auto query_fields = request->parse_query_string();
-
             // Check if jobId is provided
-            auto jobIdPtr = query_fields.find("jobId");
-            auto jobId = 0;
-            if (jobIdPtr != query_fields.end())
-                jobId = std::stoi(jobIdPtr->second);
+            auto jobIdPtr = post_data.find("jobId");
+            if (jobIdPtr == post_data.end())
+                throw std::runtime_error("No jobId to cancel was provided");
 
-            // Check that the job id was provided
-            if (!jobId)
-                throw std::exception();
+            // Get the job id
+            auto jobId = (uint32_t) jobIdPtr.value();
 
+            // Make sure the job to cancel exists in the database
+            auto jobResults =
+                    db->run(
+                            select(all_of(jobTable))
+                                    .from(jobTable)
+                                    .where(jobTable.id == jobId)
+                    );
+
+            // Check that at least one record exists for this job
+            if (jobResults.empty())
+                throw std::runtime_error("Job did not exist with the specified jobId");
+
+            const auto job = &jobResults.front();
+
+            // Get the cluster for this job
+            auto cluster = clusterManager->getCluster(job->cluster);
+            if (!cluster)
+                throw std::runtime_error("Cluster for job did not exist");
+
+            // Check that this secret has access to the cluster for this job
+            if (std::find(
+                    authResult->secret().clusters().begin(),
+                    authResult->secret().clusters().end(),
+                    std::string(job->cluster)
+            ) == authResult->secret().clusters().end()) {
+                // Invalid cluster
+                throw std::runtime_error(
+                        "Application " + authResult->secret().name() + " does not have access to cluster " +
+                        std::string(job->cluster)
+                );
+            }
+
+            // Get any job histories for this job
             auto jobHistoryResults =
                     db->run(
                             select(all_of(jobHistoryTable))
                                     .from(jobHistoryTable)
-                                    .where(jobHistoryTable.jobId == jobId)
+                                    .where(jobHistoryTable.jobId == job->id)
                                     .order_by(jobHistoryTable.timestamp.desc())
+                                    .limit(1u)
                     );
 
-            // Check that at least one record exists for this job
-            if (jobHistoryResults.empty())
-                throw std::exception();
+
+            // Check that the job is in a valid state to cancel the job
+            const auto latestStatus = &jobHistoryResults.front();
+
+            // Check invalid states (States where the job has finished)
+            auto invalidStates = std::vector<JobStatus>{
+                JobStatus::CANCELLING,
+                JobStatus::CANCELLED,
+                JobStatus::DELETING,
+                JobStatus::DELETED,
+                JobStatus::ERROR,
+                JobStatus::WALL_TIME_EXCEEDED,
+                JobStatus::OUT_OF_MEMORY,
+                JobStatus::COMPLETED
+            };
+            
+            if (std::find(invalidStates.begin(), invalidStates.end(), latestStatus->state) != invalidStates.end()) {
+                throw std::runtime_error("Job is in invalid state");
+            }
+
+            // If the job is pending, mark it as cancelled now since it is not yet submitted on a cluster
+            if ((uint32_t) latestStatus->state == (uint32_t) JobStatus::PENDING)
+            {
+                db->run(
+                        insert_into(jobHistoryTable)
+                                .set(
+                                        jobHistoryTable.jobId = job->id,
+                                        jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                        jobHistoryTable.what = SYSTEM_SOURCE,
+                                        jobHistoryTable.state = (uint32_t) JobStatus::CANCELLED,
+                                        jobHistoryTable.details = "Job cancelled"
+                                )
+                );
+            }
+            else
+            {
+                // Mark the job as cancelling and message the client to cancel the job
+                db->run(
+                        insert_into(jobHistoryTable)
+                                .set(
+                                        jobHistoryTable.jobId = job->id,
+                                        jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                        jobHistoryTable.what = SYSTEM_SOURCE,
+                                        jobHistoryTable.state = (uint32_t) JobStatus::CANCELLING,
+                                        jobHistoryTable.details = "Job cancelling"
+                                )
+                );
+
+                // Tell the client to cancel the job if it's online
+                // If the cluster is not online - the resendMessages function in Cluster.cpp will
+                // cancel the job when the client comes online
+                if (cluster->isOnline()) {
+                    // Ask the cluster to cancel the job
+                    auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
+                                    std::to_string(job->id) + "_" + std::string(job->cluster));
+                    msg.push_uint(job->id);
+                    msg.push_string(job->bundle);
+                    msg.send(cluster);
+                }
+            }
 
             // Commit the changes in the database
             db->commit_transaction();
@@ -359,7 +443,7 @@ nlohmann::json filterJobs(
     )
             .from(jobHistoryTable)
                     // Filter by system job histories
-            .where(jobHistoryTable.what == "system")
+            .where(jobHistoryTable.what == SYSTEM_SOURCE)
                     // For each job id
             .group_by(jobHistoryTable.jobId)
                     // Alias this for use later

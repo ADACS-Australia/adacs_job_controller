@@ -6,21 +6,11 @@
 #include <nlohmann/json.hpp>
 #include <thread>
 #include <chrono>
-#include <client_ws.hpp>
-#include <client_http.hpp>
 #include <jwt/jwt.hpp>
 #include "../Settings.h"
 #include "../Lib/GeneralUtils.h"
 #include "../Cluster/ClusterManager.h"
-#include "../HTTP/HttpServer.h"
-#include "../Lib/jobserver_schema.h"
-#include "../DB/MySqlConnector.h"
-
-extern uint64_t randomInt(uint64_t start, uint64_t end);
-extern std::vector<uint8_t> *generateRandomData(uint32_t count);
-
-using WsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
-using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
+#include "utils.h"
 
 size_t parseLine(char* line){
     // This assumes that a digit will be found and the line ends in " Kb".
@@ -45,26 +35,6 @@ size_t getCurrentMemoryUsage() {
     }
     fclose(file);
     return result;
-}
-
-std::string getLastToken() {
-    auto db = MySqlConnector();
-    schema::JobserverClusteruuid clusterUuidTable;
-
-    // Look up all cluster tokens
-    auto uuidResults = db->run(
-            select(all_of(clusterUuidTable))
-                    .from(clusterUuidTable)
-                    .unconditionally()
-                    .order_by(clusterUuidTable.id.desc())
-    );
-
-    // Check that the uuid was valid
-    if (uuidResults.empty())
-        throw std::runtime_error("Couldn't get any cluster token?");
-
-    // Return the uuid
-    return uuidResults.front().uuid;
 }
 
 BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
@@ -131,12 +101,12 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         mgr.callreconnectClusters();
 
         // Connect a fake client to the websocket server
-        WsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
+        TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
         auto fileData = new std::vector<uint8_t>();
         bool* bPaused = new bool;
         *bPaused = false;
         std::thread* pThread;
-        websocketClient.on_message = [&pThread, fileData, bPaused](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
+        websocketClient.on_message = [&pThread, fileData, bPaused](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
@@ -169,7 +139,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             msg.push_string(uuid);
             msg.push_ulong(fileSize);
 
-            auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->size());
+            auto o = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->size());
             std::ostream_iterator<uint8_t> iter(*o);
             std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
             connection->send(o, nullptr, 130);
@@ -195,7 +165,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                     msg.push_string(uuid);
                     msg.push_bytes(*data);
 
-                    auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->size());
+                    auto o = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->size());
                     std::ostream_iterator<uint8_t> iter(*o);
                     std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
                     connection->send(o, nullptr, 130);
@@ -244,7 +214,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                 {"path",  "/data/myfile.png"}
         };
 
-        HttpClient httpClient("localhost:8000");
+        TestHttpClient httpClient("localhost:8000");
         auto r = httpClient.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         nlohmann::json result;
@@ -324,12 +294,12 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         mgr.callreconnectClusters();
 
         // Connect a fake client to the websocket server
-        WsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
+        TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
         bool* bPaused = new bool;
         *bPaused = false;
         uint64_t fileSize;
         std::thread* pThread;
-        websocketClient.on_message = [&pThread, bPaused, &mgr, &fileSize](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
+        websocketClient.on_message = [&pThread, bPaused, &mgr, &fileSize](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
@@ -430,7 +400,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                 {"path",  "/data/myfile.png"}
         };
 
-        HttpClient httpClient("localhost:8000");
+        TestHttpClient httpClient("localhost:8000");
         auto r = httpClient.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         nlohmann::json result;
@@ -443,7 +413,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         httpClient.request(
             "GET",
             "/job/apiv1/file/?fileId=" + std::string(result["fileId"]),
-            [&totalBytesReceived, &end](const std::shared_ptr<HttpClient::Response>& response, const SimpleWeb::error_code &ec) {
+            [&totalBytesReceived, &end](const std::shared_ptr<TestHttpClient::Response>& response, const SimpleWeb::error_code &ec) {
                 totalBytesReceived += response->content.size();
                 end = response->content.end;
             }
