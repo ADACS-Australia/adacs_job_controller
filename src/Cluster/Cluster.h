@@ -143,6 +143,7 @@ private:
 
     void checkUnsubmittedJobs();
     void checkCancellingJobs();
+    void checkDeletingJobs();
 
     static void handleFileError(Message &message);
 
@@ -165,6 +166,7 @@ private:
     EXPOSE_FUNCTION_FOR_TESTING(run);
     EXPOSE_FUNCTION_FOR_TESTING(checkUnsubmittedJobs);
     EXPOSE_FUNCTION_FOR_TESTING(checkCancellingJobs);
+    EXPOSE_FUNCTION_FOR_TESTING(checkDeletingJobs);
 
     EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(handleMessage, Message&);
     EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(doesHigherPriorityDataExist, uint64_t);

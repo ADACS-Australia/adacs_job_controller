@@ -407,6 +407,171 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
     };
+
+    server->getServer().resource["^" + path + "$"]["DELETE"] = [clusterManager, server](
+            const std::shared_ptr<HttpServerImpl::Response> &response,
+            const std::shared_ptr<HttpServerImpl::Request> &request) {
+
+        // With jobId: Job to delete
+
+        // Verify that the user is authorized
+        std::unique_ptr<sAuthorizationResult> authResult;
+        try {
+            authResult = server->isAuthorized(request->header);
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
+            // Invalid request
+            response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
+            return;
+        }
+
+        // Create a database connection
+        auto db = MySqlConnector();
+
+        // Start a transaction
+        db->start_transaction();
+
+        try {
+            // Get the database tables
+            JobserverJob jobTable;
+            JobserverJobhistory jobHistoryTable;
+
+            // Read the json from the post body
+            nlohmann::json post_data;
+            request->content >> post_data;
+
+            // Check if jobId is provided
+            auto jobIdPtr = post_data.find("jobId");
+            if (jobIdPtr == post_data.end())
+                throw std::runtime_error("No jobId to delete was provided");
+
+            // Get the job id
+            auto jobId = (uint32_t) jobIdPtr.value();
+
+            // Make sure the job to delete exists in the database
+            auto jobResults =
+                    db->run(
+                            select(all_of(jobTable))
+                                    .from(jobTable)
+                                    .where(jobTable.id == jobId)
+                    );
+
+            // Check that at least one record exists for this job
+            if (jobResults.empty())
+                throw std::runtime_error("Job did not exist with the specified jobId");
+
+            const auto job = &jobResults.front();
+
+            // Get the cluster for this job
+            auto cluster = clusterManager->getCluster(job->cluster);
+            if (!cluster)
+                throw std::runtime_error("Cluster for job did not exist");
+
+            // Check that this secret has access to the cluster for this job
+            if (std::find(
+                    authResult->secret().clusters().begin(),
+                    authResult->secret().clusters().end(),
+                    std::string(job->cluster)
+            ) == authResult->secret().clusters().end()) {
+                // Invalid cluster
+                throw std::runtime_error(
+                        "Application " + authResult->secret().name() + " does not have access to cluster " +
+                        std::string(job->cluster)
+                );
+            }
+
+            // Get any job histories for this job
+            auto jobHistoryResults =
+                    db->run(
+                            select(all_of(jobHistoryTable))
+                                    .from(jobHistoryTable)
+                                    .where(jobHistoryTable.jobId == job->id)
+                                    .order_by(jobHistoryTable.timestamp.desc())
+                                    .limit(1u)
+                    );
+
+
+            // Check that the job is in a valid state to delete the job
+            const auto latestStatus = &jobHistoryResults.front();
+
+            // Check invalid states (States where the job is running)
+            auto invalidStates = std::vector<JobStatus>{
+                JobStatus::SUBMITTING,
+                JobStatus::SUBMITTED,
+                JobStatus::QUEUED,
+                JobStatus::RUNNING,
+                JobStatus::CANCELLING,
+                JobStatus::DELETING,
+                JobStatus::DELETED
+            };
+            
+            if (std::find(invalidStates.begin(), invalidStates.end(), latestStatus->state) != invalidStates.end()) {
+                throw std::runtime_error("Job is in invalid state");
+            }
+
+            // If the job is pending, mark it as deleted now since it is not yet submitted on a cluster
+            if ((uint32_t) latestStatus->state == (uint32_t) JobStatus::PENDING)
+            {
+                db->run(
+                        insert_into(jobHistoryTable)
+                                .set(
+                                        jobHistoryTable.jobId = job->id,
+                                        jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                        jobHistoryTable.what = SYSTEM_SOURCE,
+                                        jobHistoryTable.state = (uint32_t) JobStatus::DELETED,
+                                        jobHistoryTable.details = "Job deleted"
+                                )
+                );
+            }
+            else
+            {
+                // Mark the job as deleting and message the client to delete the job
+                db->run(
+                        insert_into(jobHistoryTable)
+                                .set(
+                                        jobHistoryTable.jobId = job->id,
+                                        jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                        jobHistoryTable.what = SYSTEM_SOURCE,
+                                        jobHistoryTable.state = (uint32_t) JobStatus::DELETING,
+                                        jobHistoryTable.details = "Job deleting"
+                                )
+                );
+
+                // Tell the client to delete the job if it's online
+                // If the cluster is not online - the resendMessages function in Cluster.cpp will
+                // delete the job when the client comes online
+                if (cluster->isOnline()) {
+                    // Ask the cluster to delete the job
+                    auto msg = Message(DELETE_JOB, Message::Priority::Medium,
+                                    std::to_string(job->id) + "_" + std::string(job->cluster));
+                    msg.push_uint(job->id);
+                    msg.push_string(job->bundle);
+                    msg.send(cluster);
+                }
+            }
+
+            // Commit the changes in the database
+            db->commit_transaction();
+
+            // Report success
+            nlohmann::json result;
+            result["deleted"] = jobId;
+
+            SimpleWeb::CaseInsensitiveMultimap headers;
+            headers.emplace("Content-Type", "application/json");
+
+            response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
+            // Abort the transaction
+            db->rollback_transaction(false);
+
+            // Report bad request
+            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+        }
+    };
 }
 
 nlohmann::json filterJobs(

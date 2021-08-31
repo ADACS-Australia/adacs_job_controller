@@ -1089,6 +1089,167 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         delete con;
     }
 
+    BOOST_AUTO_TEST_CASE(test_checkDeletingJobs) {
+        // Parse the cluster configuration
+        auto jsonClusters = nlohmann::json::parse(sClusters);
+
+        // Get the details for the first cluster
+        auto details = new sClusterDetails(jsonClusters[0]);
+
+        // Create a new cluster manager
+        auto manager = new ClusterManager();
+
+        // Create a new cluster
+        auto cluster = new Cluster(details, manager);
+
+        // Bring the cluster online
+        auto con = new WsServer::Connection(nullptr);
+        cluster->setConnection(con);
+
+        // First make sure we delete all entries from the job history table
+        auto db = MySqlConnector();
+        schema::JobserverJobhistory jobHistoryTable;
+        schema::JobserverJob jobTable;
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(remove_from(jobTable).unconditionally());
+
+        // Test CANCELLING works as expected
+
+        // Create the new job object
+        auto jobId = db->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = "test",
+                                jobTable.bundle = "whatever",
+                                jobTable.application = "test"
+                        )
+        );
+
+        // Create the first state object
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::DELETING,
+                                jobHistoryTable.details = "Job deleting"
+                        )
+        );
+
+        // There are no jobs in deleting state older than 1 minute
+        cluster->callcheckDeletingJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
+
+        // Delete all job histories and create a new one deleting 59 seconds ago
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{59},
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::DELETING,
+                                jobHistoryTable.details = "Job deleting"
+                        )
+        );
+
+        // There are no jobs in deleting state older than 1 minute
+        cluster->callcheckDeletingJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
+
+        // Delete all job histories and create a new one deleting 60 seconds ago
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::DELETING,
+                                jobHistoryTable.details = "Job deleting"
+                        )
+        );
+
+        // There is one job in deleting state older than 1 minute
+        cluster->callcheckDeletingJobs();
+        auto source = std::to_string(jobId) + "_test";
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
+
+        auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        auto msg = Message(*ptr);
+        delete ptr;
+
+        BOOST_CHECK_EQUAL(msg.getId(), DELETE_JOB);
+        BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
+        BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
+
+        // If the cluster is not online, it should be a noop
+        cluster->setConnection(nullptr);
+        cluster->callcheckDeletingJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
+
+        // setConnection should call checkUnsubmittedJobs
+        cluster->setConnection(con);
+
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
+
+        ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        msg = Message(*ptr);
+        delete ptr;
+
+        BOOST_CHECK_EQUAL(msg.getId(), DELETE_JOB);
+        BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
+        BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
+
+        // Test all other job statuses to make sure nothing is incorrectly returned
+        std::vector<JobStatus> noop_statuses = {
+                JobStatus::PENDING,
+                JobStatus::SUBMITTING,
+                JobStatus::SUBMITTED,
+                JobStatus::QUEUED,
+                JobStatus::RUNNING,
+                JobStatus::CANCELLING,
+                JobStatus::CANCELLED,
+                JobStatus::DELETED,
+                JobStatus::ERROR,
+                JobStatus::WALL_TIME_EXCEEDED,
+                JobStatus::OUT_OF_MEMORY,
+                JobStatus::COMPLETED
+        };
+
+        for (auto i : noop_statuses) {
+            // Delete all job histories and create a new one pending 60 seconds ago
+            db->run(remove_from(jobHistoryTable).unconditionally());
+            db->run(
+                    insert_into(jobHistoryTable)
+                            .set(
+                                    jobHistoryTable.jobId = jobId,
+                                    jobHistoryTable.timestamp =
+                                            std::chrono::system_clock::now() - std::chrono::seconds{60},
+                                    jobHistoryTable.what = SYSTEM_SOURCE,
+                                    jobHistoryTable.state = (uint32_t) i,
+                                    jobHistoryTable.details = "Job submitting"
+                            )
+            );
+
+            // There should be no jobs resubmitted
+            cluster->callcheckDeletingJobs();
+            BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
+        }
+
+        // Finally clean up all entries from the job history table
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(remove_from(jobTable).unconditionally());
+
+        // Cleanup
+        delete manager;
+        delete cluster;
+        delete con;
+    }
+
     BOOST_AUTO_TEST_CASE(test_handleFileError) {
         // Parse the cluster configuration
         auto jsonClusters = nlohmann::json::parse(sClusters);

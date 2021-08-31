@@ -19,6 +19,7 @@
 #define SUBMIT_JOB 2000
 #define UPDATE_JOB 2001
 #define CANCEL_JOB 2002
+#define DELETE_JOB 2003
 
 #define REQUEST_BUNDLE 3000
 

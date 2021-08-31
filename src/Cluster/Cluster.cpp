@@ -130,6 +130,9 @@ void Cluster::setConnection(WsServer::Connection *pCon) {
 
         // See if there are any cancelling jobs that should be sent
         checkCancellingJobs();
+
+        // See if there are any deleting jobs that should be sent
+        checkDeletingJobs();
     }
 }
 
@@ -361,7 +364,12 @@ bool Cluster::isOnline() {
         
         // Check for jobs that need to be resubmitted
         checkUnsubmittedJobs();
+
+        // Check for jobs that need to be cancelled
         checkCancellingJobs();
+
+        // Check for jobs that need to be deleted
+        checkDeletingJobs();
     }
 }
 
@@ -441,7 +449,7 @@ void Cluster::checkUnsubmittedJobs() {
 }
 
 void Cluster::checkCancellingJobs() {
-        // Check if the cluster is online and resend the submit messages
+    // Check if the cluster is online and resend the submit messages
     if (!isOnline())
         return;
 
@@ -461,6 +469,34 @@ void Cluster::checkCancellingJobs() {
 
         // Ask the cluster to cancel the job
         auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
+                        std::to_string(job.id) + "_" + std::string(job.cluster));
+        msg.push_uint(job.id);
+        msg.push_string(job.bundle);
+        msg.send(this);
+    }
+}
+
+void Cluster::checkDeletingJobs() {
+    // Check if the cluster is online and resend the submit messages
+    if (!isOnline())
+        return;
+
+    // Get all jobs where the most recent job history is
+    // deleting and is more than a minute old
+    auto states = std::vector<uint32_t>(
+            {
+                    (uint32_t) DELETING
+            }
+    );
+
+    auto jobs = getJobsByMostRecentStatus(states);
+
+    // Resubmit any jobs that matched
+    for (auto &job : jobs) {
+        std::cout << "Redeleting: " << job.id << std::endl;
+
+        // Ask the cluster to delete the job
+        auto msg = Message(DELETE_JOB, Message::Priority::Medium,
                         std::to_string(job.id) + "_" + std::string(job.cluster));
         msg.push_uint(job.id);
         msg.push_string(job.bundle);
