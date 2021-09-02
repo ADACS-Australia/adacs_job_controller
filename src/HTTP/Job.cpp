@@ -107,12 +107,9 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
                                     jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                     jobHistoryTable.what = SYSTEM_SOURCE,
                                     jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
-                                    jobHistoryTable.details = "Job submitting"
+                                    jobHistoryTable.details = "Job pending"
                             )
             );
-
-            // Commit the changes in the database
-            db->commit_transaction();
 
             // Tell the client to submit the job if it's online
             // If the cluster is not online - the resendMessages function in Cluster.cpp will
@@ -125,7 +122,22 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
                 msg.push_string(post_data["bundle"]);
                 msg.push_string(post_data["parameters"]);
                 msg.send(cluster);
+
+                // Mark the job as submitting
+                db->run(
+                        insert_into(jobHistoryTable)
+                                .set(
+                                        jobHistoryTable.jobId = jobId,
+                                        jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                        jobHistoryTable.what = SYSTEM_SOURCE,
+                                        jobHistoryTable.state = (uint32_t) JobStatus::SUBMITTING,
+                                        jobHistoryTable.details = "Job submitting"
+                                )
+                );
             }
+
+            // Commit the changes in the database
+            db->commit_transaction();
 
             // Report success
             nlohmann::json result;

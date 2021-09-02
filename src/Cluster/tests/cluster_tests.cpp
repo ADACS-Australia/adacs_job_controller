@@ -761,10 +761,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Create a new cluster
         auto cluster = new Cluster(details, manager);
 
-        // Bring the cluster online
-        auto con = new WsServer::Connection(nullptr);
-        cluster->setConnection(con);
-
         // First make sure we delete all entries from the job history table
         auto db = MySqlConnector();
         schema::JobserverJobhistory jobHistoryTable;
@@ -772,15 +768,30 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
 
+        // Bring the cluster online
+        auto con = new WsServer::Connection(nullptr);
+        cluster->setConnection(con);
+
         // Test PENDING works as expected
 
         // Create the new job object
+        auto jobIdTestCluster = db->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = "testclusternotreal",
+                                jobTable.bundle = "whatever",
+                                jobTable.application = "test"
+                        )
+        );
+
         auto jobId = db->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = "test",
+                                jobTable.cluster = std::string(jsonClusters[0]["name"]),
                                 jobTable.bundle = "whatever",
                                 jobTable.application = "test"
                         )
@@ -794,7 +805,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                 jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
-                                jobHistoryTable.details = "Job submitting"
+                                jobHistoryTable.details = "Job pending"
                         )
         );
 
@@ -811,7 +822,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{59},
                                 jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
-                                jobHistoryTable.details = "Job submitting"
+                                jobHistoryTable.details = "Job pending"
                         )
         );
 
@@ -819,7 +830,24 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         cluster->callcheckUnsubmittedJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
 
-        // Delete all job histories and create a new one pending 60 seconds ago
+        // Delete all job histories and create one with a timestamp at least 60 seconds ago for the job not from
+        // this cluster, it should be a noop
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobIdTestCluster,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.details = "Job pending"
+                        )
+        );
+
+        cluster->callcheckUnsubmittedJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
+
+        // Delete all job histories and create a new one pending 60 seconds ago for a job from this cluster
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(
                 insert_into(jobHistoryTable)
@@ -828,13 +856,13 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
                                 jobHistoryTable.what = SYSTEM_SOURCE,
                                 jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
-                                jobHistoryTable.details = "Job submitting"
+                                jobHistoryTable.details = "Job pending"
                         )
         );
 
         // There is one job in pending state older than 1 minute
         cluster->callcheckUnsubmittedJobs();
-        auto source = std::to_string(jobId) + "_test";
+        auto source = std::to_string(jobId) + "_" + std::string(jsonClusters[0]["name"]);
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
@@ -845,6 +873,20 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
         BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
         BOOST_CHECK_EQUAL(msg.pop_string(), "params1");
+
+        // Check that the job transitioned to submitting state from pending state
+        auto jobHistoryResults =
+                db->run(
+                        select(all_of(jobHistoryTable))
+                                .from(jobHistoryTable)
+                                .where(jobHistoryTable.jobId == jobId)
+                                .order_by(jobHistoryTable.timestamp.desc())
+                                .limit(1u)
+                );
+
+        auto dbHistory = &jobHistoryResults.front();
+        BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
+        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
 
         // If the cluster is not online, it should be a noop
         cluster->setConnection(nullptr);
@@ -865,7 +907,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
         BOOST_CHECK_EQUAL(msg.pop_string(), "params1");
 
-        // Delete all job histories and create a new one pending 60 seconds ago
+        // Delete all job histories and create a new one submitting 60 seconds ago
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(
                 insert_into(jobHistoryTable)
@@ -878,10 +920,24 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                         )
         );
 
-        // There is one job in pending state older than 1 minute
+        // There is one job in submitting state older than 1 minute
         cluster->callcheckUnsubmittedJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
         delete *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+
+        // Check that the job transitioned to submitting state from pending state
+        jobHistoryResults =
+                db->run(
+                        select(all_of(jobHistoryTable))
+                                .from(jobHistoryTable)
+                                .where(jobHistoryTable.jobId == jobId)
+                                .order_by(jobHistoryTable.timestamp.desc())
+                                .limit(1u)
+                );
+
+        dbHistory = &jobHistoryResults.front();
+        BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
+        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
 
         // Test all other job statuses to make sure nothing is incorrectly returned
         std::vector<JobStatus> noop_statuses = {
@@ -955,12 +1011,23 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Test CANCELLING works as expected
 
         // Create the new job object
+        auto jobIdTestCluster = db->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = "testclusternotreal",
+                                jobTable.bundle = "whatever",
+                                jobTable.application = "test"
+                        )
+        );
+
         auto jobId = db->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = "test",
+                                jobTable.cluster = std::string(jsonClusters[0]["name"]),
                                 jobTable.bundle = "whatever",
                                 jobTable.application = "test"
                         )
@@ -999,6 +1066,23 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         cluster->callcheckCancellingJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
 
+        // Delete all job histories and create one with a timestamp at least 60 seconds ago for the job not from
+        // this cluster, it should be a noop
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobIdTestCluster,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::CANCELLING,
+                                jobHistoryTable.details = "Job pending"
+                        )
+        );
+
+        cluster->callcheckUnsubmittedJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
+
         // Delete all job histories and create a new one cancelling 60 seconds ago
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(
@@ -1014,7 +1098,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // There is one job in cancelling state older than 1 minute
         cluster->callcheckCancellingJobs();
-        auto source = std::to_string(jobId) + "_test";
+        auto source = std::to_string(jobId) + "_" + std::string(jsonClusters[0]["name"]);
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
@@ -1111,15 +1195,26 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
 
-        // Test CANCELLING works as expected
+        // Test DELETING works as expected
 
         // Create the new job object
+        auto jobIdTestCluster = db->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = "testclusternotreal",
+                                jobTable.bundle = "whatever",
+                                jobTable.application = "test"
+                        )
+        );
+
         auto jobId = db->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = "test",
+                                jobTable.cluster = std::string(jsonClusters[0]["name"]),
                                 jobTable.bundle = "whatever",
                                 jobTable.application = "test"
                         )
@@ -1158,6 +1253,23 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         cluster->callcheckDeletingJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
 
+        // Delete all job histories and create one with a timestamp at least 60 seconds ago for the job not from
+        // this cluster, it should be a noop
+        db->run(remove_from(jobHistoryTable).unconditionally());
+        db->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobIdTestCluster,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = (uint32_t) JobStatus::DELETING,
+                                jobHistoryTable.details = "Job pending"
+                        )
+        );
+
+        cluster->callcheckUnsubmittedJobs();
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].size(), 0);
+
         // Delete all job histories and create a new one deleting 60 seconds ago
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(
@@ -1173,7 +1285,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // There is one job in deleting state older than 1 minute
         cluster->callcheckDeletingJobs();
-        auto source = std::to_string(jobId) + "_test";
+        auto source = std::to_string(jobId) + "_" + std::string(jsonClusters[0]["name"]);
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();

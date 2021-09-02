@@ -103,10 +103,10 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = ClusterManager();
+        auto mgr = new ClusterManager();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(&mgr);
+        auto svr = HttpServer(mgr);
 
         svr.start();
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -192,11 +192,67 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         select(all_of(jobHistoryTable))
                                 .from(jobHistoryTable)
                                 .where(jobHistoryTable.jobId == dbJob->id)
+                                .order_by(jobHistoryTable.timestamp.desc())
+                                .limit(1u)
                 );
 
         auto dbHistory = &jobHistoryResults.front();
         BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
         BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::PENDING);
+
+        // Connect a cluster and check that the job changes to submitting rather than pending when submitting a job
+        auto con = new WsServer::Connection(nullptr);
+        auto cluster = mgr->getCluster(svr.getvJwtSecrets()->at(0).clusters()[0]);
+        cluster->setConnection(con);
+
+        r = client.request("POST", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+
+        r->content >> result;
+
+        jobId = result["jobId"];
+
+        auto source = std::to_string(jobId) + "_" + std::string(params["cluster"]);
+        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
+
+        auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        auto msg = Message(*ptr);
+        delete ptr;
+
+        BOOST_CHECK_EQUAL(msg.getId(), SUBMIT_JOB);
+        BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
+        BOOST_CHECK_EQUAL(msg.pop_string(), std::string(params["bundle"]));
+        BOOST_CHECK_EQUAL(msg.pop_string(), std::string(params["parameters"]));
+
+        // Check that the job that was created is correct
+        jobResults =
+                db->run(
+                        select(all_of(jobTable))
+                                .from(jobTable)
+                                .where(jobTable.id == jobId)
+                );
+
+        dbJob = &jobResults.front();
+        BOOST_CHECK_EQUAL(dbJob->application, svr.getvJwtSecrets()->at(0).name());
+        BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
+        BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
+        BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
+        BOOST_CHECK_EQUAL(dbJob->user, 5);
+
+        // Check that the job history that was created is correct
+        jobHistoryResults =
+                db->run(
+                        select(all_of(jobHistoryTable))
+                                .from(jobHistoryTable)
+                                .where(jobHistoryTable.jobId == dbJob->id)
+                                .order_by(jobHistoryTable.timestamp.desc())
+                                .limit(1u)
+                );
+
+        dbHistory = &jobHistoryResults.front();
+        BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
+        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
 
         // Finished with the server
         svr.stop();
@@ -205,6 +261,10 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         db->run(remove_from(fileDownloadTable).unconditionally());
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
+
+        // Cleanup
+        delete mgr;
+        delete con;
     }
 
     BOOST_AUTO_TEST_CASE(test_GET_get_jobs) {

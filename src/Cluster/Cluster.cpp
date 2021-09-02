@@ -373,9 +373,10 @@ bool Cluster::isOnline() {
     }
 }
 
-auto getJobsByMostRecentStatus(std::vector<uint32_t>& states) {
+auto getJobsByMostRecentStatus(const std::vector<uint32_t>& states, const std::string& cluster) {
     /*
-    Finds all jobs currently in a state provided by the states argument that are older than 60 seconds
+     Finds all jobs currently in a state provided by the states argument that are older than 60 seconds, for the
+     current cluster
     */
 
     // Create a database connection
@@ -391,6 +392,8 @@ auto getJobsByMostRecentStatus(std::vector<uint32_t>& states) {
                     select(all_of(jobTable))
                             .from(jobTable)
                             .where(
+                                    jobTable.cluster == cluster
+                                    and
                                     jobTable.id == select(jobHistoryTable.jobId)
                                             .from(jobHistoryTable)
                                             .where(
@@ -432,7 +435,10 @@ void Cluster::checkUnsubmittedJobs() {
             }
     );
 
-    auto jobs = getJobsByMostRecentStatus(states);
+    auto jobs = getJobsByMostRecentStatus(states, this->getName());
+
+    auto db = MySqlConnector();
+    schema::JobserverJobhistory jobHistoryTable;
 
     // Resubmit any jobs that matched
     for (auto &job : jobs) {
@@ -445,6 +451,31 @@ void Cluster::checkUnsubmittedJobs() {
         msg.push_string(job.bundle);
         msg.push_string(job.parameters);
         msg.send(this);
+
+        // Check that the job status is submitting and update it if not
+        auto jobHistoryResults =
+                db->run(
+                        select(all_of(jobHistoryTable))
+                                .from(jobHistoryTable)
+                                .where(jobHistoryTable.jobId == job.id)
+                                .order_by(jobHistoryTable.timestamp.desc())
+                                .limit(1u)
+                );
+
+        auto dbHistory = &jobHistoryResults.front();
+        if ((uint32_t) dbHistory->state == (uint32_t) JobStatus::PENDING) {
+            // The current state is pending for this job, so update the status to submitting
+            db->run(
+                    insert_into(jobHistoryTable)
+                            .set(
+                                    jobHistoryTable.jobId = job.id,
+                                    jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                    jobHistoryTable.what = SYSTEM_SOURCE,
+                                    jobHistoryTable.state = (uint32_t) JobStatus::SUBMITTING,
+                                    jobHistoryTable.details = "Job submitting"
+                            )
+            );
+        }
     }
 }
 
@@ -461,7 +492,7 @@ void Cluster::checkCancellingJobs() {
             }
     );
 
-    auto jobs = getJobsByMostRecentStatus(states);
+    auto jobs = getJobsByMostRecentStatus(states, this->getName());
 
     // Resubmit any jobs that matched
     for (auto &job : jobs) {
@@ -488,7 +519,7 @@ void Cluster::checkDeletingJobs() {
             }
     );
 
-    auto jobs = getJobsByMostRecentStatus(states);
+    auto jobs = getJobsByMostRecentStatus(states, this->getName());
 
     // Resubmit any jobs that matched
     for (auto &job : jobs) {
