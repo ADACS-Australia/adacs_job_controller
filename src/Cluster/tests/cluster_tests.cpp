@@ -1023,7 +1023,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
-        BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
 
         // If the cluster is not online, it should be a noop
         cluster->setConnection(nullptr);
@@ -1041,7 +1040,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
-        BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
 
         // Test all other job statuses to make sure nothing is incorrectly returned
         std::vector<JobStatus> noop_statuses = {
@@ -1184,7 +1182,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         BOOST_CHECK_EQUAL(msg.getId(), DELETE_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
-        BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
 
         // If the cluster is not online, it should be a noop
         cluster->setConnection(nullptr);
@@ -1202,7 +1199,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         BOOST_CHECK_EQUAL(msg.getId(), DELETE_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
-        BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
 
         // Test all other job statuses to make sure nothing is incorrectly returned
         std::vector<JobStatus> noop_statuses = {

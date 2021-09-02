@@ -29,7 +29,7 @@ spec:
             - secretRef:
                 name: common
           name: gwcloud-job-server
-          image: nexus.gwdc.org.au/docker/gwcloud_job_server:0.36
+          image: nexus.gwdc.org.au/docker/gwcloud_job_server:0.37
           ports:
             - name: http
               containerPort: 8000

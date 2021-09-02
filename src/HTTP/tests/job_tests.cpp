@@ -584,7 +584,6 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
             BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
             BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
-            BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
 
             r->content >> result;
             BOOST_CHECK_EQUAL(result["cancelled"], jobId);
@@ -872,7 +871,6 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
             BOOST_CHECK_EQUAL(msg.getId(), DELETE_JOB);
             BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
-            BOOST_CHECK_EQUAL(msg.pop_string(), "whatever");
 
             r->content >> result;
             BOOST_CHECK_EQUAL(result["deleted"], jobId);

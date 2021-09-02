@@ -381,7 +381,6 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
                     auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
                                     std::to_string(job->id) + "_" + std::string(job->cluster));
                     msg.push_uint(job->id);
-                    msg.push_string(job->bundle);
                     msg.send(cluster);
                 }
             }
@@ -546,7 +545,6 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
                     auto msg = Message(DELETE_JOB, Message::Priority::Medium,
                                     std::to_string(job->id) + "_" + std::string(job->cluster));
                     msg.push_uint(job->id);
-                    msg.push_string(job->bundle);
                     msg.send(cluster);
                 }
             }
