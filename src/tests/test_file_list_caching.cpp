@@ -51,6 +51,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
     ]
     )";
 
+    // Create a file list
     std::vector<sFile> fileListData = {
             {"/", 0, 0, true},
             {"/test", randomInt(0, (uint64_t) -1), 0, false},
@@ -103,10 +104,11 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         mgr.callreconnectClusters();
 
         // Connect a fake client to the websocket server
+        bool bRaiseError = true;
         std::vector<std::string> lastDirPath;
         std::vector<bool> lastbRecursive;
         WsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
-        websocketClient.on_message = [&lastDirPath, &lastbRecursive](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
+        websocketClient.on_message = [&lastDirPath, &lastbRecursive, &bRaiseError](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
@@ -123,6 +125,20 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
             auto jobId = msg.pop_uint();
             auto uuid = msg.pop_string();
             auto bundleHash = msg.pop_string();
+
+            // Check if we should raise an error
+            if (bRaiseError) {
+                msg = Message(FILE_LIST_ERROR, Message::Priority::Highest, "");
+                msg.push_string(uuid);
+                msg.push_string("test error");
+
+                auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->size());
+                std::ostream_iterator<uint8_t> iter(*o);
+                std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
+                connection->send(o, nullptr, 130);
+                return;
+            }
+
             lastDirPath.push_back(msg.pop_string());
             lastbRecursive.push_back(msg.pop_bool());
 
@@ -165,7 +181,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                         )
         );
 
-        // Create a file list
+        // Set up the auth token
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
@@ -185,10 +201,21 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 {"path",  "/testdir"}
         };
 
-        // This file list will be complete, but won't create any file cache objects because the job has no
-        // _job_completion_ job history objects
+        // This call should cause an error to be raised and reported
         HttpClient httpClient("localhost:8000");
         auto r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        BOOST_CHECK_EQUAL(r->content.string(), "test error");
+        BOOST_CHECK_EQUAL(fileListMap.size(), 0);
+
+        // Finish error testing
+        bRaiseError = false;
+
+        // This file list will be complete, but won't create any file cache objects because the job has no
+        // _job_completion_ job history objects
+        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+
+        BOOST_CHECK_EQUAL(fileListMap.size(), 0);
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(params["path"]));

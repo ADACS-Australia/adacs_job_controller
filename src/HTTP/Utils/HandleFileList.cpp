@@ -73,7 +73,7 @@ void handleFileList(
     JobserverJobhistory jobHistoryTable;
     JobserverFilelistcache fileListCacheTable;
 
-    // Create a new file download object
+    // Create a new file list object
     auto flObj = sFileList{};
 
     // Generate a UUID for the message source
@@ -222,8 +222,8 @@ void handleFileList(
                 std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
                 // Remove the file list object
-                if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                    fileDownloadMap.erase(uuid);
+                if (fileListMap.find(uuid) != fileListMap.end())
+                    fileListMap.erase(uuid);
             }
 
             if (response) response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj.errorDetails);
@@ -304,8 +304,8 @@ void handleFileList(
             std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
             // Remove the file list object
-            if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                fileDownloadMap.erase(uuid);
+            if (fileListMap.find(uuid) != fileListMap.end())
+                fileListMap.erase(uuid);
         }
 
         // Return the result
@@ -321,8 +321,8 @@ void handleFileList(
             std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
             // Remove the file list object
-            if (fileDownloadMap.find(uuid) != fileDownloadMap.end())
-                fileDownloadMap.erase(uuid);
+            if (fileListMap.find(uuid) != fileListMap.end())
+                fileListMap.erase(uuid);
         }
 
         // Report bad request
