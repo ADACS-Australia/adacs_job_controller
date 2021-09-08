@@ -273,6 +273,10 @@ void FileApi(const std::string &path, HttpServer *server, ClusterManager *cluste
                 return;
             }
 
+            // Generate a new uuid so that simultanious downloads of the same file don't cause a collision between server->client
+            // Refer to https://phab.adacs.org.au/D665 for additonal details and justification
+            uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+
             // Cluster is online, create the file hash object
             fileDownloadMap.emplace(uuid, &fdObj);
 
