@@ -2,14 +2,9 @@ default:
   image:
     name: docker/compose:latest
     entrypoint: ["/usr/bin/env"]
-  variables:
-    DOCKER_HOST: tcp://docker:2375/
-    DOCKER_DRIVER: overlay2
   services:
     - docker:stable-dind
   before_script:
-    - docker version
-    - docker-compose version
     - apk update
     - apk add git bash
     - git submodule init
@@ -18,9 +13,13 @@ default:
 
 tests:
   stage: test
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_DRIVER: overlay2
   script:
+    - docker version
+    - docker-compose version
     - bash scripts/test.sh
-
   artifacts:
     reports:
       coverage_report:
