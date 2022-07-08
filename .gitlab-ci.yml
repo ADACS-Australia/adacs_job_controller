@@ -1,14 +1,18 @@
 default:
   image:
-    name: docker:latest
+    name: tmaier/docker-compose:latest
     entrypoint: ["/usr/bin/env"]
+
+  services:
+    - docker:stable-dind
 
   before_script:
     - apk update
-    - apk add docker-compose git bash
+    - apk add git bash
     - git submodule init
     - git submodule update
     - mkdir -p test_report
+
 
 tests:
   stage: test
