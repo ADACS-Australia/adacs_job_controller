@@ -1,4 +1,8 @@
-# gwcloud_job_server
+# GWCloud Job Server
+
+The GWCloud Job Server is a C++ project that manages the server side of the Job Controller Server/Client architecture. 
+
+
 
 Make sure that the following package are installed
 gflags fmt google-glog gtest libmysqlclient libsodium liburing libaio libdwarf libsnappy zstd google-glog double-conversion

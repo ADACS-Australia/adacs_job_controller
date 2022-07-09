@@ -5,7 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 
 # Generate maximum debug information (Dwarf version 4 for folly backtrace support)
-set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 ")
+set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive ")
 
 # Suppress nested inexact package name searches
 set(FPHSA_NAME_MISMATCHED 1)

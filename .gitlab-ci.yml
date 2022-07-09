@@ -1,0 +1,48 @@
+default:
+  image:
+    name: docker/compose:latest
+    entrypoint: ["/usr/bin/env"]
+  services:
+    - docker:stable-dind
+  before_script:
+    - apk update
+    - apk add git bash
+    - git submodule init
+    - git submodule update
+
+
+tests:
+  stage: test
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_DRIVER: overlay2
+  script:
+    - docker version
+    - docker-compose version
+    - bash scripts/test.sh
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: test_report/coverage.xml
+      junit: test_report/junit.xml
+
+
+code-quality:
+  image: docker:stable
+  variables:
+    DOCKER_DRIVER: overlay2
+  allow_failure: true
+  services:
+    - docker:stable-dind
+  before_script: []
+  script:
+    - docker run
+        --env SOURCE_CODE="$PWD"
+        --volume "$PWD":/code
+        --volume /var/run/docker.sock:/var/run/docker.sock
+        "registry.gitlab.com/gitlab-org/ci-cd/codequality:latest" /code
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+
