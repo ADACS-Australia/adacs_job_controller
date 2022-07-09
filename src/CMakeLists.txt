@@ -19,6 +19,10 @@ set(Boost_USE_MULTITHREAD ON)
 find_package(Boost 1.67 REQUIRED COMPONENTS unit_test_framework)
 link_libraries(${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 
+# Make sure we find mysql
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+find_package(MySQL REQUIRED)
+
 # Set up the hinnant date library
 set(HinnantDate_ROOT_DIR Lib/date)
 set(HinnantDate_INCLUDE_DIR Lib/date/include)
@@ -30,13 +34,13 @@ set(USE_OPENSSL Off)
 set(CPP_JWT_BUILD_TESTS Off)
 set(CPP_JWT_BUILD_EXAMPLES Off)
 set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
+set(BUILD_MYSQL_CONNECTOR ON)
 
 # Include the nested libraries
 add_subdirectory(Lib/Simple-Web-Server)
 add_subdirectory(Lib/Simple-WebSocket-Server)
 add_subdirectory(Lib/folly)
 add_subdirectory(Lib/sqlpp11)
-add_subdirectory(Lib/sqlpp11-connector-mysql)
 add_subdirectory(Lib/cpp-jwt)
 
 # Set up the include directories
@@ -44,11 +48,12 @@ include_directories(
         Lib/json/include
         Lib/date/include
         Lib/sqlpp11/include
-        Lib/sqlpp11-connector-mysql/include
+        /usr/include/mysql
         Lib/folly
         Lib/Simple-Web-Server
         Lib/Simple-WebSocket-Server
         Lib/cpp-jwt/include
+        ${MYSQL_INCLUDE_DIR}
 )
 
 # Define the source files
@@ -111,11 +116,10 @@ set(
         folly_exception_tracer_base
         folly_exception_tracer
         folly_exception_counter
-        sqlpp-mysql
-        mysqlclient
         dl
         dw
         gcov
+        mysqlclient
 )
 
 target_link_libraries(gwcloud_job_server ${LINK_LIBRARIES})

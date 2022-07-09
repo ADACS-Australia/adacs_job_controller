@@ -1,4 +1,4 @@
-django<3
+django<4
 PyMySQL
 pyparsing
 mysql-connector-python
