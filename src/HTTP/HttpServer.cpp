@@ -5,7 +5,6 @@
 #include "../Cluster/ClusterManager.h"
 #include "../DB/MySqlConnector.h"
 #include "HttpUtils.h"
-#include "../Lib/GeneralUtils.h"
 #include <jwt/jwt.hpp>
 #include <memory>
 
@@ -88,7 +87,7 @@ std::unique_ptr<sAuthorizationResult> HttpServer::isAuthorized(SimpleWeb::CaseIn
                     secret
             );
         }
-    };
+    }
 
     // If the user is not authorized, raise an exception
     throw eNotAuthorized();

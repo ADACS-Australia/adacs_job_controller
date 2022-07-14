@@ -15,7 +15,7 @@ std::string base64Encode(std::string input)
 {
     // The input must be in multiples of 3, otherwise the transformation
     // may overflow the input buffer, so pad with zero.
-    size_t num_pad_chars((3 - input.size() % 3) % 3);
+    uint32_t num_pad_chars((3 - input.size() % 3) % 3);
     input.append(num_pad_chars, 0);
 
     // Transform to Base64
@@ -41,10 +41,10 @@ std::string base64Decode(std::string input)
     try
     {
         // If the input isn't a multiple of 4, pad with =
-        size_t num_pad_chars((4 - input.size() % 4) % 4);
+        uint32_t num_pad_chars((4 - input.size() % 4) % 4);
         input.append(num_pad_chars, '=');
 
-        size_t pad_chars(std::count(input.begin(), input.end(), '='));
+        uint32_t pad_chars(std::count(input.begin(), input.end(), '='));
         std::replace(input.begin(), input.end(), '=', 'A');
         std::string output(ItBinaryT(input.begin()), ItBinaryT(input.end()));
         output.erase(output.end() - pad_chars, output.end());
@@ -53,7 +53,7 @@ std::string base64Decode(std::string input)
     catch (std::exception& e) 
     {
         dumpExceptions(e);
-        return std::string("");
+        return {""};
     }
 }
 

@@ -160,7 +160,7 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
         }
     };
 
-    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, server](
+    server->getServer().resource["^" + path + "$"]["GET"] = [server](
             const std::shared_ptr<HttpServerImpl::Response> &response,
             const std::shared_ptr<HttpServerImpl::Request> &request) {
 

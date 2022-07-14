@@ -18,7 +18,7 @@ std::string getHeader(SimpleWeb::CaseInsensitiveMultimap& headers, const std::st
     }
 
     // Return an empty string
-    return std::string();
+    return {};
 }
 
 std::vector<uint64_t> getQueryParamAsVectorInt(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) {

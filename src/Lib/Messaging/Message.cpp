@@ -3,8 +3,6 @@
 //
 
 #include "Message.h"
-
-#include <utility>
 #include "../../Cluster/Cluster.h"
 
 using namespace std;
@@ -124,7 +122,7 @@ std::string Message::pop_string() {
     auto result = pop_bytes();
     // Write string terminator
     result.push_back(0);
-    return std::string((char *) result.data());
+    return {(char *) result.data()};
 }
 
 void Message::push_bytes(const std::vector<uint8_t>& v) {

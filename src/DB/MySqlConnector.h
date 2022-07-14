@@ -36,7 +36,7 @@ public:
     mysql::connection *operator->() const
     { return db; }
 
-    mysql::connection * getDb() const
+    [[nodiscard]] mysql::connection * getDb() const
     { return db; }
 
 private:

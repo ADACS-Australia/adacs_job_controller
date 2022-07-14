@@ -43,7 +43,7 @@ public:
     };
 
 #ifdef BUILD_TESTS
-    Message(uint32_t msgId);
+    explicit Message(uint32_t msgId);
 #endif
 
     Message(uint32_t msgId, Priority priority, const std::string& source);
@@ -79,14 +79,14 @@ public:
 
     void send(Cluster* pCluster);
 
-    uint32_t getId() const { return id; }
+    [[nodiscard]] uint32_t getId() const { return id; }
 
 private:
     std::vector<uint8_t> data;
     uint64_t index;
-    Priority priority;
+    Priority priority = Priority::Lowest;
     std::string source;
-    uint32_t id;
+    uint32_t id = 0;
 
 EXPOSE_PROPERTY_FOR_TESTING(data);
 };

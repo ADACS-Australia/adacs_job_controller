@@ -12,7 +12,7 @@ using namespace segvcatch;
 void handle_segv()
 {
     void *array[10];
-    size_t size;
+    int size;
 
     // get void*'s for all entries on the stack
     size = backtrace(array, 10);
@@ -50,6 +50,8 @@ int main()
 extern "C" const folly::exception_tracer::StackTrace* getCaughtExceptionStackTraceStack();
 extern "C" const folly::exception_tracer::StackTraceStack* getUncaughtExceptionStackTraceStack();
 
+// forceExceptionStackTraceRef is intentionally unused and marked volatile so the compiler doesn't optimize away the
+// required functions from folly. This is black magic.
 volatile void forceExceptionStackTraceRef()
 {
     getCaughtExceptionStackTraceStack();
