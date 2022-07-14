@@ -45,7 +45,7 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.send(&testCluster);
         msg = Message(testCluster.vData);
 
-        BOOST_CHECK_EQUAL(msg.getId(), 1011);
+        BOOST_CHECK_EQUAL(msg.getId(), 101);
         BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Highest);
         BOOST_CHECK_EQUAL(testCluster.sSource, "test");
 
