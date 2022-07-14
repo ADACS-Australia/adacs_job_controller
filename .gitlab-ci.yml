@@ -6,7 +6,7 @@ default:
     - docker:stable-dind
   before_script:
     - apk update
-    - apk add git bash
+    - apk add git bash xmlstarlet
     - git submodule init
     - git submodule update
 
@@ -20,6 +20,7 @@ tests:
     - docker version
     - docker-compose version
     - bash scripts/test.sh
+    - xmlstarlet ed -u "coverage/sources/source" -v "`pwd`/src" test_report/coverage.xml > test_report/coverage.xml 
   artifacts:
     reports:
       coverage_report:
