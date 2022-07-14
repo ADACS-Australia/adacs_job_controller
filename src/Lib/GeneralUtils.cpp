@@ -53,7 +53,7 @@ std::string base64Decode(std::string input)
     catch (std::exception& e) 
     {
         dumpExceptions(e);
-        return std::string{""};
+        return {""};
     }
 }
 
