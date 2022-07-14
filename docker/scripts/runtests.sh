@@ -10,7 +10,7 @@ done
 utils/schema/venv/bin/python utils/schema/manage.py migrate;
 
 # Run the jobserver tests
-build/Boost_Tests_run --catch_system_error=yes --log_format=JUNIT --show_progress=no --report_format=XML > /test_report/junit.xml
+build/Boost_Tests_run --catch_system_error=yes --log_format=JUNIT --show_progress=no --log_sink=/test_report/junit.xml
 
 build/Boost_Tests_run --logger=HRF,all --color_output=true --report_format=HRF --show_progress=no
 
@@ -18,7 +18,7 @@ build/Boost_Tests_run --logger=HRF,all --color_output=true --report_format=HRF -
 printf "\n\n"
 
 # Generate code coverage reports
-gcovr -r . --xml-pretty -e "Lib/sqlpp11/" -e "Lib/sqlpp11-connector-mysql/" -e "Lib/json/" -e "Lib/folly/" -e "Lib/date/" -e "Lib/cpp-jwt/" -e "Lib/Simple-WebSocket-Server/" -e "Lib/Simple-Web-Server/" > /test_report/coverage.xml
+gcovr -r . --xml-pretty -e "Lib/sqlpp11/" -e "Lib/sqlpp11-connector-mysql/" -e "Lib/json/" -e "Lib/folly/" -e "Lib/date/" -e "Lib/cpp-jwt/" -e "Lib/Simple-WebSocket-Server/" -e "Lib/Simple-Web-Server/" > /test_report/coverage_docker.xml
 
 gcovr -r . -e "Lib/sqlpp11/" -e "Lib/sqlpp11-connector-mysql/" -e "Lib/json/" -e "Lib/folly/" -e "Lib/date/" -e "Lib/cpp-jwt/" -e "Lib/Simple-WebSocket-Server/" -e "Lib/Simple-Web-Server/"
 

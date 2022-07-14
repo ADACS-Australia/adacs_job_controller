@@ -20,7 +20,7 @@ tests:
     - docker version
     - docker-compose version
     - bash scripts/test.sh
-    - xmlstarlet ed -u "coverage/sources/source" -v "`pwd`/src" test_report/coverage.xml > test_report/coverage.xml 
+    - xmlstarlet ed -u "coverage/sources/source" -v "`pwd`/src" test_report/coverage_docker.xml > test_report/coverage.xml 
   artifacts:
     reports:
       coverage_report:
