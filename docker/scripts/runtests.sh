@@ -10,7 +10,7 @@ done
 utils/schema/venv/bin/python utils/schema/manage.py migrate;
 
 # Run the jobserver tests
-build/Boost_Tests_run -catch_system_error=yes --log_format=JUNIT --show_progress=no --report_format=XML > /test_report/junit.xml
+build/Boost_Tests_run --catch_system_error=yes --log_format=JUNIT --show_progress=no --report_format=XML > /test_report/junit.xml
 
 build/Boost_Tests_run --logger=HRF,all --color_output=true --report_format=HRF --show_progress=no
 
