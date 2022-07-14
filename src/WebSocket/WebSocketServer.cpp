@@ -4,7 +4,6 @@
 
 #include "WebSocketServer.h"
 #include "../Cluster/ClusterManager.h"
-#include "../Lib/Messaging/Message.h"
 
 using namespace std;
 

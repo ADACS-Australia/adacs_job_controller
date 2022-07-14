@@ -25,7 +25,6 @@ public:
 private:
     [[noreturn]] void run();
 
-    std::thread iClusterThread;
     std::vector<Cluster*> vClusters;
     std::map<WsServer::Connection*, Cluster*> mConnectedClusters;
 

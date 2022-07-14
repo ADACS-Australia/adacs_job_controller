@@ -26,7 +26,7 @@ private:
     WsServer server;
     std::thread server_thread;
 
-    bool accepting_connections(unsigned short port);
+    static bool accepting_connections(unsigned short port);
 
     ClusterManager *clusterManager;
 };

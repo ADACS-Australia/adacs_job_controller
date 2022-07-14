@@ -4,7 +4,6 @@
 
 #include <boost/test/unit_test.hpp>
 #include "../ClusterManager.h"
-#include "../../Lib/GeneralUtils.h"
 #include "../../Settings.h"
 #include "../../DB/MySqlConnector.h"
 #include "../../Lib/jobserver_schema.h"

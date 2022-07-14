@@ -41,7 +41,7 @@ ClusterManager::~ClusterManager() {
 }
 
 void ClusterManager::start() {
-    iClusterThread = std::thread(&ClusterManager::run, this);
+    std::thread(&ClusterManager::run, this);
 }
 
 [[noreturn]] void ClusterManager::run() {

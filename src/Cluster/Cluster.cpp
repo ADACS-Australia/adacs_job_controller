@@ -111,14 +111,14 @@ void Cluster::handleMessage(Message &message) {
             this->handleFileChunk(message);
             break;
         case FILE_LIST:
-            this->handleFileList(message);
+            Cluster::handleFileList(message);
             break;
         case FILE_LIST_ERROR:
-            this->handleFileListError(message);
+            Cluster::handleFileListError(message);
             break;
         default:
             std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << std::endl;
-    };
+    }
 }
 
 void Cluster::setConnection(WsServer::Connection *pCon) {
