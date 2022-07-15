@@ -3,7 +3,7 @@ FROM ubuntu:focal AS build_base
 # Update the container and install the required packages
 ENV DEBIAN_FRONTEND="noninteractive"
 
-RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev clang-tidy
 
 # Copy in the source directory
 ADD src /src
@@ -13,17 +13,22 @@ RUN mkdir /src/build
 WORKDIR /src/build
 RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
 
+# Build dependencies
+RUN cmake --build . --target folly -- -j `nproc`
+RUN cmake --build . --target folly_exception_tracer -- -j `nproc`
+RUN cmake --build . --target folly_exception_counter -- -j `nproc`
+
 
 FROM build_base AS build_production
 
 # Build the production server
-RUN cmake --build . --target gwcloud_job_server -- -j `grep -c ^processor /proc/cpuinfo`
+RUN cmake --build . --target gwcloud_job_server -- -j `nproc`
 
 
 FROM build_base AS build_tests
 
-# Build the test server
-RUN cmake --build . --target Boost_Tests_run -- -j `grep -c ^processor /proc/cpuinfo`
+# Build the test server and save the clang-tidy output
+RUN cmake --build . --target Boost_Tests_run -- -j `nproc` 2> tidy.txt
 
 
 FROM ubuntu:focal AS production

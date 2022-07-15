@@ -22,6 +22,8 @@ gcovr -r . --xml-pretty -e "Lib/sqlpp11/" -e "Lib/sqlpp11-connector-mysql/" -e "
 
 gcovr -r . -e "Lib/sqlpp11/" -e "Lib/sqlpp11-connector-mysql/" -e "Lib/json/" -e "Lib/folly/" -e "Lib/date/" -e "Lib/cpp-jwt/" -e "Lib/Simple-WebSocket-Server/" -e "Lib/Simple-Web-Server/"
 
+python3 utils/clang-tidy-to-code-climate.py /src/build/tidy.txt /test_report/code_climate.json /
+
 # Set full access on the test_report directory in case, so the host can delete the files if needed
 chmod -R 666 /test_report
 chmod 777 /test_report

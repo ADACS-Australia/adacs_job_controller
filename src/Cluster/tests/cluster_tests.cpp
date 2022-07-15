@@ -700,10 +700,10 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // Get the job status
         auto status = &historyResults.front();
-        BOOST_CHECK_EQUAL(status->jobId, jobId);
+        BOOST_CHECK_EQUAL((uint64_t) status->jobId, (uint64_t) jobId);
         BOOST_CHECK_EQUAL(std::chrono::system_clock::now() - status->timestamp.value() < std::chrono::seconds{1}, true);
         BOOST_CHECK_EQUAL(status->what, "running");
-        BOOST_CHECK_EQUAL(status->state, 200);
+        BOOST_CHECK_EQUAL((uint32_t) status->state, (uint32_t) 200);
         BOOST_CHECK_EQUAL(status->details, "it's fine");
 
         msg = Message(UPDATE_JOB);
@@ -725,18 +725,18 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // Get the job status
         status = &historyResults.front();
-        BOOST_CHECK_EQUAL(status->jobId, jobId);
+        BOOST_CHECK_EQUAL((uint64_t) status->jobId, (uint64_t) jobId);
         BOOST_CHECK_EQUAL(std::chrono::system_clock::now() - status->timestamp.value() < std::chrono::seconds{1}, true);
         BOOST_CHECK_EQUAL(status->what, "running");
-        BOOST_CHECK_EQUAL(status->state, 200);
+        BOOST_CHECK_EQUAL((uint32_t) status->state, (uint32_t) 200);
         BOOST_CHECK_EQUAL(status->details, "it's fine");
 
         historyResults.pop_front();
         status = &historyResults.front();
-        BOOST_CHECK_EQUAL(status->jobId, jobId);
+        BOOST_CHECK_EQUAL((uint64_t) status->jobId, (uint64_t) jobId);
         BOOST_CHECK_EQUAL(std::chrono::system_clock::now() - status->timestamp.value() < std::chrono::seconds{1}, true);
         BOOST_CHECK_EQUAL(status->what, "failed");
-        BOOST_CHECK_EQUAL(status->state, 500);
+        BOOST_CHECK_EQUAL((uint32_t) status->state, (uint32_t) 500);
         BOOST_CHECK_EQUAL(status->details, "it died");
 
         // Finally clean up all entries from the job history table
@@ -886,7 +886,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         auto dbHistory = &jobHistoryResults.front();
         BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
-        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
+        BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
 
         // If the cluster is not online, it should be a noop
         cluster->setConnection(nullptr);
@@ -937,7 +937,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         dbHistory = &jobHistoryResults.front();
         BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
-        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
+        BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
 
         // Test all other job statuses to make sure nothing is incorrectly returned
         std::vector<JobStatus> noop_statuses = {

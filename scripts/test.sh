@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Reset the test_report directory
 rm -Rf ./test_report

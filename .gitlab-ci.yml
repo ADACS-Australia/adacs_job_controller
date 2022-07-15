@@ -2,10 +2,9 @@ default:
   image:
     name: docker/compose:latest
     entrypoint: ["/usr/bin/env"]
-  services:
-    - docker:stable-dind
   before_script:
     - apk update
+    - apk upgrade --available && sync
     - apk add git bash xmlstarlet
     - git submodule init
     - git submodule update
@@ -14,8 +13,11 @@ default:
 tests:
   stage: test
   variables:
+    DOCKER_TLS_CERTDIR: ""
     DOCKER_HOST: tcp://docker:2375/
     DOCKER_DRIVER: overlay2
+  services:
+    - name: docker:20.10.17-dind
   script:
     - docker version
     - docker-compose version
@@ -27,15 +29,18 @@ tests:
         coverage_format: cobertura
         path: test_report/coverage.xml
       junit: test_report/junit.xml
+      codequality: test_report/code_climate.json
 
 
 code-quality:
   image: docker:stable
   variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375/
     DOCKER_DRIVER: overlay2
   allow_failure: true
   services:
-    - docker:stable-dind
+    - name: docker:20.10.17-dind
   before_script: []
   script:
     - docker run

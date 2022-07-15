@@ -184,7 +184,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
         BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
         BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
-        BOOST_CHECK_EQUAL(dbJob->user, 5);
+        BOOST_CHECK_EQUAL((uint64_t) dbJob->user, (uint64_t) 5);
 
         // Check that the job history that was created is correct
         auto jobHistoryResults =
@@ -198,7 +198,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
         auto dbHistory = &jobHistoryResults.front();
         BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
-        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::PENDING);
+        BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::PENDING);
 
         // Connect a cluster and check that the job changes to submitting rather than pending when submitting a job
         auto con = new WsServer::Connection(nullptr);
@@ -238,7 +238,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
         BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
         BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
-        BOOST_CHECK_EQUAL(dbJob->user, 5);
+        BOOST_CHECK_EQUAL((uint64_t) dbJob->user, (uint64_t) 5);
 
         // Check that the job history that was created is correct
         jobHistoryResults =
@@ -252,7 +252,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
         dbHistory = &jobHistoryResults.front();
         BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
-        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
+        BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
 
         // Finished with the server
         svr.stop();
@@ -598,7 +598,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                 );
 
         auto dbHistory = &jobHistoryResults.front();
-        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::CANCELLED);
+        BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::CANCELLED);
 
         // Trying to cancel the job again should result in an error since it is now in cancelling state
         r = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
@@ -659,7 +659,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                     );
 
             dbHistory = &jobHistoryResults.front();
-            BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::CANCELLING);
+            BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::CANCELLING);
         }
 
         // Finally test that invalid states all raise an error
@@ -706,7 +706,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                     );
 
             dbHistory = &jobHistoryResults.front();
-            BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) state);
+            BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) state);
         }
 
         // Cleanup
@@ -884,7 +884,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                 );
 
         auto dbHistory = &jobHistoryResults.front();
-        BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::DELETED);
+        BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::DELETED);
 
         // Trying to delete the job again should result in an error since it is now in deleted state
         r = client.request("DELETE", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
@@ -946,7 +946,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                     );
 
             dbHistory = &jobHistoryResults.front();
-            BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) JobStatus::DELETING);
+            BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::DELETING);
         }
 
         // Finally test that invalid states all raise an error
@@ -992,7 +992,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                     );
 
             dbHistory = &jobHistoryResults.front();
-            BOOST_CHECK_EQUAL(dbHistory->state, (uint32_t) state);
+            BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) state);
         }
 
         // Cleanup
