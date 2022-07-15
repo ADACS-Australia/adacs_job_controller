@@ -18,6 +18,8 @@ default:
 
 tests:
   stage: test
+  services:
+    - name: docker:20.10.17-dind
   script:
     - docker version
     - docker-compose version
@@ -34,6 +36,8 @@ tests:
 
 code-quality:
   image: docker:stable
+  services:
+    - name: docker:20.10.17-dind
   allow_failure: true
   before_script: []
   script:
@@ -44,5 +48,5 @@ code-quality:
         "registry.gitlab.com/gitlab-org/ci-cd/codequality:latest" /code
   artifacts:
     reports:
-      codequality: /code/gl-code-quality-report.json
+      codequality: gl-code-quality-report.json
 
