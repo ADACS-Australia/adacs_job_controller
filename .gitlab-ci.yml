@@ -16,7 +16,7 @@ tests:
   stage: test
   variables:
     DOCKER_TLS_CERTDIR: ""
-    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_HOST: tcp://dind:2375/
     DOCKER_DRIVER: overlay2
   script:
     - docker version
@@ -36,7 +36,7 @@ code-quality:
   image: docker:stable
   variables:
     DOCKER_TLS_CERTDIR: ""
-    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_HOST: tcp://dind:2375/
     DOCKER_DRIVER: overlay2
   allow_failure: true
   before_script: []
