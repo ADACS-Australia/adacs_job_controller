@@ -75,19 +75,8 @@ if __name__ == '__main__':
                 'lines': {
                     'begin': int(item[1]),
                     'end': int(item[1])
-                },
-                'positions': {
-                    'begin': {
-                        'line': int(item[1]),
-                        'column': int(item[2])
-                    },
-                    'end': {
-                        'line': int(item[1]),
-                        'column': int(item[2])
-                    }
                 }
             },
-            'remediation_points': None,
             'fingerprint': fingerprint
         }
 
