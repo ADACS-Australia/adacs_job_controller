@@ -59,7 +59,7 @@ if __name__ == '__main__':
             content = f'```\n{content}\n```'
 
         description = f'{item[3]}: {item[4]} [{item[5]}]'
-        fingerprint = hashlib.sha256(f"{item[0]}:{item[1]}:{item[2]}:{description}".encode("utf-8")).hexdigest()
+        fingerprint = hashlib.sha1(f"{item[0]}:{item[1]}:{item[2]}:{description}".encode("utf-8")).hexdigest()
 
         items[i] = {
             'type': 'issue',
