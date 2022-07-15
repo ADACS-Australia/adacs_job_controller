@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import sys
@@ -57,15 +58,24 @@ if __name__ == '__main__':
             content = "\n".join(item[6])
             content = f'```\n{content}\n```'
 
+        description = f'{item[3]}: {item[4]} [{item[5]}]'
+        fingerprint = hashlib.sha256(f"{item[0]}:{item[1]}:{item[2]}:{description}".encode("utf-8")).hexdigest()
+
         items[i] = {
             'type': 'issue',
             'check_name': item[5],
-            'description': f'{item[3]}: {item[4]} [{item[5]}]',
-            'content': content,
-            'categories': ['Bug Risk', 'Style'],
+            'description': description,
+            'content': {
+                'body': content
+            },
+            'categories': ['Bug Risk'],
             'severity': 'major',
             'location': {
                 'path': item[0],
+                'lines': {
+                    'begin': int(item[1]),
+                    'end': int(item[1])
+                },
                 'positions': {
                     'begin': {
                         'line': int(item[1]),
@@ -76,7 +86,9 @@ if __name__ == '__main__':
                         'column': int(item[2])
                     }
                 }
-            }
+            },
+            'remediation_points': None,
+            'fingerprint': fingerprint
         }
 
     with open(output_file, 'w') as f:
