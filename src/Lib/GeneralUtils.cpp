@@ -1,17 +1,17 @@
 #include "GeneralUtils.h"
-#include <iostream>
+#include "../folly/folly/experimental/exception_tracer/ExceptionTracer.h"
+#include <algorithm>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
-#include <boost/archive/iterators/transform_width.hpp>
 #include <boost/archive/iterators/remove_whitespace.hpp>
-#include <algorithm>
+#include <boost/archive/iterators/transform_width.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include "../folly/folly/experimental/exception_tracer/ExceptionTracer.h"
+#include <iostream>
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
-std::string base64Encode(std::string input)
+auto base64Encode(std::string input) -> std::string
 {
     // The input must be in multiples of 3, otherwise the transformation
     // may overflow the input buffer, so pad with zero.
@@ -19,9 +19,9 @@ std::string base64Encode(std::string input)
     input.append(num_pad_chars, 0);
 
     // Transform to Base64
-    using namespace boost::archive::iterators;
-    typedef base64_from_binary<transform_width
-            <std::string::const_iterator, 6, 8> > ItBase64T;
+    using boost::archive::iterators::transform_width, boost::archive::iterators::base64_from_binary;
+    // NOLINTNEXTLINE (cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+    using ItBase64T = base64_from_binary<transform_width<std::string::const_iterator, 6, 8>>;
     std::string output(ItBase64T(input.begin()),
                        ItBase64T(input.end() - num_pad_chars));
 
@@ -32,11 +32,12 @@ std::string base64Encode(std::string input)
 }
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
-std::string base64Decode(std::string input)
+auto base64Decode(std::string input) -> std::string
 {
-    using namespace boost::archive::iterators;
-    typedef transform_width<binary_from_base64<remove_whitespace
-            <std::string::const_iterator> >, 8, 6> ItBinaryT;
+    using boost::archive::iterators::transform_width, boost::archive::iterators::remove_whitespace, boost::archive::iterators::binary_from_base64;
+
+    // NOLINTNEXTLINE (cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+    using ItBinaryT = transform_width<binary_from_base64<remove_whitespace<std::string::const_iterator>>, 8, 6>;
 
     try
     {
@@ -57,12 +58,12 @@ std::string base64Decode(std::string input)
     }
 }
 
-std::string generateUUID() {
+auto generateUUID() -> std::string {
     return boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 }
 
-void dumpExceptions(std::exception& e) {
-    std::cerr << "--- Exception: " << e.what() << std::endl;
+void dumpExceptions(std::exception& exception) {
+    std::cerr << "--- Exception: " << exception.what() << std::endl;
     auto exceptions = folly::exception_tracer::getCurrentExceptions();
     for (auto& exc : exceptions) {
         std::cerr << exc << "\n";
