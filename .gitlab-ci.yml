@@ -1,7 +1,7 @@
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
   DOCKER_TLS_CERTDIR: ""
-  DOCKER_HOST: tcp://dind:2375/
+  DOCKER_HOST: tcp://docker:2375/
   DOCKER_DRIVER: overlay2
 
 default:
@@ -12,8 +12,6 @@ default:
     - apk update
     - apk upgrade --available && sync
     - apk add git bash xmlstarlet
-  tags:
-    - sa111
 
 
 tests:
