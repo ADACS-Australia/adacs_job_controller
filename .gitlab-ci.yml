@@ -11,8 +11,13 @@ default:
   tags:
     - sa111
 
+
 tests:
   stage: test
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_DRIVER: overlay2
   script:
     - docker version
     - docker-compose version
@@ -29,6 +34,10 @@ tests:
 
 code-quality:
   image: docker:stable
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_DRIVER: overlay2
   allow_failure: true
   before_script: []
   script:
