@@ -7,16 +7,18 @@
 
 #include <string>
 
-std::string base64Encode(std::string input);
-std::string base64Decode(std::string input);
-std::string generateUUID();
-void dumpExceptions(std::exception& e);
+auto base64Encode(std::string input) -> std::string;
+auto base64Decode(std::string input) -> std::string;
+auto generateUUID() -> std::string;
+void dumpExceptions(std::exception& exception);
 
 #ifdef BUILD_TESTS
-#define EXPOSE_PROPERTY_FOR_TESTING(x) public: auto get##x () { return &x; } auto set##x (typeof(x) v) { x = v; }
-#define EXPOSE_PROPERTY_FOR_TESTING_READONLY(x) public: auto get##x () { return &x; }
-#define EXPOSE_FUNCTION_FOR_TESTING(x) public: auto call##x () { return x(); }
-#define EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(x, y) public: auto call##x (y p1) { return x(p1); }
+// NOLINTBEGIN
+#define EXPOSE_PROPERTY_FOR_TESTING(term) public: auto get##term () { return &term; } auto set##term (typeof(term) value) { term = value; }
+#define EXPOSE_PROPERTY_FOR_TESTING_READONLY(term) public: auto get##term () { return &term; }
+#define EXPOSE_FUNCTION_FOR_TESTING(term) public: auto call##term () { return term(); }
+#define EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(term, param) public: auto call##term (param value) { return term(value); }
+// NOLINTEND
 #else
 // Noop
 #define EXPOSE_PROPERTY_FOR_TESTING(x)

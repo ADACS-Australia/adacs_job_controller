@@ -1,3 +1,9 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_DRIVER: overlay2
+
 default:
   image:
     name: docker/compose:latest
@@ -6,16 +12,10 @@ default:
     - apk update
     - apk upgrade --available && sync
     - apk add git bash xmlstarlet
-    - git submodule init
-    - git submodule update
 
 
 tests:
   stage: test
-  variables:
-    DOCKER_TLS_CERTDIR: ""
-    DOCKER_HOST: tcp://docker:2375/
-    DOCKER_DRIVER: overlay2
   services:
     - name: docker:20.10.17-dind
   script:
@@ -34,13 +34,9 @@ tests:
 
 code-quality:
   image: docker:stable
-  variables:
-    DOCKER_TLS_CERTDIR: ""
-    DOCKER_HOST: tcp://docker:2375/
-    DOCKER_DRIVER: overlay2
-  allow_failure: true
   services:
     - name: docker:20.10.17-dind
+  allow_failure: true
   before_script: []
   script:
     - docker run
