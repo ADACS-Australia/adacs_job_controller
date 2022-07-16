@@ -353,7 +353,7 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
                 JobStatus::COMPLETED
             };
             
-            if (std::find(invalidStates.begin(), invalidStates.end(), latestStatus->state) != invalidStates.end()) {
+            if (std::find(invalidStates.begin(), invalidStates.end(), (uint32_t) latestStatus->state) != invalidStates.end()) {
                 throw std::runtime_error("Job is in invalid state");
             }
 
@@ -517,7 +517,7 @@ void JobApi(const std::string &path, HttpServer *server, ClusterManager *cluster
                 JobStatus::DELETED
             };
             
-            if (std::find(invalidStates.begin(), invalidStates.end(), latestStatus->state) != invalidStates.end()) {
+            if (std::find(invalidStates.begin(), invalidStates.end(), (uint32_t) latestStatus->state) != invalidStates.end()) {
                 throw std::runtime_error("Job is in invalid state");
             }
 
@@ -777,7 +777,7 @@ nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
 
         // Write the job history
         for (auto &h : histories) {
-            if ((uint32_t) h["jobId"] == job.id) {
+            if ((uint32_t) h["jobId"] == (uint32_t) job.id) {
                 jsonJob["history"].push_back(h);
             }
         }

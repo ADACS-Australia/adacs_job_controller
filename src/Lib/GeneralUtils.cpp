@@ -9,6 +9,7 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <iostream>
+#include <execinfo.h>
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
 auto base64Encode(std::string input) -> std::string
@@ -68,4 +69,19 @@ void dumpExceptions(std::exception& exception) {
     for (auto& exc : exceptions) {
         std::cerr << exc << "\n";
     }
+}
+
+void handleSegv()
+{
+    void *array[10];
+    int size;
+
+    // get void*'s for all entries on the stack
+    size = backtrace(array, 10);
+
+    // print out all the frames to stderr
+    fprintf(stderr, "Error: SEGFAULT:\n");
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+
+    throw std::runtime_error("Seg Fault Error");
 }
