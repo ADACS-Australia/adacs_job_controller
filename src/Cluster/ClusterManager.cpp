@@ -2,17 +2,13 @@
 // Created by lewis on 2/27/20.
 //
 
-#include <fstream>
-#include <iostream>
-#include "ClusterManager.h"
 #include "Cluster.h"
-#include "../Lib/jobserver_schema.h"
 #include "../DB/MySqlConnector.h"
-#include <nlohmann/json.hpp>
+#include "../Lib/jobserver_schema.h"
+#include "ClusterManager.h"
 #include <boost/process.hpp>
-
-using namespace nlohmann;
-using namespace schema;
+#include <iostream>
+#include <nlohmann/json.hpp>
 
 ClusterManager::ClusterManager() {
     // Read the cluster configuration from the environment
@@ -26,9 +22,9 @@ ClusterManager::ClusterManager() {
     );
 
     // Create the cluster instances from the config
-    for (const auto &jc : jsonClusters) {
+    for (const auto &jsonCluster : jsonClusters) {
         // Get the cluster details from the cluster config and create a Cluster instance
-        auto cluster = std::make_shared<Cluster>(std::make_shared<sClusterDetails>(jc));
+        auto cluster = std::make_shared<Cluster>(std::make_shared<sClusterDetails>(jsonCluster));
         vClusters.push_back(cluster);
     }
 }
@@ -41,24 +37,24 @@ void ClusterManager::start() {
     while (true) {
         reconnectClusters();
 
-        // Wait 1 minute to check again
-        std::this_thread::sleep_for(std::chrono::seconds(60));
+        // Wait CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS to check again
+        std::this_thread::sleep_for(std::chrono::seconds(CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS));
     }
 }
 
 void ClusterManager::reconnectClusters() {
     // Create a list of threads we spawn
-    std::vector<std::thread *> vThreads;
+    std::vector<std::shared_ptr<std::thread>> vThreads;
 
     // Try to reconnect all cluster
     for (auto &cluster : vClusters) {
         // Check if the cluster is online
         if (!isClusterOnline(cluster)) {
             // Create a database connection
-            auto db = MySqlConnector();
+            auto database = MySqlConnector();
 
             // Get the tables
-            JobserverClusteruuid clusterUuidTable;
+            schema::JobserverClusteruuid clusterUuidTable;
 
             // todo: Delete any existing uuids for this cluster
 
@@ -68,7 +64,7 @@ void ClusterManager::reconnectClusters() {
                 auto uuid = generateUUID();
 
                 // Insert the UUID in the database
-                db->run(
+                database->run(
                         insert_into(clusterUuidTable)
                                 .set(
                                         clusterUuidTable.cluster = cluster->getName(),
@@ -84,7 +80,7 @@ void ClusterManager::reconnectClusters() {
                 // TODO: Need to better track the created thread object and dispose of it. Perhaps we need to ensure
                 // TODO: that boost process in connectCluster times out after 30 seconds?
                 vThreads.push_back(
-                        new std::thread([cluster, uuid] {
+                        std::make_shared<std::thread>([cluster, uuid] {
                             connectCluster(cluster, uuid);
                         })
                 );
@@ -96,46 +92,46 @@ void ClusterManager::reconnectClusters() {
     }
 
     // Wait for all connection threads to finish
-    for (auto t : vThreads) {
-        t->join();
-        delete t;
+    for (const auto& thread : vThreads) {
+        thread->join();
     }
 }
 
-std::shared_ptr<Cluster> ClusterManager::handleNewConnection(WsServer::Connection *connection, const std::string &uuid) {
+auto ClusterManager::handleNewConnection(WsServer::Connection *connection, const std::string &uuid) -> std::shared_ptr<Cluster> {
     // Get the tables
-    JobserverClusteruuid clusterUuidTable;
+    schema::JobserverClusteruuid clusterUuidTable;
 
     // Create a database connection
-    auto db = MySqlConnector();
+    auto database = MySqlConnector();
 
-    // First find any tokens older than 60 seconds and delete them
-    db->run(
+    // First find any tokens older than CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS and delete them
+    database->run(
             remove_from(clusterUuidTable)
                     .where(
                             clusterUuidTable.timestamp <=
                             std::chrono::system_clock::now() -
-                            std::chrono::seconds(60)
+                            std::chrono::seconds(CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS)
                     )
 
     );
 
     // Now try to find the cluster for the connecting uuid
-    auto uuidResults = db->run(
+    auto uuidResults = database->run(
             select(all_of(clusterUuidTable))
                     .from(clusterUuidTable)
                     .where(clusterUuidTable.uuid == uuid)
     );
 
     // Check that the uuid was valid
-    if (uuidResults.empty())
+    if (uuidResults.empty()) {
         return nullptr;
+    }
 
     // Get the cluster from the uuid
     std::string sCluster = uuidResults.front().cluster;
 
     // Delete all records from the database for the provided cluster
-    db->run(
+    database->run(
             remove_from(clusterUuidTable)
                     .where(
                             clusterUuidTable.cluster == sCluster
@@ -147,8 +143,9 @@ std::shared_ptr<Cluster> ClusterManager::handleNewConnection(WsServer::Connectio
     auto cluster = getCluster(sCluster);
 
     // Check that the cluster was valid (Should always be)
-    if (!cluster)
+    if (!cluster) {
         return nullptr;
+    }
 
     // Record the connected cluster
     mConnectedClusters[connection] = cluster;
@@ -165,8 +162,9 @@ void ClusterManager::removeConnection(WsServer::Connection *connection) {
     auto pCluster = getCluster(connection);
 
     // Reset the cluster's connection
-    if (pCluster)
+    if (pCluster) {
         pCluster->setConnection(nullptr);
+    }
 
     // Remove the specified connection from the connected clusters
     mConnectedClusters.erase(connection);
@@ -175,13 +173,13 @@ void ClusterManager::removeConnection(WsServer::Connection *connection) {
     reconnectClusters();
 }
 
-bool ClusterManager::isClusterOnline(std::shared_ptr<Cluster> cluster) {
+auto ClusterManager::isClusterOnline(const std::shared_ptr<Cluster>& cluster) -> bool {
     // Check if any connected clusters matches the provided cluster
     return std::any_of(mConnectedClusters.begin(), mConnectedClusters.end(),
-                       [cluster](auto c) { return c.second == cluster; });
+                       [cluster](auto other) { return other.second == cluster; });
 }
 
-std::shared_ptr<Cluster> ClusterManager::getCluster(WsServer::Connection *connection) {
+auto ClusterManager::getCluster(WsServer::Connection *connection) -> std::shared_ptr<Cluster> {
     // Try to find the connection
     auto result = mConnectedClusters.find(connection);
 
@@ -189,17 +187,18 @@ std::shared_ptr<Cluster> ClusterManager::getCluster(WsServer::Connection *connec
     return result != mConnectedClusters.end() ? result->second : nullptr;
 }
 
-std::shared_ptr<Cluster> ClusterManager::getCluster(const std::string &cluster) {
+auto ClusterManager::getCluster(const std::string &cluster) -> std::shared_ptr<Cluster> {
     // Find the cluster by name
-    for (auto &i : vClusters) {
-        if (i->getName() == cluster)
-            return i;
+    for (auto &other : vClusters) {
+        if (other->getName() == cluster) {
+            return other;
+        }
     }
 
     return nullptr;
 }
 
-void ClusterManager::connectCluster(std::shared_ptr<Cluster> cluster, const std::string &token) {
+void ClusterManager::connectCluster(const std::shared_ptr<Cluster>& cluster, const std::string &token) {
     std::cout << "Attempting to connect cluster " << cluster->getName() << " with token " << token << std::endl;
 #ifndef BUILD_TESTS
     boost::process::system(
