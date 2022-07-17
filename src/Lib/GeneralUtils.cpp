@@ -89,7 +89,7 @@ void handleSegv()
     // NOLINTEND
 }
 
-auto acceptingConnections(unsigned short port) -> bool {
+auto acceptingConnections(uint16_t port) -> bool {
     using boost::asio::io_service, boost::asio::deadline_timer, boost::asio::ip::tcp;
     using ec = boost::system::error_code;
 
