@@ -74,6 +74,7 @@ void dumpExceptions(std::exception& exception) {
 
 void handleSegv()
 {
+    // NOLINTBEGIN
     void *array[10];
     int size;
 
@@ -85,23 +86,23 @@ void handleSegv()
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
     throw std::runtime_error("Seg Fault Error");
+    // NOLINTEND
 }
 
-bool acceptingConnections(unsigned short port) {
-    using namespace boost::asio;
-    using ip::tcp;
+auto acceptingConnections(unsigned short port) -> bool {
+    using boost::asio::io_service, boost::asio::deadline_timer, boost::asio::ip::tcp;
     using ec = boost::system::error_code;
 
     bool result = false;
 
     try {
         io_service svc;
-        tcp::socket s(svc);
+        tcp::socket socket(svc);
         deadline_timer tim(svc, boost::posix_time::seconds(1));
 
-        tim.async_wait([&](ec) { s.cancel(); });
-        s.async_connect({{}, port}, [&](ec ec) {
-            result = !ec;
+        tim.async_wait([&](ec) { socket.cancel(); });
+        socket.async_connect({{}, port}, [&](ec errorCode) {
+            result = !errorCode;
         });
 
         svc.run();
