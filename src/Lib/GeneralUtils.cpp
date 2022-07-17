@@ -95,18 +95,24 @@ auto acceptingConnections(uint16_t port) -> bool {
 
     bool result = false;
 
-    try {
-        io_service svc;
-        tcp::socket socket(svc);
-        deadline_timer tim(svc, boost::posix_time::seconds(1));
+    for (auto counter = 0; counter < 10 && !result; counter++) {
+        try {
+            io_service svc;
+            tcp::socket socket(svc);
+            deadline_timer tim(svc, boost::posix_time::milliseconds(100));
 
-        tim.async_wait([&](ec) { socket.cancel(); });
-        socket.async_connect({{}, port}, [&](ec errorCode) {
-            result = !errorCode;
-        });
+            tim.async_wait([&](ec) { socket.cancel(); });
+            socket.async_connect({{}, port}, [&](ec errorCode) {
+                result = !errorCode;
+            });
 
-        svc.run();
-    } catch(...) { }
+            svc.run();
+        } catch(...) { }
+
+        if (!result) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
 
     return result;
 }
