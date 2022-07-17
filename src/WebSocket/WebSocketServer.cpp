@@ -7,7 +7,7 @@
 
 using namespace std;
 
-WebSocketServer::WebSocketServer(ClusterManager* clusterManager) {
+WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager) {
     this->clusterManager = clusterManager;
 
     server.config.port = 8001;

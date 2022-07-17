@@ -62,23 +62,15 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Check that the cluster constructor works as expected
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Check that the cluster details and the manager are set correctly
         BOOST_CHECK_EQUAL(*cluster->getpClusterDetails(), details);
-        BOOST_CHECK_EQUAL(*cluster->getpClusterManager(), manager);
 
         // Check that the right number of queue levels are created (+1 because 0 is a priority level itself)
         BOOST_CHECK_EQUAL(cluster->getqueue()->size(),
                           (uint32_t) Message::Priority::Lowest - (uint32_t) Message::Priority::Highest + 1);
-
-        // Cleanup
-        delete manager;
-        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_getName) {
@@ -88,18 +80,11 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Check that the name is correctly set
         BOOST_CHECK_EQUAL(cluster->getName(), details->getName());
-
-        // Cleanup
-        delete manager;
-        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_getClusterDetails) {
@@ -109,18 +94,11 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Check that the cluster details are correctly set
         BOOST_CHECK_EQUAL(cluster->getClusterDetails(), details);
-
-        // Cleanup
-        delete manager;
-        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_setConnection) {
@@ -130,11 +108,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Check that the connection is correctly set
         auto con = new WsServer::Connection(nullptr);
@@ -142,8 +117,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(*cluster->getpConnection(), con);
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete con;
     }
 
@@ -154,11 +127,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // The cluster should not be online
         BOOST_CHECK_EQUAL(cluster->isOnline(), false);
@@ -169,8 +139,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(cluster->isOnline(), true);
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete con;
     }
 
@@ -183,11 +151,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Check the source doesn't exist
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
@@ -338,9 +303,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         for (auto del : deletables) {
             delete del;
         }
-
-        delete manager;
-        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_pruneSources) {
@@ -352,11 +314,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
@@ -416,9 +375,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         for (auto del : deletables) {
             delete del;
         }
-
-        delete manager;
-        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_run) {
@@ -428,11 +384,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Create a websocket server to receive sent messages and set the cluster connection
         // Adapted from https://gitlab.com/eidheim/Simple-WebSocket-Server/-/blob/master/tests/io_test.cpp#L11
@@ -451,7 +404,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         });
 
         // Wait for the server to start
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        BOOST_CHECK_EQUAL(acceptingConnections(server.config.port), true);
 
         // Create a websocket client to receive messages from the server
         TestWsClient wsClient("localhost:23458/ws/");
@@ -470,7 +423,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // Wait for the client to connect
         while (!*cluster->getpConnection()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
         // Create several sources and insert data in the queue
@@ -520,7 +473,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         cluster->callrun();
 
         // Give the websocket threads time to complete
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Check that the data sent was in priority/source order
         // The following order is deterministic - but sensitive.
@@ -568,9 +521,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         }) {
             delete del;
         }
-
-        delete manager;
-        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_doesHigherPriorityDataExist) {
@@ -580,11 +530,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // There should be no higher priority data if there is no data
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
@@ -641,9 +588,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         delete s2_d1;
         delete s3_d1;
         delete s4_d1;
-
-        delete manager;
-        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_updateJob) {
@@ -653,11 +597,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // First make sure we delete all entries from the job history table
         auto db = MySqlConnector();
@@ -742,10 +683,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Finally clean up all entries from the job history table
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
-
-        // Cleanup
-        delete manager;
-        delete cluster;
     }
 
     BOOST_AUTO_TEST_CASE(test_checkUnsubmittedJobs) {
@@ -755,11 +692,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // First make sure we delete all entries from the job history table
         auto db = MySqlConnector();
@@ -979,8 +913,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         db->run(remove_from(jobTable).unconditionally());
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete con;
     }
 
@@ -991,11 +923,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Bring the cluster online
         auto con = new WsServer::Connection(nullptr);
@@ -1166,8 +1095,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         db->run(remove_from(jobTable).unconditionally());
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete con;
     }
 
@@ -1178,11 +1105,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // Bring the cluster online
         auto con = new WsServer::Connection(nullptr);
@@ -1353,8 +1277,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         db->run(remove_from(jobTable).unconditionally());
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete con;
     }
 
@@ -1365,11 +1287,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // A uuid that isn't in the fileDownloadMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
@@ -1411,8 +1330,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         fileDownloadMap.erase(uuid);
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete fdObj;
     }
 
@@ -1423,11 +1340,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // A uuid that isn't in the fileDownloadMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
@@ -1469,8 +1383,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         fileDownloadMap.erase(uuid);
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete fdObj;
     }
 
@@ -1481,11 +1393,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // A uuid that isn't in the fileDownloadMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
@@ -1566,8 +1475,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         fileDownloadMap.erase(uuid);
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete fdObj;
     }
 
@@ -1578,11 +1485,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // A uuid that isn't in the fileListMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
@@ -1652,8 +1556,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         fileListMap.erase(uuid);
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete fdObj;
     }
 
@@ -1665,11 +1567,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Get the details for the first cluster
         auto details = new sClusterDetails(jsonClusters[0]);
 
-        // Create a new cluster manager
-        auto manager = new ClusterManager();
-
         // Create a new cluster
-        auto cluster = new Cluster(details, manager);
+        auto cluster = std::make_shared<Cluster>(details);
 
         // A uuid that isn't in the fileDListMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
@@ -1703,8 +1602,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         fileListMap.erase(uuid);
 
         // Cleanup
-        delete manager;
-        delete cluster;
         delete flObj;
     }
 

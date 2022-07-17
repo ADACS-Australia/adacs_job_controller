@@ -72,7 +72,7 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
         BOOST_CHECK_EQUAL(mgr.getCluster("not_a_real_cluster"), nullptr);
 
         // Add connected clusters
-        std::map<WsServer::Connection*, Cluster*> connections;
+        std::map<WsServer::Connection*, std::shared_ptr<Cluster>> connections;
         for (auto cluster : *mgr.getvClusters()) {
             auto con = new WsServer::Connection(nullptr);
             mgr.getmConnectedClusters()->emplace(con, cluster);
@@ -118,7 +118,7 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
         auto mgr = ClusterManager();
 
         // Add connected clusters
-        std::map<WsServer::Connection*, Cluster*> connections;
+        std::map<WsServer::Connection*, std::shared_ptr<Cluster>> connections;
         for (auto cluster : *mgr.getvClusters()) {
             auto con = new WsServer::Connection(nullptr);
             mgr.getmConnectedClusters()->emplace(con, cluster);

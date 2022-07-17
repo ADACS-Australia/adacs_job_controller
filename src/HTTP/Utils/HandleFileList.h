@@ -9,7 +9,13 @@
 #include "../../Cluster/ClusterManager.h"
 
 void handleFileList(
-        ClusterManager *clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
+        std::shared_ptr<ClusterManager> clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
+        const std::string &appName, const std::vector<std::string> &applications,
+        HttpServerImpl::Response *response
+);
+
+void handleFileList(
+        std::shared_ptr<Cluster> cluster, auto jobId, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications,
         HttpServerImpl::Response *response
 );

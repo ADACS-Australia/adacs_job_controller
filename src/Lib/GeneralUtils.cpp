@@ -8,6 +8,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <boost/asio.hpp>
 #include <iostream>
 #include <execinfo.h>
 
@@ -84,4 +85,27 @@ void handleSegv()
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
     throw std::runtime_error("Seg Fault Error");
+}
+
+bool acceptingConnections(unsigned short port) {
+    using namespace boost::asio;
+    using ip::tcp;
+    using ec = boost::system::error_code;
+
+    bool result = false;
+
+    try {
+        io_service svc;
+        tcp::socket s(svc);
+        deadline_timer tim(svc, boost::posix_time::seconds(1));
+
+        tim.async_wait([&](ec) { s.cancel(); });
+        s.async_connect({{}, port}, [&](ec ec) {
+            result = !ec;
+        });
+
+        svc.run();
+    } catch(...) { }
+
+    return result;
 }

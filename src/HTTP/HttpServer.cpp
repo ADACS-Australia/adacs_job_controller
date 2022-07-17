@@ -12,7 +12,7 @@
 
 using namespace std;
 
-HttpServer::HttpServer(ClusterManager *clusterManager) {
+HttpServer::HttpServer(std::shared_ptr<ClusterManager> clusterManager) {
     server.config.port = 8000;
     server.config.address = "0.0.0.0";
     server.config.thread_pool_size = 32;

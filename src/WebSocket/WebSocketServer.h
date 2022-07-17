@@ -16,7 +16,7 @@ class ClusterManager;
 
 class WebSocketServer {
 public:
-    WebSocketServer(ClusterManager *clusterManager);
+    WebSocketServer(std::shared_ptr<ClusterManager> clusterManager);
 
     void start();
     void join();
@@ -28,7 +28,7 @@ private:
 
     static bool accepting_connections(unsigned short port);
 
-    ClusterManager *clusterManager;
+    std::shared_ptr<ClusterManager> clusterManager;
 };
 
 

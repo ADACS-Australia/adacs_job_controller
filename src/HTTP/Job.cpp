@@ -27,7 +27,7 @@ nlohmann::json filterJobs(
 
 using namespace schema;
 
-void JobApi(const std::string &path, HttpServer *server, ClusterManager *clusterManager) {
+void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<ClusterManager> clusterManager) {
     // Get      -> Get job status (job id)
     // Post     -> Create new job
     // Delete   -> Delete job (job id)

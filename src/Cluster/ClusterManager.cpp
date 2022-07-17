@@ -29,14 +29,8 @@ ClusterManager::ClusterManager() {
     for (const auto &jc : jsonClusters) {
         // Get the cluster details from the cluster config
         auto details = new sClusterDetails(jc);
-        auto cluster = new Cluster(details, this);
+        auto cluster = std::make_shared<Cluster>(details);
         vClusters.push_back(cluster);
-    }
-}
-
-ClusterManager::~ClusterManager() {
-    for (auto cluster : vClusters) {
-        delete cluster;
     }
 }
 
@@ -109,7 +103,7 @@ void ClusterManager::reconnectClusters() {
     }
 }
 
-Cluster *ClusterManager::handleNewConnection(WsServer::Connection *connection, const std::string &uuid) {
+std::shared_ptr<Cluster> ClusterManager::handleNewConnection(WsServer::Connection *connection, const std::string &uuid) {
     // Get the tables
     JobserverClusteruuid clusterUuidTable;
 
@@ -182,13 +176,13 @@ void ClusterManager::removeConnection(WsServer::Connection *connection) {
     reconnectClusters();
 }
 
-bool ClusterManager::isClusterOnline(Cluster *cluster) {
+bool ClusterManager::isClusterOnline(std::shared_ptr<Cluster> cluster) {
     // Check if any connected clusters matches the provided cluster
     return std::any_of(mConnectedClusters.begin(), mConnectedClusters.end(),
                        [cluster](auto c) { return c.second == cluster; });
 }
 
-Cluster *ClusterManager::getCluster(WsServer::Connection *connection) {
+std::shared_ptr<Cluster> ClusterManager::getCluster(WsServer::Connection *connection) {
     // Try to find the connection
     auto result = mConnectedClusters.find(connection);
 
@@ -196,7 +190,7 @@ Cluster *ClusterManager::getCluster(WsServer::Connection *connection) {
     return result != mConnectedClusters.end() ? result->second : nullptr;
 }
 
-Cluster *ClusterManager::getCluster(const std::string &cluster) {
+std::shared_ptr<Cluster> ClusterManager::getCluster(const std::string &cluster) {
     // Find the cluster by name
     for (auto &i : vClusters) {
         if (i->getName() == cluster)
@@ -206,7 +200,7 @@ Cluster *ClusterManager::getCluster(const std::string &cluster) {
     return nullptr;
 }
 
-void ClusterManager::connectCluster(Cluster *cluster, const std::string &token) {
+void ClusterManager::connectCluster(std::shared_ptr<Cluster> cluster, const std::string &token) {
     std::cout << "Attempting to connect cluster " << cluster->getName() << " with token " << token << std::endl;
 #ifndef BUILD_TESTS
     boost::process::system(

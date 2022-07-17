@@ -77,28 +77,29 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Set up the cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = ClusterManager();
+        auto mgr = std::make_shared<ClusterManager>();
 
         // Start the cluster scheduler
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
             while (running)
-                mgr.getvClusters()->at(0)->callrun();
+                mgr->getvClusters()->at(0)->callrun();
         });
 
         // Set up the test http server
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto httpSvr = HttpServer(&mgr);
+        auto httpSvr = HttpServer(mgr);
         httpSvr.start();
 
         // Set up the test websocket server
-        auto wsSrv = WebSocketServer(&mgr);
+        auto wsSrv = WebSocketServer(mgr);
         wsSrv.start();
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
+        BOOST_CHECK_EQUAL(acceptingConnections(8001), true);
 
         // Try to reconnect the clusters so that we can get a connection token to use later to connect the client
-        mgr.callreconnectClusters();
+        mgr->callreconnectClusters();
 
         // Connect a fake client to the websocket server
         TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
@@ -181,7 +182,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Create a job to request files for
         auto jobId = db->run(
@@ -239,8 +240,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Finished with the servers and clients
         running = false;
-        *mgr.getvClusters()->at(0)->getdataReady() = true;
-        mgr.getvClusters()->at(0)->getdataCV()->notify_one();
+        *mgr->getvClusters()->at(0)->getdataReady() = true;
+        mgr->getvClusters()->at(0)->getdataCV()->notify_one();
         clusterThread.join();
         websocketClient.stop();
         clientThread.join();
@@ -270,28 +271,29 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Set up the cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = ClusterManager();
+        auto mgr = std::make_shared<ClusterManager>();
 
         // Start the cluster scheduler
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
             while (running)
-                mgr.getvClusters()->at(0)->callrun();
+                mgr->getvClusters()->at(0)->callrun();
         });
 
         // Set up the test http server
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto httpSvr = HttpServer(&mgr);
+        auto httpSvr = HttpServer(mgr);
         httpSvr.start();
 
         // Set up the test websocket server
-        auto wsSrv = WebSocketServer(&mgr);
+        auto wsSrv = WebSocketServer(mgr);
         wsSrv.start();
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
+        BOOST_CHECK_EQUAL(acceptingConnections(8001), true);
 
         // Try to reconnect the clusters so that we can get a connection token to use later to connect the client
-        mgr.callreconnectClusters();
+        mgr->callreconnectClusters();
 
         // Connect a fake client to the websocket server
         TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
@@ -333,7 +335,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             msg.push_ulong(fileSize);
 
             auto smsg = Message(*msg.getdata());
-            mgr.getvClusters()->at(0)->callhandleMessage(smsg);
+            mgr->getvClusters()->at(0)->callhandleMessage(smsg);
 
             // Now send the file content in to chunks and send it to the client
             pThread = new std::thread([bPaused, connection, fileSize, uuid, &mgr]() {
@@ -356,7 +358,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                     msg.push_bytes(data);
 
                     auto smsg = Message(*msg.getdata());
-                    mgr.getvClusters()->at(0)->callhandleMessage(smsg);
+                    mgr->getvClusters()->at(0)->callhandleMessage(smsg);
                 }
             });
 
@@ -367,7 +369,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Create a job to request files for
         auto jobId = db->run(
@@ -434,8 +436,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Finished with the servers and clients
         running = false;
-        *mgr.getvClusters()->at(0)->getdataReady() = true;
-        mgr.getvClusters()->at(0)->getdataCV()->notify_one();
+        *mgr->getvClusters()->at(0)->getdataReady() = true;
+        mgr->getvClusters()->at(0)->getdataCV()->notify_one();
         clusterThread.join();
         websocketClient.stop();
         clientThread.join();

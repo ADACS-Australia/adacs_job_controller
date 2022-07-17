@@ -101,13 +101,13 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = ClusterManager();
+        auto mgr = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(&mgr);
+        auto svr = HttpServer(mgr);
 
         svr.start();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Fabricate data
         // Create the new job object
@@ -340,13 +340,13 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = ClusterManager();
+        auto mgr = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(&mgr);
+        auto svr = HttpServer(mgr);
 
         svr.start();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Fabricate data
         // Create the new job object

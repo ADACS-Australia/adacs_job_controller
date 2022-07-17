@@ -13,9 +13,9 @@ int main()
     // Set up the crash handler
     segvcatch::init_segv(&handleSegv);
 
-    auto clusterManager = new ClusterManager();
-    auto httpServer = new HttpServer(clusterManager);
-    auto websocketServer = new WebSocketServer(clusterManager);
+    auto clusterManager = std::make_shared<ClusterManager>();
+    auto httpServer = std::make_unique<HttpServer>(clusterManager);
+    auto websocketServer = std::make_unique<WebSocketServer>(clusterManager);
 
     // Start the websocket server
     websocketServer->start();
