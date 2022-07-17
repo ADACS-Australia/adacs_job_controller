@@ -11,7 +11,7 @@
 
 std::string getLastToken();
 extern uint64_t randomInt(uint64_t start, uint64_t end);
-extern std::vector<uint8_t> *generateRandomData(uint32_t count);
+extern std::shared_ptr<std::vector<uint8_t>> generateRandomData(uint32_t count);
 
 using TestWsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 using TestWsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;

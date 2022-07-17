@@ -60,7 +60,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Check that the cluster constructor works as expected
         auto cluster = std::make_shared<Cluster>(details);
@@ -78,7 +78,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -92,7 +92,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -106,7 +106,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -125,7 +125,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -143,13 +143,11 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_queueMessage) {
-        std::vector<std::vector<uint8_t>*> deletables;
-
         // Parse the cluster configuration
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -159,15 +157,12 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                           (*cluster->getqueue())[Message::Priority::Highest].end(), true);
 
         auto s1_d1 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s1_d1);
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
 
         auto s2_d1 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s2_d1);
         cluster->queueMessage("s2", s2_d1, Message::Priority::Lowest);
 
         auto s3_d1 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s3_d1);
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         // s1 should only exist in the highest priority queue
@@ -216,13 +211,11 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                                       s3_d1->begin(), s3_d1->end());
 
         auto s1_d2 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s1_d2);
         cluster->queueMessage("s1", s1_d2, Message::Priority::Highest);
         // s1 should 2 items
         BOOST_CHECK_EQUAL(find_s1->second->size(), 2);
 
         auto s1_d3 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s1_d3);
         cluster->queueMessage("s1", s1_d3, Message::Priority::Highest);
 
         // s1 should have 3 items
@@ -230,40 +223,33 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // Test dequeuing gives the correct results
         auto d = find_s1->second->dequeue();
-        // d should be a copy of s1_d1, it should not be the same reference
-        BOOST_CHECK_EQUAL(d == s1_d1, false);
+        // d should be the same reference as s1_d1
+        BOOST_CHECK_EQUAL(d == s1_d1, true);
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s1_d1->begin(), s1_d1->end());
-        delete d;
 
         d = find_s1->second->dequeue();
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s1_d2->begin(), s1_d2->end());
-        delete d;
 
         d = find_s1->second->dequeue();
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s1_d3->begin(), s1_d3->end());
-        delete d;
 
         auto s2_d2 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s2_d2);
         cluster->queueMessage("s2", s2_d2, Message::Priority::Lowest);
         // s2 should 2 items
         BOOST_CHECK_EQUAL(find_s2->second->size(), 2);
 
         auto s2_d3 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s2_d3);
         cluster->queueMessage("s2", s2_d3, Message::Priority::Lowest);
 
         // s2 should have 3 items
         BOOST_CHECK_EQUAL(find_s2->second->size(), 3);
 
         auto s3_d2 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s3_d2);
         cluster->queueMessage("s3", s3_d2, Message::Priority::Lowest);
         // s3 should 2 items
         BOOST_CHECK_EQUAL(find_s3->second->size(), 2);
 
         auto s3_d3 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s3_d3);
         cluster->queueMessage("s3", s3_d3, Message::Priority::Lowest);
 
         // s3 should have 3 items
@@ -272,62 +258,46 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // Test dequeuing gives the correct results
         d = find_s2->second->dequeue();
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s2_d1->begin(), s2_d1->end());
-        delete d;
 
         d = find_s2->second->dequeue();
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s2_d2->begin(), s2_d2->end());
-        delete d;
 
         d = find_s2->second->dequeue();
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s2_d3->begin(), s2_d3->end());
-        delete d;
 
         d = find_s3->second->dequeue();
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s3_d1->begin(), s3_d1->end());
-        delete d;
 
         d = find_s3->second->dequeue();
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s3_d2->begin(), s3_d2->end());
-        delete d;
 
         d = find_s3->second->dequeue();
         BOOST_CHECK_EQUAL_COLLECTIONS(d->begin(), d->end(), s3_d3->begin(), s3_d3->end());
-        delete d;
 
         // Check that after all data has been dequeued, that s1, s2, and s3 queues are empty
         BOOST_CHECK_EQUAL(find_s1->second->size(), 0);
         BOOST_CHECK_EQUAL(find_s2->second->size(), 0);
         BOOST_CHECK_EQUAL(find_s3->second->size(), 0);
-
-        // Cleanup leftovers
-        for (auto del : deletables) {
-            delete del;
-        }
     }
 
     BOOST_AUTO_TEST_CASE(test_pruneSources) {
-        std::vector<std::vector<uint8_t>*> deletables;
-
         // Parse the cluster configuration
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
 
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s1_d1);
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
 
         auto s2_d1 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s2_d1);
         cluster->queueMessage("s2", s2_d1, Message::Priority::Lowest);
 
         auto s3_d1 = generateRandomData(randomInt(0, 255));
-        deletables.push_back(s3_d1);
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         // Pruning the sources should not perform any action since all sources have one item in the queue
@@ -341,7 +311,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                           (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
 
         // Dequeue an item from s2, which will leave s2 with 0 items
-        delete (*cluster->getqueue())[Message::Priority::Lowest].find("s2")->second->dequeue();
+        (*cluster->getqueue())[Message::Priority::Lowest].find("s2")->second->dequeue();
 
         // Now pruning the sources should remove s2, but not s1 or s3
         cluster->callpruneSources();
@@ -354,8 +324,8 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                           (*cluster->getqueue())[Message::Priority::Lowest].end(), false);
 
         // Dequeue the remaining items from s1 and s3
-        delete (*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->dequeue();
-        delete (*cluster->getqueue())[Message::Priority::Lowest].find("s3")->second->dequeue();
+        (*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->dequeue();
+        (*cluster->getqueue())[Message::Priority::Lowest].find("s3")->second->dequeue();
 
         // Now pruning the sources should remove both s1 and s3
         cluster->callpruneSources();
@@ -370,11 +340,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].size(), 0);
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Lowest].size(), 0);
-
-        // Cleanup leftovers
-        for (auto del : deletables) {
-            delete del;
-        }
     }
 
     BOOST_AUTO_TEST_CASE(test_run) {
@@ -382,7 +347,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -473,7 +438,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         cluster->callrun();
 
         // Give the websocket threads time to complete
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // Check that the data sent was in priority/source order
         // The following order is deterministic - but sensitive.
@@ -514,13 +479,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         server.stop();
         server_thread.join();
-
-        // Cleanup
-        for (auto del : std::vector<std::vector<uint8_t>*>{
-            s1_d1, s1_d2, s2_d1, s3_d1, s3_d2, s3_d3, s3_d4, s4_d1, s4_d2, s5_d1, s5_d2, s6_d1, s6_d2, s6_d3
-        }) {
-            delete del;
-        }
     }
 
     BOOST_AUTO_TEST_CASE(test_doesHigherPriorityDataExist) {
@@ -528,7 +486,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -565,29 +523,22 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), true);
 
         // Clear all data from s2, s1 and s0
-        delete *(*cluster->getqueue())[Message::Priority::Highest].find("s2")->second->try_dequeue();
-        delete *(*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->try_dequeue();
-        delete *(*cluster->getqueue())[Message::Priority::Highest].find("s0")->second->try_dequeue();
+        *(*cluster->getqueue())[Message::Priority::Highest].find("s2")->second->try_dequeue();
+        *(*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->try_dequeue();
+        *(*cluster->getqueue())[Message::Priority::Highest].find("s0")->second->try_dequeue();
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Medium), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), true);
 
         // Clear data from s3 and s4
-        delete *(*cluster->getqueue())[Message::Priority::Medium].find("s3")->second->try_dequeue();
-        delete *(*cluster->getqueue())[Message::Priority::Lowest].find("s4")->second->try_dequeue();
+        *(*cluster->getqueue())[Message::Priority::Medium].find("s3")->second->try_dequeue();
+        *(*cluster->getqueue())[Message::Priority::Lowest].find("s4")->second->try_dequeue();
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Medium), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), false);
 
         // Testing a non-standard priority that has a value greater than Lowest should now result in false
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest + 1), false);
-
-        // Cleanup
-        delete s0_d1;
-        delete s1_d1;
-        delete s2_d1;
-        delete s3_d1;
-        delete s4_d1;
     }
 
     BOOST_AUTO_TEST_CASE(test_updateJob) {
@@ -595,7 +546,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -690,7 +641,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -801,7 +752,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         auto msg = Message(*ptr);
-        delete ptr;
 
         BOOST_CHECK_EQUAL(msg.getId(), SUBMIT_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
@@ -834,7 +784,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         msg = Message(*ptr);
-        delete ptr;
 
         BOOST_CHECK_EQUAL(msg.getId(), SUBMIT_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
@@ -857,7 +806,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         // There is one job in submitting state older than 1 minute
         cluster->callcheckUnsubmittedJobs();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
-        delete *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
+        *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
 
         // Check that the job transitioned to submitting state from pending state
         jobHistoryResults =
@@ -921,7 +870,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -1032,7 +981,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         auto msg = Message(*ptr);
-        delete ptr;
 
         BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
@@ -1049,7 +997,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         msg = Message(*ptr);
-        delete ptr;
 
         BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
@@ -1103,7 +1050,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -1214,7 +1161,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         auto msg = Message(*ptr);
-        delete ptr;
 
         BOOST_CHECK_EQUAL(msg.getId(), DELETE_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
@@ -1231,7 +1177,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         msg = Message(*ptr);
-        delete ptr;
 
         BOOST_CHECK_EQUAL(msg.getId(), DELETE_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
@@ -1285,7 +1230,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -1298,39 +1243,36 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         msg.push_string("details");  // detail
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileDownloadMap.size(), 0);
+        BOOST_CHECK_EQUAL(fileDownloadMap->size(), 0);
 
-        auto fdObj = new sFileDownload{};
-        fileDownloadMap.emplace(uuid, fdObj);
+        auto fdObj = std::make_shared<sFileDownload>();
+        fileDownloadMap->emplace(uuid, fdObj);
 
         // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->error, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->dataReady, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
 
         msg = Message(FILE_ERROR);
         msg.push_string(uuid);          // uuid
         msg.push_string("details");     // detail
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->error, true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->errorDetails, "details");
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->dataReady, true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails, "details");
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
 
-        fileDownloadMap.erase(uuid);
-
-        // Cleanup
-        delete fdObj;
+        fileDownloadMap->erase(uuid);
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileDetails) {
@@ -1338,7 +1280,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -1351,39 +1293,36 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         msg.push_ulong(0x123456789abcdef);      // fileSize
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileDownloadMap.size(), 0);
+        BOOST_CHECK_EQUAL(fileDownloadMap->size(), 0);
 
-        auto fdObj = new sFileDownload{};
-        fileDownloadMap.emplace(uuid, fdObj);
+        auto fdObj = std::make_shared<sFileDownload>();
+        fileDownloadMap->emplace(uuid, fdObj);
 
         // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->error, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->dataReady, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
 
         msg = Message(FILE_DETAILS);
         msg.push_string(uuid);                  // uuid
         msg.push_ulong(0x123456789abcdef);      // fileSize
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->fileSize, 0x123456789abcdef);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->error, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->dataReady, true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedData, true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, 0x123456789abcdef);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
 
-        fileDownloadMap.erase(uuid);
-
-        // Cleanup
-        delete fdObj;
+        fileDownloadMap->erase(uuid);
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileChunk) {
@@ -1391,7 +1330,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -1406,42 +1345,42 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         msg.push_bytes(*chunk);     // chunk
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileDownloadMap.size(), 0);
+        BOOST_CHECK_EQUAL(fileDownloadMap->size(), 0);
 
-        auto fdObj = new sFileDownload{};
-        fileDownloadMap.emplace(uuid, fdObj);
+        auto fdObj = std::make_shared<sFileDownload>();
+        fileDownloadMap->emplace(uuid, fdObj);
 
         // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->error, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->dataReady, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
 
         msg = Message(FILE_CHUNK);
         msg.push_string(uuid);      // uuid
         msg.push_bytes(*chunk);     // chunk
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->error, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->dataReady, true);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->receivedBytes, chunk->size());
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL(fileDownloadMap[uuid]->clientPaused, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, true);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, chunk->size());
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
+        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
 
-        BOOST_CHECK_EQUAL_COLLECTIONS(chunk->begin(), chunk->end(), (*fileDownloadMap[uuid]->queue.try_peek())->begin(),
-                                      (*fileDownloadMap[uuid]->queue.try_peek())->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(chunk->begin(), chunk->end(), (*(*fileDownloadMap)[uuid]->queue.try_peek())->begin(),
+                                      (*(*fileDownloadMap)[uuid]->queue.try_peek())->end());
 
-        std::vector<std::vector<uint8_t> *> chunks = {chunk};
+        std::vector<std::shared_ptr<std::vector<uint8_t>>> chunks = {chunk};
 
         // Fill the queue and make sure that a pause file chunk stream isn't sent until the queue is full
-        while (!fileDownloadMap[uuid]->clientPaused) {
+        while (!(*fileDownloadMap)[uuid]->clientPaused) {
             chunk = generateRandomData(randomInt(0, 255));
             chunks.push_back(chunk);
 
@@ -1459,23 +1398,16 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].size(), 1);
         auto ptr = *(*cluster->getqueue())[Message::Priority::Highest].find(uuid)->second->try_dequeue();
         msg = Message(*ptr);
-        delete ptr;
         BOOST_CHECK_EQUAL(msg.getId(), PAUSE_FILE_CHUNK_STREAM);
         BOOST_CHECK_EQUAL(msg.pop_string(), uuid);
 
         // Verify that the chunks were correctly queued
         for (auto c : chunks) {
-            auto q = (*fileDownloadMap[uuid]->queue.try_dequeue());
+            auto q = (*(*fileDownloadMap)[uuid]->queue.try_dequeue());
             BOOST_CHECK_EQUAL_COLLECTIONS(c->begin(), c->end(), q->begin(), q->end());
-
-            delete c;
-            delete q;
         }
 
-        fileDownloadMap.erase(uuid);
-
-        // Cleanup
-        delete fdObj;
+        fileDownloadMap->erase(uuid);
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileList) {
@@ -1483,7 +1415,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -1508,16 +1440,16 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         msg.push_ulong(0x4321);     // fileSize
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileListMap.size(), 0);
+        BOOST_CHECK_EQUAL(fileListMap->size(), 0);
 
-        auto fdObj = new sFileList{};
-        fileListMap.emplace(uuid, fdObj);
+        auto fdObj = std::make_shared<sFileList>();
+        fileListMap->emplace(uuid, fdObj);
 
         // Check that the file list object is correctly created
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files.empty(), true);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->error, false);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->dataReady, false);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->dataReady, false);
 
         msg = Message(FILE_LIST);
         msg.push_string(uuid);      // uuid
@@ -1536,27 +1468,24 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         msg.push_ulong(0x4321);     // fileSize
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files.size(), 3);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->error, false);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->dataReady, true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files.size(), 3);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->dataReady, true);
 
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[0].fileName, "/");
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[0].isDirectory, true);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[0].fileSize, 0);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[0].fileName, "/");
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[0].isDirectory, true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[0].fileSize, 0);
 
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[1].fileName, "/file1");
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[1].isDirectory, false);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[1].fileSize, 0x1234);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[1].fileName, "/file1");
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[1].isDirectory, false);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[1].fileSize, 0x1234);
 
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[2].fileName, "/file2");
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[2].isDirectory, false);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files[2].fileSize, 0x4321);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[2].fileName, "/file2");
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[2].isDirectory, false);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files[2].fileSize, 0x4321);
 
-        fileListMap.erase(uuid);
-
-        // Cleanup
-        delete fdObj;
+        fileListMap->erase(uuid);
     }
 
 
@@ -1565,7 +1494,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         auto jsonClusters = nlohmann::json::parse(sClusters);
 
         // Get the details for the first cluster
-        auto details = new sClusterDetails(jsonClusters[0]);
+        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
 
         // Create a new cluster
         auto cluster = std::make_shared<Cluster>(details);
@@ -1578,31 +1507,28 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         msg.push_string("details");     // detail
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileListMap.size(), 0);
+        BOOST_CHECK_EQUAL(fileListMap->size(), 0);
 
-        auto flObj = new sFileList{};
-        fileListMap.emplace(uuid, flObj);
+        auto flObj = std::make_shared<sFileList>();
+        fileListMap->emplace(uuid, flObj);
 
         // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files.empty(), true);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->error, false);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->dataReady, false);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->dataReady, false);
 
         msg = Message(FILE_LIST_ERROR);
         msg.push_string(uuid);          // uuid
         msg.push_string("details");     // detail
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->files.empty(), true);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->error, true);
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->errorDetails, "details");
-        BOOST_CHECK_EQUAL(fileListMap[uuid]->dataReady, true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->error, true);
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->errorDetails, "details");
+        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->dataReady, true);
 
-        fileListMap.erase(uuid);
-
-        // Cleanup
-        delete flObj;
+        fileListMap->erase(uuid);
     }
 
 BOOST_AUTO_TEST_SUITE_END()

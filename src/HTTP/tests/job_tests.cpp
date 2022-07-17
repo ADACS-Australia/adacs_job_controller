@@ -218,7 +218,6 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         auto msg = Message(*ptr);
-        delete ptr;
 
         BOOST_CHECK_EQUAL(msg.getId(), SUBMIT_JOB);
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
@@ -639,7 +638,6 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
             auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
             auto msg = Message(*ptr);
-            delete ptr;
 
             BOOST_CHECK_EQUAL(msg.getId(), CANCEL_JOB);
             BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
@@ -925,7 +923,6 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
             auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
             auto msg = Message(*ptr);
-            delete ptr;
 
             BOOST_CHECK_EQUAL(msg.getId(), DELETE_JOB);
             BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);

@@ -74,7 +74,7 @@ void handleFileList(
     JobserverFilelistcache fileListCacheTable;
 
     // Create a new file list object
-    auto flObj = sFileList{};
+    auto flObj = std::make_shared<sFileList>();
 
     // Generate a UUID for the message source
     auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
@@ -150,7 +150,7 @@ void handleFileList(
         }
 
         // Cluster is online, create the file list object
-        fileListMap.emplace(uuid, &flObj);
+        fileListMap->emplace(uuid, flObj);
 
         // Send a message to the client to initiate the file list
         auto msg = Message(FILE_LIST, Message::Priority::Highest, uuid);
@@ -163,28 +163,28 @@ void handleFileList(
 
         {
             // Wait for the server to send back data, or in 30 seconds fail
-            std::unique_lock<std::mutex> lock(flObj.dataCVMutex);
+            std::unique_lock<std::mutex> lock(flObj->dataCVMutex);
 
             // Wait for data to be ready to send
-            if (!flObj.dataCV.wait_for(lock, std::chrono::seconds(30), [&flObj] { return flObj.dataReady; })) {
+            if (!flObj->dataCV.wait_for(lock, std::chrono::seconds(30), [&flObj] { return flObj->dataReady; })) {
                 // Timeout reached, set the error
-                flObj.error = true;
-                flObj.errorDetails = "Client too took long to respond.";
+                flObj->error = true;
+                flObj->errorDetails = "Client too took long to respond.";
             }
         }
 
         // Check if the server received an error about the file list
-        if (flObj.error) {
+        if (flObj->error) {
             {
                 // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
                 std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
                 // Remove the file list object
-                if (fileListMap.find(uuid) != fileListMap.end())
-                    fileListMap.erase(uuid);
+                if (fileListMap->find(uuid) != fileListMap->end())
+                    fileListMap->erase(uuid);
             }
 
-            if (response) response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj.errorDetails);
+            if (response) response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj->errorDetails);
             return;
         }
 
@@ -200,7 +200,7 @@ void handleFileList(
         // Iterate over the files and generate the result
         nlohmann::json result;
         result["files"] = nlohmann::json::array();
-        for (const auto &f : flObj.files) {
+        for (const auto &f : flObj->files) {
             nlohmann::json jFile;
             jFile["path"] = f.fileName;
             jFile["isDir"] = f.isDirectory;
@@ -262,8 +262,8 @@ void handleFileList(
             std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
             // Remove the file list object
-            if (fileListMap.find(uuid) != fileListMap.end())
-                fileListMap.erase(uuid);
+            if (fileListMap->find(uuid) != fileListMap->end())
+                fileListMap->erase(uuid);
         }
 
         // Return the result
@@ -279,8 +279,8 @@ void handleFileList(
             std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
             // Remove the file list object
-            if (fileListMap.find(uuid) != fileListMap.end())
-                fileListMap.erase(uuid);
+            if (fileListMap->find(uuid) != fileListMap->end())
+                fileListMap->erase(uuid);
         }
 
         // Report bad request

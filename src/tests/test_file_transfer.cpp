@@ -140,9 +140,9 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             msg.push_string(uuid);
             msg.push_ulong(fileSize);
 
-            auto o = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->size());
+            auto o = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
             std::ostream_iterator<uint8_t> iter(*o);
-            std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
+            std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
             connection->send(o, nullptr, 130);
 
             // Now send the file content in to chunks and send it to the client
@@ -166,12 +166,10 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                     msg.push_string(uuid);
                     msg.push_bytes(*data);
 
-                    auto o = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->size());
+                    auto o = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
                     std::ostream_iterator<uint8_t> iter(*o);
-                    std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
+                    std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
                     connection->send(o, nullptr, 130);
-
-                    delete data;
                 }
             });
 
@@ -334,7 +332,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             msg.push_string(uuid);
             msg.push_ulong(fileSize);
 
-            auto smsg = Message(*msg.getdata());
+            auto smsg = Message(*msg.getdata()->get());
             mgr->getvClusters()->at(0)->callhandleMessage(smsg);
 
             // Now send the file content in to chunks and send it to the client
@@ -357,7 +355,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                     msg.push_string(uuid);
                     msg.push_bytes(data);
 
-                    auto smsg = Message(*msg.getdata());
+                    auto smsg = Message(*msg.getdata()->get());
                     mgr->getvClusters()->at(0)->callhandleMessage(smsg);
                 }
             });

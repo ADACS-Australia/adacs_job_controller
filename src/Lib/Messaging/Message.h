@@ -47,7 +47,7 @@ public:
 #endif
 
     Message(uint32_t msgId, Priority priority, const std::string& source);
-    explicit Message(const std::vector<unsigned char>& vdata);
+    explicit Message(const std::vector<uint8_t>& vdata);
 
     void push_bool(bool v);
     void push_ubyte(uint8_t v);
@@ -82,7 +82,7 @@ public:
     [[nodiscard]] uint32_t getId() const { return id; }
 
 private:
-    std::vector<uint8_t> data;
+    std::shared_ptr<std::vector<uint8_t>> data;
     uint64_t index;
     Priority priority = Priority::Lowest;
     std::string source;
