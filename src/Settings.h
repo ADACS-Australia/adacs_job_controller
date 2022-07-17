@@ -5,6 +5,7 @@
 #ifndef GWCLOUD_JOB_SERVER_SETTINGS_H
 #define GWCLOUD_JOB_SERVER_SETTINGS_H
 
+// NOLINTNEXTLINE(clang-analyzer-cplusplus.StringChecker)
 #define GET_ENV(x, y) (std::getenv(x) != nullptr ? std::string(std::getenv(x)) : y)
 
 #define DATABASE_USER               GET_ENV("DATABASE_USER", "jobserver")
@@ -29,7 +30,10 @@
     #define BUNDLE_HTTPS_PORT ":23457"
 
     #undef MAX_FILE_BUFFER_SIZE
-    #define MAX_FILE_BUFFER_SIZE 1024*4
+    #define MAX_FILE_BUFFER_SIZE 1024ULL*4ULL
 #endif
+
+#define CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS 60
+#define CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS 60
 
 #endif //GWCLOUD_JOB_SERVER_SETTINGS_H

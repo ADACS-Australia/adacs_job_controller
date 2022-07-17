@@ -5,23 +5,22 @@
 #ifndef GWCLOUD_JOB_SERVER_CLUSTER_H
 #define GWCLOUD_JOB_SERVER_CLUSTER_H
 
-
-#include <string>
-#include <boost/uuid/uuid.hpp>
-#include "../WebSocket/WebSocketServer.h"
+#include "../Lib/GeneralUtils.h"
 #include "../Lib/Messaging/Message.h"
-#include <vector>
+#include "../Lib/folly/folly/concurrency/ConcurrentHashMap.h"
+#include "../Lib/folly/folly/concurrency/UnboundedQueue.h"
+#include "../WebSocket/WebSocketServer.h"
 #include <boost/concept_check.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <nlohmann/json.hpp>
 #include <shared_mutex>
-#include "../Lib/GeneralUtils.h"
-#include "../Lib/folly/folly/concurrency/UnboundedQueue.h"
-#include "../Lib/folly/folly/concurrency/ConcurrentHashMap.h"
+#include <string>
+#include <vector>
 
 class ClusterManager;
 
 struct sFileDownload {
-    folly::USPSCQueue<std::vector<uint8_t> *, false, 8> queue;
+    folly::USPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false> queue;
     uint64_t fileSize = -1;
     bool error = false;
     std::string errorDetails;
@@ -32,12 +31,6 @@ struct sFileDownload {
     uint64_t receivedBytes = 0;
     uint64_t sentBytes = 0;
     bool clientPaused = false;
-
-    ~sFileDownload() {
-        // Clean up any packets still buffered in the queue
-        while (!queue.empty())
-            delete *queue.try_dequeue();
-    }
 };
 
 struct sFile {
@@ -83,16 +76,22 @@ private:
     std::string key;
 };
 
-extern folly::ConcurrentHashMap<std::string, sFileDownload *> fileDownloadMap;
-extern folly::ConcurrentHashMap<std::string, sFileList *> fileListMap;
+extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileDownload>>> fileDownloadMap;
+extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>> fileListMap;
+// NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
 extern std::mutex fileDownloadMapDeletionLockMutex;
 extern std::mutex fileDownloadPauseResumeLockMutex;
 extern std::mutex fileListMapDeletionLockMutex;
+// NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 
 class Cluster : public std::enable_shared_from_this<Cluster> {
 public:
-    Cluster(sClusterDetails *details);
-    ~Cluster();
+    explicit Cluster(std::shared_ptr<sClusterDetails> details);
+    virtual ~Cluster() = default;
+    Cluster(Cluster const&) = delete;
+    auto operator =(Cluster const&) -> Cluster& = delete;
+    Cluster(Cluster&&) = delete;
+    auto operator=(Cluster&&) -> Cluster& = delete;
 
     auto getName() { return pClusterDetails->getName(); }
 
@@ -102,10 +101,10 @@ public:
 
     void handleMessage(Message &message);
 
-    bool isOnline();
+    auto isOnline() -> bool;
 
     // virtual here so that we can override this function for testing
-    virtual void queueMessage(std::string source, std::vector<uint8_t> *data, Message::Priority priority);
+    virtual void queueMessage(std::string source, const std::shared_ptr<std::vector<uint8_t>>& data, Message::Priority priority);
 
 private:
 #ifndef BUILD_TESTS
@@ -114,14 +113,14 @@ private:
     void run();
 #endif
 
-    sClusterDetails *pClusterDetails = nullptr;
+    std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
     WsServer::Connection *pConnection = nullptr;
 
     mutable std::shared_mutex mutex_;
     mutable std::mutex dataCVMutex;
     bool dataReady{};
     std::condition_variable dataCV;
-    std::vector<folly::ConcurrentHashMap<std::string, folly::UMPSCQueue<std::vector<uint8_t> *, false, 8> *>> queue;
+    std::vector<folly::ConcurrentHashMap<std::string, std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>> queue;
 
     // Threads
     std::thread schedulerThread;
@@ -136,7 +135,7 @@ private:
 
     [[noreturn]] void resendMessages();
 
-    bool doesHigherPriorityDataExist(uint64_t maxPriority);
+    auto doesHigherPriorityDataExist(uint64_t maxPriority) -> bool;
 
     void updateJob(Message &message);
 

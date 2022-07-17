@@ -133,9 +133,9 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 msg.push_string(uuid);
                 msg.push_string("test error");
 
-                auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->size());
+                auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->get()->size());
                 std::ostream_iterator<uint8_t> iter(*o);
-                std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
+                std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
                 connection->send(o, nullptr, 130);
                 return;
             }
@@ -157,9 +157,9 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 msg.push_ulong(f.fileSize);
             }
 
-            auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->size());
+            auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->get()->size());
             std::ostream_iterator<uint8_t> iter(*o);
-            std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
+            std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
             connection->send(o, nullptr, 130);
         };
 
@@ -207,7 +207,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         auto r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
         BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
         BOOST_CHECK_EQUAL(r->content.string(), "test error");
-        BOOST_CHECK_EQUAL(fileListMap.size(), 0);
+        BOOST_CHECK_EQUAL(fileListMap->size(), 0);
 
         // Finish error testing
         bRaiseError = false;
@@ -216,7 +216,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         // _job_completion_ job history objects
         r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
-        BOOST_CHECK_EQUAL(fileListMap.size(), 0);
+        BOOST_CHECK_EQUAL(fileListMap->size(), 0);
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(params["path"]));
@@ -494,9 +494,9 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 msg.push_ulong(f.fileSize);
             }
 
-            auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->size());
+            auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->get()->size());
             std::ostream_iterator<uint8_t> iter(*o);
-            std::copy(msg.getdata()->begin(), msg.getdata()->end(), iter);
+            std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
             connection->send(o, nullptr, 130);
         };
 

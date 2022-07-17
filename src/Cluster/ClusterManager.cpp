@@ -27,9 +27,8 @@ ClusterManager::ClusterManager() {
 
     // Create the cluster instances from the config
     for (const auto &jc : jsonClusters) {
-        // Get the cluster details from the cluster config
-        auto details = new sClusterDetails(jc);
-        auto cluster = std::make_shared<Cluster>(details);
+        // Get the cluster details from the cluster config and create a Cluster instance
+        auto cluster = std::make_shared<Cluster>(std::make_shared<sClusterDetails>(jc));
         vClusters.push_back(cluster);
     }
 }

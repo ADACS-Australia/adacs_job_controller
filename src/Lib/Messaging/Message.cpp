@@ -12,7 +12,8 @@ Message::Message(uint32_t msgId) {
     // Constructor only used for testing
 
     // Resize the data array to 64kb
-    data.reserve(1024 * 64);
+    data = std::make_shared<std::vector<uint8_t>>();
+    data->reserve(1024 * 64);
 
     // Reset the index
     index = 0;
@@ -24,7 +25,8 @@ Message::Message(uint32_t msgId) {
 
 Message::Message(uint32_t msgId, Message::Priority priority, const std::string& source) {
     // Resize the data array to 64kb
-    data.reserve(1024 * 64);
+    data = std::make_shared<std::vector<uint8_t>>();
+    data->reserve(1024 * 64);
 
     // Reset the index
     index = 0;
@@ -43,7 +45,7 @@ Message::Message(uint32_t msgId, Message::Priority priority, const std::string& 
 }
 
 Message::Message(const vector<uint8_t>& vdata) {
-    data = vdata;
+    data = std::make_shared<std::vector<uint8_t>>(vdata);
     index = 0;
     priority = Message::Priority::Lowest;
 
@@ -61,11 +63,11 @@ bool Message::pop_bool() {
 }
 
 void Message::push_ubyte(uint8_t v) {
-    data.push_back(v);
+    data->push_back(v);
 }
 
 uint8_t Message::pop_ubyte() {
-    auto result = data[index++];
+    auto result = (*data)[index++];
     return result;
 }
 
@@ -115,7 +117,7 @@ add_type(double, double)
 
 void Message::push_string(const std::string& v) {
     push_ulong(v.size());
-    data.insert(data.end(), v.begin(), v.end());
+    data->insert(data->end(), v.begin(), v.end());
 }
 
 std::string Message::pop_string() {
@@ -127,18 +129,18 @@ std::string Message::pop_string() {
 
 void Message::push_bytes(const std::vector<uint8_t>& v) {
     push_ulong(v.size());
-    data.insert(data.end(), v.begin(), v.end());
+    data->insert(data->end(), v.begin(), v.end());
 }
 
 std::vector<uint8_t> Message::pop_bytes() {
     auto len = pop_ulong();
-    auto result = std::vector<uint8_t>(&data[index], &data[index] + len);
+    auto result = std::vector<uint8_t>(&(*data)[index], &(*data)[index] + len);
     index += len;
     return result;
 }
 
 void Message::send(std::shared_ptr<Cluster> pCluster) {
-    pCluster->queueMessage(source, &data, priority);
+    pCluster->queueMessage(source, data, priority);
 }
 
 

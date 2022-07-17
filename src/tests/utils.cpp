@@ -33,8 +33,8 @@ uint64_t randomInt(uint64_t start, uint64_t end) {
     return rng_dist(rng);
 }
 
-std::vector<uint8_t> *generateRandomData(uint32_t count) {
-    auto result = new std::vector<uint8_t>();
+std::shared_ptr<std::vector<uint8_t>> generateRandomData(uint32_t count) {
+    auto result = std::make_shared<std::vector<uint8_t>>();
     result->reserve(count);
 
     for (uint32_t i = 0; i < count; i++) {
