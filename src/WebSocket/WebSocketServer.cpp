@@ -18,7 +18,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
 
     wsEp.on_message = [this](const shared_ptr<WsServer::Connection>& connection, const shared_ptr<WsServer::InMessage>& in_message) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->getCluster(connection.get());
+        auto cluster = this->clusterManager->getCluster(connection);
         if (!cluster) {
             // What?
             connection->send_close(1000, "Bye.");
@@ -49,7 +49,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
         }
 
         // Check that the token is valid
-        auto cluster = this->clusterManager->handleNewConnection(connection.get(), (*qp.begin()).second);
+        auto cluster = this->clusterManager->handleNewConnection(connection, (*qp.begin()).second);
         if (cluster) {
             // Everything is fine
             cout << "WS: Opened connection from " << cluster->getName() << endl;
@@ -67,11 +67,11 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
     // See RFC 6455 7.4.1. for status codes
     wsEp.on_close = [this](const shared_ptr<WsServer::Connection>& connection, int status, const string & /*reason*/) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->getCluster(connection.get());
+        auto cluster = this->clusterManager->getCluster(connection);
 
         // Remove the cluster from the connected list
         if (cluster)
-            this->clusterManager->removeConnection(connection.get());
+            this->clusterManager->removeConnection(connection);
 
         // Log this
         cout << "WS: Closed connection with " << std::string(cluster ? cluster->getName() : "unknown?") << " with status code " << status << endl;
@@ -80,11 +80,11 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
     // See http://www.boost.org/doc/libs/1_55_0/doc/html/boost_asio/reference.html, Error Codes for error code meanings
     wsEp.on_error = [this](const shared_ptr<WsServer::Connection>& connection, const SimpleWeb::error_code &ec) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->getCluster(connection.get());
+        auto cluster = this->clusterManager->getCluster(connection);
 
         // Remove the cluster from the connected list
         if (cluster)
-            this->clusterManager->removeConnection(connection.get());
+            this->clusterManager->removeConnection(connection);
 
         // Log this
         cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "

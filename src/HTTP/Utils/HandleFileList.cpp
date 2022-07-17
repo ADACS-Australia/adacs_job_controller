@@ -63,7 +63,7 @@ std::vector<sFile> filterFiles(const std::vector<sFile> &files, const std::strin
 void handleFileList(
         std::shared_ptr<Cluster> cluster, auto job, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications,
-        HttpServerImpl::Response *response
+        const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
     auto db = MySqlConnector();
@@ -290,7 +290,7 @@ void handleFileList(
 
 void handleFileList(
         std::shared_ptr<ClusterManager> clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
-        const std::string &appName, const std::vector<std::string> &applications, HttpServerImpl::Response *response
+        const std::string &appName, const std::vector<std::string> &applications, const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
     auto db = MySqlConnector();

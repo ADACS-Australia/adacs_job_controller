@@ -34,7 +34,6 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
         /*
          * Test HttpServer constructor
          */
-
         // First check that instantiating HttpServer with no access config works as expected
         auto svr = new HttpServer(nullptr);
         BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->size(), 0);
@@ -57,7 +56,6 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
         /*
          * Test HttpServer->isAuthorized() function
          */
-
         // Check that authorization without any config denies access without crashing
         auto svr = new HttpServer(nullptr);
         svr->getvJwtSecrets()->clear();

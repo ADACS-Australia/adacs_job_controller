@@ -1,11 +1,13 @@
 //
 // Created by lewis on 2/26/20.
 //
+#include "../../Cluster/Cluster.h"
 #include "Message.h"
 #include <boost/test/unit_test.hpp>
-#include <random>
 #include <chrono>
-#include "../../Cluster/Cluster.h"
+#include <random>
+
+// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,misc-non-private-member-variables-in-classes)
 
 BOOST_AUTO_TEST_SUITE(Message_test_suite)
 
@@ -16,7 +18,7 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
 
         std::shared_ptr<std::vector<uint8_t>> vData;
         std::string sSource;
-        Message::Priority ePriority;
+        Message::Priority ePriority = Message::Priority::Lowest;
 
     private:
         void queueMessage(std::string source, const std::shared_ptr<std::vector<uint8_t>>& data, Message::Priority priority) override {
@@ -26,7 +28,7 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         }
     };
 
-    auto testCluster = std::make_shared<TestCluster>();
+    const auto testCluster = std::make_shared<TestCluster>(); // NOLINT(cert-err58-cpp)
 
     BOOST_AUTO_TEST_CASE(test_message_attributes) {
         auto msg = Message(0, Message::Priority::Highest, "test");
@@ -227,17 +229,17 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
     BOOST_AUTO_TEST_CASE(test_primitive_float, *boost::unit_test::tolerance(0.00001)) {
         auto msg = Message(0, Message::Priority::Highest, "test");
 
-        msg.push_float(0.1f);
-        msg.push_float(0.1234567812345678f);
-        msg.push_float(-0.1234123f);
+        msg.push_float(0.1F);
+        msg.push_float(0.1234567812345678F);
+        msg.push_float(-0.1234123F);
 
         // Transmute the message into a received message
         msg.send(testCluster);
         msg = Message(*testCluster->vData);
 
-        BOOST_CHECK_EQUAL(msg.pop_float(), 0.1f);
-        BOOST_CHECK_EQUAL(msg.pop_float(), 0.1234567812345678f);
-        BOOST_CHECK_EQUAL(msg.pop_float(), -0.1234123f);
+        BOOST_CHECK_EQUAL(msg.pop_float(), 0.1F);
+        BOOST_CHECK_EQUAL(msg.pop_float(), 0.1234567812345678F);
+        BOOST_CHECK_EQUAL(msg.pop_float(), -0.1234123F);
     }
 
     BOOST_AUTO_TEST_CASE(test_primitive_double, *boost::unit_test::tolerance(0.00001)) {
@@ -259,29 +261,31 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
     BOOST_AUTO_TEST_CASE(test_primitive_string) {
         auto msg = Message(0, Message::Priority::Highest, "test");
 
-        auto s1 = std::string("Hello!");
-        auto s2 = std::string("Hello again!");
-        auto s3 = std::string("Hello one last time!");
+        auto str1 = std::string("Hello!");
+        auto str2 = std::string("Hello again!");
+        auto str3 = std::string("Hello one last time!");
 
-        msg.push_string(s1);
-        msg.push_string(s2);
-        msg.push_string(s3);
+        msg.push_string(str1);
+        msg.push_string(str2);
+        msg.push_string(str3);
 
         // Transmute the message into a received message
         msg.send(testCluster);
         msg = Message(*testCluster->vData);
 
-        BOOST_CHECK_EQUAL(msg.pop_string(), s1);
-        BOOST_CHECK_EQUAL(msg.pop_string(), s2);
-        BOOST_CHECK_EQUAL(msg.pop_string(), s3);
+        BOOST_CHECK_EQUAL(msg.pop_string(), str1);
+        BOOST_CHECK_EQUAL(msg.pop_string(), str2);
+        BOOST_CHECK_EQUAL(msg.pop_string(), str3);
     }
 
     BOOST_AUTO_TEST_CASE(test_primitive_bytes) {
         std::random_device engine;
 
         std::vector<uint8_t> data;
-        for (auto i = 0; i < 512; i++)
+        data.reserve(512);
+        for (auto i = 0; i < 512; i++) {
             data.push_back(engine());
+        }
 
         auto msg = Message(0, Message::Priority::Highest, "test");
         msg.push_bytes(data);
@@ -295,7 +299,7 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         BOOST_CHECK_EQUAL_COLLECTIONS(data.begin(), data.end(), result.begin(), result.end());
     }
 
-    std::chrono::milliseconds get_millis() {
+    auto get_millis() -> std::chrono::milliseconds {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()
         );
@@ -309,8 +313,10 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         auto time_next = time_now + std::chrono::seconds(5);
 
         std::vector<uint8_t> data;
-        for (auto i = 0; i < 512; i++)
+        data.reserve(1024ULL * 1024ULL);
+        for (auto i = 0; i < 512; i++) {
             data.push_back(engine());
+        }
 
         {
             auto msg = Message(0, Message::Priority::Highest, "test");
@@ -338,15 +344,16 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
             counter += result.size();
         }
 
-        std::cout << "Message raw bytes throughput 512b chunks Mb/s: " << counter / 1024.f / 1024.f / 5 << std::endl;
+        std::cout << "Message raw bytes throughput 512b chunks Mb/s: " << static_cast<float>(counter) / 1024.F / 1024.F / 5 << std::endl;
 
         // Now try 1Mb chunks
         time_now = get_millis();
         time_next = time_now + std::chrono::seconds(5);
 
         data.clear();
-        for (auto i = 0; i < 1024 * 1024; i++)
+        for (auto i = 0; i < 1024 * 1024; i++) {
             data.push_back(engine());
+        }
 
         counter = 0;
         while (get_millis() < time_next) {
@@ -361,7 +368,9 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
             counter += result.size();
         }
 
-        std::cout << "Message raw bytes throughput 1Mb chunks Mb/s: " << counter / 1024.f / 1024.f / 5 << std::endl;
+        std::cout << "Message raw bytes throughput 1Mb chunks Mb/s: " << static_cast<float>(counter) / 1024.F / 1024.F / 5 << std::endl;
     }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,misc-non-private-member-variables-in-classes)

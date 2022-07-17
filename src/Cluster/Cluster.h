@@ -97,7 +97,7 @@ public:
 
     auto getClusterDetails() { return pClusterDetails; }
 
-    void setConnection(WsServer::Connection *pCon);
+    void setConnection(const std::shared_ptr<WsServer::Connection>& pCon);
 
     void handleMessage(Message &message);
 
@@ -114,7 +114,7 @@ private:
 #endif
 
     std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
-    WsServer::Connection *pConnection = nullptr;
+    std::shared_ptr<WsServer::Connection> pConnection = nullptr;
 
     mutable std::shared_mutex mutex_;
     mutable std::mutex dataCVMutex;

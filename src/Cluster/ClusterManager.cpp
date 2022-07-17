@@ -97,7 +97,7 @@ void ClusterManager::reconnectClusters() {
     }
 }
 
-auto ClusterManager::handleNewConnection(WsServer::Connection *connection, const std::string &uuid) -> std::shared_ptr<Cluster> {
+auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection, const std::string &uuid) -> std::shared_ptr<Cluster> {
     // Get the tables
     schema::JobserverClusteruuid clusterUuidTable;
 
@@ -157,7 +157,7 @@ auto ClusterManager::handleNewConnection(WsServer::Connection *connection, const
     return cluster;
 }
 
-void ClusterManager::removeConnection(WsServer::Connection *connection) {
+void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection>& connection) {
     // Get the cluster for this connection
     auto pCluster = getCluster(connection);
 
@@ -179,7 +179,7 @@ auto ClusterManager::isClusterOnline(const std::shared_ptr<Cluster>& cluster) ->
                        [cluster](auto other) { return other.second == cluster; });
 }
 
-auto ClusterManager::getCluster(WsServer::Connection *connection) -> std::shared_ptr<Cluster> {
+auto ClusterManager::getCluster(const std::shared_ptr<WsServer::Connection>& connection) -> std::shared_ptr<Cluster> {
     // Try to find the connection
     auto result = mConnectedClusters.find(connection);
 
