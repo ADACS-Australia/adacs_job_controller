@@ -12,7 +12,7 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
 // Define an override cluster that can be used to mutate a message
     class TestCluster : public Cluster {
     public:
-        TestCluster() : Cluster(nullptr, nullptr) {}
+        TestCluster() : Cluster(nullptr) {}
 
         std::vector<uint8_t> vData;
         std::string sSource;
@@ -26,58 +26,58 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         }
     };
 
-    auto testCluster = TestCluster();
+    auto testCluster = std::make_shared<TestCluster>();
 
     BOOST_AUTO_TEST_CASE(test_message_attributes) {
         auto msg = Message(0, Message::Priority::Highest, "test");
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.getId(), 0);
-        BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Highest);
-        BOOST_CHECK_EQUAL(testCluster.sSource, "test");
+        BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Highest);
+        BOOST_CHECK_EQUAL(testCluster->sSource, "test");
 
         msg = Message(101, Message::Priority::Highest, "test");
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.getId(), 101);
-        BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Highest);
-        BOOST_CHECK_EQUAL(testCluster.sSource, "test");
+        BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Highest);
+        BOOST_CHECK_EQUAL(testCluster->sSource, "test");
 
         msg = Message(0, Message::Priority::Medium, "test");
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.getId(), 0);
-        BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Medium);
-        BOOST_CHECK_EQUAL(testCluster.sSource, "test");
+        BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Medium);
+        BOOST_CHECK_EQUAL(testCluster->sSource, "test");
 
         msg = Message(0, Message::Priority::Highest, "test_again");
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.getId(), 0);
-        BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Highest);
-        BOOST_CHECK_EQUAL(testCluster.sSource, "test_again");
+        BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Highest);
+        BOOST_CHECK_EQUAL(testCluster->sSource, "test_again");
 
         msg = Message(123, Message::Priority::Lowest, "test_1");
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.getId(), 123);
-        BOOST_CHECK_EQUAL(testCluster.ePriority, Message::Priority::Lowest);
-        BOOST_CHECK_EQUAL(testCluster.sSource, "test_1");
+        BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Lowest);
+        BOOST_CHECK_EQUAL(testCluster->sSource, "test_1");
     }
 
     BOOST_AUTO_TEST_CASE(test_primitive_bool) {
@@ -88,8 +88,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_bool(true);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_bool(), true);
         BOOST_CHECK_EQUAL(msg.pop_bool(), false);
@@ -104,8 +104,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_ubyte(245);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_ubyte(), 1);
         BOOST_CHECK_EQUAL(msg.pop_ubyte(), 5);
@@ -120,8 +120,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_byte(120);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_byte(), 1);
         BOOST_CHECK_EQUAL(msg.pop_byte(), -120);
@@ -136,8 +136,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_ushort(0xffff);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_ushort(), 0x1);
         BOOST_CHECK_EQUAL(msg.pop_ushort(), 0x1200);
@@ -152,8 +152,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_short(0x2020);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_short(), 0x1);
         BOOST_CHECK_EQUAL(msg.pop_short(), -0x1200);
@@ -168,8 +168,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_uint(0xffff1234);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_uint(), 0x1);
         BOOST_CHECK_EQUAL(msg.pop_uint(), 0x12345678);
@@ -184,8 +184,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_int(0x12345678);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_int(), 0x1);
         BOOST_CHECK_EQUAL(msg.pop_int(), -0x12345678);
@@ -200,8 +200,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_ulong(0xffff123412345678);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_ulong(), 0x1);
         BOOST_CHECK_EQUAL(msg.pop_ulong(), 0x1234567812345678);
@@ -216,8 +216,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_long(0x1234567812345678);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_long(), 0x1);
         BOOST_CHECK_EQUAL(msg.pop_long(), -0x1234567812345678);
@@ -232,8 +232,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_float(-0.1234123f);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_float(), 0.1f);
         BOOST_CHECK_EQUAL(msg.pop_float(), 0.1234567812345678f);
@@ -248,8 +248,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_double(-0.1234567812345678);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_double(), 0.1);
         BOOST_CHECK_EQUAL(msg.pop_double(), 0.1234567812345678);
@@ -268,8 +268,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_string(s3);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         BOOST_CHECK_EQUAL(msg.pop_string(), s1);
         BOOST_CHECK_EQUAL(msg.pop_string(), s2);
@@ -287,8 +287,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
         msg.push_bytes(data);
 
         // Transmute the message into a received message
-        msg.send(&testCluster);
-        msg = Message(testCluster.vData);
+        msg.send(testCluster);
+        msg = Message(testCluster->vData);
 
         auto result = msg.pop_bytes();
 
@@ -317,8 +317,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
             msg.push_bytes(data);
 
             // Transmute the message into a received message
-            msg.send(&testCluster);
-            msg = Message(testCluster.vData);
+            msg.send(testCluster);
+            msg = Message(testCluster->vData);
 
             auto result = msg.pop_bytes();
 
@@ -331,8 +331,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
             msg.push_bytes(data);
 
             // Transmute the message into a received message
-            msg.send(&testCluster);
-            msg = Message(testCluster.vData);
+            msg.send(testCluster);
+            msg = Message(testCluster->vData);
 
             auto result = msg.pop_bytes();
             counter += result.size();
@@ -354,8 +354,8 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
             msg.push_bytes(data);
 
             // Transmute the message into a received message
-            msg.send(&testCluster);
-            msg = Message(testCluster.vData);
+            msg.send(testCluster);
+            msg = Message(testCluster->vData);
 
             auto result = msg.pop_bytes();
             counter += result.size();

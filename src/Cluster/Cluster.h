@@ -89,9 +89,9 @@ extern std::mutex fileDownloadMapDeletionLockMutex;
 extern std::mutex fileDownloadPauseResumeLockMutex;
 extern std::mutex fileListMapDeletionLockMutex;
 
-class Cluster {
+class Cluster : public std::enable_shared_from_this<Cluster> {
 public:
-    Cluster(sClusterDetails *details, ClusterManager *pClusterManager);
+    Cluster(sClusterDetails *details);
     ~Cluster();
 
     auto getName() { return pClusterDetails->getName(); }
@@ -116,7 +116,6 @@ private:
 
     sClusterDetails *pClusterDetails = nullptr;
     WsServer::Connection *pConnection = nullptr;
-    ClusterManager *pClusterManager = nullptr;
 
     mutable std::shared_mutex mutex_;
     mutable std::mutex dataCVMutex;
@@ -157,7 +156,6 @@ private:
 // Testing
     EXPOSE_PROPERTY_FOR_TESTING(pConnection);
     EXPOSE_PROPERTY_FOR_TESTING(pClusterDetails);
-    EXPOSE_PROPERTY_FOR_TESTING(pClusterManager);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(queue);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataReady);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataCV);

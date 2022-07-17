@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 project(gwcloud_job_server)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 # Generate maximum debug information (Dwarf version 4 for folly backtrace support)
 # Note that we also disable all warnings here - those are re-enabled for the Boost_Tests_run target, which is used

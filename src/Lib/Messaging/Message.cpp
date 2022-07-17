@@ -137,7 +137,7 @@ std::vector<uint8_t> Message::pop_bytes() {
     return result;
 }
 
-void Message::send(Cluster* pCluster) {
+void Message::send(std::shared_ptr<Cluster> pCluster) {
     pCluster->queueMessage(source, &data, priority);
 }
 

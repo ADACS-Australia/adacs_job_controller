@@ -13,23 +13,22 @@
 class ClusterManager {
 public:
     ClusterManager();
-    ~ClusterManager();
 
     void start();
-    Cluster* handleNewConnection(WsServer::Connection* connection, const std::string& uuid);
+    std::shared_ptr<Cluster> handleNewConnection(WsServer::Connection* connection, const std::string& uuid);
     void removeConnection(WsServer::Connection *connection);
-    Cluster* getCluster(WsServer::Connection *connection);
-    Cluster* getCluster(const std::string& cluster);
-    bool isClusterOnline(Cluster *cluster);
+    std::shared_ptr<Cluster> getCluster(WsServer::Connection *connection);
+    std::shared_ptr<Cluster> getCluster(const std::string& cluster);
+    bool isClusterOnline(std::shared_ptr<Cluster> cluster);
 
 private:
     [[noreturn]] void run();
 
-    std::vector<Cluster*> vClusters;
-    std::map<WsServer::Connection*, Cluster*> mConnectedClusters;
+    std::vector<std::shared_ptr<Cluster>> vClusters;
+    std::map<WsServer::Connection*, std::shared_ptr<Cluster>> mConnectedClusters;
 
     void reconnectClusters();
-    static void connectCluster(Cluster *cluster, const std::string &token);
+    static void connectCluster(std::shared_ptr<Cluster> cluster, const std::string &token);
 
 // Testing
 EXPOSE_PROPERTY_FOR_TESTING(vClusters);

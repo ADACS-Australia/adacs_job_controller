@@ -68,7 +68,7 @@ private:
 
 class HttpServer {
 public:
-    explicit HttpServer(ClusterManager *clusterManager);
+    explicit HttpServer(std::shared_ptr<ClusterManager> clusterManager);
 
     void start();
 
@@ -89,9 +89,9 @@ private:
 EXPOSE_PROPERTY_FOR_TESTING(vJwtSecrets);
 };
 
-extern void JobApi(const std::string &path, HttpServer *server, ClusterManager *clusterManager);
+extern void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<ClusterManager> clusterManager);
 
-extern void FileApi(const std::string &path, HttpServer *server, ClusterManager *clusterManager);
+extern void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<ClusterManager> clusterManager);
 
 
 #endif //GWCLOUD_JOB_SERVER_HTTPSERVER_H

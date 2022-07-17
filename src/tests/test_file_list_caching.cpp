@@ -80,28 +80,29 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // Set up the cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = ClusterManager();
+        auto mgr = std::make_shared<ClusterManager>();
 
         // Start the cluster scheduler
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
             while (running)
-                mgr.getvClusters()->at(0)->callrun();
+                mgr->getvClusters()->at(0)->callrun();
         });
 
         // Set up the test http server
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto httpSvr = HttpServer(&mgr);
+        auto httpSvr = HttpServer(mgr);
         httpSvr.start();
 
         // Set up the test websocket server
-        auto wsSrv = WebSocketServer(&mgr);
+        auto wsSrv = WebSocketServer(mgr);
         wsSrv.start();
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
+        BOOST_CHECK_EQUAL(acceptingConnections(8001), true);
 
         // Try to reconnect the clusters so that we can get a connection token to use later to connect the client
-        mgr.callreconnectClusters();
+        mgr->callreconnectClusters();
 
         // Connect a fake client to the websocket server
         bool bRaiseError = true;
@@ -167,7 +168,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Create a job to request file lists for
         auto jobId = db->run(
@@ -401,8 +402,8 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // Finished with the servers and clients
         running = false;
-        *mgr.getvClusters()->at(0)->getdataReady() = true;
-        mgr.getvClusters()->at(0)->getdataCV()->notify_one();
+        *mgr->getvClusters()->at(0)->getdataReady() = true;
+        mgr->getvClusters()->at(0)->getdataCV()->notify_one();
         clusterThread.join();
         websocketClient.stop();
         clientThread.join();
@@ -431,28 +432,29 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // Set up the cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = ClusterManager();
+        auto mgr = std::make_shared<ClusterManager>();
 
         // Start the cluster scheduler
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
             while (running)
-                mgr.getvClusters()->at(0)->callrun();
+                mgr->getvClusters()->at(0)->callrun();
         });
 
         // Set up the test http server
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto httpSvr = HttpServer(&mgr);
+        auto httpSvr = HttpServer(mgr);
         httpSvr.start();
 
         // Set up the test websocket server
-        auto wsSrv = WebSocketServer(&mgr);
+        auto wsSrv = WebSocketServer(mgr);
         wsSrv.start();
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
+        BOOST_CHECK_EQUAL(acceptingConnections(8001), true);
 
         // Try to reconnect the clusters so that we can get a connection token to use later to connect the client
-        mgr.callreconnectClusters();
+        mgr->callreconnectClusters();
 
         // Connect a fake client to the websocket server
         std::vector<std::string> lastDirPath;
@@ -503,7 +505,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Create a job to request file lists for
         auto jobId = db->run(
@@ -580,7 +582,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         msg.push_string("running");             // what
         msg.push_uint(200);                     // status
         msg.push_string("it's fine");           // details
-        mgr.getvClusters()->at(0)->handleMessage(msg);
+        mgr->getvClusters()->at(0)->handleMessage(msg);
 
         r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
@@ -613,7 +615,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         msg.push_string("_job_completion_");    // what
         msg.push_uint(400);                     // status
         msg.push_string("it's fine");           // details
-        mgr.getvClusters()->at(0)->handleMessage(msg);
+        mgr->getvClusters()->at(0)->handleMessage(msg);
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), "");
@@ -759,8 +761,8 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // Finished with the servers and clients
         running = false;
-        *mgr.getvClusters()->at(0)->getdataReady() = true;
-        mgr.getvClusters()->at(0)->getdataCV()->notify_one();
+        *mgr->getvClusters()->at(0)->getdataReady() = true;
+        mgr->getvClusters()->at(0)->getdataCV()->notify_one();
         clusterThread.join();
         websocketClient.stop();
         clientThread.join();

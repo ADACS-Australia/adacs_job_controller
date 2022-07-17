@@ -103,13 +103,13 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = new ClusterManager();
+        auto mgr = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
         auto svr = HttpServer(mgr);
 
         svr.start();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Set up the test client
         TestHttpClient client("localhost:8000");
@@ -263,7 +263,6 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         db->run(remove_from(jobTable).unconditionally());
 
         // Cleanup
-        delete mgr;
         delete con;
     }
 
@@ -283,10 +282,10 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
 
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = ClusterManager();
+        auto mgr = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(&mgr);
+        auto svr = HttpServer(mgr);
 
         // Fabricate data
         // Create the new job object
@@ -362,7 +361,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         );
 
         svr.start();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Set up the test client
         TestHttpClient client("localhost:8000");
@@ -438,12 +437,12 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
     BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job) {
         // Create a new cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto manager = new ClusterManager();
+        auto manager = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
         auto svr = HttpServer(manager);
         svr.start();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Bring the cluster online
         auto con = new WsServer::Connection(nullptr);
@@ -717,19 +716,18 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         db->run(remove_from(jobTable).unconditionally());
 
         // Cleanup
-        delete manager;
         delete con;
     }
 
     BOOST_AUTO_TEST_CASE(test_DELETE_delete_job) {
         // Create a new cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto manager = new ClusterManager();
+        auto manager = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
         auto svr = HttpServer(manager);
         svr.start();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Bring the cluster online
         auto con = new WsServer::Connection(nullptr);
@@ -1003,7 +1001,6 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         db->run(remove_from(jobTable).unconditionally());
 
         // Cleanup
-        delete manager;
         delete con;
     }
 BOOST_AUTO_TEST_SUITE_END()

@@ -7,6 +7,7 @@
 #include "../Lib/jobserver_schema.h"
 #include "../Lib/JobStatus.h"
 #include "../HTTP/HttpServer.h"
+#include "../HTTP/Utils/HandleFileList.h"
 
 #include <iostream>
 #include <client_https.hpp>
@@ -44,17 +45,10 @@ std::mutex fileListMapDeletionLockMutex;
 using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 using HttpsClient = SimpleWeb::Client<SimpleWeb::HTTPS>;
 
-extern void handleFileList(
-        ClusterManager *clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
-        const std::string &appName, const std::vector<std::string> &applications,
-        HttpServerImpl::Response *response
-);
-
 using namespace schema;
 
-Cluster::Cluster(sClusterDetails *details, ClusterManager *pClusterManager) {
+Cluster::Cluster(sClusterDetails *details) {
     this->pClusterDetails = details;
-    this->pClusterManager = pClusterManager;
 
     // Create the list of priorities in order
     for (auto i = (uint32_t) Message::Priority::Highest; i <= (uint32_t) Message::Priority::Lowest; i++)
@@ -327,7 +321,8 @@ void Cluster::updateJob(Message &message) {
     // Create a database connection
     auto db = MySqlConnector();
 
-    // Get the job history table
+    // Get the tables
+    JobserverJob jobTable;
     JobserverJobhistory jobHistoryTable;
 
     // Todo: Verify the job id belongs to this cluster, and that the status is valid
@@ -348,7 +343,21 @@ void Cluster::updateJob(Message &message) {
     // files for the job. If for some reason this call fails internally (Maybe cluster is under load, or network issues)
     // then the next time the HTTP side requests files for the job the file list will be cached
     if (what == "_job_completion_") {
-        ::handleFileList(pClusterManager, jobId, true, "", "job_controller", {}, nullptr);
+        auto jobResults = db->run(
+                select(all_of(jobTable))
+                        .from(jobTable)
+                        .where(
+                                jobTable.id == (uint32_t) jobId
+                        )
+        );
+
+        // Check that a job was actually found
+        if (jobResults.empty()) {
+            throw std::runtime_error(
+                    "Unable to find job with ID " + std::to_string(jobId) + " for application job_controller");
+        }
+
+        ::handleFileList(shared_from_this(), &jobResults.front(), true, "", "job_controller", {}, nullptr);
     }
 }
 
@@ -450,7 +459,7 @@ void Cluster::checkUnsubmittedJobs() {
         msg.push_uint(job.id);
         msg.push_string(job.bundle);
         msg.push_string(job.parameters);
-        msg.send(this);
+        msg.send(shared_from_this());
 
         // Check that the job status is submitting and update it if not
         auto jobHistoryResults =
@@ -502,7 +511,7 @@ void Cluster::checkCancellingJobs() {
         auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
                         std::to_string(job.id) + "_" + std::string(job.cluster));
         msg.push_uint(job.id);
-        msg.send(this);
+        msg.send(shared_from_this());
     }
 }
 
@@ -529,7 +538,7 @@ void Cluster::checkDeletingJobs() {
         auto msg = Message(DELETE_JOB, Message::Priority::Medium,
                         std::to_string(job.id) + "_" + std::string(job.cluster));
         msg.push_uint(job.id);
-        msg.send(this);
+        msg.send(shared_from_this());
     }
 }
 
@@ -640,7 +649,7 @@ void Cluster::handleFileChunk(Message &message) {
 
                 auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
                 msg.push_string(uuid);
-                msg.send(this);
+                msg.send(shared_from_this());
             }
         }
     }

@@ -61,7 +61,7 @@ std::vector<sFile> filterFiles(const std::vector<sFile> &files, const std::strin
 }
 
 void handleFileList(
-        ClusterManager *clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
+        std::shared_ptr<Cluster> cluster, auto job, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications,
         HttpServerImpl::Response *response
 ) {
@@ -80,48 +80,6 @@ void handleFileList(
     auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
     try {
-        // Look up the job. If applications is empty, we ignore the application check. This is used internally for
-        // caching files once the final job status is posted to the job server from the client. There is no way that
-        // this function can be called from the HTTP side without having a valid non-empty applications list, since
-        // it's configured in the JWT secrets config.
-        auto jobResults =
-                applications.empty() ?
-                db->run(
-                        select(all_of(jobTable))
-                                .from(jobTable)
-                                .where(
-                                        jobTable.id == (uint32_t) jobId
-                                )
-                )
-                                     :
-                db->run(
-                        select(all_of(jobTable))
-                                .from(jobTable)
-                                .where(
-                                        jobTable.id == (uint32_t) jobId
-                                        and jobTable.application.in(sqlpp::value_list(applications))
-                                )
-                );
-
-        // Check that a job was actually found
-        if (jobResults.empty()) {
-            throw std::runtime_error(
-                    "Unable to find job with ID " + std::to_string(jobId) + " for application " + appName);
-        }
-
-        // Get the cluster and bundle from the job
-        auto job = &jobResults.front();
-        auto sCluster = std::string(job->cluster);
-        auto sBundle = std::string(job->bundle);
-
-        // Check that the cluster is online
-        // Get the cluster to submit to
-        auto cluster = clusterManager->getCluster(sCluster);
-        if (!cluster) {
-            // Invalid cluster
-            throw std::runtime_error("Invalid cluster");
-        }
-
         // If the cluster isn't online then there isn't anything to do
         if (!cluster->isOnline()) {
             if (response)
@@ -134,7 +92,7 @@ void handleFileList(
                 select(all_of(jobHistoryTable))
                         .from(jobHistoryTable)
                         .where(
-                                jobHistoryTable.jobId == (uint32_t) jobId
+                                jobHistoryTable.jobId == (uint32_t) job->id
                                 and jobHistoryTable.what == "_job_completion_"
                         )
         );
@@ -148,7 +106,7 @@ void handleFileList(
                     select(all_of(fileListCacheTable))
                             .from(fileListCacheTable)
                             .where(
-                                    fileListCacheTable.jobId == (uint32_t) jobId
+                                    fileListCacheTable.jobId == (uint32_t) job->id
                             )
             );
 
@@ -196,9 +154,9 @@ void handleFileList(
 
         // Send a message to the client to initiate the file list
         auto msg = Message(FILE_LIST, Message::Priority::Highest, uuid);
-        msg.push_uint(jobId);
+        msg.push_uint((uint32_t) job->id);
         msg.push_string(uuid);
-        msg.push_string(sBundle);
+        msg.push_string(std::string(job->bundle));
         msg.push_string(filePath);
         msg.push_bool(bRecursive);
         msg.send(cluster);
@@ -255,7 +213,7 @@ void handleFileList(
             if (jobComplete) {
                 // Insert the file list cache record
                 insert_query.values.add(
-                        fileListCacheTable.jobId = (int) jobId,
+                        fileListCacheTable.jobId = (int32_t) job->id,
                         fileListCacheTable.path = std::string(f.fileName),
                         fileListCacheTable.isDir = f.isDirectory ? 1 : 0,
                         fileListCacheTable.fileSize = (long long) f.fileSize,
@@ -296,7 +254,7 @@ void handleFileList(
             // to reduce the number of times we hit the remote filesystem for the file list, let's call it once
             // more right now with the correct parameters to cache all files
 
-            ::handleFileList(clusterManager, jobId, true, "", "job_controller", {}, nullptr);
+            ::handleFileList(cluster, job, true, "", "job_controller", {}, nullptr);
         }
 
         {
@@ -327,5 +285,68 @@ void handleFileList(
 
         // Report bad request
         if (response) response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+    }
+}
+
+void handleFileList(
+        std::shared_ptr<ClusterManager> clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
+        const std::string &appName, const std::vector<std::string> &applications, HttpServerImpl::Response *response
+) {
+    // Create a database connection
+    auto db = MySqlConnector();
+
+    // Get the tables
+    JobserverJob jobTable;
+    JobserverJobhistory jobHistoryTable;
+    JobserverFilelistcache fileListCacheTable;
+
+    try {
+        // Look up the job. If applications is empty, we ignore the application check. This is used internally for
+        // caching files once the final job status is posted to the job server from the client. There is no way that
+        // this function can be called from the HTTP side without having a valid non-empty applications list, since
+        // it's configured in the JWT secrets config.
+        auto jobResults =
+                applications.empty() ?
+                db->run(
+                        select(all_of(jobTable))
+                                .from(jobTable)
+                                .where(
+                                        jobTable.id == (uint32_t) jobId
+                                )
+                )
+                                     :
+                db->run(
+                        select(all_of(jobTable))
+                                .from(jobTable)
+                                .where(
+                                        jobTable.id == (uint32_t) jobId
+                                        and jobTable.application.in(sqlpp::value_list(applications))
+                                )
+                );
+
+        // Check that a job was actually found
+        if (jobResults.empty()) {
+            throw std::runtime_error(
+                    "Unable to find job with ID " + std::to_string(jobId) + " for application " + appName);
+        }
+
+        // Get the cluster and bundle from the job
+        auto job = &jobResults.front();
+        auto sCluster = std::string(job->cluster);
+        auto sBundle = std::string(job->bundle);
+
+        // Check that the cluster is online
+        // Get the cluster to submit to
+        auto cluster = clusterManager->getCluster(sCluster);
+        if (!cluster) {
+            // Invalid cluster
+            throw std::runtime_error("Invalid cluster");
+        }
+
+        handleFileList(cluster, job, bRecursive, filePath, appName, applications, response);
+    } catch (std::exception& e) {
+        dumpExceptions(e);
+
+        response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
     }
 }

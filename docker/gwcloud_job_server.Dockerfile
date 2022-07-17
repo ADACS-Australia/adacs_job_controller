@@ -3,6 +3,9 @@ FROM ubuntu:focal AS build_base
 # Update the container and install the required packages
 ENV DEBIAN_FRONTEND="noninteractive"
 
+# Install ca-certificates
+RUN apt-get update && apt-get install -y ca-certificates
+
 # Switch mirror
 RUN echo "deb mirror://mirrors.ubuntu.com/mirrors.txt focal main restricted universe multiverse" > /etc/apt/sources.list && \
     echo "deb mirror://mirrors.ubuntu.com/mirrors.txt focal-updates main restricted universe multiverse" >> /etc/apt/sources.list && \

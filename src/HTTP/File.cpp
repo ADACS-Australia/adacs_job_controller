@@ -14,7 +14,7 @@
 
 using namespace schema;
 
-void FileApi(const std::string &path, HttpServer *server, ClusterManager *clusterManager) {
+void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<ClusterManager> clusterManager) {
     // Get      -> Download file (file uuid)
     // Post     -> Create new file download
     // Delete   -> Delete file download (file uuid)

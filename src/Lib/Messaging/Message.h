@@ -77,7 +77,7 @@ public:
     std::string pop_string();
     std::vector<uint8_t> pop_bytes();
 
-    void send(Cluster* pCluster);
+    void send(std::shared_ptr<Cluster> pCluster);
 
     [[nodiscard]] uint32_t getId() const { return id; }
 

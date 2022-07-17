@@ -8,7 +8,9 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <boost/asio.hpp>
 #include <iostream>
+#include <execinfo.h>
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
 auto base64Encode(std::string input) -> std::string
@@ -68,4 +70,49 @@ void dumpExceptions(std::exception& exception) {
     for (auto& exc : exceptions) {
         std::cerr << exc << "\n";
     }
+}
+
+void handleSegv()
+{
+    // NOLINTBEGIN
+    void *array[10];
+    int size;
+
+    // get void*'s for all entries on the stack
+    size = backtrace(array, 10);
+
+    // print out all the frames to stderr
+    fprintf(stderr, "Error: SEGFAULT:\n");
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+
+    throw std::runtime_error("Seg Fault Error");
+    // NOLINTEND
+}
+
+auto acceptingConnections(uint16_t port) -> bool {
+    using boost::asio::io_service, boost::asio::deadline_timer, boost::asio::ip::tcp;
+    using ec = boost::system::error_code;
+
+    bool result = false;
+
+    for (auto counter = 0; counter < 10 && !result; counter++) {
+        try {
+            io_service svc;
+            tcp::socket socket(svc);
+            deadline_timer tim(svc, boost::posix_time::milliseconds(100));
+
+            tim.async_wait([&](ec) { socket.cancel(); });
+            socket.async_connect({{}, port}, [&](ec errorCode) {
+                result = !errorCode;
+            });
+
+            svc.run();
+        } catch(...) { }
+
+        if (!result) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+
+    return result;
 }

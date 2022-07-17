@@ -1,4 +1,5 @@
 #! /bin/bash
+set -e
 # /src is already the working directory (set in dockerfile)
 
 # Wait for mysql to be ready
