@@ -91,7 +91,6 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         /*
          * Test POST requests to verify that creating new jobs works as expected
          */
-
         // Delete all jobs just in case
         auto db = MySqlConnector();
         schema::JobserverFiledownload fileDownloadTable;
@@ -106,9 +105,8 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         auto mgr = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(mgr);
-
-        svr.start();
+        auto svr = std::make_shared<HttpServer>(mgr);
+        svr->start();
         BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Set up the test client
@@ -118,11 +116,12 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         auto r = client.request("POST", "/job/apiv1/job/", "", {{"Authorization", "not_valid"}});
         BOOST_CHECK_EQUAL(r->content.string(), "Not authorized");
 
+
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -180,7 +179,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                 );
 
         auto dbJob = &jobResults.front();
-        BOOST_CHECK_EQUAL(dbJob->application, svr.getvJwtSecrets()->at(0).name());
+        BOOST_CHECK_EQUAL(dbJob->application, svr->getvJwtSecrets()->at(0).name());
         BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
         BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
         BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
@@ -201,8 +200,8 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::PENDING);
 
         // Connect a cluster and check that the job changes to submitting rather than pending when submitting a job
-        auto con = new WsServer::Connection(nullptr);
-        auto cluster = mgr->getCluster(svr.getvJwtSecrets()->at(0).clusters()[0]);
+        auto con = std::make_shared<WsServer::Connection>(nullptr);
+        auto cluster = mgr->getCluster(svr->getvJwtSecrets()->at(0).clusters()[0]);
         cluster->setConnection(con);
 
         r = client.request("POST", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
@@ -233,7 +232,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                 );
 
         dbJob = &jobResults.front();
-        BOOST_CHECK_EQUAL(dbJob->application, svr.getvJwtSecrets()->at(0).name());
+        BOOST_CHECK_EQUAL(dbJob->application, svr->getvJwtSecrets()->at(0).name());
         BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
         BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
         BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
@@ -254,22 +253,18 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::SUBMITTING);
 
         // Finished with the server
-        svr.stop();
+        svr->stop();
 
         // Clean up
         db->run(remove_from(fileDownloadTable).unconditionally());
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
-
-        // Cleanup
-        delete con;
     }
 
     BOOST_AUTO_TEST_CASE(test_GET_get_jobs) {
         /*
          * Test GET requests to verify that fetching/filtering jobs works as expected
          */
-
         // Delete all jobs just in case
         auto db = MySqlConnector();
         schema::JobserverFiledownload fileDownloadTable;
@@ -284,7 +279,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         auto mgr = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(mgr);
+        auto svr = std::make_shared<HttpServer>(mgr);
 
         // Fabricate data
         // Create the new job object
@@ -293,9 +288,9 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -317,9 +312,9 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -341,9 +336,9 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(1).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(1).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(1).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(1).name()
                         )
         );
 
@@ -359,7 +354,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         )
         );
 
-        svr.start();
+        svr->start();
         BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Set up the test client
@@ -374,7 +369,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -391,7 +386,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(1).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(1).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -408,7 +403,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(3).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(3).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -425,7 +420,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         // TODO: Test job filtering
 
         // Finished with the server
-        svr.stop();
+        svr->stop();
 
         // Clean up
         db->run(remove_from(fileDownloadTable).unconditionally());
@@ -439,13 +434,13 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         auto manager = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(manager);
-        svr.start();
+        auto svr = std::make_shared<HttpServer>(manager);
+        svr->start();
         BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Bring the cluster online
-        auto con = new WsServer::Connection(nullptr);
-        auto cluster = manager->getCluster(svr.getvJwtSecrets()->at(0).clusters()[0]);
+        auto con = std::make_shared<WsServer::Connection>(nullptr);
+        auto cluster = manager->getCluster(svr->getvJwtSecrets()->at(0).clusters()[0]);
         cluster->setConnection(con);
 
         // First make sure we delete all entries from the job history table
@@ -467,7 +462,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -490,7 +485,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "not-real-cluster",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -520,7 +515,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "cluster1",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -548,12 +543,12 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
-        auto source = std::to_string(jobId) + "_" + svr.getvJwtSecrets()->at(0).clusters()[0];
+        auto source = std::to_string(jobId) + "_" + svr->getvJwtSecrets()->at(0).clusters()[0];
 
         // Create a pending job state, which should not trigger any websocket message
         db->run(
@@ -707,14 +702,11 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         }
 
         // Cleanup
-        svr.stop();
+        svr->stop();
         
         // Finally clean up all entries from the job history table
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
-
-        // Cleanup
-        delete con;
     }
 
     BOOST_AUTO_TEST_CASE(test_DELETE_delete_job) {
@@ -723,13 +715,13 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         auto manager = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(manager);
-        svr.start();
+        auto svr = std::make_shared<HttpServer>(manager);
+        svr->start();
         BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Bring the cluster online
-        auto con = new WsServer::Connection(nullptr);
-        auto cluster = manager->getCluster(svr.getvJwtSecrets()->at(0).clusters()[0]);
+        auto con = std::make_shared<WsServer::Connection>(nullptr);
+        auto cluster = manager->getCluster(svr->getvJwtSecrets()->at(0).clusters()[0]);
         cluster->setConnection(con);
 
         // First make sure we delete all entries from the job history table
@@ -751,7 +743,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -774,7 +766,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "not-real-cluster",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -804,7 +796,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "cluster1",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -832,12 +824,12 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
-        auto source = std::to_string(jobId) + "_" + svr.getvJwtSecrets()->at(0).clusters()[0];
+        auto source = std::to_string(jobId) + "_" + svr->getvJwtSecrets()->at(0).clusters()[0];
 
         // Create a pending job state, which should not trigger any websocket message
         db->run(
@@ -991,13 +983,10 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         }
 
         // Cleanup
-        svr.stop();
+        svr->stop();
         
         // Finally clean up all entries from the job history table
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
-
-        // Cleanup
-        delete con;
     }
 BOOST_AUTO_TEST_SUITE_END()

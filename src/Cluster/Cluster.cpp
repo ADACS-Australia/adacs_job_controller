@@ -99,7 +99,7 @@ void Cluster::handleMessage(Message &message) {
     }
 }
 
-void Cluster::setConnection(WsServer::Connection *pCon) {
+void Cluster::setConnection(const std::shared_ptr<WsServer::Connection>& pCon) {
     this->pConnection = pCon;
 
     if (pCon != nullptr) {

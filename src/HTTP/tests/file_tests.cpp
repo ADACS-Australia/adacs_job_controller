@@ -104,9 +104,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         auto mgr = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(mgr);
+        auto svr = std::make_shared<HttpServer>(mgr);
 
-        svr.start();
+        svr->start();
         BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Fabricate data
@@ -116,9 +116,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -140,9 +140,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -164,9 +164,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(1).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(1).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(1).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(1).name()
                         )
         );
 
@@ -193,7 +193,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -231,7 +231,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(1).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(1).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -252,7 +252,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(3).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(3).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -268,7 +268,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -320,7 +320,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                             "result[\"fileIds\"].size() == 5 was not the expected value");
 
         // Finished with the server
-        svr.stop();
+        svr->stop();
 
         // Clean up
         db->run(remove_from(fileDownloadTable).unconditionally());
@@ -343,9 +343,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         auto mgr = std::make_shared<ClusterManager>();
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = HttpServer(mgr);
+        auto svr = std::make_shared<HttpServer>(mgr);
 
-        svr.start();
+        svr->start();
         BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
 
         // Fabricate data
@@ -355,9 +355,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -379,9 +379,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -403,9 +403,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr.getvJwtSecrets()->at(1).clusters()[0],
+                                jobTable.cluster = svr->getvJwtSecrets()->at(1).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr.getvJwtSecrets()->at(1).name()
+                                jobTable.application = svr->getvJwtSecrets()->at(1).name()
                         )
         );
 
@@ -432,7 +432,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -465,7 +465,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(1).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(1).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -481,7 +481,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr.getvJwtSecrets()->at(3).secret())
+                jwt::params::secret(svr->getvJwtSecrets()->at(3).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -494,7 +494,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
 
         // Finished with the server
-        svr.stop();
+        svr->stop();
 
         // Clean up
         db->run(remove_from(fileDownloadTable).unconditionally());

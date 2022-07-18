@@ -1,4 +1,4 @@
-FROM ubuntu:focal AS build_base
+FROM ubuntu:jammy AS build_base
 
 # Update the container and install the required packages
 ENV DEBIAN_FRONTEND="noninteractive"
@@ -7,9 +7,9 @@ ENV DEBIAN_FRONTEND="noninteractive"
 RUN apt-get update && apt-get install -y ca-certificates
 
 # Switch mirror
-RUN echo "deb mirror://mirrors.ubuntu.com/mirrors.txt focal main restricted universe multiverse" > /etc/apt/sources.list && \
-    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt focal-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt focal-security main restricted universe multiverse" >> /etc/apt/sources.list
+RUN echo "deb mirror://mirrors.ubuntu.com/mirrors.txt jammy main restricted universe multiverse" > /etc/apt/sources.list && \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt jammy-security main restricted universe multiverse" >> /etc/apt/sources.list
 
 RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev clang-tidy
 
@@ -39,12 +39,12 @@ FROM build_base AS build_tests
 RUN cmake --build . --target Boost_Tests_run -- -j `nproc` 2> tidy.txt
 
 
-FROM ubuntu:focal AS production
+FROM ubuntu:jammy AS production
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
-RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.71.0  libdouble-conversion3 libgflags2.2 libgoogle-glog0v5 libmysqlclient21 
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.74.0  libdouble-conversion3 libgflags2.2 libgoogle-glog0v5 libmysqlclient21 
 
 # Set the timezone
 ENV TZ=Australia/Melbourne

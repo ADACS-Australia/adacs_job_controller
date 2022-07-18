@@ -492,7 +492,7 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             // Handle the file list request
             handleFileList(
                     clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
-                    response.get()
+                    response
             );
         } catch (std::exception& e) {
             dumpExceptions(e);

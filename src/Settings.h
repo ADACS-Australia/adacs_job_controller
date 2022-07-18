@@ -5,7 +5,7 @@
 #ifndef GWCLOUD_JOB_SERVER_SETTINGS_H
 #define GWCLOUD_JOB_SERVER_SETTINGS_H
 
-// NOLINTNEXTLINE(clang-analyzer-cplusplus.StringChecker)
+// NOLINTNEXTLINE(clang-analyzer-cplusplus.StringChecker,concurrency-mt-unsafe)
 #define GET_ENV(x, y) (std::getenv(x) != nullptr ? std::string(std::getenv(x)) : y)
 
 #define DATABASE_USER               GET_ENV("DATABASE_USER", "jobserver")
@@ -35,5 +35,8 @@
 
 #define CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS 60
 #define CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS 60
+
+#define CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS 60
+#define CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS 60
 
 #endif //GWCLOUD_JOB_SERVER_SETTINGS_H

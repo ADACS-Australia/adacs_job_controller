@@ -88,8 +88,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Set up the test http server
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto httpSvr = HttpServer(mgr);
-        httpSvr.start();
+        auto httpSvr = std::make_shared<HttpServer>(mgr);
+        httpSvr->start();
 
         // Set up the test websocket server
         auto wsSrv = WebSocketServer(mgr);
@@ -188,9 +188,9 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpSvr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = httpSvr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpSvr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = httpSvr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -199,7 +199,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(httpSvr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(httpSvr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -243,7 +243,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         clusterThread.join();
         websocketClient.stop();
         clientThread.join();
-        httpSvr.stop();
+        httpSvr->stop();
         wsSrv.stop();
 
         delete bPaused;
@@ -280,8 +280,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Set up the test http server
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto httpSvr = HttpServer(mgr);
-        httpSvr.start();
+        auto httpSvr = std::make_shared<HttpServer>(mgr);
+        httpSvr->start();
 
         // Set up the test websocket server
         auto wsSrv = WebSocketServer(mgr);
@@ -296,16 +296,19 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         // Connect a fake client to the websocket server
         TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
         bool* bPaused = new bool;
+        bool* bReady = new bool;
         *bPaused = false;
         uint64_t fileSize;
         std::thread* pThread;
-        websocketClient.on_message = [&pThread, bPaused, &mgr, &fileSize](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
+        websocketClient.on_message = [&pThread, bPaused, bReady, &mgr, &fileSize](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
             // Ignore the ready message
-            if (msg.getId() == SERVER_READY)
+            if (msg.getId() == SERVER_READY) {
+                *bReady = true;
                 return;
+            }
 
             // Check if this is a pause transfer message
             if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
@@ -367,7 +370,10 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Wait for the client to connect
+        while (!*bReady) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 
         // Create a job to request files for
         auto jobId = db->run(
@@ -375,9 +381,9 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpSvr.getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = httpSvr->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpSvr.getvJwtSecrets()->at(0).name()
+                                jobTable.application = httpSvr->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -386,7 +392,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
                 jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(httpSvr.getvJwtSecrets()->at(0).secret())
+                jwt::params::secret(httpSvr->getvJwtSecrets()->at(0).secret())
         };
         jwtToken.add_claim("exp", now);
 
@@ -439,7 +445,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         clusterThread.join();
         websocketClient.stop();
         clientThread.join();
-        httpSvr.stop();
+        httpSvr->stop();
         wsSrv.stop();
 
         pThread->join();

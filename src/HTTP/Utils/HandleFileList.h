@@ -11,13 +11,13 @@
 void handleFileList(
         std::shared_ptr<ClusterManager> clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications,
-        HttpServerImpl::Response *response
+        const std::shared_ptr<HttpServerImpl::Response> &response
 );
 
 void handleFileList(
         std::shared_ptr<Cluster> cluster, auto jobId, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications,
-        HttpServerImpl::Response *response
+        const std::shared_ptr<HttpServerImpl::Response> &response
 );
 
 std::vector<sFile> filterFiles(const std::vector<sFile>& files, const std::string& filePath, bool bRecursive);
