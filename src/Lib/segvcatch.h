@@ -13,6 +13,7 @@
 
 /*! \brief segvcatch namespace
 
+ // NOLINTBEGIN
 
 */
 namespace segvcatch
@@ -34,4 +35,5 @@ namespace segvcatch
 
 }
 
+// NOLINTEND
 #endif //GWCLOUD_JOB_SERVER_SEGVCATCH_H

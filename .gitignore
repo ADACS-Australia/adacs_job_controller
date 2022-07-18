@@ -8,3 +8,4 @@ config/keys/*
 CMakeFiles
 test_report/
 src/build/
+src/.cache/

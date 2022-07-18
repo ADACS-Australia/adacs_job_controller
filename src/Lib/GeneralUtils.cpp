@@ -89,6 +89,7 @@ void handleSegv()
     // NOLINTEND
 }
 
+// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 auto acceptingConnections(uint16_t port) -> bool {
     using boost::asio::io_service, boost::asio::deadline_timer, boost::asio::ip::tcp;
     using ec = boost::system::error_code;
@@ -116,3 +117,4 @@ auto acceptingConnections(uint16_t port) -> bool {
 
     return result;
 }
+// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
