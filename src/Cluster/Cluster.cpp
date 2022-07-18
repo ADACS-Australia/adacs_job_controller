@@ -331,7 +331,7 @@ void Cluster::updateJob(Message &message) {
                     "Unable to find job with ID " + std::to_string(jobId) + " for application job_controller");
         }
 
-        ::handleFileList(shared_from_this(), &jobResults.front(), true, "", "job_controller", {}, nullptr);
+        ::handleFileList(shared_from_this(), &jobResults.front(), true, "", nullptr);
     }
 }
 

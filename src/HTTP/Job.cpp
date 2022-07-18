@@ -1,33 +1,31 @@
 //
 // Created by lewis on 3/4/20.
 //
-#include <exception>
-#include "../DB/MySqlConnector.h"
-#include "../Lib/jobserver_schema.h"
+
 #include "../Cluster/ClusterManager.h"
+#include "../DB/MySqlConnector.h"
 #include "../Lib/JobStatus.h"
-#include "HttpUtils.h"
-#include <sqlpp11/sqlpp11.h>
-#include "date/date.h"
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/classification.hpp>
-
+#include "../Lib/jobserver_schema.h"
 #include "HttpServer.h"
+#include "HttpUtils.h"
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <date/date.h>
+#include <exception>
+#include <sqlpp11/sqlpp11.h>
 
+auto getJobs(const std::vector<uint32_t> &ids) -> nlohmann::json;
 
-nlohmann::json getJobs(const std::vector<uint32_t> &ids);
+auto filterJobs(
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeLt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *endTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *endTimeLt,
+        std::vector<uint64_t> *jobIds, std::map<std::string, uint32_t> *jobSteps,
+        std::vector<std::string> &applications) -> nlohmann::json;
 
-nlohmann::json filterJobs(
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *startTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *startTimeLt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *endTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *endTimeLt,
-        std::vector<unsigned long> *jobIds, std::map<std::string, unsigned int> *jobSteps,
-        std::vector<std::string> &applications);
-
-using namespace schema;
-
-void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<ClusterManager> clusterManager) {
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager) {
     // Get      -> Get job status (job id)
     // Post     -> Create new job
     // Delete   -> Delete job (job id)
@@ -50,18 +48,18 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
             return;
         }
 
-        // TODO: Need to check parameters are valid - such as cluster
+        // TODO(lewis): Need to check parameters are valid - such as cluster
 
         // Create a database connection
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
 
         // Start a transaction
-        db->start_transaction();
+        database->start_transaction();
 
         try {
             // Create a new job record and submit the job
-            JobserverJob jobTable;
-            JobserverJobhistory jobHistoryTable;
+            schema::JobserverJob jobTable;
+            schema::JobserverJobhistory jobHistoryTable;
 
             // Read the json from the post body
             nlohmann::json post_data;
@@ -83,30 +81,30 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
                 // Invalid cluster
                 throw std::runtime_error(
                         "Application " + authResult->secret().name() + " does not have access to cluster " +
-                        std::string(post_data["cluster"])
+                        std::string{post_data["cluster"]}
                 );
             }
 
             // Create the new job object
-            auto jobId = db->run(
+            auto jobId = database->run(
                     insert_into(jobTable)
                             .set(
-                                    jobTable.user = (uint32_t) authResult->payload()["userId"],
-                                    jobTable.parameters = std::string(post_data["parameters"]),
-                                    jobTable.cluster = std::string(post_data["cluster"]),
-                                    jobTable.bundle = std::string(post_data["bundle"]),
+                                    jobTable.user = static_cast<uint32_t>(authResult->payload()["userId"]),
+                                    jobTable.parameters = std::string{post_data["parameters"]},
+                                    jobTable.cluster = std::string{post_data["cluster"]},
+                                    jobTable.bundle = std::string{post_data["bundle"]},
                                     jobTable.application = authResult->secret().name()
                             )
             );
 
             // Create the first state object
-            db->run(
+            database->run(
                     insert_into(jobHistoryTable)
                             .set(
                                     jobHistoryTable.jobId = jobId,
                                     jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                     jobHistoryTable.what = SYSTEM_SOURCE,
-                                    jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                    jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
                                     jobHistoryTable.details = "Job pending"
                             )
             );
@@ -117,27 +115,27 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
             if (cluster->isOnline()) {
                 // Submit the job to the cluster
                 auto msg = Message(SUBMIT_JOB, Message::Priority::Medium,
-                                   std::to_string(jobId) + "_" + std::string(post_data["cluster"]));
+                                   std::to_string(jobId) + "_" + std::string{post_data["cluster"]});
                 msg.push_uint(jobId);
                 msg.push_string(post_data["bundle"]);
                 msg.push_string(post_data["parameters"]);
                 msg.send(cluster);
 
                 // Mark the job as submitting
-                db->run(
+                database->run(
                         insert_into(jobHistoryTable)
                                 .set(
                                         jobHistoryTable.jobId = jobId,
                                         jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                         jobHistoryTable.what = SYSTEM_SOURCE,
-                                        jobHistoryTable.state = (uint32_t) JobStatus::SUBMITTING,
+                                        jobHistoryTable.state = static_cast<uint32_t>(JobStatus::SUBMITTING),
                                         jobHistoryTable.details = "Job submitting"
                                 )
                 );
             }
 
             // Commit the changes in the database
-            db->commit_transaction();
+            database->commit_transaction();
 
             // Report success
             nlohmann::json result;
@@ -153,7 +151,7 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
             dumpExceptions(e);
 
             // Abort the transaction
-            db->rollback_transaction(false);
+            database->rollback_transaction(false);
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
@@ -223,8 +221,9 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
                 std::vector<std::string> sJobStepsArray;
                 auto bits = boost::split(sJobStepsArray, sJobSteps, boost::is_any_of(", "), boost::token_compress_on);
 
-                for (unsigned int i = 0; i < sJobStepsArray.size(); i += 2)
+                for (unsigned int i = 0; i < sJobStepsArray.size(); i += 2) {
                     jobSteps[sJobStepsArray[i]] = stoi(sJobStepsArray[i + 1]);
+                }
             }
 
             // Create a vector which includes the application from the secret, and any other applications it has access to
@@ -273,15 +272,15 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
         }
 
         // Create a database connection
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
 
         // Start a transaction
-        db->start_transaction();
+        database->start_transaction();
 
         try {
             // Get the database tables
-            JobserverJob jobTable;
-            JobserverJobhistory jobHistoryTable;
+            schema::JobserverJob jobTable;
+            schema::JobserverJobhistory jobHistoryTable;
 
             // Read the json from the post body
             nlohmann::json post_data;
@@ -289,57 +288,60 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
 
             // Check if jobId is provided
             auto jobIdPtr = post_data.find("jobId");
-            if (jobIdPtr == post_data.end())
+            if (jobIdPtr == post_data.end()) {
                 throw std::runtime_error("No jobId to cancel was provided");
+            }
 
             // Get the job id
-            auto jobId = (uint32_t) jobIdPtr.value();
+            auto jobId = static_cast<uint32_t>(jobIdPtr.value());
 
             // Make sure the job to cancel exists in the database
             auto jobResults =
-                    db->run(
+                    database->run(
                             select(all_of(jobTable))
                                     .from(jobTable)
                                     .where(jobTable.id == jobId)
                     );
 
             // Check that at least one record exists for this job
-            if (jobResults.empty())
+            if (jobResults.empty()) {
                 throw std::runtime_error("Job did not exist with the specified jobId");
+            }
 
-            const auto job = &jobResults.front();
+            const auto *const job = &jobResults.front();
 
             // Get the cluster for this job
             auto cluster = clusterManager->getCluster(job->cluster);
-            if (!cluster)
+            if (!cluster) {
                 throw std::runtime_error("Cluster for job did not exist");
+            }
 
             // Check that this secret has access to the cluster for this job
             if (std::find(
                     authResult->secret().clusters().begin(),
                     authResult->secret().clusters().end(),
-                    std::string(job->cluster)
+                    std::string{job->cluster}
             ) == authResult->secret().clusters().end()) {
                 // Invalid cluster
                 throw std::runtime_error(
                         "Application " + authResult->secret().name() + " does not have access to cluster " +
-                        std::string(job->cluster)
+                        std::string{job->cluster}
                 );
             }
 
             // Get any job histories for this job
             auto jobHistoryResults =
-                    db->run(
+                    database->run(
                             select(all_of(jobHistoryTable))
                                     .from(jobHistoryTable)
                                     .where(jobHistoryTable.jobId == job->id)
                                     .order_by(jobHistoryTable.timestamp.desc())
-                                    .limit(1u)
+                                    .limit(1U)
                     );
 
 
             // Check that the job is in a valid state to cancel the job
-            const auto latestStatus = &jobHistoryResults.front();
+            const auto *const latestStatus = &jobHistoryResults.front();
 
             // Check invalid states (States where the job has finished)
             auto invalidStates = std::vector<JobStatus>{
@@ -353,20 +355,20 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
                 JobStatus::COMPLETED
             };
             
-            if (std::find(invalidStates.begin(), invalidStates.end(), (uint32_t) latestStatus->state) != invalidStates.end()) {
+            if (std::find(invalidStates.begin(), invalidStates.end(), static_cast<uint32_t>(latestStatus->state)) != invalidStates.end()) {
                 throw std::runtime_error("Job is in invalid state");
             }
 
             // If the job is pending, mark it as cancelled now since it is not yet submitted on a cluster
-            if ((uint32_t) latestStatus->state == (uint32_t) JobStatus::PENDING)
+            if (static_cast<uint32_t>(latestStatus->state) == static_cast<uint32_t>(JobStatus::PENDING))
             {
-                db->run(
+                database->run(
                         insert_into(jobHistoryTable)
                                 .set(
                                         jobHistoryTable.jobId = job->id,
                                         jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                         jobHistoryTable.what = SYSTEM_SOURCE,
-                                        jobHistoryTable.state = (uint32_t) JobStatus::CANCELLED,
+                                        jobHistoryTable.state = static_cast<uint32_t>(JobStatus::CANCELLED),
                                         jobHistoryTable.details = "Job cancelled"
                                 )
                 );
@@ -374,13 +376,13 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
             else
             {
                 // Mark the job as cancelling and message the client to cancel the job
-                db->run(
+                database->run(
                         insert_into(jobHistoryTable)
                                 .set(
                                         jobHistoryTable.jobId = job->id,
                                         jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                         jobHistoryTable.what = SYSTEM_SOURCE,
-                                        jobHistoryTable.state = (uint32_t) JobStatus::CANCELLING,
+                                        jobHistoryTable.state = static_cast<uint32_t>(JobStatus::CANCELLING),
                                         jobHistoryTable.details = "Job cancelling"
                                 )
                 );
@@ -391,14 +393,14 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
                 if (cluster->isOnline()) {
                     // Ask the cluster to cancel the job
                     auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
-                                    std::to_string(job->id) + "_" + std::string(job->cluster));
+                                    std::to_string(job->id) + "_" + std::string{job->cluster});
                     msg.push_uint(job->id);
                     msg.send(cluster);
                 }
             }
 
             // Commit the changes in the database
-            db->commit_transaction();
+            database->commit_transaction();
 
             // Report success
             nlohmann::json result;
@@ -412,7 +414,7 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
             dumpExceptions(e);
 
             // Abort the transaction
-            db->rollback_transaction(false);
+            database->rollback_transaction(false);
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
@@ -438,15 +440,15 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
         }
 
         // Create a database connection
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
 
         // Start a transaction
-        db->start_transaction();
+        database->start_transaction();
 
         try {
             // Get the database tables
-            JobserverJob jobTable;
-            JobserverJobhistory jobHistoryTable;
+            schema::JobserverJob jobTable;
+            schema::JobserverJobhistory jobHistoryTable;
 
             // Read the json from the post body
             nlohmann::json post_data;
@@ -454,57 +456,60 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
 
             // Check if jobId is provided
             auto jobIdPtr = post_data.find("jobId");
-            if (jobIdPtr == post_data.end())
+            if (jobIdPtr == post_data.end()) {
                 throw std::runtime_error("No jobId to delete was provided");
+            }
 
             // Get the job id
-            auto jobId = (uint32_t) jobIdPtr.value();
+            auto jobId = static_cast<uint32_t>(jobIdPtr.value());
 
             // Make sure the job to delete exists in the database
             auto jobResults =
-                    db->run(
+                    database->run(
                             select(all_of(jobTable))
                                     .from(jobTable)
                                     .where(jobTable.id == jobId)
                     );
 
             // Check that at least one record exists for this job
-            if (jobResults.empty())
+            if (jobResults.empty()) {
                 throw std::runtime_error("Job did not exist with the specified jobId");
+            }
 
-            const auto job = &jobResults.front();
+            const auto *const job = &jobResults.front();
 
             // Get the cluster for this job
             auto cluster = clusterManager->getCluster(job->cluster);
-            if (!cluster)
+            if (!cluster) {
                 throw std::runtime_error("Cluster for job did not exist");
+            }
 
             // Check that this secret has access to the cluster for this job
             if (std::find(
                     authResult->secret().clusters().begin(),
                     authResult->secret().clusters().end(),
-                    std::string(job->cluster)
+                    std::string{job->cluster}
             ) == authResult->secret().clusters().end()) {
                 // Invalid cluster
                 throw std::runtime_error(
                         "Application " + authResult->secret().name() + " does not have access to cluster " +
-                        std::string(job->cluster)
+                        std::string{job->cluster}
                 );
             }
 
             // Get any job histories for this job
             auto jobHistoryResults =
-                    db->run(
+                    database->run(
                             select(all_of(jobHistoryTable))
                                     .from(jobHistoryTable)
                                     .where(jobHistoryTable.jobId == job->id)
                                     .order_by(jobHistoryTable.timestamp.desc())
-                                    .limit(1u)
+                                    .limit(1U)
                     );
 
 
             // Check that the job is in a valid state to delete the job
-            const auto latestStatus = &jobHistoryResults.front();
+            const auto *const latestStatus = &jobHistoryResults.front();
 
             // Check invalid states (States where the job is running)
             auto invalidStates = std::vector<JobStatus>{
@@ -517,20 +522,20 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
                 JobStatus::DELETED
             };
             
-            if (std::find(invalidStates.begin(), invalidStates.end(), (uint32_t) latestStatus->state) != invalidStates.end()) {
+            if (std::find(invalidStates.begin(), invalidStates.end(), static_cast<uint32_t>(latestStatus->state)) != invalidStates.end()) {
                 throw std::runtime_error("Job is in invalid state");
             }
 
             // If the job is pending, mark it as deleted now since it is not yet submitted on a cluster
-            if ((uint32_t) latestStatus->state == (uint32_t) JobStatus::PENDING)
+            if (static_cast<uint32_t>(latestStatus->state) == static_cast<uint32_t>(JobStatus::PENDING))
             {
-                db->run(
+                database->run(
                         insert_into(jobHistoryTable)
                                 .set(
                                         jobHistoryTable.jobId = job->id,
                                         jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                         jobHistoryTable.what = SYSTEM_SOURCE,
-                                        jobHistoryTable.state = (uint32_t) JobStatus::DELETED,
+                                        jobHistoryTable.state = static_cast<uint32_t>(JobStatus::DELETED),
                                         jobHistoryTable.details = "Job deleted"
                                 )
                 );
@@ -538,13 +543,13 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
             else
             {
                 // Mark the job as deleting and message the client to delete the job
-                db->run(
+                database->run(
                         insert_into(jobHistoryTable)
                                 .set(
                                         jobHistoryTable.jobId = job->id,
                                         jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                         jobHistoryTable.what = SYSTEM_SOURCE,
-                                        jobHistoryTable.state = (uint32_t) JobStatus::DELETING,
+                                        jobHistoryTable.state = static_cast<uint32_t>(JobStatus::DELETING),
                                         jobHistoryTable.details = "Job deleting"
                                 )
                 );
@@ -555,14 +560,14 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
                 if (cluster->isOnline()) {
                     // Ask the cluster to delete the job
                     auto msg = Message(DELETE_JOB, Message::Priority::Medium,
-                                    std::to_string(job->id) + "_" + std::string(job->cluster));
+                                    std::to_string(job->id) + "_" + std::string{job->cluster});
                     msg.push_uint(job->id);
                     msg.send(cluster);
                 }
             }
 
             // Commit the changes in the database
-            db->commit_transaction();
+            database->commit_transaction();
 
             // Report success
             nlohmann::json result;
@@ -576,7 +581,7 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
             dumpExceptions(e);
 
             // Abort the transaction
-            db->rollback_transaction(false);
+            database->rollback_transaction(false);
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
@@ -584,26 +589,31 @@ void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluster
     };
 }
 
-nlohmann::json filterJobs(
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *startTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *startTimeLt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *endTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<long, std::ratio<1, 1>>> *endTimeLt,
-        std::vector<unsigned long> *jobIds, std::map<std::string, unsigned int> *jobSteps,
-        std::vector<std::string> &applications) {
-    // Check for valid parameters
-    if (endTimeGt && endTimeLt)
-        throw std::runtime_error("Can't have both endTimeGt and endTimeLt");
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
+auto filterJobs(
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeLt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *endTimeGt,
+        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *endTimeLt,
+        std::vector<uint64_t> *jobIds, std::map<std::string, uint32_t> *jobSteps,
+        std::vector<std::string> &applications) -> nlohmann::json {
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
-    if (startTimeGt && startTimeLt)
+    // Check for valid parameters
+    if ((endTimeGt != nullptr) && (endTimeLt != nullptr)) {
+        throw std::runtime_error("Can't have both endTimeGt and endTimeLt");
+    }
+
+    if ((startTimeGt != nullptr) && (startTimeLt != nullptr)) {
         throw std::runtime_error("Can't have both startTimeGt and startTimeLt");
+    }
 
     // Create a database connection
-    auto db = MySqlConnector();
+    auto database = MySqlConnector();
 
     // Get the tables
-    JobserverJob jobTable;
-    JobserverJobhistory jobHistoryTable;
+    schema::JobserverJob jobTable;
+    schema::JobserverJobhistory jobHistoryTable;
 
     // Create a sub query to find the first "system" entry for each job id
     auto systemStartTimeFilterAggregate = select(
@@ -625,7 +635,7 @@ nlohmann::json filterJobs(
             .as(sqlpp::alias::a);
 
     // Next create the dynamic query to handle getting jobId's that match the start time criteria
-    auto systemStartTimeFilter = sqlpp::dynamic_select(*db.getDb())
+    auto systemStartTimeFilter = sqlpp::dynamic_select(*database.getDb())
             // Select only the job id
             .columns(jobHistoryTable.jobId)
             .dynamic_from(
@@ -642,42 +652,46 @@ nlohmann::json filterJobs(
     // initial system history created at job creation time
 
     // If the greater than start time is provided, add the condition to the where statement
-    if (startTimeGt)
+    if (startTimeGt != nullptr) {
         systemStartTimeFilter.where.add(jobHistoryTable.timestamp >= *startTimeGt);
+    }
 
     // If the less than start time is provided add the condition to the where statement
-    if (startTimeLt)
+    if (startTimeLt != nullptr) {
         systemStartTimeFilter.where.add(jobHistoryTable.timestamp <= *startTimeLt);
+    }
 
     // Create a temporary history filter, true here as it is combined below with AND if an end time is not provided
     auto endTimeFilter = sqlpp::boolean_expression<mysql::connection>(true);
-    if (endTimeGt)
+    if (endTimeGt != nullptr) {
         // Create the end time greater than comparison
         endTimeFilter = sqlpp::boolean_expression<mysql::connection>(
                 jobHistoryTable.what == "_job_completion_" and jobHistoryTable.timestamp >= *endTimeGt
         );
+    }
 
-    if (endTimeLt)
+    if (endTimeLt != nullptr) {
         // endTimeLt and endTimeGt are mutually exclusive, so no problem with reassigning
         endTimeFilter = sqlpp::boolean_expression<mysql::connection>(
                 jobHistoryTable.what == "_job_completion_" and jobHistoryTable.timestamp <= *endTimeLt
         );
+    }
 
     // Next filter by job step histories
     // Create an initial value filter of false as we will compare with OR. If job steps is not supplied, the default
     // comparison should be true
     auto jobStepFilter = sqlpp::boolean_expression<mysql::connection>(jobSteps == nullptr);
 
-    if (jobSteps) {
-        for (const auto &s : *jobSteps) {
+    if (jobSteps != nullptr) {
+        for (const auto &step : *jobSteps) {
             jobStepFilter = sqlpp::boolean_expression<mysql::connection>(
-                    (jobHistoryTable.what == s.first and jobHistoryTable.state == s.second) or jobStepFilter
+                    (jobHistoryTable.what == step.first and jobHistoryTable.state == step.second) or jobStepFilter
             );
         }
     }
 
     // Get all the unique job ids from the query above
-    auto historyResultsFilter = sqlpp::dynamic_select(*db.getDb())
+    auto historyResultsFilter = sqlpp::dynamic_select(*database.getDb())
             // Select only the job id
             .columns(jobHistoryTable.jobId)
             .from(jobHistoryTable)
@@ -704,46 +718,47 @@ nlohmann::json filterJobs(
     );
 
     // If the user has provided a list of job id's add that to the filter
-    if (jobIds)
+    if (jobIds != nullptr) {
         historyResultsFilter.where.add(jobHistoryTable.jobId.in(sqlpp::value_list(*jobIds)));
+    }
 
     // Group by the job id to eliminate duplicate job ids
     historyResultsFilter.group_by.add(jobHistoryTable.jobId);
 
     // Get job histories that match the filter
-    auto historyResults = db->run(historyResultsFilter);
+    auto historyResults = database->run(historyResultsFilter);
 
     // Get all the job ids that match
     std::vector<uint32_t> filteredJobIds;
-    for (auto &h : historyResults) {
-        filteredJobIds.push_back(h.jobId);
+    for (const auto &history : historyResults) {
+        filteredJobIds.push_back(history.jobId);
     }
 
     // Return the job details for the matched ids
     return getJobs(filteredJobIds);
 }
 
-nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
+auto getJobs(const std::vector<uint32_t> &ids) -> nlohmann::json {
     // Fetches multiple jobs from the database
     nlohmann::json result;
 
     // Create a database connection
-    auto db = MySqlConnector();
+    auto database = MySqlConnector();
 
     // Get the tables
-    JobserverJob jobTable;
-    JobserverJobhistory jobHistoryTable;
+    schema::JobserverJob jobTable;
+    schema::JobserverJobhistory jobHistoryTable;
 
     // Select the jobs from the database
     auto jobResults =
-            db->run(
+            database->run(
                     select(all_of(jobTable))
                             .from(jobTable)
                             .where(jobTable.id.in(sqlpp::value_list(ids)))
             );
 
     auto jobHistoryResults =
-            db->run(
+            database->run(
                     select(all_of(jobHistoryTable))
                             .from(jobHistoryTable)
                             .where(jobHistoryTable.jobId.in(sqlpp::value_list(ids)))
@@ -752,33 +767,33 @@ nlohmann::json getJobs(const std::vector<uint32_t> &ids) {
 
     // Convert the histories in to json objects
     std::vector<nlohmann::json> histories;
-    for (auto &h : jobHistoryResults) {
+    for (const auto &historyResult : jobHistoryResults) {
         nlohmann::json history;
-        history["jobId"] = (uint32_t) h.jobId;
-        history["timestamp"] = date::format("%F %T %Z", h.timestamp.value());
-        history["what"] = h.what;
-        history["state"] = (uint32_t) h.state;
-        history["details"] = h.details;
+        history["jobId"] = static_cast<uint32_t>(historyResult.jobId);
+        history["timestamp"] = date::format("%F %T %Z", historyResult.timestamp.value());
+        history["what"] = historyResult.what;
+        history["state"] = static_cast<uint32_t>(historyResult.state);
+        history["details"] = historyResult.details;
 
         histories.push_back(history);
     }
 
     // Iterate over the jobs
-    for (auto &job : jobResults) {
+    for (const auto &job : jobResults) {
         nlohmann::json jsonJob;
 
         // Write the job details
-        jsonJob["id"] = (uint32_t) job.id;
-        jsonJob["user"] = (uint32_t) job.user;
+        jsonJob["id"] = static_cast<uint32_t>(job.id);
+        jsonJob["user"] = static_cast<uint32_t>(job.user);
         jsonJob["parameters"] = job.parameters;
         jsonJob["cluster"] = job.cluster;
         jsonJob["bundle"] = job.bundle;
         jsonJob["history"] = nlohmann::json::array();
 
         // Write the job history
-        for (auto &h : histories) {
-            if ((uint32_t) h["jobId"] == (uint32_t) job.id) {
-                jsonJob["history"].push_back(h);
+        for (auto &history : histories) {
+            if (static_cast<uint32_t>(history["jobId"]) == static_cast<uint32_t>(job.id)) {
+                jsonJob["history"].push_back(history);
             }
         }
 

@@ -1,20 +1,20 @@
 //
 // Created by lewis on 3/12/20.
 //
-#include <jwt/jwt.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/uuid/random_generator.hpp>
-#include "boost/filesystem.hpp"
+
 #include "../DB/MySqlConnector.h"
-#include "../Lib/jobserver_schema.h"
 #include "../Cluster/ClusterManager.h"
+#include "../Lib/jobserver_schema.h"
 #include "HttpServer.h"
 #include "Utils/HandleFileList.h"
+#include <boost/filesystem.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
-using namespace schema;
 
-void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<ClusterManager> clusterManager) {
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager) {
     // Get      -> Download file (file uuid)
     // Post     -> Create new file download
     // Delete   -> Delete file download (file uuid)
@@ -38,10 +38,10 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
         }
 
         // Create a database connection
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
 
         // Start a transaction
-        db->start_transaction();
+        database->start_transaction();
 
         // Create a vector which includes the application from the secret, and any other applications it has access to
         auto applications = std::vector<std::string>({authResult->secret().name()});
@@ -49,8 +49,8 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
                   std::back_inserter(applications));
 
         // Get the tables
-        JobserverJob jobTable;
-        JobserverFiledownload fileDownloadTable;
+        schema::JobserverJob jobTable;
+        schema::JobserverFiledownload fileDownloadTable;
 
         try {
             // Read the json from the post body
@@ -58,7 +58,7 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             request->content >> post_data;
 
             // Get the job to fetch files for
-            auto jobId = (uint32_t) post_data["jobId"];
+            auto jobId = static_cast<uint32_t>(post_data["jobId"]);
 
             // Get the path to the file to fetch (relative to the project)
             bool hasPaths = false;
@@ -67,7 +67,7 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
                 filePaths = post_data["paths"].get<std::vector<std::string>>();
                 hasPaths = true;
             } else {
-                filePaths.push_back(std::string(post_data["path"]));
+                filePaths.push_back(std::string{post_data["path"]});
             }
 
             // Check that there were actually file paths provided
@@ -85,11 +85,11 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
 
             // Look up the job
             auto jobResults =
-                    db->run(
+                    database->run(
                             select(all_of(jobTable))
                                     .from(jobTable)
                                     .where(
-                                            jobTable.id == (uint32_t) jobId
+                                            jobTable.id == static_cast<uint32_t>(jobId)
                                             and jobTable.application.in(sqlpp::value_list(applications))
                                     )
                     );
@@ -101,9 +101,9 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             }
 
             // Get the cluster and bundle from the job
-            auto job = &jobResults.front();
-            auto sCluster = std::string(job->cluster);
-            auto sBundle = std::string(job->bundle);
+            const auto *job = &jobResults.front();
+            auto sCluster = std::string{job->cluster};
+            auto sBundle = std::string{job->bundle};
 
             // Create a multi insert query
             auto insert_query = insert_into(fileDownloadTable).columns(
@@ -125,8 +125,8 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
 
                 // Add the record to be inserted
                 insert_query.values.add(
-                        fileDownloadTable.user = (int) authResult->payload()["userId"],
-                        fileDownloadTable.jobId = (int) jobId,
+                        fileDownloadTable.user = static_cast<int>(authResult->payload()["userId"]),
+                        fileDownloadTable.jobId = static_cast<int>(jobId),
                         fileDownloadTable.uuid = uuid,
                         fileDownloadTable.path = std::string(path),
                         fileDownloadTable.timestamp =
@@ -138,16 +138,16 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
 
             // Try inserting the values in the database
             try {
-                db->run(insert_query);
+                database->run(insert_query);
 
                 // Commit the changes in the database
-                db->commit_transaction();
+                database->commit_transaction();
             } catch (sqlpp::exception &e) {
                 dumpExceptions(e);
 
                 // Uh oh, an error occurred
                 // Abort the transaction
-                db->rollback_transaction(false);
+                database->rollback_transaction(false);
 
                 // Report bad request
                 response->write(
@@ -174,7 +174,7 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             dumpExceptions(e);
 
             // Abort the transaction
-            db->rollback_transaction(false);
+            database->rollback_transaction(false);
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
@@ -182,16 +182,17 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
     };
 
     // Download file
+    // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager](
             const std::shared_ptr<HttpServerImpl::Response> &response,
             const std::shared_ptr<HttpServerImpl::Request> &request) {
 
         // Create a database connection
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
 
         // Get the tables
-        JobserverJob jobTable;
-        JobserverFiledownload fileDownloadTable;
+        schema::JobserverJob jobTable;
+        schema::JobserverFiledownload fileDownloadTable;
 
         // Create a new file download object
         auto fdObj = std::make_shared<sFileDownload>();
@@ -203,8 +204,9 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
 
             // Check if jobId is provided
             auto uuidPtr = query_fields.find("fileId");
-            if (uuidPtr != query_fields.end())
+            if (uuidPtr != query_fields.end()) {
                 uuid = uuidPtr->second;
+            }
 
             if (uuid.empty()) {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
@@ -214,11 +216,12 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             // Check if forceDownload is provided
             auto fdPtr = query_fields.find("forceDownload");
             bool forceDownload = false;
-            if (fdPtr != query_fields.end())
+            if (fdPtr != query_fields.end()) {
                 forceDownload = true;
+            }
 
             // Expire any old file downloads
-            db->run(
+            database->run(
                     remove_from(fileDownloadTable)
                             .where(
                                     fileDownloadTable.timestamp <=
@@ -229,7 +232,7 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             );
 
             // Look up the file download
-            auto dlResults = db->run(
+            auto dlResults = database->run(
                     select(all_of(fileDownloadTable))
                             .from(fileDownloadTable)
                             .where(fileDownloadTable.uuid == uuid)
@@ -242,22 +245,22 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             }
 
             // Get the cluster and bundle from the job
-            auto dl = &dlResults.front();
+            const auto *dlResult = &dlResults.front();
 
             // Look up the job
             auto jobResults =
-                    db->run(
+                    database->run(
                             select(all_of(jobTable))
                                     .from(jobTable)
-                                    .where(jobTable.id == (uint32_t) dl->jobId)
+                                    .where(jobTable.id == static_cast<uint32_t>(dlResult->jobId))
                     );
 
-            auto job = &jobResults.front();
-            auto sCluster = std::string(job->cluster);
-            auto sBundle = std::string(job->bundle);
+            const auto *job = &jobResults.front();
+            auto sCluster = std::string{job->cluster};
+            auto sBundle = std::string{job->bundle};
 
-            auto sFilePath = std::string(dl->path);
-            auto jobId = (uint32_t) dl->jobId;
+            auto sFilePath = std::string{dlResult->path};
+            auto jobId = static_cast<uint32_t>(dlResult->jobId);
 
             // Check that the cluster is online
             // Get the cluster to submit to
@@ -289,11 +292,11 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             msg.send(cluster);
 
             {
-                // Wait for the server to send back data, or in 10 seconds fail
+                // Wait for the server to send back data, or in CLIENT_TIMEOUT_SECONDS fail
                 std::unique_lock<std::mutex> lock(fdObj->dataCVMutex);
 
                 // Wait for data to be ready to send
-                if (!fdObj->dataCV.wait_for(lock, std::chrono::seconds(30), [&fdObj] { return fdObj->dataReady; })) {
+                if (!fdObj->dataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->dataReady; })) {
                     // Timeout reached, set the error
                     fdObj->error = true;
                     fdObj->errorDetails = "Client too took long to respond.";
@@ -306,8 +309,9 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
                     std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
 
                     // Destroy the file download object
-                    if (fileDownloadMap->find(uuid) != fileDownloadMap->end())
+                    if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
                         fileDownloadMap->erase(uuid);
+                    }
                 }
 
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, fdObj->errorDetails);
@@ -320,8 +324,9 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
                     std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
 
                     // Destroy the file download object
-                    if (fileDownloadMap->find(uuid) != fileDownloadMap->end())
+                    if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
                         fileDownloadMap->erase(uuid);
+                    }
                 }
 
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
@@ -336,13 +341,14 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             headers.emplace("Content-Type", "application/octet-stream");
 
             // Get the filename from the download
-            boost::filesystem::path fp(sFilePath);
+            boost::filesystem::path filePath(sFilePath);
 
             // Check if we need to tell the browser to force the download
-            if (forceDownload)
-                headers.emplace("Content-Disposition", "attachment; filename=\"" + fp.filename().string() + "\"");
-            else
-                headers.emplace("Content-Disposition", "filename=\"" + fp.filename().string() + "\"");
+            if (forceDownload) {
+                headers.emplace("Content-Disposition", "attachment; filename=\"" + filePath.filename().string() + "\"");
+            } else {
+                headers.emplace("Content-Disposition", "filename=\"" + filePath.filename().string() + "\"");
+            }
 
             // Set the content size
             headers.emplace("Content-Length", std::to_string(fdObj->fileSize));
@@ -350,25 +356,25 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             // Write the headers
             response->write(headers);
             std::promise<SimpleWeb::error_code> headerPromise;
-            response->send([&headerPromise](const SimpleWeb::error_code &ec) {
-                headerPromise.set_value(ec);
+            response->send([&headerPromise](const SimpleWeb::error_code &errorCode) {
+                headerPromise.set_value(errorCode);
             });
 
-            if (auto ec = headerPromise.get_future().get()) {
+            if (auto errorCode = headerPromise.get_future().get()) {
                 throw std::runtime_error(
                         "Error transmitting file transfer headers to client. Perhaps client has disconnected? "
-                        + std::to_string(ec.value()) + " " + ec.message()
+                        + std::to_string(errorCode.value()) + " " + errorCode.message()
                 );
             }
 
             // Check for error, or all data sent
             while (!fdObj->error && fdObj->sentBytes < fdObj->fileSize) {
                 {
-                    // Wait for the server to send back data, or in 30 seconds fail
+                    // Wait for the server to send back data, or in CLIENT_TIMEOUT_SECONDS fail
                     std::unique_lock<std::mutex> lock(fdObj->dataCVMutex);
 
                     // Wait for data to be ready to send
-                    if (!fdObj->dataCV.wait_for(lock, std::chrono::seconds(30), [&fdObj] { return fdObj->dataReady; })) {
+                    if (!fdObj->dataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->dataReady; })) {
                         throw std::runtime_error("Client took too long to respond.");
                     }
                     fdObj->dataReady = false;
@@ -385,17 +391,18 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
                         fdObj->sentBytes += (*data)->size();
 
                         // Send the data
-                        response->write((const char *) (*data)->data(), (std::streamsize) (*data)->size());
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+                        response->write(reinterpret_cast<const char *>((*data)->data()), static_cast<std::streamsize>((*data)->size()));
 
                         std::promise<SimpleWeb::error_code> contentPromise;
-                        response->send([&contentPromise](const SimpleWeb::error_code &ec) {
-                            contentPromise.set_value(ec);
+                        response->send([&contentPromise](const SimpleWeb::error_code &errorCode) {
+                            contentPromise.set_value(errorCode);
                         });
 
-                        if (auto ec = contentPromise.get_future().get()) {
+                        if (auto errorCode = contentPromise.get_future().get()) {
                             throw std::runtime_error(
                                     "Error transmitting file content to client. Perhaps client has disconnected? "
-                                    + std::to_string(ec.value()) + " " + ec.message());
+                                    + std::to_string(errorCode.value()) + " " + errorCode.message());
                         }
 
                         {
@@ -427,8 +434,9 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
                 // It's now safe to delete the uuid from the fileDownloadMap
 
                 // Destroy the file download object
-                if (fileDownloadMap->find(uuid) != fileDownloadMap->end())
+                if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
                     fileDownloadMap->erase(uuid);
+                }
 
                 // The lock can now be released, because when the lock is acquired in Cluster, the first thing it will do
                 // is check for the existence of the uuid in the fileDownloadMap. But since we've removed it, Cluster is
@@ -442,8 +450,9 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
                 std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
 
                 // Destroy the file download object
-                if (fileDownloadMap->find(uuid) != fileDownloadMap->end())
+                if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
                     fileDownloadMap->erase(uuid);
+                }
 
                 // Same as above
             }
@@ -481,21 +490,21 @@ void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<Cluste
             request->content >> post_data;
 
             // Get the job to fetch files for
-            auto jobId = (uint32_t) post_data["jobId"];
+            auto jobId = static_cast<uint32_t>(post_data["jobId"]);
 
             // Get the job to fetch files for
-            auto bRecursive = (bool) post_data["recursive"];
+            auto bRecursive = static_cast<bool>(post_data["recursive"]);
 
             // Get the path to the file to fetch (relative to the project)
-            auto filePath = std::string(post_data["path"]);
+            auto filePath = std::string{post_data["path"]};
 
             // Handle the file list request
             handleFileList(
                     clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
                     response
             );
-        } catch (std::exception& e) {
-            dumpExceptions(e);
+        } catch (std::exception& exception) {
+            dumpExceptions(exception);
             
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
