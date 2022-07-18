@@ -4,38 +4,19 @@
 
 #include "Message.h"
 #include "../../Cluster/Cluster.h"
-
-using namespace std;
+#include "../../Settings.h"
 
 #ifdef BUILD_TESTS
-Message::Message(uint32_t msgId) {
+Message::Message(uint32_t msgId) : index(0), id(msgId) {
     // Constructor only used for testing
-
-    // Resize the data array to 64kb
     data = std::make_shared<std::vector<uint8_t>>();
-    data->reserve(1024 * 64);
-
-    // Reset the index
-    index = 0;
-
-    // Store the id
-    id = msgId;
+    data->reserve(MESSAGE_INITIAL_VECTOR_SIZE);
 }
 #endif
 
-Message::Message(uint32_t msgId, Message::Priority priority, const std::string& source) {
-    // Resize the data array to 64kb
+Message::Message(uint32_t msgId, Message::Priority priority, const std::string& source) : priority(priority), index(0), source(source) {
     data = std::make_shared<std::vector<uint8_t>>();
-    data->reserve(1024 * 64);
-
-    // Reset the index
-    index = 0;
-
-    // Set the priority
-    this->priority = priority;
-
-    // Set the source
-    this->source = source;
+    data->reserve(MESSAGE_INITIAL_VECTOR_SIZE);
 
     // Push the source
     push_string(source);
@@ -44,60 +25,60 @@ Message::Message(uint32_t msgId, Message::Priority priority, const std::string& 
     push_uint(msgId);
 }
 
-Message::Message(const vector<uint8_t>& vdata) {
-    data = std::make_shared<std::vector<uint8_t>>(vdata);
-    index = 0;
-    priority = Message::Priority::Lowest;
+Message::Message(const std::vector<uint8_t>& vdata) :
+data(std::make_shared<std::vector<uint8_t>>(vdata)), index(0), source(pop_string()), id(pop_uint()) {}
 
-    source = pop_string();
-    id = pop_uint();
+void Message::push_bool(bool value) {
+    push_ubyte(value ? 1 : 0);
 }
 
-void Message::push_bool(bool v) {
-    push_ubyte(v ? 1 : 0);
-}
-
-bool Message::pop_bool() {
+auto Message::pop_bool() -> bool {
     auto result = pop_ubyte();
     return result == 1;
 }
 
-void Message::push_ubyte(uint8_t v) {
-    data->push_back(v);
+void Message::push_ubyte(uint8_t value) {
+    data->push_back(value);
 }
 
-uint8_t Message::pop_ubyte() {
+auto Message::pop_ubyte() -> uint8_t {
     auto result = (*data)[index++];
     return result;
 }
 
-void Message::push_byte(int8_t v) {
-    push_ubyte((uint8_t) v);
+void Message::push_byte(int8_t value) {
+    push_ubyte(static_cast<uint8_t>(value));
 }
 
-int8_t Message::pop_byte() {
-    return (int8_t) pop_ubyte();
+auto Message::pop_byte() -> int8_t {
+    return static_cast<int8_t>(pop_ubyte());
 }
 
-#define push_type(t, r) void Message::push_##t (r v) {      \
-    uint8_t pdata[sizeof(v)];                       \
-                                                    \
-    *((typeof(v)*) &pdata) = v;                     \
-                                                    \
-    for (unsigned char i : pdata)                   \
-        push_ubyte(i);                                \
+// NOLINTBEGIN(cppcoreguidelines-macro-usage)
+#define push_type(t, r) void Message::push_##t (r value) {      \
+    std::array<uint8_t, sizeof(value)> data{};                  \
+                                                                \
+    memcpy(data.data(), &value, sizeof(value));                 \
+                                                                \
+    for (unsigned char nextbyte : data) {                       \
+        push_ubyte(nextbyte);                                   \
+    }                                                           \
 }
 
-#define pop_type(t, r) r Message::pop_##t() {       \
-    uint8_t pdata[sizeof(r)];               \
-                                                    \
-    for (auto i = 0; i < sizeof(r); i++)    \
-        pdata[i] = pop_ubyte();                     \
-                                                    \
-    return *(r*) &pdata;                          \
+#define pop_type(t, r) auto Message::pop_##t() -> r {           \
+    std::array<uint8_t, sizeof(r)> data{};                      \
+                                                                \
+    for (auto index = 0; index < sizeof(r); index++) {          \
+        data.at(index) = pop_ubyte();                           \
+    }                                                           \
+                                                                \
+    r result;                                                   \
+    memcpy(&result, data.data(), sizeof(r));                    \
+    return result;                                              \
 }
 
 #define add_type(t, r) push_type(t, r) pop_type(t, r)
+// NOLINTEND(cppcoreguidelines-macro-usage)
 
 add_type(ushort, uint16_t)
 
@@ -115,32 +96,31 @@ add_type(float, float)
 
 add_type(double, double)
 
-void Message::push_string(const std::string& v) {
-    push_ulong(v.size());
-    data->insert(data->end(), v.begin(), v.end());
+void Message::push_string(const std::string& value) {
+    push_ulong(value.size());
+    data->insert(data->end(), value.begin(), value.end());
 }
 
-std::string Message::pop_string() {
+auto Message::pop_string() -> std::string {
     auto result = pop_bytes();
-    // Write string terminator
-    result.push_back(0);
-    return {(char *) result.data()};
+    return {result.begin(), result.end()};
 }
 
-void Message::push_bytes(const std::vector<uint8_t>& v) {
-    push_ulong(v.size());
-    data->insert(data->end(), v.begin(), v.end());
+void Message::push_bytes(const std::vector<uint8_t>& value) {
+    push_ulong(value.size());
+    data->insert(data->end(), value.begin(), value.end());
 }
 
-std::vector<uint8_t> Message::pop_bytes() {
+auto Message::pop_bytes() -> std::vector<uint8_t> {
     auto len = pop_ulong();
-    auto result = std::vector<uint8_t>(&(*data)[index], &(*data)[index] + len);
+    auto result = std::vector<uint8_t>(
+        data->begin() + static_cast<int64_t>(index),
+        data->begin() + static_cast<int64_t>(index) + static_cast<int64_t>(len)
+    );
     index += len;
     return result;
 }
 
-void Message::send(std::shared_ptr<Cluster> pCluster) {
+void Message::send(const std::shared_ptr<Cluster>& pCluster) {
     pCluster->queueMessage(source, data, priority);
 }
-
-

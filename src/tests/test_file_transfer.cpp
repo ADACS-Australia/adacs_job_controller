@@ -295,30 +295,33 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Connect a fake client to the websocket server
         TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
-        bool* bPaused = new bool;
-        bool* bReady = new bool;
-        *bPaused = false;
-        uint64_t fileSize;
-        std::thread* pThread;
-        websocketClient.on_message = [&pThread, bPaused, bReady, &mgr, &fileSize](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
+        bool bPaused = false;
+        bool bReady = false;
+        int pauseCount = 0;
+        int resumeCount = 0;
+        uint64_t fileSize = 0;
+        std::shared_ptr<std::thread> pThread;
+        websocketClient.on_message = [&pThread, &bPaused, &bReady, &mgr, &fileSize, &pauseCount, &resumeCount](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
             // Ignore the ready message
             if (msg.getId() == SERVER_READY) {
-                *bReady = true;
+                bReady = true;
                 return;
             }
 
             // Check if this is a pause transfer message
             if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
-                *bPaused = true;
+                pauseCount++;
+                bPaused = true;
                 return;
             }
 
             // Check if this is a resume transfer message
             if (msg.getId() == RESUME_FILE_CHUNK_STREAM) {
-                *bPaused = false;
+                resumeCount++;
+                bPaused = false;
                 return;
             }
 
@@ -339,18 +342,19 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             mgr->getvClusters()->at(0)->callhandleMessage(smsg);
 
             // Now send the file content in to chunks and send it to the client
-            pThread = new std::thread([bPaused, connection, fileSize, uuid, &mgr]() {
+            pThread = std::make_shared<std::thread>([&bPaused, connection, fileSize, uuid, &mgr]() {
                 auto CHUNK_SIZE = 1024*64;
 
                 auto data = std::vector<uint8_t>();
 
                 uint64_t bytesSent = 0;
                 while (bytesSent < fileSize) {
-                    // Don't do anything while the stream is paused
-                    while (*bPaused)
-                        std::this_thread::sleep_for(std::chrono::milliseconds (1));
+                    // Spin while the stream is paused
+                    while (bPaused) {
+                        std::this_thread::yield();
+                    }
 
-                    auto chunkSize = std::min((uint32_t) CHUNK_SIZE, (uint32_t) (fileSize-bytesSent));
+                    auto chunkSize = std::min(static_cast<uint64_t>(CHUNK_SIZE), static_cast<uint64_t>(fileSize-bytesSent));
                     bytesSent += chunkSize;
                     data.resize(chunkSize);
 
@@ -371,7 +375,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         });
 
         // Wait for the client to connect
-        while (!*bReady) {
+        while (!bReady) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -413,6 +417,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         r->content >> result;
 
         // Try to download the file
+        long long baselineMemUsage = getCurrentMemoryUsage();
         uint64_t totalBytesReceived = 0;
         bool end = false;
         httpClient.config.max_response_streambuf_size = 1024*1024;
@@ -422,14 +427,14 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             [&totalBytesReceived, &end](const std::shared_ptr<TestHttpClient::Response>& response, const SimpleWeb::error_code &ec) {
                 totalBytesReceived += response->content.size();
                 end = response->content.end;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         );
 
         // While the file download hasn't finished, check that the memory usage never exceeds 200Mb
-        long long baselineMemUsage = getCurrentMemoryUsage();
         while (!end) {
             auto memUsage = (long long) getCurrentMemoryUsage();
-            if (baselineMemUsage - memUsage > 1024*200)
+            if (memUsage - baselineMemUsage > 1024*200)
                 BOOST_ASSERT_MSG(false, "Maximum tolerable memory usage was exceeded");
 
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -449,13 +454,14 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         wsSrv.stop();
 
         pThread->join();
-        delete pThread;
-
-        delete bPaused;
 
         // Clean up
         db->run(remove_from(fileDownloadTable).unconditionally());
         db->run(remove_from(jobHistoryTable).unconditionally());
         db->run(remove_from(jobTable).unconditionally());
+
+        std::cout << "Large file test complete. File size was " << fileSize << ". Pauses: " << pauseCount << ", resumes: " << resumeCount << std::endl;
+        BOOST_CHECK_EQUAL(pauseCount > 0, true);
+        BOOST_CHECK_EQUAL(pauseCount, resumeCount);
     }
 BOOST_AUTO_TEST_SUITE_END();

@@ -1381,10 +1381,13 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(msg.pop_string(), uuid);
 
         // Verify that the chunks were correctly queued
+        bool different = false;
         for (const auto& chunk : chunks) {
             auto queueChunk = (*(*fileDownloadMap)[uuid]->queue.try_dequeue());
-            BOOST_CHECK_EQUAL_COLLECTIONS(chunk->begin(), chunk->end(), queueChunk->begin(), queueChunk->end());
+            different = different || !std::equal((*queueChunk).begin(), (*queueChunk).end(), (*chunk).begin());
         }
+
+        BOOST_CHECK_EQUAL(different, false);
 
         fileDownloadMap->erase(uuid);
     }

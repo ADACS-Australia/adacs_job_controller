@@ -5,12 +5,12 @@
 #ifndef GWCLOUD_JOB_SERVER_MESSAGE_H
 #define GWCLOUD_JOB_SERVER_MESSAGE_H
 
-#include <vector>
-#include <deque>
-#include <cstdint>
-#include <string>
 #include "../../WebSocket/WebSocketServer.h"
 #include "../GeneralUtils.h"
+#include <cstdint>
+#include <deque>
+#include <string>
+#include <vector>
 
 #define SYSTEM_SOURCE "system"
 
@@ -20,8 +20,6 @@
 #define UPDATE_JOB 2001
 #define CANCEL_JOB 2002
 #define DELETE_JOB 2003
-
-#define REQUEST_BUNDLE 3000
 
 #define DOWNLOAD_FILE 4000
 #define FILE_DETAILS 4001
@@ -49,37 +47,37 @@ public:
     Message(uint32_t msgId, Priority priority, const std::string& source);
     explicit Message(const std::vector<uint8_t>& vdata);
 
-    void push_bool(bool v);
-    void push_ubyte(uint8_t v);
-    void push_byte(int8_t v);
-    void push_ushort(uint16_t v);
-    void push_short(int16_t v);
-    void push_uint(uint32_t v);
-    void push_int(int32_t v);
-    void push_ulong(uint64_t v);
-    void push_long(int64_t v);
-    void push_float(float v);
-    void push_double(double v);
-    void push_string(const std::string& v);
-    void push_bytes(const std::vector<uint8_t>& v);
+    void push_bool(bool value);
+    void push_ubyte(uint8_t value);
+    void push_byte(int8_t value);
+    void push_ushort(uint16_t value);
+    void push_short(int16_t value);
+    void push_uint(uint32_t value);
+    void push_int(int32_t value);
+    void push_ulong(uint64_t value);
+    void push_long(int64_t value);
+    void push_float(float value);
+    void push_double(double value);
+    void push_string(const std::string& value);
+    void push_bytes(const std::vector<uint8_t>& value);
 
-    bool pop_bool();
-    uint8_t pop_ubyte();
-    int8_t pop_byte();
-    uint16_t pop_ushort();
-    int16_t pop_short();
-    uint32_t pop_uint();
-    int32_t pop_int();
-    uint64_t pop_ulong();
-    int64_t pop_long();
-    float pop_float();
-    double pop_double();
-    std::string pop_string();
-    std::vector<uint8_t> pop_bytes();
+    auto pop_bool() -> bool;
+    auto pop_ubyte() -> uint8_t;
+    auto pop_byte() -> int8_t;
+    auto pop_ushort() -> uint16_t;
+    auto pop_short() -> int16_t;
+    auto pop_uint() -> uint32_t;
+    auto pop_int() -> int32_t;
+    auto pop_ulong() -> uint64_t;
+    auto pop_long() -> int64_t;
+    auto pop_float() -> float;
+    auto pop_double() -> double;
+    auto pop_string() -> std::string;
+    auto pop_bytes() -> std::vector<uint8_t>;
 
-    void send(std::shared_ptr<Cluster> pCluster);
+    void send(const std::shared_ptr<Cluster>& pCluster);
 
-    [[nodiscard]] uint32_t getId() const { return id; }
+    [[nodiscard]] auto getId() const -> uint32_t { return id; }
 
 private:
     std::shared_ptr<std::vector<uint8_t>> data;
