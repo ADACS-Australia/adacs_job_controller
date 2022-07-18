@@ -2,31 +2,17 @@
 // Created by lewis on 10/6/21.
 //
 
-#include <boost/test/unit_test.hpp>
-#include <nlohmann/json.hpp>
-#include <thread>
-#include <chrono>
-#include <client_ws.hpp>
-#include <client_http.hpp>
-#include <jwt/jwt.hpp>
-#include "../Settings.h"
-#include "../Lib/GeneralUtils.h"
 #include "../Cluster/ClusterManager.h"
-#include "../HTTP/HttpServer.h"
-#include "../Lib/jobserver_schema.h"
-#include "../DB/MySqlConnector.h"
 #include "../HTTP/Utils/HandleFileList.h"
-#include <boost/filesystem/path.hpp>
+#include "../Lib/JobStatus.h"
+#include "utils.h"
+#include <boost/test/unit_test.hpp>
+#include <jwt/jwt.hpp>
 
-extern uint64_t randomInt(uint64_t start, uint64_t end);
-
-using WsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
-using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
-
-extern std::string getLastToken();
+// NOLINTBEGIN(concurrency-mt-unsafe)
 
 BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
-    auto sAccess = R"(
+    const auto sAccess = R"(
     [
         {
             "name": "app1",
@@ -39,7 +25,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
     ]
     )";
 
-    auto sClusters = R"(
+    const auto sClusters = R"(
     [
         {
             "name": "cluster1",
@@ -52,31 +38,31 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
     )";
 
     // Create a file list
-    std::vector<sFile> fileListData = {
+    const std::vector<sFile> fileListData = { // NOLINT(cert-err58-cpp)
             {"/", 0, 0, true},
-            {"/test", randomInt(0, (uint64_t) -1), 0, false},
+            {"/test", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
             {"/testdir", 0, 0, true},
-            {"/testdir/file", randomInt(0, (uint64_t) -1), 0, false},
-            {"/testdir/file2", randomInt(0, (uint64_t) -1), 0, false},
-            {"/testdir/file3", randomInt(0, (uint64_t) -1), 0, false},
+            {"/testdir/file", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
+            {"/testdir/file2", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
+            {"/testdir/file3", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
             {"/testdir/testdir1", 0, 0, true},
-            {"/testdir/testdir1/file", randomInt(0, (uint64_t) -1), 0, false},
-            {"/test2", randomInt(0, (uint64_t) -1), 0, false},
+            {"/testdir/testdir1/file", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
+            {"/test2", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
     };
 
-    BOOST_AUTO_TEST_CASE(test_file_list) {
+    BOOST_AUTO_TEST_CASE(test_file_list) { // NOLINT(readability-function-cognitive-complexity)
         // Delete all database info just in case
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
         schema::JobserverFiledownload fileDownloadTable;
         schema::JobserverFilelistcache fileListCacheTable;
         schema::JobserverJob jobTable;
         schema::JobserverJobhistory jobHistoryTable;
         schema::JobserverClusteruuid clusterUuidTable;
-        db->run(remove_from(fileListCacheTable).unconditionally());
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
-        db->run(remove_from(clusterUuidTable).unconditionally());
+        database->run(remove_from(fileListCacheTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(clusterUuidTable).unconditionally());
 
         // Set up the cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
@@ -85,8 +71,9 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         // Start the cluster scheduler
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
-            while (running)
+            while (running) {
                 mgr->getvClusters()->at(0)->callrun();
+            }
         });
 
         // Set up the test http server
@@ -106,16 +93,19 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // Connect a fake client to the websocket server
         bool bRaiseError = true;
+        bool bReady = false;
         std::vector<std::string> lastDirPath;
         std::vector<bool> lastbRecursive;
-        WsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
-        websocketClient.on_message = [&lastDirPath, &lastbRecursive, &bRaiseError](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
+        TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
+        websocketClient.on_message = [&lastDirPath, &lastbRecursive, &bRaiseError, &bReady](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
             // Ignore the ready message
-            if (msg.getId() == SERVER_READY)
+            if (msg.getId() == SERVER_READY) {
+                bReady = true;
                 return;
+            }
 
             // Check that this message can only be a FILE_LIST request
             if (msg.getId() != FILE_LIST) {
@@ -133,10 +123,11 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 msg.push_string(uuid);
                 msg.push_string("test error");
 
-                auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->get()->size());
-                std::ostream_iterator<uint8_t> iter(*o);
+                auto outMessage = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
+                std::ostream_iterator<uint8_t> iter(*outMessage);
                 std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
-                connection->send(o, nullptr, 130);
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                connection->send(outMessage, nullptr, 130);
                 return;
             }
 
@@ -149,18 +140,17 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
             msg.push_string(uuid);
             msg.push_uint(filteredFiles.size());
 
-            for (auto &f : filteredFiles) {
-                auto p = boost::filesystem::path(f.fileName);
-
-                msg.push_string(f.fileName);
-                msg.push_bool(f.isDirectory);
-                msg.push_ulong(f.fileSize);
+            for (const auto &file : filteredFiles) {
+                msg.push_string(file.fileName);
+                msg.push_bool(file.isDirectory);
+                msg.push_ulong(file.fileSize);
             }
 
-            auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->get()->size());
-            std::ostream_iterator<uint8_t> iter(*o);
+            auto outStream = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
+            std::ostream_iterator<uint8_t> iter(*outStream);
             std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
-            connection->send(o, nullptr, 130);
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            connection->send(outStream, nullptr, 130);
         };
 
         // Start the client
@@ -168,10 +158,14 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Wait for the client to connect
+        while (!bReady) {
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 
         // Create a job to request file lists for
-        auto jobId = db->run(
+        auto jobId = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -183,6 +177,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         );
 
         // Set up the auth token
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
@@ -193,6 +188,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
         // Create params
@@ -203,10 +199,10 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         };
 
         // This call should cause an error to be raised and reported
-        HttpClient httpClient("localhost:8000");
-        auto r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
-        BOOST_CHECK_EQUAL(r->content.string(), "test error");
+        TestHttpClient httpClient("localhost:8000");
+        auto response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(response->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        BOOST_CHECK_EQUAL(response->content.string(), "test error");
         BOOST_CHECK_EQUAL(fileListMap->size(), 0);
 
         // Finish error testing
@@ -214,7 +210,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // This file list will be complete, but won't create any file cache objects because the job has no
         // _job_completion_ job history objects
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         BOOST_CHECK_EQUAL(fileListMap->size(), 0);
 
@@ -222,6 +218,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(params["path"]));
         BOOST_CHECK_EQUAL(lastbRecursive.back(), (bool) params["recursive"]);
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         std::vector<sFile> expected = {
                 fileListData[2],
                 fileListData[3],
@@ -229,30 +226,31 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 fileListData[5],
                 fileListData[6]
         };
+        // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
         nlohmann::json result;
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         auto jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         // Next we want to create a _job_completion_ file history object and request files from a sub directory
-        db->run(
+        database->run(
                 insert_into(jobHistoryTable)
                         .set(
                                 jobHistoryTable.jobId = jobId,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                 jobHistoryTable.what = "_job_completion_",
-                                jobHistoryTable.state = 500,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::COMPLETED),
                                 jobHistoryTable.details = "Job is complete"
                         )
         );
@@ -263,7 +261,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // This file list will be complete, and should also create the file list cache since now a _job_completion_ job
         // history record exists.
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         // There should have been two websocket calls - one to get the file list of the initial request, and a second
         // to get the full recursive file list of the entire job
@@ -273,39 +271,41 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         BOOST_CHECK_EQUAL(lastbRecursive[0], (bool) params["recursive"]);
         BOOST_CHECK_EQUAL(lastbRecursive[1], true);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         // Check that the correct file list cache entries were added to the database
-        auto fileListCacheResult = db->run(
+        auto fileListCacheResult = database->run(
                 select(all_of(fileListCacheTable))
                         .from(fileListCacheTable)
                         .where(
-                                fileListCacheTable.jobId == (uint32_t) jobId
+                                fileListCacheTable.jobId == static_cast<uint32_t>(jobId)
                         )
         );
 
         BOOST_CHECK_EQUAL(fileListCacheResult.empty(), false);
 
         std::vector<sFile> files;
-        for (auto &f : fileListCacheResult) {
-            files.push_back({
-                                    f.path,
-                                    (uint64_t) f.fileSize,
-                                    (uint32_t) f.permissions,
-                                    (bool) f.isDir
-                            });
+        for (const auto &file : fileListCacheResult) {
+            files.push_back(
+                {
+                    file.path,
+                    static_cast<uint64_t>(file.fileSize),
+                    static_cast<uint32_t>(file.permissions),
+                    static_cast<bool>(file.isDir)
+                }
+                );
         }
 
         for (auto i = 0; i < files.size(); i++) {
@@ -320,23 +320,23 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         lastbRecursive.clear();
 
         // This file list will be complete, and should not call the websocket since all files should be cached
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         // There should have been no websocket calls
         BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         params = {
@@ -346,23 +346,23 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         };
 
         // This file list will be complete, and should not call the websocket since all files should be cached
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         // There should have been no websocket calls
         BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < fileListData.size(); i++) {
-            auto f = fileListData[i];
+        for (auto index = 0; index < fileListData.size(); index++) {
+            auto file = fileListData[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         params = {
@@ -372,15 +372,16 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         };
 
         // This file list will be complete, and should not call the websocket since all files should be cached
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         // There should have been no websocket calls
         BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         expected = {
                 fileListData[2],
                 fileListData[3],
@@ -389,15 +390,16 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 fileListData[6],
                 fileListData[7]
         };
+        // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         // Finished with the servers and clients
@@ -411,24 +413,24 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         wsSrv.stop();
 
         // Clean up
-        db->run(remove_from(fileListCacheTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(fileListCacheTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
     }
 
-    BOOST_AUTO_TEST_CASE(test_job_finished_update) {
+    BOOST_AUTO_TEST_CASE(test_job_finished_update) { // NOLINT(readability-function-cognitive-complexity)
         // Delete all database info just in case
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
         schema::JobserverFiledownload fileDownloadTable;
         schema::JobserverFilelistcache fileListCacheTable;
         schema::JobserverJob jobTable;
         schema::JobserverJobhistory jobHistoryTable;
         schema::JobserverClusteruuid clusterUuidTable;
-        db->run(remove_from(fileListCacheTable).unconditionally());
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
-        db->run(remove_from(clusterUuidTable).unconditionally());
+        database->run(remove_from(fileListCacheTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(clusterUuidTable).unconditionally());
 
         // Set up the cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
@@ -437,8 +439,9 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         // Start the cluster scheduler
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
-            while (running)
+            while (running) {
                 mgr->getvClusters()->at(0)->callrun();
+            }
         });
 
         // Set up the test http server
@@ -457,16 +460,19 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         mgr->callreconnectClusters();
 
         // Connect a fake client to the websocket server
+        bool bReady = false;
         std::vector<std::string> lastDirPath;
         std::vector<bool> lastbRecursive;
-        WsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
-        websocketClient.on_message = [&lastDirPath, &lastbRecursive](const std::shared_ptr<WsClient::Connection>& connection, const std::shared_ptr<WsClient::InMessage>& in_message) {
+        TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
+        websocketClient.on_message = [&lastDirPath, &lastbRecursive, &bReady](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
             // Ignore the ready message
-            if (msg.getId() == SERVER_READY)
+            if (msg.getId() == SERVER_READY) {
+                bReady = true;
                 return;
+            }
 
             // Check that this message can only be a FILE_LIST request
             if (msg.getId() != FILE_LIST) {
@@ -486,18 +492,17 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
             msg.push_string(uuid);
             msg.push_uint(filteredFiles.size());
 
-            for (auto &f : filteredFiles) {
-                auto p = boost::filesystem::path(f.fileName);
-
-                msg.push_string(f.fileName);
-                msg.push_bool(f.isDirectory);
-                msg.push_ulong(f.fileSize);
+            for (auto &file : filteredFiles) {
+                msg.push_string(file.fileName);
+                msg.push_bool(file.isDirectory);
+                msg.push_ulong(file.fileSize);
             }
 
-            auto o = std::make_shared<WsClient::OutMessage>(msg.getdata()->get()->size());
-            std::ostream_iterator<uint8_t> iter(*o);
+            auto outStream = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
+            std::ostream_iterator<uint8_t> iter(*outStream);
             std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
-            connection->send(o, nullptr, 130);
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            connection->send(outStream, nullptr, 130);
         };
 
         // Start the client
@@ -505,10 +510,14 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Wait for the client to connect
+        while (!bReady) {
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 
         // Create a job to request file lists for
-        auto jobId = db->run(
+        auto jobId = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -520,6 +529,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         );
 
         // Create a file list
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
@@ -530,6 +540,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
         // Create params
@@ -541,13 +552,14 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
 
         // This file list will be complete, but won't create any file cache objects because the job has no
         // _job_completion_ job history objects
-        HttpClient httpClient("localhost:8000");
-        auto r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        TestHttpClient httpClient("localhost:8000");
+        auto response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(params["path"]));
         BOOST_CHECK_EQUAL(lastbRecursive.back(), (bool) params["recursive"]);
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         std::vector<sFile> expected = {
                 fileListData[2],
                 fileListData[3],
@@ -555,20 +567,21 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 fileListData[5],
                 fileListData[6]
         };
+        // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
         nlohmann::json result;
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         auto jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         // Reset the websocket trackers
@@ -580,28 +593,28 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         Message msg(UPDATE_JOB);
         msg.push_uint(jobId);                   // jobId
         msg.push_string("running");             // what
-        msg.push_uint(200);                     // status
+        msg.push_uint(static_cast<uint32_t>(JobStatus::COMPLETED)); // status
         msg.push_string("it's fine");           // details
         mgr->getvClusters()->at(0)->handleMessage(msg);
 
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(params["path"]));
         BOOST_CHECK_EQUAL(lastbRecursive.back(), (bool) params["recursive"]);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         // Reset the websocket trackers
@@ -613,7 +626,7 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         msg = Message(UPDATE_JOB);
         msg.push_uint(jobId);                   // jobId
         msg.push_string("_job_completion_");    // what
-        msg.push_uint(400);                     // status
+        msg.push_uint(static_cast<uint32_t>(JobStatus::ERROR)); // status
         msg.push_string("it's fine");           // details
         mgr->getvClusters()->at(0)->handleMessage(msg);
 
@@ -626,45 +639,47 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         lastbRecursive.clear();
 
         // This file list will be complete, and should read files from only the file cache
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         // There should have been two websocket calls - one to get the file list of the initial request, and a second
         // to get the full recursive file list of the entire job
         BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         // Check that the correct file list cache entries were added to the database
-        auto fileListCacheResult = db->run(
+        auto fileListCacheResult = database->run(
                 select(all_of(fileListCacheTable))
                         .from(fileListCacheTable)
                         .where(
-                                fileListCacheTable.jobId == (uint32_t) jobId
+                                fileListCacheTable.jobId == static_cast<uint32_t>(jobId)
                         )
         );
 
         BOOST_CHECK_EQUAL(fileListCacheResult.empty(), false);
 
         std::vector<sFile> files;
-        for (auto &f : fileListCacheResult) {
-            files.push_back({
-                                    f.path,
-                                    (uint64_t) f.fileSize,
-                                    (uint32_t) f.permissions,
-                                    (bool) f.isDir
-                            });
+        for (const auto &file : fileListCacheResult) {
+            files.push_back(
+                {
+                    file.path,
+                    static_cast<uint64_t>(file.fileSize),
+                    static_cast<uint32_t>(file.permissions),
+                    static_cast<bool>(file.isDir)
+                }
+            );
         }
 
         for (auto i = 0; i < files.size(); i++) {
@@ -679,23 +694,23 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         lastbRecursive.clear();
 
         // This file list will be complete, and should not call the websocket since all files should be cached
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         // There should have been no websocket calls
         BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         params = {
@@ -705,23 +720,23 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         };
 
         // This file list will be complete, and should not call the websocket since all files should be cached
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         // There should have been no websocket calls
         BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < fileListData.size(); i++) {
-            auto f = fileListData[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         params = {
@@ -731,15 +746,16 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         };
 
         // This file list will be complete, and should not call the websocket since all files should be cached
-        r = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        response = httpClient.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         // There should have been no websocket calls
         BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
-        r->content >> result;
+        response->content >> result;
         BOOST_CHECK(result.find("files") != result.end());
         jsonData = result["files"];
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         expected = {
                 fileListData[2],
                 fileListData[3],
@@ -748,15 +764,16 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
                 fileListData[6],
                 fileListData[7]
         };
+        // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
         // Check that the file list returned was correct
-        for (auto i = 0; i < expected.size(); i++) {
-            auto f = expected[i];
+        for (auto index = 0; index < expected.size(); index++) {
+            auto file = expected[index];
 
-            BOOST_CHECK_EQUAL(jsonData[i]["path"], f.fileName);
-            BOOST_CHECK_EQUAL(jsonData[i]["isDir"], f.isDirectory);
-            BOOST_CHECK_EQUAL(jsonData[i]["fileSize"], f.fileSize);
-            BOOST_CHECK_EQUAL(jsonData[i]["permissions"], f.permissions);
+            BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
+            BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
+            BOOST_CHECK_EQUAL(jsonData[index]["fileSize"], file.fileSize);
+            BOOST_CHECK_EQUAL(jsonData[index]["permissions"], file.permissions);
         }
 
         // Finished with the servers and clients
@@ -770,8 +787,10 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         wsSrv.stop();
 
         // Clean up
-        db->run(remove_from(fileListCacheTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(fileListCacheTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
     }
-BOOST_AUTO_TEST_SUITE_END();
+BOOST_AUTO_TEST_SUITE_END()
+
+// NOLINTEND(concurrency-mt-unsafe)

@@ -5,12 +5,12 @@
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/remove_whitespace.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
+#include <boost/asio.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <boost/asio.hpp>
-#include <iostream>
 #include <execinfo.h>
+#include <iostream>
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
 auto base64Encode(std::string input) -> std::string

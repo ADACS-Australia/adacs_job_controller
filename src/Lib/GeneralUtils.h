@@ -12,7 +12,7 @@ auto base64Decode(std::string input) -> std::string;
 auto generateUUID() -> std::string;
 void dumpExceptions(std::exception& exception);
 void handleSegv();
-auto acceptingConnections(uint16_t errorCode) -> bool;
+auto acceptingConnections(uint16_t port) -> bool;
 
 #ifdef BUILD_TESTS
 // NOLINTBEGIN
