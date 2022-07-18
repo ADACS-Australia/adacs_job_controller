@@ -2,18 +2,19 @@
 // Created by lewis on 2/10/20.
 //
 
-#include <boost/test/unit_test.hpp>
-#include "../HttpServer.h"
 #include "../../Settings.h"
+#include "../HttpServer.h"
+#include <boost/test/unit_test.hpp>
 #include <jwt/jwt.hpp>
 
+// NOLINTBEGIN(concurrency-mt-unsafe)
 BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
 /*
  * This test suite is responsible for testing the HttpServer class
  */
 
     // Define several clusters and set the environment variable
-    auto sAccess = R"(
+    const auto sAccess = R"(
     [
         {
             "name": "app1",
@@ -34,13 +35,14 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
         /*
          * Test HttpServer constructor
          */
-        // First check that instantiating HttpServer with no access config works as expected
-        auto svr = new HttpServer(nullptr);
-        BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->size(), 0);
-        delete svr;
+        {
+            // First check that instantiating HttpServer with no access config works as expected
+            auto svr = std::make_shared<HttpServer>(nullptr);
+            BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->size(), 0);
+        }
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        svr = new HttpServer(nullptr);
+        auto svr = std::make_shared<HttpServer>(nullptr);
 
         // Double check that the secrets json was correctly parsed
         BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->size(), 3);
@@ -48,24 +50,24 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
             BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->at(i - 1).name(), "app" + std::to_string(i));
             BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->at(i - 1).secret(), "super_secret" + std::to_string(i));
         }
-
-        delete svr;
     }
 
+    // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     BOOST_AUTO_TEST_CASE(test_isAuthorized) {
         /*
          * Test HttpServer->isAuthorized() function
          */
-        // Check that authorization without any config denies access without crashing
-        auto svr = new HttpServer(nullptr);
-        svr->getvJwtSecrets()->clear();
+        {
+            // Check that authorization without any config denies access without crashing
+            auto svr = std::make_shared<HttpServer>(nullptr);
+            svr->getvJwtSecrets()->clear();
 
-        auto headers = SimpleWeb::CaseInsensitiveMultimap();
-        BOOST_CHECK_THROW(svr->isAuthorized(headers), eNotAuthorized);
-        delete svr;
+            auto headers = SimpleWeb::CaseInsensitiveMultimap();
+            BOOST_CHECK_THROW(svr->isAuthorized(headers), eNotAuthorized);
+        }
 
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        svr = new HttpServer(nullptr);
+        auto svr = std::make_shared<HttpServer>(nullptr);
 
         jwt::jwt_object jwtToken {
                 jwt::params::algorithm("HS256"),
@@ -76,23 +78,24 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
                 jwt::params::secret("notarealsecret")
         };
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwtToken.add_claim("exp", now);
 
         // Try using an invalid secret
-        headers = SimpleWeb::CaseInsensitiveMultimap();
+        auto headers = SimpleWeb::CaseInsensitiveMultimap();
         headers.emplace("Authorization", jwtToken.signature());
         BOOST_CHECK_THROW(svr->isAuthorized(headers), eNotAuthorized);
 
         // Try using all 3 valid secrets
-        for (auto& s : *svr->getvJwtSecrets()) {
+        for (auto& jwtSecret : *svr->getvJwtSecrets()) {
             jwtToken = {
                     jwt::params::algorithm("HS256"),
                     jwt::params::payload({
                                                  {"userId", "5"},
                                                  {"userName", "User"}
                                          }),
-                    jwt::params::secret(s.secret())
+                    jwt::params::secret(jwtSecret.secret())
             };
             jwtToken.add_claim("exp", now);
 
@@ -108,7 +111,7 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
                 {"userName", "User"}
             }));
 
-            BOOST_CHECK_EQUAL(svr->isAuthorized(headers)->secret().secret(), s.secret());
+            BOOST_CHECK_EQUAL(svr->isAuthorized(headers)->secret().secret(), jwtSecret.secret());
         }
 
         // Try using one more invalid secret
@@ -125,7 +128,6 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
         headers = SimpleWeb::CaseInsensitiveMultimap();
         headers.emplace("Authorization", jwtToken.signature());
         BOOST_CHECK_THROW(svr->isAuthorized(headers), eNotAuthorized);
-
-        delete svr;
     }
-BOOST_AUTO_TEST_SUITE_END();
+BOOST_AUTO_TEST_SUITE_END()
+// NOLINTEND(concurrency-mt-unsafe)
