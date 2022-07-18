@@ -5,10 +5,10 @@
 #ifndef GWCLOUD_JOB_SERVER_MYSQLCONNECTOR_H
 #define GWCLOUD_JOB_SERVER_MYSQLCONNECTOR_H
 
+#include "../Settings.h"
 #include <sqlpp11/mysql/connection_config.h>
 #include <sqlpp11/mysql/connection.h>
 #include <sqlpp11/sqlpp11.h>
-#include "../Settings.h"
 
 namespace mysql = sqlpp::mysql;
 
@@ -26,21 +26,23 @@ public:
 #else
         config->debug = true;
 #endif
-        db = new mysql::connection(config);
+        database = std::make_shared<mysql::connection>(config);
     }
 
-    ~MySqlConnector() {
-        delete db;
-    }
+    virtual ~MySqlConnector() = default;
+    MySqlConnector(MySqlConnector const&) = delete;
+    auto operator =(MySqlConnector const&) -> MySqlConnector& = delete;
+    MySqlConnector(MySqlConnector&&) = delete;
+    auto operator=(MySqlConnector&&) -> MySqlConnector& = delete;
 
-    mysql::connection *operator->() const
-    { return db; }
+    auto operator->() const -> std::shared_ptr<mysql::connection>
+    { return database; }
 
-    [[nodiscard]] mysql::connection * getDb() const
-    { return db; }
+    [[nodiscard]] auto getDb() const -> std::shared_ptr<mysql::connection>
+    { return database; }
 
 private:
-    mysql::connection* db;
+    std::shared_ptr<mysql::connection> database;
 };
 
 #endif //GWCLOUD_JOB_SERVER_MYSQLCONNECTOR_H
