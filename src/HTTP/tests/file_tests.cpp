@@ -1,24 +1,24 @@
 //
 // Created by lewis on 22/10/20.
 //
+#include "../../Cluster/ClusterManager.h"
+#include "../../DB/MySqlConnector.h"
+#include "../../Lib/JobStatus.h"
+#include "../../Lib/jobserver_schema.h"
+#include "../HttpServer.h"
 #include <boost/test/unit_test.hpp>
 #include <client_http.hpp>
 #include <jwt/jwt.hpp>
-#include "../../Settings.h"
-#include "../../Cluster/ClusterManager.h"
-#include "../HttpServer.h"
-#include "../../DB/MySqlConnector.h"
-#include "../../Lib/jobserver_schema.h"
-#include "../../Lib/JobStatus.h"
 
 using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 
+// NOLINTBEGIN(concurrency-mt-unsafe)
 BOOST_AUTO_TEST_SUITE(File_test_suite)
 /*
  * This test suite is responsible for testing the File HTTP Rest API
  */
 
-    auto sAccess = R"(
+    const auto sAccess = R"(
     [
         {
             "name": "app1",
@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
     ]
     )";
 
-    auto sClusters = R"(
+    const auto sClusters = R"(
     [
         {
             "name": "cluster1",
@@ -91,13 +91,13 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
     BOOST_AUTO_TEST_CASE(test_POST_create_download) {
         // Delete all file download tokens just in case
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
         schema::JobserverFiledownload fileDownloadTable;
         schema::JobserverJob jobTable;
         schema::JobserverJobhistory jobHistoryTable;
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
 
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
@@ -111,7 +111,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Fabricate data
         // Create the new job object
-        auto jobId1 = db->run(
+        auto jobId1 = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -123,19 +123,19 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         );
 
         // Create the first state object
-        db->run(
+        database->run(
                 insert_into(jobHistoryTable)
                         .set(
                                 jobHistoryTable.jobId = jobId1,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                 jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
 
         // Create the new job object
-        auto jobId2 = db->run(
+        auto jobId2 = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -147,19 +147,19 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         );
 
         // Create the first state object
-        db->run(
+        database->run(
                 insert_into(jobHistoryTable)
                         .set(
                                 jobHistoryTable.jobId = jobId2,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                 jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
 
         // Create the new job object
-        auto jobId3 = db->run(
+        auto jobId3 = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -171,13 +171,13 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         );
 
         // Create the first state object
-        db->run(
+        database->run(
                 insert_into(jobHistoryTable)
                         .set(
                                 jobHistoryTable.jobId = jobId3,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                 jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
@@ -186,9 +186,10 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         HttpClient client("localhost:8000");
 
         // Test unauthorized user
-        auto r = client.request("POST", "/job/apiv1/file/", "", {{"Authorization", "not_valid"}});
-        BOOST_CHECK_EQUAL(r->content.string(), "Not authorized");
+        auto result = client.request("POST", "/job/apiv1/file/", "", {{"Authorization", "not_valid"}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Not authorized");
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
@@ -199,17 +200,18 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
         // Test creating a file download with invalid payload but authorized user
-        r = client.request("POST", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(r->content.string(), "Bad request");
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        result = client.request("POST", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
 
         // Test creating a file download with invalid payload but authorized user
-        r = client.request("POST", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(r->content.string(), "Bad request");
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        result = client.request("POST", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
 
         // Test creating a file download for job1 - should be successful because job1 was created by app1 making this request
         nlohmann::json params = {
@@ -217,14 +219,14 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                 {"path",  "/an_awesome_path/"}
         };
 
-        r = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
-        BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+        result = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(result->header.find("Content-Type")->second, "application/json");
 
-        nlohmann::json result;
-        r->content >> result;
+        nlohmann::json jsonResult;
+        result->content >> jsonResult;
 
-        BOOST_CHECK_MESSAGE(result.find("fileId") != result.end(),
+        BOOST_CHECK_MESSAGE(jsonResult.find("fileId") != jsonResult.end(),
                             "result.find(\"fileId\") != result.end() was not the expected value");
 
         // Check that app2 can request a file download for a job run by app1
@@ -237,15 +239,16 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
-        r = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
-        BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+        result = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(result->header.find("Content-Type")->second, "application/json");
 
-        r->content >> result;
+        result->content >> jsonResult;
 
-        BOOST_CHECK_MESSAGE(result.find("fileId") != result.end(),
+        BOOST_CHECK_MESSAGE(jsonResult.find("fileId") != jsonResult.end(),
                             "result.find(\"fileId\") != result.end() was not the expected value");
 
         // Check that app4 can't request a file download for a job run by app1
@@ -258,11 +261,12 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
-        r = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(r->content.string(), "Bad request");
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        result = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
 
         // Test creating multiple file downloads for job1
         jwtToken = {
@@ -274,6 +278,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
         params = {
@@ -289,16 +294,16 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                 }
         };
 
-        r = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
-        BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+        result = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(result->header.find("Content-Type")->second, "application/json");
 
-        r->content >> result;
+        result->content >> jsonResult;
 
-        BOOST_CHECK_MESSAGE(result.find("fileIds") != result.end(),
+        BOOST_CHECK_MESSAGE(jsonResult.find("fileIds") != jsonResult.end(),
                             "result.find(\"fileIds\") != result.end() was not the expected value");
 
-        BOOST_CHECK_MESSAGE(result["fileIds"].size() == 5,
+        BOOST_CHECK_MESSAGE(jsonResult["fileIds"].size() == 5,
                             "result[\"fileIds\"].size() == 5 was not the expected value");
 
         // Test empty file path list doesn't cause an exception
@@ -307,36 +312,36 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                 {"paths", std::vector<std::string>()}
         };
 
-        r = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::success_ok);
-        BOOST_CHECK_EQUAL(r->header.find("Content-Type")->second, "application/json");
+        result = client.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(result->header.find("Content-Type")->second, "application/json");
 
-        r->content >> result;
+        result->content >> jsonResult;
 
-        BOOST_CHECK_MESSAGE(result.find("fileIds") != result.end(),
+        BOOST_CHECK_MESSAGE(jsonResult.find("fileIds") != jsonResult.end(),
                             "result.find(\"fileIds\") != result.end() was not the expected value");
 
-        BOOST_CHECK_MESSAGE(result["fileIds"].empty(),
+        BOOST_CHECK_MESSAGE(jsonResult["fileIds"].empty(),
                             "result[\"fileIds\"].size() == 5 was not the expected value");
 
         // Finished with the server
         svr->stop();
 
         // Clean up
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
     }
 
     BOOST_AUTO_TEST_CASE(test_PATCH_get_file_list) {
         // Delete all file download tokens just in case
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
         schema::JobserverFiledownload fileDownloadTable;
         schema::JobserverJob jobTable;
         schema::JobserverJobhistory jobHistoryTable;
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
 
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
@@ -350,7 +355,7 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Fabricate data
         // Create the new job object
-        auto jobId1 = db->run(
+        auto jobId1 = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -362,19 +367,19 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         );
 
         // Create the first state object
-        db->run(
+        database->run(
                 insert_into(jobHistoryTable)
                         .set(
                                 jobHistoryTable.jobId = jobId1,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                 jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
 
         // Create the new job object
-        auto jobId2 = db->run(
+        auto jobId2 = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -386,19 +391,19 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         );
 
         // Create the first state object
-        db->run(
+        database->run(
                 insert_into(jobHistoryTable)
                         .set(
                                 jobHistoryTable.jobId = jobId2,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                 jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
 
         // Create the new job object
-        auto jobId3 = db->run(
+        auto jobId3 = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -410,13 +415,13 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         );
 
         // Create the first state object
-        db->run(
+        database->run(
                 insert_into(jobHistoryTable)
                         .set(
                                 jobHistoryTable.jobId = jobId3,
                                 jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                 jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = (uint32_t) JobStatus::PENDING,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
                                 jobHistoryTable.details = "Job submitting"
                         )
         );
@@ -425,9 +430,10 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
         HttpClient client("localhost:8000");
 
         // Test unauthorized user
-        auto r = client.request("PATCH", "/job/apiv1/file/", "", {{"Authorization", "not_valid"}});
-        BOOST_CHECK_EQUAL(r->content.string(), "Not authorized");
+        auto result = client.request("PATCH", "/job/apiv1/file/", "", {{"Authorization", "not_valid"}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Not authorized");
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
@@ -438,17 +444,18 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
         // Test requesting a file list with invalid payload but authorized user
-        r = client.request("PATCH", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(r->content.string(), "Bad request");
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        result = client.request("PATCH", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
 
         // Test requesting a file list with invalid payload but authorized user
-        r = client.request("PATCH", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(r->content.string(), "Bad request");
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        result = client.request("PATCH", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
 
         // Test requesting a file list for job1 - should be successful because job1 was created by app1 making this request
         nlohmann::json params = {
@@ -457,9 +464,9 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
                 {"path",      "/an_awesome_path/"}
         };
 
-        r = client.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::server_error_service_unavailable);
-        BOOST_CHECK_EQUAL(r->content.string(), "Remote Cluster Offline");
+        result = client.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::server_error_service_unavailable);
+        BOOST_CHECK_EQUAL(result->content.string(), "Remote Cluster Offline");
 
         // Check that app2 can request a file list for a job run by app1
         jwtToken = {
@@ -471,11 +478,12 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
-        r = client.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::server_error_service_unavailable);
-        BOOST_CHECK_EQUAL(r->content.string(), "Remote Cluster Offline");
+        result = client.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::server_error_service_unavailable);
+        BOOST_CHECK_EQUAL(result->content.string(), "Remote Cluster Offline");
 
         // Check that app4 can't request a file list for a job run by app1
         jwtToken = {
@@ -487,19 +495,21 @@ BOOST_AUTO_TEST_SUITE(File_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
-        r = client.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
-        BOOST_CHECK_EQUAL(r->content.string(), "Bad request");
-        BOOST_CHECK_EQUAL(std::stoi(r->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+        result = client.request("PATCH", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
 
         // Finished with the server
         svr->stop();
 
         // Clean up
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
     }
 
 BOOST_AUTO_TEST_SUITE_END()
+// NOLINTEND(concurrency-mt-unsafe)
