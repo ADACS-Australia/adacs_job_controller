@@ -296,16 +296,19 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         // Connect a fake client to the websocket server
         TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
         bool* bPaused = new bool;
+        bool* bReady = new bool;
         *bPaused = false;
         uint64_t fileSize;
         std::thread* pThread;
-        websocketClient.on_message = [&pThread, bPaused, &mgr, &fileSize](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
+        websocketClient.on_message = [&pThread, bPaused, bReady, &mgr, &fileSize](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
             // Ignore the ready message
-            if (msg.getId() == SERVER_READY)
+            if (msg.getId() == SERVER_READY) {
+                *bReady = true;
                 return;
+            }
 
             // Check if this is a pause transfer message
             if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
@@ -368,7 +371,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         });
 
         // Wait for the client to connect
-        while (!*mgr->getvClusters()->at(0)->getpConnection()) {
+        while (!*bReady) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
