@@ -4,12 +4,11 @@
  *   Redistributed under LGPL license terms.                               *
  ***************************************************************************/
 
+// NOLINTBEGIN
+
 #include "segvcatch.h"
-
-#include <string>
 #include <stdexcept>
-
-using namespace std;
+#include <string>
 
 namespace
 {
@@ -149,3 +148,5 @@ namespace segvcatch
     }
 
 }
+
+// NOLINTEND

@@ -15,6 +15,7 @@ This software is copyrighted work licensed under the terms of the
 Libgcj License.  Please consult the file "LIBGCJ_LICENSE" for
 details.  */
 
+// NOLINTBEGIN
 
 #ifdef __x86_64__
 
@@ -182,5 +183,7 @@ while (0)
 #include <java-signal-aux.h>
 
 #endif /* __x86_64__ */
+
+// NOLINTEND
 
 #endif //GWCLOUD_JOB_SERVER_X86_64_SIGNAL_H
