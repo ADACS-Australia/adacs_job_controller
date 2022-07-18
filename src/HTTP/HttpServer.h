@@ -5,11 +5,11 @@
 #ifndef GWCLOUD_JOB_SERVER_HTTPSERVER_H
 #define GWCLOUD_JOB_SERVER_HTTPSERVER_H
 
-#include <iostream>
-#include <server_http.hpp>
-#include <nlohmann/json.hpp>
-#include <utility>
 #include "../Lib/GeneralUtils.h"
+#include <iostream>
+#include <nlohmann/json.hpp>
+#include <server_http.hpp>
+#include <utility>
 
 using HttpServerImpl = SimpleWeb::Server<SimpleWeb::HTTP>;
 
@@ -24,24 +24,26 @@ public:
         name_ = jToken["name"];
         secret_ = jToken["secret"];
 
-        for (const auto &n : jToken["applications"])
-            applications_.push_back(n);
+        for (const auto &application : jToken["applications"]) {
+            applications_.push_back(application);
+        }
 
-        for (const auto &n : jToken["clusters"])
-            clusters_.push_back(n);
+        for (const auto &cluster : jToken["clusters"]) {
+            clusters_.push_back(cluster);
+        }
     }
 
     // The name of this application
-    const auto &name() { return name_; }
+    auto name() -> const auto & { return name_; }
 
     // The secret (JWT Secret) for this application
-    const auto &secret() { return secret_; }
+    auto secret() -> const auto & { return secret_; }
 
     // The list of other applications that this application has access to (Jobs from these applications)
-    const auto &applications() { return applications_; }
+    auto applications() -> const auto & { return applications_; }
 
     // The list of clusters this application can submit to
-    const auto &clusters() { return clusters_; }
+    auto clusters() -> const auto & { return clusters_; }
 
 private:
     std::string name_;
@@ -56,10 +58,10 @@ public:
             : payload_(std::move(payload)), secret_(secret) {}
 
     // The decoded payload from the JWT Authorization header
-    const auto &payload() { return payload_; }
+    auto payload() -> const auto & { return payload_; }
 
     // The JwtSecret that successfully decoded the Authorization header
-    auto &secret() { return secret_; }
+    auto secret() -> auto & { return secret_; }
 
 private:
     const nlohmann::json payload_;
@@ -68,7 +70,7 @@ private:
 
 class HttpServer {
 public:
-    explicit HttpServer(std::shared_ptr<ClusterManager> clusterManager);
+    explicit HttpServer(const std::shared_ptr<ClusterManager>& clusterManager);
 
     void start();
 
@@ -76,9 +78,9 @@ public:
 
     void stop();
 
-    HttpServerImpl &getServer() { return this->server; }
+    auto getServer() -> HttpServerImpl & { return this->server; }
 
-    std::unique_ptr<sAuthorizationResult> isAuthorized(SimpleWeb::CaseInsensitiveMultimap &headers);
+    auto isAuthorized(SimpleWeb::CaseInsensitiveMultimap &headers) -> std::unique_ptr<sAuthorizationResult>;
 
 private:
     HttpServerImpl server;
@@ -89,9 +91,8 @@ private:
 EXPOSE_PROPERTY_FOR_TESTING(vJwtSecrets);
 };
 
-extern void JobApi(const std::string &path, HttpServer *server, std::shared_ptr<ClusterManager> clusterManager);
-
-extern void FileApi(const std::string &path, HttpServer *server, std::shared_ptr<ClusterManager> clusterManager);
+void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager);
+void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager);
 
 
 #endif //GWCLOUD_JOB_SERVER_HTTPSERVER_H

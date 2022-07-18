@@ -1,58 +1,60 @@
 //
 // Created by lewis on 6/7/21.
 //
-#include "HandleFileList.h"
-#include <boost/lexical_cast.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/uuid/random_generator.hpp>
-#include "boost/filesystem.hpp"
+
 #include "../../DB/MySqlConnector.h"
 #include "../../Lib/jobserver_schema.h"
+#include "HandleFileList.h"
+#include <boost/filesystem.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include <filesystem>
 
-using namespace schema;
-
-std::vector<sFile> filterFiles(const std::vector<sFile> &files, const std::string &filePath, bool bRecursive) {
+auto filterFiles(const std::vector<sFile> &files, const std::string &filePath, bool bRecursive) -> std::vector<sFile> {
     std::vector<sFile> matchedFiles;
 
     // Get the absolute path (Resolves paths like "/test/../test2/test/../myfile")
     auto absoluteFilePath = std::filesystem::weakly_canonical(std::filesystem::path(filePath)).string();
 
     // Make sure that the path has a leading and trailing slash so we correctly match only directories
-    if (!absoluteFilePath.empty() && absoluteFilePath.back() != '/')
+    if (!absoluteFilePath.empty() && absoluteFilePath.back() != '/') {
         absoluteFilePath += '/';
+    }
 
-    if (absoluteFilePath.empty() || absoluteFilePath.front() != '/')
+    if (absoluteFilePath.empty() || absoluteFilePath.front() != '/') {
         absoluteFilePath = "/" + absoluteFilePath;
+    }
 
     // Create a version of the path with no trailing slash to match the base directory
     auto absoluteFilePathNoTrailingSlash = boost::filesystem::path(absoluteFilePath).remove_trailing_separator().string();
 
-    for (const auto &f : files) {
-        auto p = boost::filesystem::path(f.fileName);
+    for (const auto &file : files) {
+        auto path = boost::filesystem::path(file.fileName);
 
         if (bRecursive) {
             // Make sure the parent path has a trailing slash
-            auto parentPath = p.parent_path().string();
-            if (!parentPath.empty() && parentPath.back() != '/')
+            auto parentPath = path.parent_path().string();
+            if (!parentPath.empty() && parentPath.back() != '/') {
                 parentPath += '/';
+            }
 
             // If the path starts with absoluteFilePath then the file matches. Any files falling under this path match.
             if (
-                    p.string() == absoluteFilePath
+                    path.string() == absoluteFilePath
                     || parentPath.rfind(absoluteFilePath, 0) == 0
-                    || (p.string() == absoluteFilePathNoTrailingSlash && f.isDirectory)
+                    || (path.string() == absoluteFilePathNoTrailingSlash && file.isDirectory)
                     ) {
-                matchedFiles.push_back(f);
+                matchedFiles.push_back(file);
             }
         } else {
             // If the parent path exactly matches the absoluteFilePath then the file matches.
             if (
-                    p.parent_path().string() == absoluteFilePath
-                    || p.parent_path().string() == absoluteFilePathNoTrailingSlash
-                    || (p.string() == absoluteFilePathNoTrailingSlash && f.isDirectory)
+                    path.parent_path().string() == absoluteFilePath
+                    || path.parent_path().string() == absoluteFilePathNoTrailingSlash
+                    || (path.string() == absoluteFilePathNoTrailingSlash && file.isDirectory)
                     ) {
-                matchedFiles.push_back(f);
+                matchedFiles.push_back(file);
             }
         }
     }
@@ -60,18 +62,18 @@ std::vector<sFile> filterFiles(const std::vector<sFile> &files, const std::strin
     return matchedFiles;
 }
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity,misc-no-recursion)
 void handleFileList(
         std::shared_ptr<Cluster> cluster, auto job, bool bRecursive, const std::string &filePath,
-        const std::string &appName, const std::vector<std::string> &applications,
         const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
-    auto db = MySqlConnector();
+    auto database = MySqlConnector();
 
     // Get the tables
-    JobserverJob jobTable;
-    JobserverJobhistory jobHistoryTable;
-    JobserverFilelistcache fileListCacheTable;
+    schema::JobserverJob jobTable;
+    schema::JobserverJobhistory jobHistoryTable;
+    schema::JobserverFilelistcache fileListCacheTable;
 
     // Create a new file list object
     auto flObj = std::make_shared<sFileList>();
@@ -82,17 +84,18 @@ void handleFileList(
     try {
         // If the cluster isn't online then there isn't anything to do
         if (!cluster->isOnline()) {
-            if (response)
+            if (response) {
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
+            }
             return;
         }
 
         // Check if this job is completed
-        auto jobCompletionResult = db->run(
+        auto jobCompletionResult = database->run(
                 select(all_of(jobHistoryTable))
                         .from(jobHistoryTable)
                         .where(
-                                jobHistoryTable.jobId == (uint32_t) job->id
+                                jobHistoryTable.jobId == static_cast<uint32_t>(job->id)
                                 and jobHistoryTable.what == "_job_completion_"
                         )
         );
@@ -102,11 +105,11 @@ void handleFileList(
 
         if (jobComplete) {
             // Get any file list cache records for this job
-            auto fileListCacheResult = db->run(
+            auto fileListCacheResult = database->run(
                     select(all_of(fileListCacheTable))
                             .from(fileListCacheTable)
                             .where(
-                                    fileListCacheTable.jobId == (uint32_t) job->id
+                                    fileListCacheTable.jobId == static_cast<uint32_t>(job->id)
                             )
             );
 
@@ -115,12 +118,12 @@ void handleFileList(
             if (!fileListCacheResult.empty()) {
 
                 std::vector<sFile> files;
-                for (auto &f : fileListCacheResult) {
+                for (const auto &cacheResult : fileListCacheResult) {
                     files.push_back({
-                                            f.path,
-                                            (uint64_t) f.fileSize,
-                                            (uint32_t) f.permissions,
-                                            (bool) f.isDir
+                                            cacheResult.path,
+                                            static_cast<uint64_t>(cacheResult.fileSize),
+                                            static_cast<uint32_t>(cacheResult.permissions),
+                                            static_cast<bool>(cacheResult.isDir)
                                     });
                 }
 
@@ -130,12 +133,12 @@ void handleFileList(
                 // Iterate over the files and generate the result
                 nlohmann::json result;
                 result["files"] = nlohmann::json::array();
-                for (const auto &f : filteredFiles) {
+                for (const auto &file : filteredFiles) {
                     nlohmann::json jFile;
-                    jFile["path"] = f.fileName;
-                    jFile["isDir"] = f.isDirectory;
-                    jFile["fileSize"] = f.fileSize;
-                    jFile["permissions"] = f.permissions;
+                    jFile["path"] = file.fileName;
+                    jFile["isDir"] = file.isDirectory;
+                    jFile["fileSize"] = file.fileSize;
+                    jFile["permissions"] = file.permissions;
 
                     result["files"].push_back(jFile);
                 }
@@ -144,7 +147,9 @@ void handleFileList(
                 SimpleWeb::CaseInsensitiveMultimap headers;
                 headers.emplace("Content-Type", "application/json");
 
-                if (response) response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+                if (response) {
+                    response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+                }
                 return;
             }
         }
@@ -154,9 +159,9 @@ void handleFileList(
 
         // Send a message to the client to initiate the file list
         auto msg = Message(FILE_LIST, Message::Priority::Highest, uuid);
-        msg.push_uint((uint32_t) job->id);
+        msg.push_uint(static_cast<uint32_t>(job->id));
         msg.push_string(uuid);
-        msg.push_string(std::string(job->bundle));
+        msg.push_string(std::string{job->bundle});
         msg.push_string(filePath);
         msg.push_bool(bRecursive);
         msg.send(cluster);
@@ -166,7 +171,7 @@ void handleFileList(
             std::unique_lock<std::mutex> lock(flObj->dataCVMutex);
 
             // Wait for data to be ready to send
-            if (!flObj->dataCV.wait_for(lock, std::chrono::seconds(30), [&flObj] { return flObj->dataReady; })) {
+            if (!flObj->dataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&flObj] { return flObj->dataReady; })) {
                 // Timeout reached, set the error
                 flObj->error = true;
                 flObj->errorDetails = "Client too took long to respond.";
@@ -180,11 +185,14 @@ void handleFileList(
                 std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
                 // Remove the file list object
-                if (fileListMap->find(uuid) != fileListMap->end())
+                if (fileListMap->find(uuid) != fileListMap->end()) {
                     fileListMap->erase(uuid);
+                }
             }
 
-            if (response) response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj->errorDetails);
+            if (response) {
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, flObj->errorDetails);
+            }
             return;
         }
 
@@ -200,12 +208,12 @@ void handleFileList(
         // Iterate over the files and generate the result
         nlohmann::json result;
         result["files"] = nlohmann::json::array();
-        for (const auto &f : flObj->files) {
+        for (const auto &file : flObj->files) {
             nlohmann::json jFile;
-            jFile["path"] = f.fileName;
-            jFile["isDir"] = f.isDirectory;
-            jFile["fileSize"] = f.fileSize;
-            jFile["permissions"] = f.permissions;
+            jFile["path"] = file.fileName;
+            jFile["isDir"] = file.isDirectory;
+            jFile["fileSize"] = file.fileSize;
+            jFile["permissions"] = file.permissions;
 
             result["files"].push_back(jFile);
 
@@ -213,11 +221,11 @@ void handleFileList(
             if (jobComplete) {
                 // Insert the file list cache record
                 insert_query.values.add(
-                        fileListCacheTable.jobId = (int32_t) job->id,
-                        fileListCacheTable.path = std::string(f.fileName),
-                        fileListCacheTable.isDir = f.isDirectory ? 1 : 0,
-                        fileListCacheTable.fileSize = (long long) f.fileSize,
-                        fileListCacheTable.permissions = (int) f.permissions,
+                        fileListCacheTable.jobId = static_cast<int32_t>(job->id),
+                        fileListCacheTable.path = std::string(file.fileName),
+                        fileListCacheTable.isDir = file.isDirectory ? 1 : 0,
+                        fileListCacheTable.fileSize = static_cast<int64_t>(file.fileSize),
+                        fileListCacheTable.permissions = static_cast<int>(file.permissions),
                         fileListCacheTable.timestamp =
                                 std::chrono::time_point_cast<std::chrono::microseconds>(
                                         std::chrono::system_clock::now()
@@ -234,19 +242,19 @@ void handleFileList(
                 // Start a transaction so we can catch an insertion error if required. This can happen if this
                 // function is called more than once at the same time. (Two users might hit the same job in the UI
                 // or API at the same time)
-                db->start_transaction();
+                database->start_transaction();
 
                 // Insert the records
-                db->run(insert_query);
+                database->run(insert_query);
 
                 // Commit the changes in the database
-                db->commit_transaction();
+                database->commit_transaction();
             } catch (sqlpp::exception& e) {
                 dumpExceptions(e);
 
                 // Uh oh, an error occurred
                 // Abort the transaction
-                db->rollback_transaction(false);
+                database->rollback_transaction(false);
             }
         } else if (jobComplete) {
             // Somehow the job is complete, but there were no previous records - but the user has requested a
@@ -254,7 +262,7 @@ void handleFileList(
             // to reduce the number of times we hit the remote filesystem for the file list, let's call it once
             // more right now with the correct parameters to cache all files
 
-            ::handleFileList(cluster, job, true, "", "job_controller", {}, nullptr);
+            ::handleFileList(cluster, job, true, "", nullptr);
         }
 
         {
@@ -262,43 +270,50 @@ void handleFileList(
             std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
             // Remove the file list object
-            if (fileListMap->find(uuid) != fileListMap->end())
+            if (fileListMap->find(uuid) != fileListMap->end()) {
                 fileListMap->erase(uuid);
+            }
         }
 
         // Return the result
         SimpleWeb::CaseInsensitiveMultimap headers;
         headers.emplace("Content-Type", "application/json");
 
-        if (response) response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-    } catch (std::exception& e) {
-        dumpExceptions(e);
+        if (response) {
+            response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+        }
+    } catch (std::exception& exception) {
+        dumpExceptions(exception);
 
         {
             // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
             std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
 
             // Remove the file list object
-            if (fileListMap->find(uuid) != fileListMap->end())
+            if (fileListMap->find(uuid) != fileListMap->end()) {
                 fileListMap->erase(uuid);
+            }
         }
 
         // Report bad request
-        if (response) response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+        if (response) {
+            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+        }
     }
 }
 
 void handleFileList(
-        std::shared_ptr<ClusterManager> clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
+        // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+        const std::shared_ptr<ClusterManager>& clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications, const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
-    auto db = MySqlConnector();
+    auto database = MySqlConnector();
 
     // Get the tables
-    JobserverJob jobTable;
-    JobserverJobhistory jobHistoryTable;
-    JobserverFilelistcache fileListCacheTable;
+    schema::JobserverJob jobTable;
+    schema::JobserverJobhistory jobHistoryTable;
+    schema::JobserverFilelistcache fileListCacheTable;
 
     try {
         // Look up the job. If applications is empty, we ignore the application check. This is used internally for
@@ -307,19 +322,19 @@ void handleFileList(
         // it's configured in the JWT secrets config.
         auto jobResults =
                 applications.empty() ?
-                db->run(
+                database->run(
                         select(all_of(jobTable))
                                 .from(jobTable)
                                 .where(
-                                        jobTable.id == (uint32_t) jobId
+                                        jobTable.id == jobId
                                 )
                 )
                                      :
-                db->run(
+                database->run(
                         select(all_of(jobTable))
                                 .from(jobTable)
                                 .where(
-                                        jobTable.id == (uint32_t) jobId
+                                        jobTable.id == jobId
                                         and jobTable.application.in(sqlpp::value_list(applications))
                                 )
                 );
@@ -331,9 +346,9 @@ void handleFileList(
         }
 
         // Get the cluster and bundle from the job
-        auto job = &jobResults.front();
-        auto sCluster = std::string(job->cluster);
-        auto sBundle = std::string(job->bundle);
+        const auto *job = &jobResults.front();
+        auto sCluster = std::string{job->cluster};
+        auto sBundle = std::string{job->bundle};
 
         // Check that the cluster is online
         // Get the cluster to submit to
@@ -343,7 +358,7 @@ void handleFileList(
             throw std::runtime_error("Invalid cluster");
         }
 
-        handleFileList(cluster, job, bRecursive, filePath, appName, applications, response);
+        handleFileList(cluster, job, bRecursive, filePath, response);
     } catch (std::exception& e) {
         dumpExceptions(e);
 

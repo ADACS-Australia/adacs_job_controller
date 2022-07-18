@@ -3,17 +3,17 @@
 //
 
 #include "HttpUtils.h"
-#include <jwt/jwt.hpp>
-#include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <jwt/jwt.hpp>
 
-std::string getHeader(SimpleWeb::CaseInsensitiveMultimap& headers, const std::string &header) {
+auto getHeader(SimpleWeb::CaseInsensitiveMultimap& headers, const std::string &header) -> std::string {
     // Iterate over the headers
-    for (const auto &h : headers) {
+    for (const auto &headerItem : headers) {
         // Check if the header matches
-        if (h.first == header) {
+        if (headerItem.first == header) {
             // Return the header value
-            return h.second;
+            return headerItem.second;
         }
     }
 
@@ -21,37 +21,42 @@ std::string getHeader(SimpleWeb::CaseInsensitiveMultimap& headers, const std::st
     return {};
 }
 
-std::vector<uint64_t> getQueryParamAsVectorInt(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) {
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
+// This lint is for a clang-tidy false positive https://bugs.llvm.org/show_bug.cgi?id=41141
+auto getQueryParamAsVectorInt(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) -> std::vector<uint64_t> {
     auto arrayPtr = query_fields.find(what);
     std::vector<uint64_t> intArray;
     if (arrayPtr != query_fields.end()) {
         std::vector<std::string> sIntArray;
         boost::split(sIntArray, arrayPtr->second, boost::is_any_of(", "), boost::token_compress_on);
 
-        for (const auto &id : sIntArray) {
-            intArray.push_back(stoi(id));
+        for (const auto &item : sIntArray) {
+            intArray.push_back(stoi(item));
         }
     }
     return intArray;
 }
+// NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
 
-uint64_t getQueryParamAsInt(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) {
+auto getQueryParamAsInt(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) -> uint64_t {
     auto ptr = query_fields.find(what);
     uint64_t result = 0;
-    if (ptr != query_fields.end())
+    if (ptr != query_fields.end()) {
         result = std::stoll(ptr->second);
+    }
     return result;
 }
 
-std::string getQueryParamAsString(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) {
+auto getQueryParamAsString(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) -> std::string {
     auto ptr = query_fields.find(what);
     std::string result;
-    if (ptr != query_fields.end())
+    if (ptr != query_fields.end()) {
         result = ptr->second;
+    }
     return result;
 }
 
-bool hasQueryParam(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) {
+auto hasQueryParam(SimpleWeb::CaseInsensitiveMultimap &query_fields, const std::string& what) -> bool {
     auto ptr = query_fields.find(what);
     return ptr != query_fields.end();
 }
