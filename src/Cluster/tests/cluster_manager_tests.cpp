@@ -112,7 +112,7 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
 
         // Add connected clusters
         std::map<std::shared_ptr<WsServer::Connection>, std::shared_ptr<Cluster>> connections;
-        for (auto cluster : *mgr->getvClusters()) {
+        for (const auto& cluster : *mgr->getvClusters()) {
             auto con = std::make_shared<WsServer::Connection>(nullptr);
             mgr->getmConnectedClusters()->emplace(con, cluster);
             connections[con] = cluster;
