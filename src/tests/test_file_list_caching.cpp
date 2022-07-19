@@ -730,8 +730,8 @@ BOOST_AUTO_TEST_SUITE(file_list_caching_test_suite)
         jsonData = result["files"];
 
         // Check that the file list returned was correct
-        for (auto index = 0; index < expected.size(); index++) {
-            auto file = expected[index];
+        for (auto index = 0; index < fileListData.size(); index++) {
+            auto file = fileListData[index];
 
             BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
             BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
