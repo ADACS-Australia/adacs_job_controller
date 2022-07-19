@@ -2,43 +2,44 @@
 // Created by lewis on 10/6/21.
 //
 
-#include <boost/test/unit_test.hpp>
-#include <nlohmann/json.hpp>
-#include <thread>
-#include <chrono>
-#include <jwt/jwt.hpp>
-#include "../Settings.h"
-#include "../Lib/GeneralUtils.h"
 #include "../Cluster/ClusterManager.h"
+#include "jwt/jwt.hpp"
 #include "utils.h"
+#include <boost/test/unit_test.hpp>
+#include <cstddef>
 
-size_t parseLine(char* line){
+// NOLINTBEGIN(concurrency-mt-unsafe)
+
+// TODO(lewis): parseLine and getCurrentMemoryUsage functions require a refactor
+auto parseLine(char* line) -> size_t{
     // This assumes that a digit will be found and the line ends in " Kb".
-    size_t i = strlen(line);
-    const char* p = line;
-    while (*p <'0' || *p > '9') p++;
-    line[i-3] = '\0';
-    i = std::atol(p);
-    return i;
+    size_t lineLen = strlen(line);
+    const char* ptr = line;
+    while (*ptr < '0' || *ptr > '9') { ptr++; } // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+    line[lineLen - 3] = '\0'; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+    lineLen = std::atol(ptr); // NOLINT(cert-err34-c)
+    return lineLen;
 }
 
-size_t getCurrentMemoryUsage() {
-    FILE* file = fopen("/proc/self/status", "r");
+// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+auto getCurrentMemoryUsage() -> size_t {
+    FILE* file = fopen("/proc/self/status", "r"); // NOLINT(cppcoreguidelines-owning-memory)
     size_t result = -1;
-    char line[128];
+    std::array<char, 128> line{};
 
-    while (fgets(line, 128, file) != nullptr){
-        if (strncmp(line, "VmRSS:", 6) == 0){
-            result = parseLine(line);
+    while (fgets(line.data(), 128, file) != nullptr){
+        if (strncmp(line.data(), "VmRSS:", 6) == 0){
+            result = parseLine(line.data());
             break;
         }
     }
-    fclose(file);
+    fclose(file); // NOLINT(cppcoreguidelines-owning-memory,cert-err33-c)
     return result;
 }
+// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
 BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
-    auto sAccess = R"(
+    const auto sAccess = R"(
     [
         {
             "name": "app1",
@@ -51,7 +52,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
     ]
     )";
 
-    auto sClusters = R"(
+    const auto sClusters = R"(
     [
         {
             "name": "cluster1",
@@ -65,15 +66,15 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
     BOOST_AUTO_TEST_CASE(test_file_transfer) {
         // Delete all database info just in case
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
         schema::JobserverFiledownload fileDownloadTable;
         schema::JobserverJob jobTable;
         schema::JobserverJobhistory jobHistoryTable;
         schema::JobserverClusteruuid clusterUuidTable;
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
-        db->run(remove_from(clusterUuidTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(clusterUuidTable).unconditionally());
 
         // Set up the cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
@@ -82,8 +83,9 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         // Start the cluster scheduler
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
-            while (running)
+            while (running) {
                 mgr->getvClusters()->at(0)->callrun();
+            }
         });
 
         // Set up the test http server
@@ -103,73 +105,80 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Connect a fake client to the websocket server
         TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
-        auto fileData = new std::vector<uint8_t>();
-        bool* bPaused = new bool;
-        *bPaused = false;
-        std::thread* pThread;
-        websocketClient.on_message = [&pThread, fileData, bPaused](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
+        auto fileData = std::vector<uint8_t>();
+        bool bPaused = false;
+        bool bReady = false;
+        std::thread pThread;
+        websocketClient.on_message = [&pThread, &fileData, &bPaused, &bReady](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
             // Ignore the ready message
-            if (msg.getId() == SERVER_READY)
+            if (msg.getId() == SERVER_READY) {
+                bReady = true;
                 return;
+            }
 
             // Check if this is a pause transfer message
             if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
-                *bPaused = true;
+                bPaused = true;
                 return;
             }
 
             // Check if this is a resume transfer message
             if (msg.getId() == RESUME_FILE_CHUNK_STREAM) {
-                *bPaused = false;
+                bPaused = false;
                 return;
             }
 
-            auto jobId = msg.pop_uint();
+            msg.pop_uint();
             auto uuid = msg.pop_string();
             auto sBundle = msg.pop_string();
             auto sFilePath = msg.pop_string();
 
-            auto fileSize = randomInt(0, 1024*1024);
-            fileData->reserve(fileSize);
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            auto fileSize = randomInt(0, 1024ULL*1024ULL);
+            fileData.reserve(fileSize);
 
             // Send the file size to the server
             msg = Message(FILE_DETAILS, Message::Priority::Highest, "");
             msg.push_string(uuid);
             msg.push_ulong(fileSize);
 
-            auto o = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
-            std::ostream_iterator<uint8_t> iter(*o);
+            auto outMessage = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
+            std::ostream_iterator<uint8_t> iter(*outMessage);
             std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
-            connection->send(o, nullptr, 130);
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            connection->send(outMessage, nullptr, 130);
 
             // Now send the file content in to chunks and send it to the client
-            pThread = new std::thread([bPaused, connection, fileSize, uuid, fileData]() {
+            pThread = std::thread([&bPaused, connection, fileSize, uuid, &fileData]() {
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                 auto CHUNK_SIZE = 1024*64;
 
                 uint64_t bytesSent = 0;
                 while (bytesSent < fileSize) {
                     // Don't do anything while the stream is paused
-                    while (*bPaused)
-                        std::this_thread::sleep_for(std::chrono::milliseconds (1));
+                    while (bPaused) {
+                        std::this_thread::yield();
+                    }
 
-                    auto chunkSize = std::min((uint32_t) CHUNK_SIZE, (uint32_t) (fileSize-bytesSent));
+                    auto chunkSize = std::min(static_cast<uint32_t>(CHUNK_SIZE), static_cast<uint32_t>(fileSize-bytesSent));
                     bytesSent += chunkSize;
 
                     auto data = generateRandomData(chunkSize);
 
-                    fileData->insert(fileData->end(), data->begin(), data->end());
+                    fileData.insert(fileData.end(), (*data).begin(), (*data).end());
 
                     auto msg = Message(FILE_CHUNK, Message::Priority::Lowest, "");
                     msg.push_string(uuid);
                     msg.push_bytes(*data);
 
-                    auto o = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
-                    std::ostream_iterator<uint8_t> iter(*o);
+                    auto message = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
+                    std::ostream_iterator<uint8_t> iter(*message);
                     std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
-                    connection->send(o, nullptr, 130);
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                    connection->send(message, nullptr, 130);
                 }
             });
 
@@ -180,10 +189,14 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             websocketClient.start();
         });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Wait for the client to connect
+        while (!bReady) {
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 
         // Create a job to request files for
-        auto jobId = db->run(
+        auto jobId = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -195,6 +208,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         );
 
         // Create a file download
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
@@ -205,6 +219,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
         // Create params
@@ -214,26 +229,25 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         };
 
         TestHttpClient httpClient("localhost:8000");
-        auto r = httpClient.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        auto response = httpClient.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         nlohmann::json result;
-        r->content >> result;
+        response->content >> result;
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         for (int i = 0; i < 5; i++) {
             // Try to download the file
-            r = httpClient.request("GET", "/job/apiv1/file/?fileId=" + std::string(result["fileId"]));
-            auto content = r->content.string();
+            response = httpClient.request("GET", "/job/apiv1/file/?fileId=" + std::string{result["fileId"]});
+            auto content = response->content.string();
 
             auto returnData = std::vector<uint8_t>(content.begin(), content.end());
 
             // Check that the data collected by the client was correct
-            BOOST_CHECK_EQUAL_COLLECTIONS(returnData.begin(), returnData.end(), fileData->begin(), fileData->end());
+            BOOST_CHECK_EQUAL_COLLECTIONS(returnData.begin(), returnData.end(), fileData.begin(), fileData.end());
 
-            fileData->clear();
+            fileData.clear();
 
-            pThread->join();
-            delete pThread;
-            pThread = nullptr;
+            pThread.join();
         }
 
         // Finished with the servers and clients
@@ -246,26 +260,23 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         httpSvr->stop();
         wsSrv.stop();
 
-        delete bPaused;
-        delete fileData;
-
         // Clean up
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
     }
 
-    BOOST_AUTO_TEST_CASE(test_large_file_transfers) {
+    BOOST_AUTO_TEST_CASE(test_large_file_transfers) { // NOLINT(readability-function-cognitive-complexity)
         // Delete all database info just in case
-        auto db = MySqlConnector();
+        auto database = MySqlConnector();
         schema::JobserverFiledownload fileDownloadTable;
         schema::JobserverJob jobTable;
         schema::JobserverJobhistory jobHistoryTable;
         schema::JobserverClusteruuid clusterUuidTable;
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
-        db->run(remove_from(clusterUuidTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(clusterUuidTable).unconditionally());
 
         // Set up the cluster manager
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
@@ -274,8 +285,9 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         // Start the cluster scheduler
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
-            while (running)
+            while (running) {
                 mgr->getvClusters()->at(0)->callrun();
+            }
         });
 
         // Set up the test http server
@@ -325,24 +337,26 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                 return;
             }
 
-            auto jobId = msg.pop_uint();
+            msg.pop_uint();
             auto uuid = msg.pop_string();
             auto sBundle = msg.pop_string();
             auto sFilePath = msg.pop_string();
 
             // Generate a file size between 512 and 1024Mb
-            fileSize = randomInt(1024ull*1024ull*512ull, 1024ull*1024ull*1024ull);
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            fileSize = randomInt(1024ULL*1024ULL*512ULL, 1024ULL*1024ULL*1024ULL);
 
             // Send the file size to the server
             msg = Message(FILE_DETAILS, Message::Priority::Highest, "");
             msg.push_string(uuid);
             msg.push_ulong(fileSize);
 
-            auto smsg = Message(*msg.getdata()->get());
+            auto smsg = Message(**msg.getdata());
             mgr->getvClusters()->at(0)->callhandleMessage(smsg);
 
             // Now send the file content in to chunks and send it to the client
             pThread = std::make_shared<std::thread>([&bPaused, connection, fileSize, uuid, &mgr]() {
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                 auto CHUNK_SIZE = 1024*64;
 
                 auto data = std::vector<uint8_t>();
@@ -362,7 +376,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                     msg.push_string(uuid);
                     msg.push_bytes(data);
 
-                    auto smsg = Message(*msg.getdata()->get());
+                    auto smsg = Message(**msg.getdata());
                     mgr->getvClusters()->at(0)->callhandleMessage(smsg);
                 }
             });
@@ -376,11 +390,12 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Wait for the client to connect
         while (!bReady) {
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
         // Create a job to request files for
-        auto jobId = db->run(
+        auto jobId = database->run(
                 insert_into(jobTable)
                         .set(
                                 jobTable.user = 1,
@@ -392,6 +407,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         );
 
         // Create a file download
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwt::jwt_object jwtToken = {
                 jwt::params::algorithm("HS256"),
@@ -402,6 +418,7 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
 
         // Create params
@@ -411,20 +428,21 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         };
 
         TestHttpClient httpClient("localhost:8000");
-        auto r = httpClient.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
+        auto response = httpClient.request("POST", "/job/apiv1/file/", params.dump(), {{"Authorization", jwtToken.signature()}});
 
         nlohmann::json result;
-        r->content >> result;
+        response->content >> result;
 
         // Try to download the file
-        long long baselineMemUsage = getCurrentMemoryUsage();
+        auto baselineMemUsage = static_cast<int64_t>(getCurrentMemoryUsage());
         uint64_t totalBytesReceived = 0;
         bool end = false;
-        httpClient.config.max_response_streambuf_size = 1024*1024;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+        httpClient.config.max_response_streambuf_size = static_cast<std::size_t>(1024*1024);
         httpClient.request(
             "GET",
-            "/job/apiv1/file/?fileId=" + std::string(result["fileId"]),
-            [&totalBytesReceived, &end](const std::shared_ptr<TestHttpClient::Response>& response, const SimpleWeb::error_code &ec) {
+            "/job/apiv1/file/?fileId=" + std::string{result["fileId"]},
+            [&totalBytesReceived, &end](const std::shared_ptr<TestHttpClient::Response>& response, const SimpleWeb::error_code &) {
                 totalBytesReceived += response->content.size();
                 end = response->content.end;
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -433,9 +451,11 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // While the file download hasn't finished, check that the memory usage never exceeds 200Mb
         while (!end) {
-            auto memUsage = (long long) getCurrentMemoryUsage();
-            if (memUsage - baselineMemUsage > 1024*200)
+            auto memUsage = static_cast<int64_t>(getCurrentMemoryUsage());
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            if (memUsage - baselineMemUsage > static_cast<int64_t>(1024*200)) {
                 BOOST_ASSERT_MSG(false, "Maximum tolerable memory usage was exceeded");
+            }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
@@ -456,12 +476,14 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         pThread->join();
 
         // Clean up
-        db->run(remove_from(fileDownloadTable).unconditionally());
-        db->run(remove_from(jobHistoryTable).unconditionally());
-        db->run(remove_from(jobTable).unconditionally());
+        database->run(remove_from(fileDownloadTable).unconditionally());
+        database->run(remove_from(jobHistoryTable).unconditionally());
+        database->run(remove_from(jobTable).unconditionally());
 
         std::cout << "Large file test complete. File size was " << fileSize << ". Pauses: " << pauseCount << ", resumes: " << resumeCount << std::endl;
         BOOST_CHECK_EQUAL(pauseCount > 0, true);
         BOOST_CHECK_EQUAL(pauseCount, resumeCount);
     }
-BOOST_AUTO_TEST_SUITE_END();
+BOOST_AUTO_TEST_SUITE_END()
+
+// NOLINTEND(concurrency-mt-unsafe)

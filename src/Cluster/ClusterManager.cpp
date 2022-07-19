@@ -77,8 +77,8 @@ void ClusterManager::reconnectClusters() {
 
                 // Try to connect the remote client
                 // Here we provide parameters by copy rather than reference
-                // TODO: Need to better track the created thread object and dispose of it. Perhaps we need to ensure
-                // TODO: that boost process in connectCluster times out after 30 seconds?
+                // TODO(lewis): Need to better track the created thread object and dispose of it. Perhaps we need to ensure
+                // TODO(lewis): that boost process in connectCluster times out after 30 seconds?
                 vThreads.push_back(
                         std::make_shared<std::thread>([cluster, uuid] {
                             connectCluster(cluster, uuid);
