@@ -36,11 +36,17 @@ class JobHistory(models.Model):
 
 
 class FileDownload(models.Model):
-    # The if of the user for this job
+    # The id of the user for this job
     user = models.IntegerField()
 
-    # The job this download is for
-    job = models.ForeignKey(Job, on_delete=models.CASCADE)
+    # The job ID this download is for
+    job = models.IntegerField()
+
+    # The cluster name this job belongs to
+    cluster = models.CharField(max_length=200)
+
+    # The bundle that this job belongs to
+    bundle = models.CharField(max_length=40)
 
     # The UUID of this file download
     uuid = models.CharField(max_length=36, db_index=True, unique=True)
