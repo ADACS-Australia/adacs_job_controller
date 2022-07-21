@@ -249,18 +249,18 @@ namespace schema
       };
       using _traits = sqlpp::make_traits<sqlpp::time_point, sqlpp::tag::require_insert>;
     };
-    struct JobId
+    struct Job
     {
       struct _alias_t
       {
-        static constexpr const char _literal[] =  "job_id";
+        static constexpr const char _literal[] =  "job";
         using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
         template<typename T>
         struct _member_t
           {
-            T jobId;
-            T& operator()() { return jobId; }
-            const T& operator()() const { return jobId; }
+            T job;
+            T& operator()() { return job; }
+            const T& operator()() const { return job; }
           };
       };
       using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
@@ -281,6 +281,38 @@ namespace schema
       };
       using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::require_insert>;
     };
+    struct Bundle
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "bundle";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T bundle;
+            T& operator()() { return bundle; }
+            const T& operator()() const { return bundle; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct Cluster
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "cluster";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T cluster;
+            T& operator()() { return cluster; }
+            const T& operator()() const { return cluster; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
   } // namespace JobserverFiledownload_
 
   struct JobserverFiledownload: sqlpp::table_t<JobserverFiledownload,
@@ -288,8 +320,10 @@ namespace schema
                JobserverFiledownload_::User,
                JobserverFiledownload_::Uuid,
                JobserverFiledownload_::Timestamp,
-               JobserverFiledownload_::JobId,
-               JobserverFiledownload_::Path>
+               JobserverFiledownload_::Job,
+               JobserverFiledownload_::Path,
+               JobserverFiledownload_::Bundle,
+               JobserverFiledownload_::Cluster>
   {
     struct _alias_t
     {

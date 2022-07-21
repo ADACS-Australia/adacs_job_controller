@@ -108,7 +108,9 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             // Create a multi insert query
             auto insert_query = insert_into(fileDownloadTable).columns(
                     fileDownloadTable.user,
-                    fileDownloadTable.jobId,
+                    fileDownloadTable.job,
+                    fileDownloadTable.cluster,
+                    fileDownloadTable.bundle,
                     fileDownloadTable.uuid,
                     fileDownloadTable.path,
                     fileDownloadTable.timestamp
@@ -126,7 +128,9 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
                 // Add the record to be inserted
                 insert_query.values.add(
                         fileDownloadTable.user = static_cast<int>(authResult->payload()["userId"]),
-                        fileDownloadTable.jobId = static_cast<int>(jobId),
+                        fileDownloadTable.job = static_cast<int>(jobId),
+                        fileDownloadTable.cluster = sCluster,
+                        fileDownloadTable.bundle = sBundle,
                         fileDownloadTable.uuid = uuid,
                         fileDownloadTable.path = std::string(path),
                         fileDownloadTable.timestamp =
@@ -247,20 +251,11 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             // Get the cluster and bundle from the job
             const auto *dlResult = &dlResults.front();
 
-            // Look up the job
-            auto jobResults =
-                    database->run(
-                            select(all_of(jobTable))
-                                    .from(jobTable)
-                                    .where(jobTable.id == static_cast<uint32_t>(dlResult->jobId))
-                    );
-
-            const auto *job = &jobResults.front();
-            auto sCluster = std::string{job->cluster};
-            auto sBundle = std::string{job->bundle};
+            auto sCluster = std::string{dlResult->cluster};
+            auto sBundle = std::string{dlResult->bundle};
 
             auto sFilePath = std::string{dlResult->path};
-            auto jobId = static_cast<uint32_t>(dlResult->jobId);
+            auto jobId = static_cast<uint32_t>(dlResult->job);
 
             // Check that the cluster is online
             // Get the cluster to submit to
