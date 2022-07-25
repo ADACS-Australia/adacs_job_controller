@@ -118,7 +118,7 @@ The typical process to add a new application would look something like the follo
 
 1. Create or gain access to the remote SSH user who will be running the job controller client. Typically this user should be a system user.
 2. Install and configure the job controller client on that remote machine. (Refer to https://github.com/gravitationalwavedc/gwcloud_job_client)
-3. Create a new **RSA** ssh key pair and add the public key to the remote SSH user (Note: OPENSSH keys won't work)
+3. Create a new **RSA** ssh key pair and add the public key to the remote SSH user (Note: OPENSSH keys won't work) (Add option `-m PEM` into your ssh-keygen command. For example, you can run `ssh-keygen -m PEM -t rsa -b 4096 -C "your_email@example.com"` to force ssh-keygen to export as PEM format.)
 4. Create a new entry in the `CLUSTER_CONFIG` config with the cluster name and SSH details
 5. Create a new entry in the `ACCESS_SECRET_CONFIG` config with the application name, JWT secret, and the cluster name from step 4 in the `clusters` list.
 6. Update the vault secret
