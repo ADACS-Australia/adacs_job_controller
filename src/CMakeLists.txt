@@ -107,6 +107,9 @@ add_executable(
         tests/test_file_transfer.cpp
         tests/test_file_list_caching.cpp
         HTTP/tests/file_filter_files.cpp
+        tests/fixtures/DatabaseFixture.h
+        tests/fixtures/HttpServerFixture.h
+        tests/fixtures/HttpClientFixture.h
 )
 
 # Set the link libraries
