@@ -57,8 +57,8 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             nlohmann::json post_data;
             request->content >> post_data;
 
-            // Get the job to fetch files for
-            auto jobId = static_cast<uint32_t>(post_data["jobId"]);
+            // Get the job to fetch files for if one was provided
+            auto jobId = post_data.contains("jobId") ? static_cast<uint32_t>(post_data["jobId"]) : 0;
 
             // Get the path to the file to fetch (relative to the project)
             bool hasPaths = false;
@@ -83,27 +83,53 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
                 return;
             }
 
-            // Look up the job
-            auto jobResults =
-                    database->run(
-                            select(all_of(jobTable))
-                                    .from(jobTable)
-                                    .where(
-                                            jobTable.id == static_cast<uint32_t>(jobId)
-                                            and jobTable.application.in(sqlpp::value_list(applications))
-                                    )
-                    );
+            auto sCluster = std::string{};
+            auto sBundle = std::string{};
 
-            // Check that a job was actually found
-            if (jobResults.empty()) {
-                throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) + " for application " +
-                                         authResult->secret().name());
+            // If a job ID was provided, fetch the cluster and bundle details from that job
+            if (jobId != 0) {
+                // Look up the job
+                auto jobResults =
+                        database->run(
+                                select(all_of(jobTable))
+                                        .from(jobTable)
+                                        .where(
+                                                jobTable.id == static_cast<uint32_t>(jobId)
+                                                and jobTable.application.in(sqlpp::value_list(applications))
+                                        )
+                        );
+
+                // Check that a job was actually found
+                if (jobResults.empty()) {
+                    throw std::runtime_error(
+                            "Unable to find job with ID " + std::to_string(jobId) + " for application " +
+                            authResult->secret().name());
+                }
+
+                // Get the cluster and bundle from the job
+                const auto *job = &jobResults.front();
+                sCluster = std::string{job->cluster};
+                sBundle = std::string{job->bundle};
+            } else {
+                // A job ID was not provided, we need to use the cluster and bundle details from the json request
+                // Check that the bundle and cluster were provided in the POST json
+                if (!post_data.contains("cluster") || !post_data.contains("bundle")) {
+                    throw std::runtime_error(
+                            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
+                            );
+                }
+
+                sCluster = std::string{post_data["cluster"]};
+                sBundle = std::string{post_data["bundle"]};
+
+                // Confirm that the current JWT secret can access the provided cluster
+                const auto& clusters = authResult->secret().clusters();
+                if (std::find(clusters.begin(), clusters.end(), sCluster) == clusters.end()) {
+                    throw std::runtime_error(
+                            "Application " + authResult->secret().name() + " does not have access to cluster " + sCluster
+                            );
+                }
             }
-
-            // Get the cluster and bundle from the job
-            const auto *job = &jobResults.front();
-            auto sCluster = std::string{job->cluster};
-            auto sBundle = std::string{job->bundle};
 
             // Create a multi insert query
             auto insert_query = insert_into(fileDownloadTable).columns(

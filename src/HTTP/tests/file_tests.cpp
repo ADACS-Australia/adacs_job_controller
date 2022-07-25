@@ -132,6 +132,96 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, DataFixture)
                             "result.find(\"fileId\") != result.end() was not the expected value");
     }
 
+    BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_invalid_payload) {
+        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+
+        // Test that creating a file download without specifying a jobId, bundle, or cluster fails
+        jsonParams = {
+                {"path",  "/an_awesome_path/"}
+        };
+
+        auto result = httpClient.request("POST", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+
+        // Test that creating a file download without specifying a jobId, or cluster fails
+        jsonParams = {
+                {"bundle", "test_bundle"},
+                {"path",  "/an_awesome_path/"}
+        };
+
+        result = httpClient.request("POST", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+
+        // Test that creating a file download without specifying a jobId, or bundle fails
+        jsonParams = {
+                {"cluster", "test_cluster"},
+                {"path",  "/an_awesome_path/"}
+        };
+
+        result = httpClient.request("POST", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+    }
+
+    BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_success) {
+        // Test that creating a file download without a jobId works correctly
+        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+
+        // No jobId key
+        jsonParams = {
+                {"bundle", "test_bundle"},
+                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"path",  "/an_awesome_path/"}
+        };
+
+        auto result = httpClient.request("POST", "/job/apiv1/file/", jsonParams.dump(),
+                                         {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(result->header.find("Content-Type")->second, "application/json");
+
+        result->content >> jsonResult;
+
+        BOOST_CHECK_MESSAGE(jsonResult.find("fileId") != jsonResult.end(),
+                            "result.find(\"fileId\") != result.end() was not the expected value");
+
+        // jobId key with value 0
+        jsonParams = {
+                {"jobId", 0},
+                {"bundle", "test_bundle"},
+                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"path",  "/an_awesome_path/"}
+        };
+
+        result = httpClient.request("POST", "/job/apiv1/file/", jsonParams.dump(),
+                                    {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::success_ok);
+        BOOST_CHECK_EQUAL(result->header.find("Content-Type")->second, "application/json");
+
+        result->content >> jsonResult;
+
+        BOOST_CHECK_MESSAGE(jsonResult.find("fileId") != jsonResult.end(),
+                            "result.find(\"fileId\") != result.end() was not the expected value");
+    }
+
+    BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_invalid_cluster) {
+        // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
+        // to fails
+        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+
+        // No jobId key
+        jsonParams = {
+                {"bundle",  "test_bundle"},
+                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"path",    "/an_awesome_path/"}
+        };
+
+        auto result = httpClient.request("POST", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+    }
+
     BOOST_AUTO_TEST_CASE(create_download_app2_can_access_app1) {
         // Check that app2 can request a file download for a job run by app1
         setJwtSecret(httpServer->getvJwtSecrets()->at(1).secret());
