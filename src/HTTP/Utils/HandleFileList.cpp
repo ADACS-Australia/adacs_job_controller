@@ -64,7 +64,7 @@ auto filterFiles(const std::vector<sFile> &files, const std::string &filePath, b
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity,misc-no-recursion)
 void handleFileList(
-        std::shared_ptr<Cluster> cluster, auto job, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<Cluster>& cluster, const std::string& sBundle, uint32_t jobId, bool bRecursive, const std::string &filePath,
         const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
@@ -78,6 +78,9 @@ void handleFileList(
     // Create a new file list object
     auto flObj = std::make_shared<sFileList>();
 
+    // The job is not complete by default - to handle cases of file lists without a job ID
+    bool jobComplete = false;
+
     // Generate a UUID for the message source
     auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
@@ -90,67 +93,69 @@ void handleFileList(
             return;
         }
 
-        // Check if this job is completed
-        auto jobCompletionResult = database->run(
-                select(all_of(jobHistoryTable))
-                        .from(jobHistoryTable)
-                        .where(
-                                jobHistoryTable.jobId == static_cast<uint32_t>(job->id)
-                                and jobHistoryTable.what == "_job_completion_"
-                        )
-        );
-
-        // If there is any record with "_job_completion_" for the specified job id, then the job is complete
-        auto jobComplete = !jobCompletionResult.empty();
-
-        if (jobComplete) {
-            // Get any file list cache records for this job
-            auto fileListCacheResult = database->run(
-                    select(all_of(fileListCacheTable))
-                            .from(fileListCacheTable)
+        if (jobId != 0) {
+            // Check if this job is completed
+            auto jobCompletionResult = database->run(
+                    select(all_of(jobHistoryTable))
+                            .from(jobHistoryTable)
                             .where(
-                                    fileListCacheTable.jobId == static_cast<uint32_t>(job->id)
+                                    jobHistoryTable.jobId == jobId
+                                    and jobHistoryTable.what == "_job_completion_"
                             )
             );
 
-            // If there are no file list cache records, then just fall through and let the websocket communication
-            // write the records if required
-            if (!fileListCacheResult.empty()) {
+            // If there is any record with "_job_completion_" for the specified job id, then the job is complete
+            jobComplete = !jobCompletionResult.empty();
 
-                std::vector<sFile> files;
-                for (const auto &cacheResult : fileListCacheResult) {
-                    files.push_back({
-                                            cacheResult.path,
-                                            static_cast<uint64_t>(cacheResult.fileSize),
-                                            static_cast<uint32_t>(cacheResult.permissions),
-                                            static_cast<bool>(cacheResult.isDir)
-                                    });
+            if (jobComplete) {
+                // Get any file list cache records for this job
+                auto fileListCacheResult = database->run(
+                        select(all_of(fileListCacheTable))
+                                .from(fileListCacheTable)
+                                .where(
+                                        fileListCacheTable.jobId == jobId
+                                )
+                );
+
+                // If there are no file list cache records, then just fall through and let the websocket communication
+                // write the records if required
+                if (!fileListCacheResult.empty()) {
+
+                    std::vector<sFile> files;
+                    for (const auto &cacheResult: fileListCacheResult) {
+                        files.push_back({
+                                                cacheResult.path,
+                                                static_cast<uint64_t>(cacheResult.fileSize),
+                                                static_cast<uint32_t>(cacheResult.permissions),
+                                                static_cast<bool>(cacheResult.isDir)
+                                        });
+                    }
+
+                    // Filter the files
+                    auto filteredFiles = filterFiles(files, filePath, bRecursive);
+
+                    // Iterate over the files and generate the result
+                    nlohmann::json result;
+                    result["files"] = nlohmann::json::array();
+                    for (const auto &file: filteredFiles) {
+                        nlohmann::json jFile;
+                        jFile["path"] = file.fileName;
+                        jFile["isDir"] = file.isDirectory;
+                        jFile["fileSize"] = file.fileSize;
+                        jFile["permissions"] = file.permissions;
+
+                        result["files"].push_back(jFile);
+                    }
+
+                    // Return the result
+                    SimpleWeb::CaseInsensitiveMultimap headers;
+                    headers.emplace("Content-Type", "application/json");
+
+                    if (response) {
+                        response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+                    }
+                    return;
                 }
-
-                // Filter the files
-                auto filteredFiles = filterFiles(files, filePath, bRecursive);
-
-                // Iterate over the files and generate the result
-                nlohmann::json result;
-                result["files"] = nlohmann::json::array();
-                for (const auto &file : filteredFiles) {
-                    nlohmann::json jFile;
-                    jFile["path"] = file.fileName;
-                    jFile["isDir"] = file.isDirectory;
-                    jFile["fileSize"] = file.fileSize;
-                    jFile["permissions"] = file.permissions;
-
-                    result["files"].push_back(jFile);
-                }
-
-                // Return the result
-                SimpleWeb::CaseInsensitiveMultimap headers;
-                headers.emplace("Content-Type", "application/json");
-
-                if (response) {
-                    response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-                }
-                return;
             }
         }
 
@@ -159,9 +164,9 @@ void handleFileList(
 
         // Send a message to the client to initiate the file list
         auto msg = Message(FILE_LIST, Message::Priority::Highest, uuid);
-        msg.push_uint(static_cast<uint32_t>(job->id));
+        msg.push_uint(jobId);
         msg.push_string(uuid);
-        msg.push_string(std::string{job->bundle});
+        msg.push_string(sBundle);
         msg.push_string(filePath);
         msg.push_bool(bRecursive);
         msg.send(cluster);
@@ -221,7 +226,7 @@ void handleFileList(
             if (jobComplete) {
                 // Insert the file list cache record
                 insert_query.values.add(
-                        fileListCacheTable.jobId = static_cast<int32_t>(job->id),
+                        fileListCacheTable.jobId = static_cast<int>(jobId),
                         fileListCacheTable.path = std::string(file.fileName),
                         fileListCacheTable.isDir = file.isDirectory ? 1 : 0,
                         fileListCacheTable.fileSize = static_cast<int64_t>(file.fileSize),
@@ -262,7 +267,7 @@ void handleFileList(
             // to reduce the number of times we hit the remote filesystem for the file list, let's call it once
             // more right now with the correct parameters to cache all files
 
-            ::handleFileList(cluster, job, true, "", nullptr);
+            ::handleFileList(cluster, sBundle, jobId, true, "", nullptr);
         }
 
         {
@@ -313,7 +318,6 @@ void handleFileList(
     // Get the tables
     schema::JobserverJob jobTable;
     schema::JobserverJobhistory jobHistoryTable;
-    schema::JobserverFilelistcache fileListCacheTable;
 
     try {
         // Look up the job. If applications is empty, we ignore the application check. This is used internally for
@@ -358,7 +362,7 @@ void handleFileList(
             throw std::runtime_error("Invalid cluster");
         }
 
-        handleFileList(cluster, job, bRecursive, filePath, response);
+        handleFileList(cluster, sBundle, job->id, bRecursive, filePath, response);
     } catch (std::exception& e) {
         dumpExceptions(e);
 

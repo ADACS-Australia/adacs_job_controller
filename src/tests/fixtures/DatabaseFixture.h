@@ -36,12 +36,12 @@ struct DatabaseFixture {
 private:
     void cleanDatabase() const {
         // Sanitize all records from the database
+        database->run(remove_from(jobFilelistcache).unconditionally());
         database->run(remove_from(fileDownloadTable).unconditionally());
         database->run(remove_from(jobHistoryTable).unconditionally());
         database->run(remove_from(jobTable).unconditionally());
         database->run(remove_from(jobClusteruuid).unconditionally());
-        database->run(remove_from(jobFilelistcache).unconditionally());
-    }
+            }
 };
 
 #endif //GWCLOUD_JOB_SERVER_DATABASEFIXTURE_H

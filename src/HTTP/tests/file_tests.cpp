@@ -8,14 +8,14 @@
 #include <boost/test/unit_test.hpp>
 
 
-struct DataFixture : public DatabaseFixture, public HttpServerFixture, public HttpClientFixture {
+struct FileTestDataFixture : public DatabaseFixture, public HttpServerFixture, public HttpClientFixture {
     // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     uint32_t jobId1;
     uint32_t jobId2;
     uint32_t jobId3;
     // NOLINTEND(misc-non-private-member-variables-in-classes)
 
-    DataFixture() {
+    FileTestDataFixture() {
         // Fabricate data
         // Create the new job object
         jobId1 = database->run(
@@ -91,7 +91,7 @@ struct DataFixture : public DatabaseFixture, public HttpServerFixture, public Ht
     }
 };
 
-BOOST_FIXTURE_TEST_SUITE(File_test_suite, DataFixture)
+BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 /*
  * This test suite is responsible for testing the File HTTP Rest API
  */
@@ -205,7 +205,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, DataFixture)
                             "result.find(\"fileId\") != result.end() was not the expected value");
     }
 
-    BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_invalid_cluster) {
+    BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_no_cluster_access) {
         // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
         // to fails
         setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
@@ -214,6 +214,23 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, DataFixture)
         jsonParams = {
                 {"bundle",  "test_bundle"},
                 {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"path",    "/an_awesome_path/"}
+        };
+
+        auto result = httpClient.request("POST", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+    }
+
+    BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_invalid_cluster) {
+        // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
+        // to fails
+        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+
+        // No jobId key
+        jsonParams = {
+                {"bundle",  "test_bundle"},
+                {"cluster", "not_a_real_cluster"},
                 {"path",    "/an_awesome_path/"}
         };
 
@@ -375,4 +392,109 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, DataFixture)
         BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
     }
 
+    BOOST_AUTO_TEST_CASE(get_file_list_job1_no_jobid_invalid_payload) {
+        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+
+        // Test that getting a file list without specifying a jobId, bundle, or cluster fails
+        jsonParams = {
+                {"recursive", true},
+                {"path",      "/an_awesome_path/"}
+        };
+
+        auto result = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+
+        // Test that getting a file list without specifying a jobId, or cluster fails
+        jsonParams = {
+                {"bundle", "test_bundle"},
+                {"recursive", true},
+                {"path",  "/an_awesome_path/"}
+        };
+
+        result = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+
+        // Test that getting a file list without specifying a jobId, or bundle fails
+        jsonParams = {
+                {"cluster", "test_cluster"},
+                {"recursive", true},
+                {"path",  "/an_awesome_path/"}
+        };
+
+        result = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+    }
+
+    BOOST_AUTO_TEST_CASE(get_file_list_job1_no_jobid_success) {
+        // Test that creating a file download without a jobId works correctly
+        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+
+        // No jobId key
+        jsonParams = {
+                {"bundle", "test_bundle"},
+                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"recursive", true},
+                {"path",  "/an_awesome_path/"}
+        };
+
+        auto result = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(),
+                                         {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code),
+                          (int) SimpleWeb::StatusCode::server_error_service_unavailable);
+        BOOST_CHECK_EQUAL(result->content.string(), "Remote Cluster Offline");
+
+        // jobId key with value 0
+        jsonParams = {
+                {"jobId", 0},
+                {"bundle", "test_bundle"},
+                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"recursive", true},
+                {"path",  "/an_awesome_path/"}
+        };
+
+        result = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(),
+                                         {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code),
+                          (int) SimpleWeb::StatusCode::server_error_service_unavailable);
+        BOOST_CHECK_EQUAL(result->content.string(), "Remote Cluster Offline");
+    }
+
+    BOOST_AUTO_TEST_CASE(get_file_list_job1_no_jobid_no_cluster_access) {
+        // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
+        // to fails
+        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+
+        // No jobId key
+        jsonParams = {
+                {"bundle",  "test_bundle"},
+                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"recursive", true},
+                {"path",    "/an_awesome_path/"}
+        };
+
+        auto result = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+    }
+
+    BOOST_AUTO_TEST_CASE(get_file_list_job1_no_jobid_invalid_cluster) {
+        // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
+        // to fails
+        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+
+        // No jobId key
+        jsonParams = {
+                {"bundle",  "test_bundle"},
+                {"cluster", "not_a_real_cluster"},
+                {"recursive", true},
+                {"path",    "/an_awesome_path/"}
+        };
+
+        auto result = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
+        BOOST_CHECK_EQUAL(result->content.string(), "Bad request");
+        BOOST_CHECK_EQUAL(std::stoi(result->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
+    }
 BOOST_AUTO_TEST_SUITE_END()
