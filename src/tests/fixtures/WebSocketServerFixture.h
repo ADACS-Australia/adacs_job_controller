@@ -18,7 +18,7 @@ struct WebSocketServerFixture : public HttpServerFixture {
         // Start the cluster scheduler
         clusterThread = std::thread([&]() {
             while (bClusterManagerRunning) {
-                clusterManager->getvClusters()->at(0)->callrun();
+                clusterManager->getvClusters()->front()->callrun();
             }
         });
 
@@ -31,11 +31,17 @@ struct WebSocketServerFixture : public HttpServerFixture {
 
     ~WebSocketServerFixture() {
         // Finished with the servers and clients
-        bClusterManagerRunning = false;
-        *clusterManager->getvClusters()->at(0)->getdataReady() = true;
-        clusterManager->getvClusters()->at(0)->getdataCV()->notify_one();
-        clusterThread.join();
+        stopRunningWebSocket();
         webSocketServer->stop();
+    }
+
+    void stopRunningWebSocket() {
+        bClusterManagerRunning = false;
+        *clusterManager->getvClusters()->front()->getdataReady() = true;
+        clusterManager->getvClusters()->front()->getdataCV()->notify_one();
+        if (clusterThread.joinable()) {
+            clusterThread.join();
+        }
     }
     
     WebSocketServerFixture(WebSocketServerFixture const&) = delete;

@@ -37,6 +37,7 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
          */
         {
             // First check that instantiating HttpServer with no access config works as expected
+            unsetenv(ACCESS_SECRET_ENV_VARIABLE);
             auto svr = std::make_shared<HttpServer>(nullptr);
             BOOST_CHECK_EQUAL(svr->getvJwtSecrets()->size(), 0);
         }
@@ -59,6 +60,7 @@ BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
          */
         {
             // Check that authorization without any config denies access without crashing
+            unsetenv(ACCESS_SECRET_ENV_VARIABLE);
             auto svr = std::make_shared<HttpServer>(nullptr);
             svr->getvJwtSecrets()->clear();
 
