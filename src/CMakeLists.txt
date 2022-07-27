@@ -5,7 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 
 # Generate maximum debug information (Dwarf version 4 for folly backtrace support)
-set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall ")
+set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -w ")
 
 # Suppress nested inexact package name searches
 set(FPHSA_NAME_MISMATCHED 1)
@@ -131,12 +131,14 @@ set_target_properties(
         Boost_Tests_run
         PROPERTIES
         CXX_CLANG_TIDY "clang-tidy"
+        CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
 )
 
 set_target_properties(
         gwcloud_job_server
         PROPERTIES
         CXX_CLANG_TIDY "clang-tidy"
+        CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
 )
 
 target_link_libraries(gwcloud_job_server ${LINK_LIBRARIES})
