@@ -12,23 +12,23 @@
 #include <string>
 #include <vector>
 
-#define SYSTEM_SOURCE "system"
+constexpr const char* SYSTEM_SOURCE = "system";
 
-#define SERVER_READY 1000
+constexpr uint32_t SERVER_READY = 1000;
 
-#define SUBMIT_JOB 2000
-#define UPDATE_JOB 2001
-#define CANCEL_JOB 2002
-#define DELETE_JOB 2003
+constexpr uint32_t SUBMIT_JOB = 2000;
+constexpr uint32_t UPDATE_JOB = 2001;
+constexpr uint32_t CANCEL_JOB = 2002;
+constexpr uint32_t DELETE_JOB = 2003;
 
-#define DOWNLOAD_FILE 4000
-#define FILE_DETAILS 4001
-#define FILE_ERROR 4002
-#define FILE_CHUNK 4003
-#define PAUSE_FILE_CHUNK_STREAM 4004
-#define RESUME_FILE_CHUNK_STREAM 4005
-#define FILE_LIST 4006
-#define FILE_LIST_ERROR 4007
+constexpr uint32_t DOWNLOAD_FILE = 4000;
+constexpr uint32_t FILE_DETAILS = 4001;
+constexpr uint32_t FILE_ERROR = 4002;
+constexpr uint32_t FILE_CHUNK = 4003;
+constexpr uint32_t PAUSE_FILE_CHUNK_STREAM = 4004;
+constexpr uint32_t RESUME_FILE_CHUNK_STREAM = 4005;
+constexpr uint32_t FILE_LIST = 4006;
+constexpr uint32_t FILE_LIST_ERROR = 4007;
 
 class Cluster;
 
@@ -88,6 +88,5 @@ private:
 
 EXPOSE_PROPERTY_FOR_TESTING(data);
 };
-
 
 #endif //GWCLOUD_JOB_SERVER_MESSAGE_H

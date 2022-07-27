@@ -136,6 +136,12 @@ set_target_properties(
         CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall"
 )
 
+set_target_properties(
+        gwcloud_job_server
+        PROPERTIES
+        CXX_CLANG_TIDY "clang-tidy"
+)
+
 target_link_libraries(gwcloud_job_server ${LINK_LIBRARIES})
 target_link_libraries(Boost_Tests_run ${LINK_LIBRARIES})
 

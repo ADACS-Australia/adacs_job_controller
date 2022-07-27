@@ -1,3 +1,6 @@
+#ifndef GWCLOUD_JOB_SERVER_UTILS_H
+#define GWCLOUD_JOB_SERVER_UTILS_H
+
 #include "../DB/MySqlConnector.h"
 #include "../HTTP/HttpServer.h"
 #include "../Lib/jobserver_schema.h"
@@ -10,8 +13,8 @@
 #include <vector>
 
 auto getLastToken() -> std::string;
-extern auto randomInt(uint64_t start, uint64_t end) -> uint64_t;
-extern auto generateRandomData(uint32_t count) -> std::shared_ptr<std::vector<uint8_t>>;
+auto randomInt(uint64_t start, uint64_t end) -> uint64_t;
+auto generateRandomData(uint32_t count) -> std::shared_ptr<std::vector<uint8_t>>;
 
 using TestWsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 using TestWsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
@@ -21,3 +24,5 @@ using TestHttpsServer = SimpleWeb::Server<SimpleWeb::HTTPS>;
 
 using TestHttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 using TestHttpsClient = SimpleWeb::Client<SimpleWeb::HTTPS>;
+
+#endif // GWCLOUD_JOB_SERVER_UTILS_H

@@ -6,8 +6,8 @@
 #define GWCLOUD_JOB_SERVER_MYSQLCONNECTOR_H
 
 #include "../Settings.h"
-#include <sqlpp11/mysql/connection_config.h>
 #include <sqlpp11/mysql/connection.h>
+#include <sqlpp11/mysql/connection_config.h>
 #include <sqlpp11/sqlpp11.h>
 
 namespace mysql = sqlpp::mysql;

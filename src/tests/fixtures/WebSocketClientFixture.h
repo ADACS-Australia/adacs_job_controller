@@ -23,6 +23,11 @@ struct WebSocketClientFixture : public WebSocketServerFixture {
         clientThread.join();
     }
 
+    WebSocketClientFixture(WebSocketClientFixture const&) = delete;
+    auto operator =(WebSocketClientFixture const&) -> WebSocketClientFixture& = delete;
+    WebSocketClientFixture(WebSocketClientFixture&&) = delete;
+    auto operator=(WebSocketClientFixture&&) -> WebSocketClientFixture& = delete;
+
     void startWebSocketClient() {
         // Start the client
         clientThread = std::thread([&]() {

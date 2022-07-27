@@ -5,9 +5,9 @@
 #ifndef GWCLOUD_JOB_SERVER_CLUSTERMANAGER_H
 #define GWCLOUD_JOB_SERVER_CLUSTERMANAGER_H
 
-#include "Cluster.h"
 #include "../Lib/GeneralUtils.h"
 #include "../WebSocket/WebSocketServer.h"
+#include "Cluster.h"
 #include <thread>
 
 class ClusterManager {
