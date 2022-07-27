@@ -143,7 +143,7 @@ void Cluster::queueMessage(std::string source, const std::shared_ptr<std::vector
     // Iterate forever
     while (true) {
         // Wait 1 minute until the next prune
-        std::this_thread::sleep_for(std::chrono::seconds(60));
+        std::this_thread::sleep_for(std::chrono::seconds(QUEUE_SOURCE_PRUNE_SECONDS));
 #else
 
 void Cluster::pruneSources() {
@@ -176,7 +176,7 @@ void Cluster::pruneSources() {
 }
 
 #ifndef BUILD_TESTS
-[[noreturn]] void Cluster::run() {
+[[noreturn]] void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
     // Iterate forever
     while (true) {
 #else

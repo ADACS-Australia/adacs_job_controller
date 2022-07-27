@@ -7,11 +7,11 @@
 
 #include "../Lib/GeneralUtils.h"
 #include "../Lib/Messaging/Message.h"
-#include <folly/concurrency/ConcurrentHashMap.h>
-#include <folly/concurrency/UnboundedQueue.h>
 #include "../WebSocket/WebSocketServer.h"
 #include <boost/concept_check.hpp>
 #include <boost/uuid/uuid.hpp>
+#include <folly/concurrency/ConcurrentHashMap.h>
+#include <folly/concurrency/UnboundedQueue.h>
 #include <nlohmann/json.hpp>
 #include <shared_mutex>
 #include <string>
@@ -34,10 +34,10 @@ struct sFileDownload {
 };
 
 struct sFile {
-    std::string fileName;
-    uint64_t fileSize;
-    uint32_t permissions;
-    bool isDirectory;
+    std::string fileName{};
+    uint64_t fileSize = 0;
+    uint32_t permissions = 0;
+    bool isDirectory = false;
 };
 
 struct sFileList {

@@ -37,6 +37,11 @@ struct WebSocketServerFixture : public HttpServerFixture {
         clusterThread.join();
         webSocketServer->stop();
     }
+    
+    WebSocketServerFixture(WebSocketServerFixture const&) = delete;
+    auto operator =(WebSocketServerFixture const&) -> WebSocketServerFixture& = delete;
+    WebSocketServerFixture(WebSocketServerFixture&&) = delete;
+    auto operator=(WebSocketServerFixture&&) -> WebSocketServerFixture& = delete;
 };
 
 #endif //GWCLOUD_JOB_SERVER_WEBSOCKETSERVERFIXTURE_H

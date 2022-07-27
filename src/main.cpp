@@ -1,14 +1,11 @@
-#include "HTTP/HttpServer.h"
-#include "WebSocket/WebSocketServer.h"
 #include "Cluster/ClusterManager.h"
+#include "HTTP/HttpServer.h"
 #include "Lib/segvcatch.h"
+#include "WebSocket/WebSocketServer.h"
 
 #include <folly/experimental/exception_tracer/StackTrace.h>
-#include <folly/experimental/exception_tracer/ExceptionTracer.h>
 
-using namespace segvcatch;
-
-int main()
+auto main() -> int
 {
     // Set up the crash handler
     segvcatch::init_segv(&handleSegv);
@@ -31,8 +28,8 @@ int main()
 }
 
 // To prevent the compiler optimizing away the exception tracing from folly, we need to reference it.
-extern "C" const folly::exception_tracer::StackTrace* getCaughtExceptionStackTraceStack();
-extern "C" const folly::exception_tracer::StackTraceStack* getUncaughtExceptionStackTraceStack();
+extern "C" auto getCaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTrace*;
+extern "C" auto getUncaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTraceStack*;
 
 // forceExceptionStackTraceRef is intentionally unused and marked volatile so the compiler doesn't optimize away the
 // required functions from folly. This is black magic.
