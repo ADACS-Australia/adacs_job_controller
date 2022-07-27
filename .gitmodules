@@ -1,24 +1,24 @@
-[submodule "Lib/folly"]
-	path = src/Lib/folly
+[submodule "third_party/folly"]
+	path = src/third_party/folly
 	url = https://github.com/facebook/folly.git
-[submodule "Lib/sqlpp11-connector-mysql"]
-	path = src/Lib/sqlpp11-connector-mysql
+[submodule "third_party/sqlpp11-connector-mysql"]
+	path = src/third_party/sqlpp11-connector-mysql
 	url = https://github.com/rbock/sqlpp11-connector-mysql.git
-[submodule "Lib/date"]
-	path = src/Lib/date
+[submodule "third_party/date"]
+	path = src/third_party/date
 	url = https://github.com/HowardHinnant/date.git
-[submodule "Lib/cpp-jwt"]
-	path = src/Lib/cpp-jwt
+[submodule "third_party/cpp-jwt"]
+	path = src/third_party/cpp-jwt
 	url = https://github.com/arun11299/cpp-jwt.git
-[submodule "Lib/json"]
-	path = src/Lib/json
+[submodule "third_party/json"]
+	path = src/third_party/json
 	url = https://github.com/nlohmann/json.git
-[submodule "Lib/Simple-WebSocket-Server"]
-	path = src/Lib/Simple-WebSocket-Server
+[submodule "third_party/Simple-WebSocket-Server"]
+	path = src/third_party/Simple-WebSocket-Server
 	url = https://gitlab.com/llakerink/Simple-WebSocket-Server.git
-[submodule "Lib/Simple-Web-Server"]
-	path = src/Lib/Simple-Web-Server
+[submodule "third_party/Simple-Web-Server"]
+	path = src/third_party/Simple-Web-Server
 	url = https://gitlab.com/llakerink/Simple-Web-Server.git
-[submodule "src/Lib/sqlpp11"]
-	path = src/Lib/sqlpp11
+[submodule "src/third_party/sqlpp11"]
+	path = src/third_party/sqlpp11
 	url = https://github.com/rbock/sqlpp11.git

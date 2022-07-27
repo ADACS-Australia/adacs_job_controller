@@ -1,2 +1,2 @@
 exclude_patterns:
-  - "src/Lib/"
+  - "src/third_party/"

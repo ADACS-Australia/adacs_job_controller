@@ -7,8 +7,8 @@
 
 #include "../Lib/GeneralUtils.h"
 #include "../Lib/Messaging/Message.h"
-#include "../Lib/folly/folly/concurrency/ConcurrentHashMap.h"
-#include "../Lib/folly/folly/concurrency/UnboundedQueue.h"
+#include <folly/concurrency/ConcurrentHashMap.h>
+#include <folly/concurrency/UnboundedQueue.h>
 #include "../WebSocket/WebSocketServer.h"
 #include <boost/concept_check.hpp>
 #include <boost/uuid/uuid.hpp>

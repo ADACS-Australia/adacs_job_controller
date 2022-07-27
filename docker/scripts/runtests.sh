@@ -19,9 +19,9 @@ build/Boost_Tests_run --logger=HRF,all --color_output=true --report_format=HRF -
 printf "\n\n"
 
 # Generate code coverage reports
-gcovr -r . --xml-pretty -e "Lib/sqlpp11/" -e "Lib/sqlpp11-connector-mysql/" -e "Lib/json/" -e "Lib/folly/" -e "Lib/date/" -e "Lib/cpp-jwt/" -e "Lib/Simple-WebSocket-Server/" -e "Lib/Simple-Web-Server/" > /test_report/coverage_docker.xml
+gcovr -r . --xml-pretty -e "third_party/" > /test_report/coverage_docker.xml
 
-gcovr -r . -e "Lib/sqlpp11/" -e "Lib/sqlpp11-connector-mysql/" -e "Lib/json/" -e "Lib/folly/" -e "Lib/date/" -e "Lib/cpp-jwt/" -e "Lib/Simple-WebSocket-Server/" -e "Lib/Simple-Web-Server/"
+gcovr -r . -e "third_party/"
 
 python3 utils/clang-tidy-to-code-climate.py /src/build/tidy.txt /test_report/code_climate.json /
 

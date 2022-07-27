@@ -39,22 +39,22 @@ set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
 set(BUILD_MYSQL_CONNECTOR ON)
 
 # Include the nested libraries
-add_subdirectory(Lib/Simple-Web-Server)
-add_subdirectory(Lib/Simple-WebSocket-Server)
-add_subdirectory(Lib/folly)
-add_subdirectory(Lib/sqlpp11)
-add_subdirectory(Lib/cpp-jwt)
+add_subdirectory(third_party/Simple-Web-Server)
+add_subdirectory(third_party/Simple-WebSocket-Server)
+add_subdirectory(third_party/folly)
+add_subdirectory(third_party/sqlpp11)
+add_subdirectory(third_party/cpp-jwt)
 
 # Set up the include directories
 include_directories(
-        Lib/json/include
-        Lib/date/include
-        Lib/sqlpp11/include
+        third_party/json/include
+        third_party/date/include
+        third_party/sqlpp11/include
         /usr/include/mysql
-        Lib/folly
-        Lib/Simple-Web-Server
-        Lib/Simple-WebSocket-Server
-        Lib/cpp-jwt/include
+        third_party/folly
+        third_party/Simple-Web-Server
+        third_party/Simple-WebSocket-Server
+        third_party/cpp-jwt/include
         ${MYSQL_INCLUDE_DIR}
 )
 
