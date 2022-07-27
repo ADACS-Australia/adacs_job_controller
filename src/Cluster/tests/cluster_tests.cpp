@@ -59,7 +59,7 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
                         )
         );
 
-        websocketClient->on_message = [&](auto connection, auto in_message) {
+        websocketClient->on_message = [&]([[maybe_unused]] auto connection, auto in_message) {
             onWebsocketMessage(in_message);
         };
 
