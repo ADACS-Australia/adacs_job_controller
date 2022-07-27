@@ -11,7 +11,7 @@ auto getLastToken() -> std::string {
             select(all_of(clusterUuidTable))
                     .from(clusterUuidTable)
                     .unconditionally()
-                    .order_by(clusterUuidTable.id.desc())
+                    .order_by(clusterUuidTable.id.asc())
     );
 
     // Check that the uuid was valid

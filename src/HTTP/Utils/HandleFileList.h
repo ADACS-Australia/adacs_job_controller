@@ -15,7 +15,7 @@ void handleFileList(
 );
 
 void handleFileList(
-        std::shared_ptr<Cluster> cluster, auto jobId, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<Cluster> &cluster, const std::string &sBundle, uint32_t jobId, bool bRecursive, const std::string &filePath,
         const std::shared_ptr<HttpServerImpl::Response> &response
 );
 

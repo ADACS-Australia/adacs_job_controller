@@ -510,8 +510,8 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             nlohmann::json post_data;
             request->content >> post_data;
 
-            // Get the job to fetch files for
-            auto jobId = static_cast<uint32_t>(post_data["jobId"]);
+            // Get the job to fetch files for if one was provided
+            auto jobId = post_data.contains("jobId") ? static_cast<uint32_t>(post_data["jobId"]) : 0;
 
             // Get the job to fetch files for
             auto bRecursive = static_cast<bool>(post_data["recursive"]);
@@ -519,11 +519,44 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             // Get the path to the file to fetch (relative to the project)
             auto filePath = std::string{post_data["path"]};
 
-            // Handle the file list request
-            handleFileList(
-                    clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
-                    response
-            );
+            if (jobId != 0) {
+                // Handle the file list request
+                handleFileList(
+                        clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
+                        response
+                );
+            } else {
+                // A job ID was not provided, we need to use the cluster and bundle details from the json request
+                // Check that the bundle and cluster were provided in the POST json
+                if (!post_data.contains("cluster") || !post_data.contains("bundle")) {
+                    throw std::runtime_error(
+                            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
+                    );
+                }
+
+                auto sCluster = std::string{post_data["cluster"]};
+                auto sBundle = std::string{post_data["bundle"]};
+
+                // Get the cluster to submit to
+                auto cluster = clusterManager->getCluster(sCluster);
+                if (!cluster) {
+                    // Invalid cluster
+                    throw std::runtime_error("Invalid cluster");
+                }
+
+                // Confirm that the current JWT secret can access the provided cluster
+                const auto& clusters = authResult->secret().clusters();
+                if (std::find(clusters.begin(), clusters.end(), sCluster) == clusters.end()) {
+                    throw std::runtime_error(
+                            "Application " + authResult->secret().name() + " does not have access to cluster " + sCluster
+                    );
+                }
+
+                // Handle the file list request
+                handleFileList(
+                        cluster, sBundle, 0, bRecursive, filePath, response
+                );
+            }
         } catch (std::exception& exception) {
             dumpExceptions(exception);
             

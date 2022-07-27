@@ -110,6 +110,8 @@ add_executable(
         tests/fixtures/DatabaseFixture.h
         tests/fixtures/HttpServerFixture.h
         tests/fixtures/HttpClientFixture.h
+        tests/fixtures/WebSocketClientFixture.h
+        tests/fixtures/WebSocketServerFixture.h
 )
 
 # Set the link libraries
