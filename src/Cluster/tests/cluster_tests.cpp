@@ -3,55 +3,94 @@
 //
 
 #include "../../Lib/JobStatus.h"
-#include "../../tests/utils.h"
-#include "../ClusterManager.h"
+#include "../../tests/fixtures/DatabaseFixture.h"
+#include "../../tests/fixtures/HttpClientFixture.h"
+#include "../../tests/fixtures/WebSocketClientFixture.h"
 #include <boost/lexical_cast.hpp>
 #include <boost/test/unit_test.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <fstream>
 #include <random>
+#include <utility>
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
-BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
-    // Define several clusters to use for setting the cluster config environment variable
-    const auto sClusters = R"(
-    [
-        {
-            "name": "cluster1",
-            "host": "cluster1.com",
-            "username": "user1",
-            "path": "/cluster1/",
-            "key": "cluster1_key"
-        },
-        {
-            "name": "cluster2",
-            "host": "cluster2.com",
-            "username": "user2",
-            "path": "/cluster2/",
-            "key": "cluster2_key"
-        },
-        {
-            "name": "cluster3",
-            "host": "cluster3.com",
-            "username": "user3",
-            "path": "/cluster3/",
-            "key": "cluster3_key"
-        }
-    ]
-    )";
+struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
+    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
+    std::vector<std::vector<uint8_t>> receivedMessages;
+    bool bReady = false;
+    nlohmann::json jsonClusters;
+    std::shared_ptr<sClusterDetails> details;
+    std::shared_ptr<Cluster> cluster;
+    std::shared_ptr<sClusterDetails> onlineDetails;
+    std::shared_ptr<Cluster> onlineCluster;
+    uint32_t jobId;
+    uint32_t jobIdTestCluster;
+    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
-    BOOST_AUTO_TEST_CASE(test_constructor) {
+    ClusterTestDataFixture() :
+        cluster(clusterManager->getvClusters()->back()), details(clusterManager->getvClusters()->back()->getClusterDetails()),
+        onlineCluster(clusterManager->getvClusters()->front()), onlineDetails(clusterManager->getvClusters()->front()->getClusterDetails())
+    {
         // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
+        jsonClusters = nlohmann::json::parse(sClusters);
 
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
+        // Create a new job object
+        jobId = database->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = cluster->getName(),
+                                jobTable.bundle = "whatever",
+                                jobTable.application = "test"
+                        )
+        );
 
-        // Check that the cluster constructor works as expected
-        auto cluster = std::make_shared<Cluster>(details);
+        jobIdTestCluster = database->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = "testclusternotreal",
+                                jobTable.bundle = "whatever",
+                                jobTable.application = "test"
+                        )
+        );
 
+        websocketClient->on_message = [&](auto connection, auto in_message) {
+            onWebsocketMessage(in_message);
+        };
+
+        startWebSocketClient();
+
+        // Wait for the client to connect
+        while (!bReady) {
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+
+    void onWebsocketMessage(auto in_message) {
+        auto data = in_message->string();
+
+        // Don't parse the message if the ws connection is ready
+        if (!bReady) {
+            Message msg(std::vector<uint8_t>(data.begin(), data.end()));
+            if (msg.getId() == SERVER_READY) {
+                bReady = true;
+                return;
+            }
+        }
+
+        receivedMessages.emplace_back(std::vector<uint8_t>(data.begin(), data.end()));
+    };
+};
+
+
+BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
+    BOOST_AUTO_TEST_CASE(test_constructor) {
         // Check that the cluster details and the manager are set correctly
         BOOST_CHECK_EQUAL(*cluster->getpClusterDetails(), details);
 
@@ -61,43 +100,16 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_getName) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // Check that the name is correctly set
         BOOST_CHECK_EQUAL(cluster->getName(), details->getName());
     }
 
     BOOST_AUTO_TEST_CASE(test_getClusterDetails) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // Check that the cluster details are correctly set
         BOOST_CHECK_EQUAL(cluster->getClusterDetails(), details);
     }
 
     BOOST_AUTO_TEST_CASE(test_setConnection) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // Check that the connection is correctly set
         auto con = std::make_shared<WsServer::Connection>(nullptr);
         cluster->setConnection(con);
@@ -105,15 +117,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_isOnline) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // The cluster should not be online
         BOOST_CHECK_EQUAL(cluster->isOnline(), false);
 
@@ -124,15 +127,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_queueMessage) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // Check the source doesn't exist
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
                           (*cluster->getqueue())[Message::Priority::Highest].end(), true);
@@ -262,15 +256,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_pruneSources) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
@@ -324,109 +309,59 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_run) {
-        // todo
-        std::cout << "This test is broken currently " << __FILE__ << ":" << __LINE__ << std::endl;
-        return;
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
-        // Create a websocket server to receive sent messages and set the cluster connection
-        // Adapted from https://gitlab.com/eidheim/Simple-WebSocket-Server/-/blob/master/tests/io_test.cpp#L11
-        auto server = std::make_shared<WsServer>();
-        server->config.port = 23458;
-
-        auto &wsTest = server->endpoint["^/ws/?$"];
-
-        wsTest.on_open = [&](const std::shared_ptr<WsServer::Connection> &connection) {
-            cluster->setConnection(connection);
-        };
-
-        wsTest.on_close = [&](const std::shared_ptr<WsServer::Connection> &, int, const std::string &) {
-            cluster->setConnection(nullptr);
-        };
-
-        // Start the server
-        std::thread server_thread([&server]() {
-            server->start();
-        });
-
-        // Wait for the server to start
-        BOOST_CHECK_EQUAL(acceptingConnections(server->config.port), true);
-
-        // Create a websocket client to receive messages from the server
-        auto wsClient = std::make_shared<TestWsClient>("localhost:23458/ws/");
-
-        auto receivedMessages = std::vector<std::vector<uint8_t>>();
-
-        wsClient->on_message = [&receivedMessages](const std::shared_ptr<TestWsClient::Connection> &,
-                                                  const std::shared_ptr<TestWsClient::InMessage> &in_message) {
-            auto data = in_message->string();
-            receivedMessages.emplace_back(std::vector<uint8_t>(data.begin(), data.end()));
-        };
-
-        std::thread client_thread([&wsClient]() {
-            wsClient->start();
-        });
-
-        // Wait for the client to connect
-        while (!*cluster->getpConnection()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
+        stopRunningWebSocket();
 
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
+        onlineCluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
 
         auto s1_d2 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s1", s1_d2, Message::Priority::Highest);
+        onlineCluster->queueMessage("s1", s1_d2, Message::Priority::Highest);
 
         auto s2_d1 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s2", s2_d1, Message::Priority::Highest);
+        onlineCluster->queueMessage("s2", s2_d1, Message::Priority::Highest);
 
         auto s3_d1 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
+        onlineCluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         auto s3_d2 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s3", s3_d2, Message::Priority::Lowest);
+        onlineCluster->queueMessage("s3", s3_d2, Message::Priority::Lowest);
 
         auto s3_d3 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s3", s3_d3, Message::Priority::Lowest);
+        onlineCluster->queueMessage("s3", s3_d3, Message::Priority::Lowest);
 
         auto s3_d4 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s3", s3_d4, Message::Priority::Lowest);
+        onlineCluster->queueMessage("s3", s3_d4, Message::Priority::Lowest);
 
         auto s4_d1 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s4", s4_d1, Message::Priority::Lowest);
+        onlineCluster->queueMessage("s4", s4_d1, Message::Priority::Lowest);
 
         auto s4_d2 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s4", s4_d2, Message::Priority::Lowest);
+        onlineCluster->queueMessage("s4", s4_d2, Message::Priority::Lowest);
 
         auto s5_d1 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s5", s5_d1, Message::Priority::Lowest);
+        onlineCluster->queueMessage("s5", s5_d1, Message::Priority::Lowest);
 
         auto s5_d2 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s5", s5_d2, Message::Priority::Lowest);
+        onlineCluster->queueMessage("s5", s5_d2, Message::Priority::Lowest);
 
         auto s6_d1 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s6", s6_d1, Message::Priority::Medium);
+        onlineCluster->queueMessage("s6", s6_d1, Message::Priority::Medium);
 
         auto s6_d2 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s6", s6_d2, Message::Priority::Medium);
+        onlineCluster->queueMessage("s6", s6_d2, Message::Priority::Medium);
 
         auto s6_d3 = generateRandomData(randomInt(0, 255));
-        cluster->queueMessage("s6", s6_d3, Message::Priority::Medium);
+        onlineCluster->queueMessage("s6", s6_d3, Message::Priority::Medium);
 
-        *cluster->getdataReady() = true;
-        cluster->callrun();
+        *onlineCluster->getdataReady() = true;
+        onlineCluster->callrun();
 
-        // Give the websocket threads time to complete
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        // Wait for the messages to be sent
+        while (receivedMessages.size() < 14) {
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 
         // Check that the data sent was in priority/source order
         // The following order is deterministic - but sensitive.
@@ -460,25 +395,9 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
                                       s3_d3->end());
         BOOST_CHECK_EQUAL_COLLECTIONS(receivedMessages[13].begin(), receivedMessages[13].end(), s3_d4->begin(),
                                       s3_d4->end());
-
-        // Stop the client and server websocket connections and threads
-        wsClient->stop();
-        client_thread.join();
-
-        server->stop();
-        server_thread.join();
     }
 
     BOOST_AUTO_TEST_CASE(test_doesHigherPriorityDataExist) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // There should be no higher priority data if there is no data
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Highest), false);
         BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t) Message::Priority::Lowest), false);
@@ -530,37 +449,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_updateJob) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
-        // First make sure we delete all entries from the job history table
-        auto database = MySqlConnector();
-        schema::JobserverJobhistory jobHistoryTable;
-        schema::JobserverJob jobTable;
-        schema::JobserverFiledownload fileDownloadTable;
-
-        database->run(remove_from(fileDownloadTable).unconditionally());
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
-
-        // Create the new job object
-        auto jobId = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = "test",
-                                jobTable.bundle = "whatever",
-                                jobTable.application = "test"
-                        )
-        );
-
         Message msg(UPDATE_JOB);
         msg.push_uint(jobId);               // jobId
         msg.push_string("running");     // what
@@ -618,57 +506,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
         BOOST_CHECK_EQUAL(status->what, "failed");
         BOOST_CHECK_EQUAL((uint32_t) status->state, (uint32_t) 500);
         BOOST_CHECK_EQUAL(status->details, "it died");
-
-        // Finally clean up all entries from the job history table
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
     }
 
     BOOST_AUTO_TEST_CASE(test_checkUnsubmittedJobs) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
-        // First make sure we delete all entries from the job history table
-        auto database = MySqlConnector();
-        schema::JobserverJobhistory jobHistoryTable;
-        schema::JobserverJob jobTable;
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
-
         // Bring the cluster online
         auto con = std::make_shared<WsServer::Connection>(nullptr);
         cluster->setConnection(con);
 
         // Test PENDING works as expected
-
-        // Create the new job object
-        auto jobIdTestCluster = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = "testclusternotreal",
-                                jobTable.bundle = "whatever",
-                                jobTable.application = "test"
-                        )
-        );
-
-        auto jobId = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = std::string{jsonClusters[0]["name"]},
-                                jobTable.bundle = "whatever",
-                                jobTable.application = "test"
-                        )
-        );
 
         // Create the first state object
         database->run(
@@ -735,7 +580,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // There is one job in pending state older than 1 minute
         cluster->callcheckUnsubmittedJobs();
-        auto source = std::to_string(jobId) + "_" + std::string{jsonClusters[0]["name"]};
+        auto source = std::to_string(jobId) + "_" + cluster->getName();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
@@ -844,57 +689,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
             cluster->callcheckUnsubmittedJobs();
             BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->empty(), true);
         }
-
-        // Finally clean up all entries from the job history table
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
     }
 
     BOOST_AUTO_TEST_CASE(test_checkCancellingJobs) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // Bring the cluster online
         auto con = std::make_shared<WsServer::Connection>(nullptr);
         cluster->setConnection(con);
 
-        // First make sure we delete all entries from the job history table
-        auto database = MySqlConnector();
-        schema::JobserverJobhistory jobHistoryTable;
-        schema::JobserverJob jobTable;
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
-
         // Test CANCELLING works as expected
-
-        // Create the new job object
-        auto jobIdTestCluster = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = "testclusternotreal",
-                                jobTable.bundle = "whatever",
-                                jobTable.application = "test"
-                        )
-        );
-
-        auto jobId = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = std::string{jsonClusters[0]["name"]},
-                                jobTable.bundle = "whatever",
-                                jobTable.application = "test"
-                        )
-        );
 
         // Create the first state object
         database->run(
@@ -961,7 +763,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // There is one job in cancelling state older than 1 minute
         cluster->callcheckCancellingJobs();
-        auto source = std::to_string(jobId) + "_" + std::string{jsonClusters[0]["name"]};
+        auto source = std::to_string(jobId) + "_" + cluster->getName();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
@@ -1021,57 +823,14 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
             cluster->callcheckCancellingJobs();
             BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->empty(), true);
         }
-
-        // Finally clean up all entries from the job history table
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
     }
 
     BOOST_AUTO_TEST_CASE(test_checkDeletingJobs) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // Bring the cluster online
         auto con = std::make_shared<WsServer::Connection>(nullptr);
         cluster->setConnection(con);
 
-        // First make sure we delete all entries from the job history table
-        auto database = MySqlConnector();
-        schema::JobserverJobhistory jobHistoryTable;
-        schema::JobserverJob jobTable;
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
-
         // Test DELETING works as expected
-
-        // Create the new job object
-        auto jobIdTestCluster = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = "testclusternotreal",
-                                jobTable.bundle = "whatever",
-                                jobTable.application = "test"
-                        )
-        );
-
-        auto jobId = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = std::string{jsonClusters[0]["name"]},
-                                jobTable.bundle = "whatever",
-                                jobTable.application = "test"
-                        )
-        );
 
         // Create the first state object
         database->run(
@@ -1138,7 +897,7 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
         // There is one job in deleting state older than 1 minute
         cluster->callcheckDeletingJobs();
-        auto source = std::to_string(jobId) + "_" + std::string{jsonClusters[0]["name"]};
+        auto source = std::to_string(jobId) + "_" + cluster->getName();
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
@@ -1198,22 +957,9 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
             cluster->callcheckDeletingJobs();
             BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->empty(), true);
         }
-
-        // Finally clean up all entries from the job history table
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileError) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // A uuid that isn't in the fileDownloadMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
@@ -1255,15 +1001,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileDetails) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // A uuid that isn't in the fileDownloadMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
@@ -1305,15 +1042,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileChunk) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // A uuid that isn't in the fileDownloadMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
@@ -1393,15 +1121,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileList) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // A uuid that isn't in the fileListMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
@@ -1472,15 +1191,6 @@ BOOST_AUTO_TEST_SUITE(Cluster_test_suite)
 
 
     BOOST_AUTO_TEST_CASE(test_handleFileListError) {
-        // Parse the cluster configuration
-        auto jsonClusters = nlohmann::json::parse(sClusters);
-
-        // Get the details for the first cluster
-        auto details = std::make_shared<sClusterDetails>(jsonClusters[0]);
-
-        // Create a new cluster
-        auto cluster = std::make_shared<Cluster>(details);
-
         // A uuid that isn't in the fileDListMap should be a noop
         auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
