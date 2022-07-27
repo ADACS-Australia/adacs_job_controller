@@ -5,9 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 
 # Generate maximum debug information (Dwarf version 4 for folly backtrace support)
-# Note that we also disable all warnings here - those are re-enabled for the Boost_Tests_run target, which is used
-# by the CI for generating code quality reports.
-set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -w ")
+set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall ")
 
 # Suppress nested inexact package name searches
 set(FPHSA_NAME_MISMATCHED 1)
@@ -133,7 +131,6 @@ set_target_properties(
         Boost_Tests_run
         PROPERTIES
         CXX_CLANG_TIDY "clang-tidy"
-        CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall"
 )
 
 set_target_properties(
