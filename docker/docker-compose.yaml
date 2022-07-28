@@ -6,7 +6,7 @@ services:
       dockerfile: ./docker/gwcloud_job_server.Dockerfile
       context: ..
       target: production
-    image: nexus.gwdc.org.au/docker/gwcloud_job_server:0.42
+    image: nexus.gwdc.org.au/docker/gwcloud_job_server:0.43
     container_name: gwcloud_job_server
     environment:
       DATABASE_SCHEMA: jobserver
@@ -23,6 +23,7 @@ services:
     image: mysql:5.7
     container_name: gwcloud_job_server_mysql
     environment:
+      MYSQL_ROOT_HOST: "0.0.0.0"
       MYSQL_ROOT_PASSWORD: 76vcqmGKP19Z1AEx
       MYSQL_DATABASE: jobserver
       MYSQL_USER: jobserver

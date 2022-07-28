@@ -30,7 +30,7 @@ ClusterManager::ClusterManager() {
 }
 
 void ClusterManager::start() {
-    std::thread(&ClusterManager::run, this);
+    [[maybe_unused]] static const auto clusterThread = std::make_unique<std::thread>(&ClusterManager::run, this);
 }
 
 [[noreturn]] void ClusterManager::run() {
