@@ -44,7 +44,7 @@ FROM ubuntu:jammy AS production
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
-RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.74.0  libdouble-conversion3 libgflags2.2 libgoogle-glog0v5 libmysqlclient21 
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.74.0  libdouble-conversion3 libgflags2.2 libgoogle-glog0v5 libmysqlclient21 libfmt8 
 
 # Set the timezone
 ENV TZ=Australia/Melbourne
