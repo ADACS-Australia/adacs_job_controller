@@ -25,8 +25,8 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
     std::shared_ptr<Cluster> cluster;
     std::shared_ptr<sClusterDetails> onlineDetails;
     std::shared_ptr<Cluster> onlineCluster;
-    uint32_t jobId;
-    uint32_t jobIdTestCluster;
+    uint64_t jobId;
+    uint64_t jobIdTestCluster;
     // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     ClusterTestDataFixture() :

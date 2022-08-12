@@ -9,13 +9,13 @@
 #include "../HttpServer.h"
 
 void handleFileList(
-        const std::shared_ptr<ClusterManager>& clusterManager, uint32_t jobId, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<ClusterManager>& clusterManager, uint64_t jobId, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications,
         const std::shared_ptr<HttpServerImpl::Response> &response
 );
 
 void handleFileList(
-        const std::shared_ptr<Cluster> &cluster, const std::string &sBundle, uint32_t jobId, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<Cluster> &cluster, const std::string &sBundle, uint64_t jobId, bool bRecursive, const std::string &filePath,
         const std::shared_ptr<HttpServerImpl::Response> &response
 );
 

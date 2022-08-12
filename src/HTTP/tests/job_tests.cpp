@@ -169,7 +169,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         nlohmann::json result;
         response->content >> result;
 
-        uint32_t jobId = result["jobId"];
+        uint64_t jobId = result["jobId"];
         auto jobResults =
                 database->run(
                         select(all_of(jobTable))

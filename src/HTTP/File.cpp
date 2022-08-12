@@ -58,7 +58,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             request->content >> post_data;
 
             // Get the job to fetch files for if one was provided
-            auto jobId = post_data.contains("jobId") ? static_cast<uint32_t>(post_data["jobId"]) : 0;
+            auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data["jobId"]) : 0;
 
             // Get the path to the file to fetch (relative to the project)
             bool hasPaths = false;
@@ -94,7 +94,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
                                 select(all_of(jobTable))
                                         .from(jobTable)
                                         .where(
-                                                jobTable.id == static_cast<uint32_t>(jobId)
+                                                jobTable.id == static_cast<uint64_t>(jobId)
                                                 and jobTable.application.in(sqlpp::value_list(applications))
                                         )
                         );
@@ -281,7 +281,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             auto sBundle = std::string{dlResult->bundle};
 
             auto sFilePath = std::string{dlResult->path};
-            auto jobId = static_cast<uint32_t>(dlResult->job);
+            auto jobId = static_cast<uint64_t>(dlResult->job);
 
             // Check that the cluster is online
             // Get the cluster to submit to
@@ -511,7 +511,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             request->content >> post_data;
 
             // Get the job to fetch files for if one was provided
-            auto jobId = post_data.contains("jobId") ? static_cast<uint32_t>(post_data["jobId"]) : 0;
+            auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data["jobId"]) : 0;
 
             // Get the job to fetch files for
             auto bRecursive = static_cast<bool>(post_data["recursive"]);

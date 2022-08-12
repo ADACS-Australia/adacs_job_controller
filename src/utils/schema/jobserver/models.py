@@ -3,7 +3,7 @@ from django.db import models
 
 class Job(models.Model):
     # The id of the user for this job. This is set from the userId field of the JWT payload
-    user = models.IntegerField()
+    user = models.BigIntegerField()
 
     # The parameters for this job (Use base64 if you need to store binary)
     parameters = models.TextField()
@@ -37,10 +37,10 @@ class JobHistory(models.Model):
 
 class FileDownload(models.Model):
     # The id of the user for this job
-    user = models.IntegerField()
+    user = models.BigIntegerField()
 
     # The job ID this download is for
-    job = models.IntegerField()
+    job = models.BigIntegerField()
 
     # The cluster name this job belongs to
     cluster = models.CharField(max_length=200)
