@@ -321,7 +321,7 @@ void Cluster::updateJob(Message &message) {
                 select(all_of(jobTable))
                         .from(jobTable)
                         .where(
-                                jobTable.id == static_cast<uint32_t>(jobId)
+                                jobTable.id == static_cast<uint64_t>(jobId)
                         )
         );
 

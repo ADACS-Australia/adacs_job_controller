@@ -10,7 +10,7 @@
 
 struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
     // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
-    uint32_t jobId;
+    uint64_t jobId;
     bool bRaiseError = true;
     bool bReady = false;
     std::vector<std::string> lastDirPath;
@@ -221,7 +221,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
                 select(all_of(jobFilelistcache))
                         .from(jobFilelistcache)
                         .where(
-                                jobFilelistcache.jobId == static_cast<uint32_t>(jobId)
+                                jobFilelistcache.jobId == static_cast<uint64_t>(jobId)
                         )
         );
 
@@ -459,7 +459,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
                 select(all_of(jobFilelistcache))
                         .from(jobFilelistcache)
                         .where(
-                                jobFilelistcache.jobId == static_cast<uint32_t>(jobId)
+                                jobFilelistcache.jobId == static_cast<uint64_t>(jobId)
                         )
         );
 

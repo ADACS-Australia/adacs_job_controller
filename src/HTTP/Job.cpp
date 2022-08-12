@@ -14,7 +14,7 @@
 #include <exception>
 #include <sqlpp11/sqlpp11.h>
 
-auto getJobs(const std::vector<uint32_t> &ids) -> nlohmann::json;
+auto getJobs(const std::vector<uint64_t> &ids) -> nlohmann::json;
 
 auto filterJobs(
         std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeGt,
@@ -89,7 +89,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
             auto jobId = database->run(
                     insert_into(jobTable)
                             .set(
-                                    jobTable.user = static_cast<uint32_t>(authResult->payload()["userId"]),
+                                    jobTable.user = static_cast<uint64_t>(authResult->payload()["userId"]),
                                     jobTable.parameters = std::string{post_data["parameters"]},
                                     jobTable.cluster = std::string{post_data["cluster"]},
                                     jobTable.bundle = std::string{post_data["bundle"]},
@@ -293,7 +293,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
             }
 
             // Get the job id
-            auto jobId = static_cast<uint32_t>(jobIdPtr.value());
+            auto jobId = static_cast<uint64_t>(jobIdPtr.value());
 
             // Make sure the job to cancel exists in the database
             auto jobResults =
@@ -461,7 +461,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
             }
 
             // Get the job id
-            auto jobId = static_cast<uint32_t>(jobIdPtr.value());
+            auto jobId = static_cast<uint64_t>(jobIdPtr.value());
 
             // Make sure the job to delete exists in the database
             auto jobResults =
@@ -729,7 +729,7 @@ auto filterJobs(
     auto historyResults = database->run(historyResultsFilter);
 
     // Get all the job ids that match
-    std::vector<uint32_t> filteredJobIds;
+    std::vector<uint64_t> filteredJobIds;
     for (const auto &history : historyResults) {
         filteredJobIds.push_back(history.jobId);
     }
@@ -738,7 +738,7 @@ auto filterJobs(
     return getJobs(filteredJobIds);
 }
 
-auto getJobs(const std::vector<uint32_t> &ids) -> nlohmann::json {
+auto getJobs(const std::vector<uint64_t> &ids) -> nlohmann::json {
     // Fetches multiple jobs from the database
     nlohmann::json result;
 
@@ -769,7 +769,7 @@ auto getJobs(const std::vector<uint32_t> &ids) -> nlohmann::json {
     std::vector<nlohmann::json> histories;
     for (const auto &historyResult : jobHistoryResults) {
         nlohmann::json history;
-        history["jobId"] = static_cast<uint32_t>(historyResult.jobId);
+        history["jobId"] = static_cast<uint64_t>(historyResult.jobId);
         history["timestamp"] = date::format("%F %T %Z", historyResult.timestamp.value());
         history["what"] = historyResult.what;
         history["state"] = static_cast<uint32_t>(historyResult.state);
@@ -783,8 +783,8 @@ auto getJobs(const std::vector<uint32_t> &ids) -> nlohmann::json {
         nlohmann::json jsonJob;
 
         // Write the job details
-        jsonJob["id"] = static_cast<uint32_t>(job.id);
-        jsonJob["user"] = static_cast<uint32_t>(job.user);
+        jsonJob["id"] = static_cast<uint64_t>(job.id);
+        jsonJob["user"] = static_cast<uint64_t>(job.user);
         jsonJob["parameters"] = job.parameters;
         jsonJob["cluster"] = job.cluster;
         jsonJob["bundle"] = job.bundle;
@@ -792,7 +792,7 @@ auto getJobs(const std::vector<uint32_t> &ids) -> nlohmann::json {
 
         // Write the job history
         for (auto &history : histories) {
-            if (static_cast<uint32_t>(history["jobId"]) == static_cast<uint32_t>(job.id)) {
+            if (static_cast<uint64_t>(history["jobId"]) == static_cast<uint64_t>(job.id)) {
                 jsonJob["history"].push_back(history);
             }
         }
