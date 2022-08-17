@@ -6,9 +6,14 @@
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
 #include "ClusterManager.h"
+#include <algorithm>
 #include <boost/process.hpp>
 #include <iostream>
 #include <nlohmann/json.hpp>
+
+// Define a mutex that can be used for safely removing entries from the mClusterPings map
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+std::mutex mClusterPingsDeletionLockMutex;
 
 ClusterManager::ClusterManager() {
     // Read the cluster configuration from the environment
@@ -31,6 +36,7 @@ ClusterManager::ClusterManager() {
 
 void ClusterManager::start() {
     [[maybe_unused]] static const auto clusterThread = std::make_unique<std::thread>(&ClusterManager::run, this);
+    [[maybe_unused]] static const auto pingThread = std::make_unique<std::thread>(&ClusterManager::runPings, this);
 }
 
 [[noreturn]] void ClusterManager::run() {
@@ -39,6 +45,15 @@ void ClusterManager::start() {
 
         // Wait CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS to check again
         std::this_thread::sleep_for(std::chrono::seconds(CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS));
+    }
+}
+
+[[noreturn]] void ClusterManager::runPings() {
+    while (true) {
+        checkPings();
+
+        // Wait CLUSTER_MANAGER_PING_INTERVAL_SECONDS to check again
+        std::this_thread::sleep_for(std::chrono::seconds(CLUSTER_MANAGER_PING_INTERVAL_SECONDS));
     }
 }
 
@@ -147,8 +162,12 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
         return nullptr;
     }
 
-    // Record the connected cluster
+    // Record the connected cluster and reset the ping timer
     mConnectedClusters[connection] = cluster;
+    {
+        std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+        mClusterPings[connection] = {};
+    }
 
     // Configure the cluster
     cluster->setConnection(connection);
@@ -157,7 +176,7 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
     return cluster;
 }
 
-void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection>& connection) {
+void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection>& connection, bool close, bool lock) {
     // Get the cluster for this connection
     auto pCluster = getCluster(connection);
 
@@ -166,11 +185,94 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
         pCluster->setConnection(nullptr);
     }
 
-    // Remove the specified connection from the connected clusters
+    // Remove the specified connection from the connected clusters and clear the ping timer
     mConnectedClusters.erase(connection);
+    if (lock)
+    {
+        std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+        mClusterPings.erase(connection);
+    } else {
+        mClusterPings.erase(connection);
+    }
+
+    // Make sure the connection is closed
+    if (close) {
+        connection->close();
+    }
 
     // Try to reconnect the cluster in case it's a temporary network failure
     reconnectClusters();
+}
+
+void ClusterManager::handlePong(const std::shared_ptr<WsServer::Connection>& connection) {
+    // Update the ping timer for this connection
+    std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+
+    if (mClusterPings.find(connection) != mClusterPings.end()) {
+        mClusterPings[connection].pongTimestamp = std::chrono::system_clock::now();
+
+        // Report the latency
+        auto latency = mClusterPings[connection].pongTimestamp - mClusterPings[connection].pingTimestamp;
+        auto cluster = getCluster(connection);
+
+        std::cout << "WS: Cluster " << std::string(cluster ? cluster->getName() : "unknown?") << " had "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(latency) << " latency." << std::endl;
+    }
+}
+
+void ClusterManager::checkPings() {
+    std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+
+    // Check for any websocket pings that didn't pong within CLUSTER_MANAGER_PING_INTERVAL_SECONDS, and kick the connection if so
+    typeof(mClusterPings) deadConnections;
+    std::copy_if(
+        mClusterPings.begin(),
+        mClusterPings.end(),
+        std::inserter(deadConnections, deadConnections.end()),
+        [](auto & item){
+            std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
+            return (item.second.pingTimestamp != zeroTime && item.second.pongTimestamp == zeroTime);
+        }
+    );
+
+    // Close and remove any dead connections
+    for (auto & deadConnection : deadConnections) {
+        auto cluster = getCluster(deadConnection.first);
+        std::cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "
+                  << "Error: Websocket timed out waiting for ping." << std::endl;
+
+        removeConnection(deadConnection.first, true, false);
+    }
+
+    // Send a fresh ping to each cluster
+    for (auto & mClusterPing : mClusterPings) {
+        // Update the ping timestamp
+        mClusterPing.second.pingTimestamp = std::chrono::system_clock::now();
+        mClusterPing.second.pongTimestamp = {};
+
+        // Send a ping to the client
+        // See https://www.rfc-editor.org/rfc/rfc6455#section-5.2 for the ping opcode 137
+        mClusterPing.first->send(
+            "",
+            [&](const SimpleWeb::error_code &errorCode){
+                // Kill the connection only if the error was not indicating success
+                if (!errorCode){
+                    return;
+                }
+
+                removeConnection(mClusterPing.first, true, false);
+                reportWebsocketError(getCluster(mClusterPing.first), errorCode);
+            },
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers, readability-magic-numbers)
+            137
+        );
+    }
+}
+
+void ClusterManager::reportWebsocketError(const std::shared_ptr<Cluster>& cluster, const SimpleWeb::error_code &errorCode) {
+    // Log this
+    std::cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "
+              << "Error: " << errorCode << ", error message: " << errorCode.message() << std::endl;
 }
 
 auto ClusterManager::isClusterOnline(const std::shared_ptr<Cluster>& cluster) -> bool {

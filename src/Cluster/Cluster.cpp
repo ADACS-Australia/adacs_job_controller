@@ -227,7 +227,22 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
 
                             // Send the message on the websocket
                             if (pConnection != nullptr) {
-                                pConnection->send(outMessage, nullptr, 130); // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                                pConnection->send(
+                        outMessage,
+                            [this](const SimpleWeb::error_code &errorCode){
+                                        // Kill the connection only if the error was not indicating success
+                                        if (!errorCode){
+                                            return;
+                                        }
+
+                                        pConnection->close();
+                                        pConnection = nullptr;
+
+                                        ClusterManager::reportWebsocketError(shared_from_this(), errorCode);
+                                    },
+                                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                                    130
+                                );
                             } else {
                                 std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
                             }
