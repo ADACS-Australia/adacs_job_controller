@@ -115,25 +115,26 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
         for (const auto& cluster : *mgr->getvClusters()) {
             auto con = std::make_shared<WsServer::Connection>(nullptr);
             mgr->getmConnectedClusters()->emplace(con, cluster);
+            mgr->getmClusterPings()->emplace(con, ClusterManager::sPingPongTimes{});
             connections[con] = cluster;
             cluster->setpConnection(con);
         }
 
-        // Check that cluster is really connected
+        // Check that cluster is really connected and that the cluster ping map has been correctly set up
         BOOST_CHECK_EQUAL(mgr->getCluster(*mgr->getvClusters()->at(1)->getpConnection()), mgr->getvClusters()->at(1));
 
         // Remember connection for second cluster
         auto con = *mgr->getvClusters()->at(1)->getpConnection();
 
         // Remove the second cluster connection
-        mgr->removeConnection(con);
+        mgr->removeConnection(con, false);
 
         // Check removing an invalid connection
         {
             auto ptr = std::make_shared<WsServer::Connection>(nullptr);
-            mgr->removeConnection(ptr);
+            mgr->removeConnection(ptr, false);
         }
-        mgr->removeConnection(nullptr);
+        mgr->removeConnection(nullptr, false);
 
         // Check that the connection has been removed correctly
         // Connection in second cluster should now be null
@@ -148,6 +149,11 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
         // Check that remaining clusters are still connected
         BOOST_CHECK_EQUAL(mgr->getCluster(*mgr->getvClusters()->at(0)->getpConnection()), mgr->getvClusters()->at(0));
         BOOST_CHECK_EQUAL(mgr->getCluster(*mgr->getvClusters()->at(2)->getpConnection()), mgr->getvClusters()->at(2));
+
+        // Check that the mClusterPing map is correct
+        BOOST_CHECK_EQUAL(mgr->getmClusterPings()->find(*mgr->getvClusters()->at(0)->getpConnection())->first, *mgr->getvClusters()->at(0)->getpConnection());
+        BOOST_CHECK_MESSAGE(mgr->getmClusterPings()->find(*mgr->getvClusters()->at(1)->getpConnection()) == mgr->getmClusterPings()->end(), "mClusterPings was not consistent");
+        BOOST_CHECK_EQUAL(mgr->getmClusterPings()->find(*mgr->getvClusters()->at(2)->getpConnection())->first, *mgr->getvClusters()->at(2)->getpConnection());
     }
 
     BOOST_AUTO_TEST_CASE(test_reconnectClusters) {
@@ -310,6 +316,12 @@ BOOST_AUTO_TEST_SUITE(ClusterManager_test_suite)
 
             // The second cluster should now be connected
             BOOST_CHECK_EQUAL(mgr->isClusterOnline(mgr->getvClusters()->at(1)), true);
+
+            BOOST_CHECK_EQUAL(mgr->getmClusterPings()->begin()->first, *mgr->getvClusters()->at(1)->getpConnection());
+            std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
+            BOOST_CHECK_MESSAGE(mgr->getmClusterPings()->begin()->second.pingTimestamp == zeroTime, "pingTimestamp was not zero when it should have been");
+            BOOST_CHECK_MESSAGE(mgr->getmClusterPings()->begin()->second.pongTimestamp == zeroTime, "pongTimestamp was not zero when it should have been");
+
         }
     }
 

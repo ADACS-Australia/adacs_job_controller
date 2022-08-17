@@ -16,24 +16,36 @@ public:
 
     void start();
     auto handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection, const std::string& uuid) -> std::shared_ptr<Cluster>;
-    void removeConnection(const std::shared_ptr<WsServer::Connection>& connection);
+    void removeConnection(const std::shared_ptr<WsServer::Connection>& connection, bool close = true, bool lock = true);
+    void handlePong(const std::shared_ptr<WsServer::Connection>& connection);
     auto getCluster(const std::shared_ptr<WsServer::Connection>& connection) -> std::shared_ptr<Cluster>;
     auto getCluster(const std::string& cluster) -> std::shared_ptr<Cluster>;
     auto isClusterOnline(const std::shared_ptr<Cluster>& cluster) -> bool;
+    static void reportWebsocketError(const std::shared_ptr<Cluster>& cluster, const SimpleWeb::error_code &errorCode);
 
+    struct sPingPongTimes {
+        std::chrono::time_point<std::chrono::system_clock> pingTimestamp;
+        std::chrono::time_point<std::chrono::system_clock> pongTimestamp;
+    };
 private:
     [[noreturn]] void run();
+    [[noreturn]] void runPings();
 
     std::vector<std::shared_ptr<Cluster>> vClusters;
     std::map<std::shared_ptr<WsServer::Connection>, std::shared_ptr<Cluster>> mConnectedClusters;
 
+    std::map<std::shared_ptr<WsServer::Connection>, sPingPongTimes> mClusterPings;
+
     void reconnectClusters();
     static void connectCluster(const std::shared_ptr<Cluster>& cluster, const std::string &token);
+    void checkPings();
 
 // Testing
 EXPOSE_PROPERTY_FOR_TESTING(vClusters);
 EXPOSE_PROPERTY_FOR_TESTING(mConnectedClusters);
+EXPOSE_PROPERTY_FOR_TESTING(mClusterPings);
 EXPOSE_FUNCTION_FOR_TESTING(reconnectClusters);
+EXPOSE_FUNCTION_FOR_TESTING(checkPings);
 };
 
 

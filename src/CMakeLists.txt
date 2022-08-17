@@ -110,7 +110,7 @@ add_executable(
         tests/fixtures/HttpClientFixture.h
         tests/fixtures/WebSocketClientFixture.h
         tests/fixtures/WebSocketServerFixture.h
-)
+        Cluster/tests/ping_pong_tests.cpp)
 
 # Set the link libraries
 set(

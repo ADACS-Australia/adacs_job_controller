@@ -20,8 +20,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
         auto cluster = this->clusterManager->getCluster(connection);
         if (!cluster) {
             // What?
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-            connection->send_close(1000, "Bye.");
+            connection->close();
             return;
         }
 
@@ -38,15 +37,13 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
 
         // There should only be one query string parameter
         if (queryParams.size() != 1) {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-            connection->send_close(1000, "Bye.");
+            connection->close();
             return;
         }
 
         // Check that the only query string parameter is "token"
         if ((*queryParams.begin()).first != "token") {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-            connection->send_close(1000, "Bye.");
+            connection->close();
             return;
         }
 
@@ -62,8 +59,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
         } else {
             // Invalid Token
             std::cout << "WS: Invalid token used - " << (*queryParams.begin()).second << std::endl;
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-            connection->send_close(1000, "Bye.");
+            connection->close();
         }
     };
 
@@ -91,11 +87,18 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
             this->clusterManager->removeConnection(connection);
         }
 
-        // Log this
-        std::cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "
-                  << "Error: " << errorCode << ", error message: " << errorCode.message() << std::endl;
+        ClusterManager::reportWebsocketError(cluster, errorCode);
     };
 
+    wsEp.on_pong = [this](const std::shared_ptr<WsServer::Connection>& connection) {
+        // Try to get the cluster from the connection
+        auto cluster = this->clusterManager->getCluster(connection);
+
+        // Get the cluster manager to handle the pong
+        if (cluster) {
+            this->clusterManager->handlePong(connection);
+        }
+    };
 }
 
 void WebSocketServer::start() {
