@@ -216,7 +216,7 @@ void ClusterManager::handlePong(const std::shared_ptr<WsServer::Connection>& con
         auto cluster = getCluster(connection);
 
         std::cout << "WS: Cluster " << std::string(cluster ? cluster->getName() : "unknown?") << " had "
-        << std::chrono::duration_cast<std::chrono::milliseconds>(latency) << " latency." << std::endl;
+        << std::chrono::duration_cast<std::chrono::milliseconds>(latency).count() << "ms latency." << std::endl;
     }
 }
 
