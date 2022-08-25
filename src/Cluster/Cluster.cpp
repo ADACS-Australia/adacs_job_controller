@@ -351,9 +351,9 @@ void Cluster::updateJob(Message &message) {
         // Launch the file list in a new thread to prevent locking up the websocket. This is an internal system
         // operation and can run in the background, rather than on the websocket message handling thread.
         // We pass parameters by copy here intentionally, not by reference.
-        new std::thread([job, jobId, this] {
+        std::thread([job, jobId, this] {
             ::handleFileList(shared_from_this(), job->bundle, jobId, true, "", nullptr);
-        });
+        }).detach();
     }
 }
 
