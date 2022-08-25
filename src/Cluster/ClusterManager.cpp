@@ -162,6 +162,13 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
         return nullptr;
     }
 
+    // If this cluster is already connected, drop the new connection. This can occasionally happen if two SSH
+    // connections are made in close proximity to each other. For example when a cluster drops, right before the
+    // cluster check loop is fired.
+    if (cluster->isOnline()) {
+        return nullptr;
+    }
+
     // Record the connected cluster and reset the ping timer
     mConnectedClusters[connection] = cluster;
     {
