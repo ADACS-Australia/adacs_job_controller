@@ -195,10 +195,15 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         response = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
 
         // Wait until both websocket calls are made
-        while (lastDirPath.size() < 2 || lastbRecursive.size() < 2) {
+        int counter = 0;
+        // 500 * 10ms = 5 seconds.
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+        while ((lastDirPath.size() < 2 || lastbRecursive.size() < 2) && counter < 500) {
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+
+        BOOST_ASSERT_MSG(counter != 500, "Websocket too too long to respond");
 
         // There should have been two websocket calls - one to get the file list of the initial request, and a second
         // to get the full recursive file list of the entire job
@@ -432,10 +437,15 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         clusterManager->getvClusters()->at(0)->handleMessage(msg);
 
         // Wait until the file list websocket call is made (Should be triggered because of the job completion status
-        while (lastDirPath.empty() || lastbRecursive.empty()) {
+        int counter = 0;
+        // 500 * 10ms = 5 seconds.
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+        while ((lastDirPath.empty() || lastbRecursive.empty()) && counter < 500) {
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+
+        BOOST_ASSERT_MSG(counter != 500, "Websocket too too long to respond");
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), "");
