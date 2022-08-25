@@ -203,7 +203,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        BOOST_ASSERT_MSG(counter != 500, "Websocket too too long to respond");
+        BOOST_ASSERT_MSG(counter != 500, "Websocket took too long to respond");
 
         // There should have been two websocket calls - one to get the file list of the initial request, and a second
         // to get the full recursive file list of the entire job
@@ -445,7 +445,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        BOOST_ASSERT_MSG(counter != 500, "Websocket too too long to respond");
+        BOOST_ASSERT_MSG(counter != 500, "Websocket took too long to respond");
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), "");
