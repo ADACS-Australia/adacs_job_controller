@@ -73,6 +73,10 @@ struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientF
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
+
+        // Wait a moment for the pong to be processed
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 };
 
