@@ -153,7 +153,12 @@ BOOST_FIXTURE_TEST_SUITE(ClusterManager_test_suite, ClusterManagerTestDataFixtur
     }
 
     BOOST_AUTO_TEST_CASE(test_handleNewConnection_expire_uuids) {
-        // Make sure that old expired uuids are deleted from the database when a cluster is connecting
+        // Make sure that old expired uuids are deleted from the database when a cluster is connecting. Note that
+        // we're taking advantage of the UUID field being unique here. So we expect that the UUID
+        // "uuid_doesn't_matter_here" will be removed by mgr->handleNewConnection because the UUID is entered in to the
+        // database already expired. When we try to insert the same UUID again afterwards, the database will raise an
+        // exception if the functionality does not work as expected. There is also an additional separate check to
+        // confirm that the number of UUID's in the database is 0 after the handleNewConnection call.
         database->run(
                 insert_into(jobClusteruuid)
                         .set(
