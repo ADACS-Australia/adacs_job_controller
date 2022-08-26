@@ -3,9 +3,6 @@ FROM ubuntu:jammy AS build_base
 # Update the container and install the required packages
 ENV DEBIAN_FRONTEND="noninteractive"
 
-# Install ca-certificates
-RUN apt-get update && apt-get install -y ca-certificates
-
 # Switch mirror to Australia
 RUN sed --in-place --regexp-extended "s/(\/\/)(archive\.ubuntu)/\1au.\2/" /etc/apt/sources.list
 
