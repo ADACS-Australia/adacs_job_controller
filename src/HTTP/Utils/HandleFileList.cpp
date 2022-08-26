@@ -270,9 +270,9 @@ void handleFileList(
             // Launch the file list in a new thread to prevent unexpected HTTP request delays. This is fine to run in
             // the background since it's a system operation at this point and not related to the original HTTP request.
             // We pass parameters by copy here intentionally, not by reference.
-            new std::thread([cluster, sBundle, jobId] {
+            std::thread([cluster, sBundle, jobId] {
                 ::handleFileList(cluster, sBundle, jobId, true, "", nullptr);
-            });
+            }).detach();
         }
 
         {
