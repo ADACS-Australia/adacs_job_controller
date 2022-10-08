@@ -2,16 +2,18 @@
 // Created by lewis on 10/8/22.
 //
 
-#include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../DB/sClusterJob.h"
-#include "../../tests/fixtures/WebSocketClientFixture.h"
 #include "../../DB/sClusterJobStatus.h"
 #include "../../Lib/JobStatus.h"
+#include "../../tests/fixtures/DatabaseFixture.h"
+#include "../../tests/fixtures/WebSocketClientFixture.h"
 #include <boost/lexical_cast.hpp>
 #include <boost/test/unit_test.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <random>
 #include <utility>
+
+// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
 struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClientFixture {
     // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
@@ -646,3 +648,5 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
         BOOST_CHECK_EQUAL(result->pop_bool(), false);   // success?
     }
 BOOST_AUTO_TEST_SUITE_END()
+
+// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)

@@ -5,9 +5,9 @@
 #ifndef GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_H
 #define GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_H
 
-#include "MySqlConnector.h"
 #include "../Lib/Messaging/Message.h"
 #include "../Lib/jobserver_schema.h"
+#include "MySqlConnector.h"
 #include <cstdint>
 #include <string>
 #include <thread>

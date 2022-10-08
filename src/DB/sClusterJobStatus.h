@@ -5,9 +5,9 @@
 #ifndef GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_STATUS_H
 #define GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_STATUS_H
 
-#include "MySqlConnector.h"
 #include "../Lib/Messaging/Message.h"
 #include "../Lib/jobserver_schema.h"
+#include "MySqlConnector.h"
 #include "sClusterJob.h"
 #include <cstdint>
 #include <string>
@@ -16,7 +16,7 @@
 
 
 struct sClusterJobStatus {
-    auto equals(const sClusterJobStatus& other) -> bool {
+    [[nodiscard]] auto equals(const sClusterJobStatus& other) const -> bool {
         return id == other.id
             and jobId == other.jobId
             and what == other.what
@@ -48,6 +48,7 @@ struct sClusterJobStatus {
         };
     }
 
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
     static auto getJobStatusByJobIdAndWhat(uint64_t jobId, const std::string& what, const std::string& cluster) {
         auto _database = MySqlConnector();
         schema::JobserverClusterjobstatus _jobStatusTable;
