@@ -10,7 +10,6 @@
 #include <boost/test/unit_test.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <fstream>
 #include <random>
 #include <utility>
 

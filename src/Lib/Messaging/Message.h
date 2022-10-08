@@ -30,6 +30,21 @@ constexpr uint32_t RESUME_FILE_CHUNK_STREAM = 4005;
 constexpr uint32_t FILE_LIST = 4006;
 constexpr uint32_t FILE_LIST_ERROR = 4007;
 
+// ClusterJob DB messages
+constexpr uint32_t DB_JOB_GET_BY_JOB_ID = 5000;
+constexpr uint32_t DB_JOB_GET_BY_ID = 5001;
+constexpr uint32_t DB_JOB_GET_RUNNING_JOBS = 5002;
+constexpr uint32_t DB_JOB_DELETE = 5003;
+constexpr uint32_t DB_JOB_SAVE = 5004;
+
+// ClusterJobStatus DB messages
+constexpr uint32_t DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT = 6000;
+constexpr uint32_t DB_JOBSTATUS_GET_BY_JOB_ID = 6001;
+constexpr uint32_t DB_JOBSTATUS_DELETE_BY_ID_LIST = 6002;
+constexpr uint32_t DB_JOBSTATUS_SAVE = 6003;
+
+constexpr uint32_t DB_RESPONSE = 7000;
+
 class Cluster;
 
 class Message {

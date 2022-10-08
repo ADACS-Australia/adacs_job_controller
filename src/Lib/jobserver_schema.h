@@ -96,6 +96,299 @@ namespace schema
       };
     };
   };
+  namespace JobserverClusterjob_
+  {
+    struct Id
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T id;
+            T& operator()() { return id; }
+            const T& operator()() const { return id; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::bigint, sqlpp::tag::must_not_insert, sqlpp::tag::must_not_update>;
+    };
+    struct Cluster
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "cluster";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T cluster;
+            T& operator()() { return cluster; }
+            const T& operator()() const { return cluster; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct JobId
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "job_id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T jobId;
+            T& operator()() { return jobId; }
+            const T& operator()() const { return jobId; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::can_be_null>;
+    };
+    struct SchedulerId
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "scheduler_id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T schedulerId;
+            T& operator()() { return schedulerId; }
+            const T& operator()() const { return schedulerId; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::can_be_null>;
+    };
+    struct Submitting
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "submitting";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T submitting;
+            T& operator()() { return submitting; }
+            const T& operator()() const { return submitting; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::tinyint, sqlpp::tag::require_insert>;
+    };
+    struct SubmittingCount
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "submitting_count";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T submittingCount;
+            T& operator()() { return submittingCount; }
+            const T& operator()() const { return submittingCount; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    };
+    struct BundleHash
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "bundle_hash";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T bundleHash;
+            T& operator()() { return bundleHash; }
+            const T& operator()() const { return bundleHash; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct WorkingDirectory
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "working_directory";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T workingDirectory;
+            T& operator()() { return workingDirectory; }
+            const T& operator()() const { return workingDirectory; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct Queued
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "queued";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T queued;
+            T& operator()() { return queued; }
+            const T& operator()() const { return queued; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::tinyint, sqlpp::tag::require_insert>;
+    };
+    struct Params
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "params";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T params;
+            T& operator()() { return params; }
+            const T& operator()() const { return params; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::require_insert>;
+    };
+    struct Running
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "running";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T running;
+            T& operator()() { return running; }
+            const T& operator()() const { return running; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::tinyint, sqlpp::tag::require_insert>;
+    };
+  } // namespace JobserverClusterjob_
+
+  struct JobserverClusterjob: sqlpp::table_t<JobserverClusterjob,
+               JobserverClusterjob_::Id,
+               JobserverClusterjob_::Cluster,
+               JobserverClusterjob_::JobId,
+               JobserverClusterjob_::SchedulerId,
+               JobserverClusterjob_::Submitting,
+               JobserverClusterjob_::SubmittingCount,
+               JobserverClusterjob_::BundleHash,
+               JobserverClusterjob_::WorkingDirectory,
+               JobserverClusterjob_::Queued,
+               JobserverClusterjob_::Params,
+               JobserverClusterjob_::Running>
+  {
+    struct _alias_t
+    {
+      static constexpr const char _literal[] =  "jobserver_clusterjob";
+      using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+      template<typename T>
+      struct _member_t
+      {
+        T jobserverClusterjob;
+        T& operator()() { return jobserverClusterjob; }
+        const T& operator()() const { return jobserverClusterjob; }
+      };
+    };
+  };
+  namespace JobserverClusterjobstatus_
+  {
+    struct Id
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T id;
+            T& operator()() { return id; }
+            const T& operator()() const { return id; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::bigint, sqlpp::tag::must_not_insert, sqlpp::tag::must_not_update>;
+    };
+    struct What
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "what";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T what;
+            T& operator()() { return what; }
+            const T& operator()() const { return what; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct State
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "state";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T state;
+            T& operator()() { return state; }
+            const T& operator()() const { return state; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    };
+    struct JobId
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "job_id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T jobId;
+            T& operator()() { return jobId; }
+            const T& operator()() const { return jobId; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::bigint, sqlpp::tag::require_insert>;
+    };
+  } // namespace JobserverClusterjobstatus_
+
+  struct JobserverClusterjobstatus: sqlpp::table_t<JobserverClusterjobstatus,
+               JobserverClusterjobstatus_::Id,
+               JobserverClusterjobstatus_::What,
+               JobserverClusterjobstatus_::State,
+               JobserverClusterjobstatus_::JobId>
+  {
+    struct _alias_t
+    {
+      static constexpr const char _literal[] =  "jobserver_clusterjobstatus";
+      using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+      template<typename T>
+      struct _member_t
+      {
+        T jobserverClusterjobstatus;
+        T& operator()() { return jobserverClusterjobstatus; }
+        const T& operator()() const { return jobserverClusterjobstatus; }
+      };
+    };
+  };
   namespace JobserverClusteruuid_
   {
     struct Id

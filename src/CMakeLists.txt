@@ -81,6 +81,10 @@ set(
         Lib/GeneralUtils.h
         Lib/GeneralUtils.cpp
         HTTP/Utils/HandleFileList.cpp
+        DB/ClusterDB.cpp
+        DB/ClusterDB.h
+        DB/sClusterJob.h
+        DB/sClusterJobStatus.h
 )
 
 # Set the main executable and source files
@@ -110,7 +114,9 @@ add_executable(
         tests/fixtures/HttpClientFixture.h
         tests/fixtures/WebSocketClientFixture.h
         tests/fixtures/WebSocketServerFixture.h
-        Cluster/tests/ping_pong_tests.cpp)
+        Cluster/tests/ping_pong_tests.cpp
+        Cluster/tests/cluster_db_tests.cpp
+)
 
 # Set the link libraries
 set(
