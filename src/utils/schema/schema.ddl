@@ -1,8 +1,8 @@
--- MariaDB dump 10.19  Distrib 10.8.3-MariaDB, for Linux (x86_64)
+-- MariaDB dump 10.19  Distrib 10.9.3-MariaDB, for Linux (x86_64)
 --
 -- Host: localhost    Database: jobserver
 -- ------------------------------------------------------
--- Server version	10.8.3-MariaDB
+-- Server version	10.9.3-MariaDB
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -28,7 +28,53 @@ CREATE TABLE `django_migrations` (
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `applied` datetime(6) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=22 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=25 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `jobserver_clusterjob`
+--
+
+DROP TABLE IF EXISTS `jobserver_clusterjob`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `jobserver_clusterjob` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `cluster` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `job_id` int(11) DEFAULT NULL,
+  `scheduler_id` int(11) DEFAULT NULL,
+  `submitting` tinyint(1) NOT NULL,
+  `submitting_count` int(11) NOT NULL,
+  `bundle_hash` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `working_directory` varchar(512) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `queued` tinyint(1) NOT NULL,
+  `params` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  `running` tinyint(1) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `jobserver_clusterjob_cluster_58bbe756` (`cluster`),
+  KEY `jobserver_clusterjob_job_id_1288b3ad` (`job_id`),
+  KEY `jobserver_clusterjob_scheduler_id_d9aeaa21` (`scheduler_id`),
+  KEY `jobserver_clusterjob_queued_acf9fc12` (`queued`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `jobserver_clusterjobstatus`
+--
+
+DROP TABLE IF EXISTS `jobserver_clusterjobstatus`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `jobserver_clusterjobstatus` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `what` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `state` int(11) NOT NULL,
+  `job_id` bigint(20) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `jobserver_clusterjob_job_id_017cf8a8_fk_jobserver` (`job_id`),
+  KEY `jobserver_clusterjobstatus_state_99744516` (`state`),
+  CONSTRAINT `jobserver_clusterjob_job_id_017cf8a8_fk_jobserver` FOREIGN KEY (`job_id`) REFERENCES `jobserver_clusterjob` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -46,7 +92,7 @@ CREATE TABLE `jobserver_clusteruuid` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uuid` (`uuid`),
   KEY `jobserver_clusteruuid_timestamp_8f6c293c` (`timestamp`)
-) ENGINE=InnoDB AUTO_INCREMENT=6954 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=9299 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -68,7 +114,7 @@ CREATE TABLE `jobserver_filedownload` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `jobserver_filedownload_uuid_20de5691_uniq` (`uuid`),
   KEY `jobserver_filedownload_timestamp_f4d33e0e` (`timestamp`)
-) ENGINE=InnoDB AUTO_INCREMENT=1560 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1593 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -91,7 +137,7 @@ CREATE TABLE `jobserver_filelistcache` (
   KEY `jobserver_filelistcache_timestamp_c08291f7` (`timestamp`),
   KEY `jobserver_filelistcache_path_92e327d3` (`path`),
   CONSTRAINT `jobserver_filelistcache_job_id_04ab005b_fk` FOREIGN KEY (`job_id`) REFERENCES `jobserver_job` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2305 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2359 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -109,7 +155,7 @@ CREATE TABLE `jobserver_job` (
   `cluster` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
   `application` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=7193 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7535 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -132,7 +178,7 @@ CREATE TABLE `jobserver_jobhistory` (
   KEY `jobserver_jobhistory_what_911845fe` (`what`),
   KEY `jobserver_jobhistory_job_id_01bbd7b0_fk` (`job_id`),
   CONSTRAINT `jobserver_jobhistory_job_id_01bbd7b0_fk` FOREIGN KEY (`job_id`) REFERENCES `jobserver_job` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=20596 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=21079 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -144,4 +190,4 @@ CREATE TABLE `jobserver_jobhistory` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2022-08-12 14:57:58
+-- Dump completed on 2022-10-08 16:00:23

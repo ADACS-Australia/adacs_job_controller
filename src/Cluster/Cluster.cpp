@@ -3,6 +3,7 @@
 //
 
 #include "Cluster.h"
+#include "../DB/ClusterDB.h"
 #include "../DB/MySqlConnector.h"
 #include "../HTTP/HttpServer.h"
 #include "../HTTP/Utils/HandleFileList.h"
@@ -73,6 +74,11 @@ Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std
 }
 
 void Cluster::handleMessage(Message &message) {
+    // Check if the message can be handled by the cluster database
+    if (ClusterDB::maybeHandleClusterDBMessage(message, shared_from_this())) {
+        return;
+    }
+
     auto msgId = message.getId();
 
     switch (msgId) {

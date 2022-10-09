@@ -17,6 +17,8 @@ struct DatabaseFixture {
     schema::JobserverJobhistory jobHistoryTable{};
     schema::JobserverClusteruuid jobClusteruuid{};
     schema::JobserverFilelistcache jobFilelistcache{};
+    schema::JobserverClusterjob jobClusterjob{};
+    schema::JobserverClusterjobstatus jobClusterjobstatus{};
     // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     DatabaseFixture() {
@@ -41,7 +43,9 @@ private:
         database->run(remove_from(jobHistoryTable).unconditionally());
         database->run(remove_from(jobTable).unconditionally());
         database->run(remove_from(jobClusteruuid).unconditionally());
-            }
+        database->run(remove_from(jobClusterjobstatus).unconditionally());
+        database->run(remove_from(jobClusterjob).unconditionally());
+    }
 };
 
 #endif //GWCLOUD_JOB_SERVER_DATABASEFIXTURE_H
