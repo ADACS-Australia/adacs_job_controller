@@ -31,6 +31,12 @@ public:
 
     static void saveClusterJobStatus(Message &message, const std::shared_ptr<Cluster> &pCluster);
 
+    static void createOrUpdateBundleJob(Message &message, const std::shared_ptr<Cluster> &pCluster);
+
+    static void getBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster);
+
+    static void deleteBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster);
+
     static auto prepareResult(Message &message, const std::shared_ptr<Cluster> &pCluster) -> Message;
 };
 

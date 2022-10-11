@@ -2,6 +2,7 @@
 // Created by lewis on 10/8/22.
 //
 
+#include "../../DB/sBundleJob.h"
 #include "../../DB/sClusterJob.h"
 #include "../../DB/sClusterJobStatus.h"
 #include "../../Lib/JobStatus.h"
@@ -52,7 +53,10 @@ struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClient
         }
 
         receivedMessages.emplace_back(msg);
-        promMessageReceived.set_value();
+        try {
+            // This may raise in some circumstances while shutting down the websocket
+            promMessageReceived.set_value();
+        } catch (std::future_error&) {}
     };
 
     auto runCluster() -> std::shared_ptr<Message> {
@@ -646,6 +650,195 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
 
         BOOST_CHECK_EQUAL(result->pop_ulong(), 1234);   // db request id
         BOOST_CHECK_EQUAL(result->pop_bool(), false);   // success?
+    }
+
+    BOOST_AUTO_TEST_CASE(test_db_bundle_job_save_success) {
+        auto bundleHash = generateUUID();
+
+        // Create a Bundle Job record
+        sBundleJob job{
+                .id = 0,
+                .content = "test content"
+        };
+
+        // Try to save it
+        Message msg(DB_BUNDLE_CREATE_OR_UPDATE_JOB);
+        msg.push_ulong(1234);                       // db request id
+        msg.push_string(bundleHash);
+        job.toMessage(msg);
+        onlineCluster->handleMessage(msg);
+
+        // Get the result and verify success
+        auto result = runCluster();
+
+        BOOST_CHECK_EQUAL(result->pop_ulong(), 1234);   // db request id
+        BOOST_CHECK_EQUAL(result->pop_bool(), true);    // success?
+
+        // Job ID is returned in the message
+        job.id = result->pop_ulong();
+
+        auto resultJob = sBundleJob::getById(job.id, onlineCluster->getName(), bundleHash);
+        BOOST_CHECK_EQUAL(resultJob.equals(job), true);
+
+        // Save again, status should be updated but ID should not change
+        job.content = "new test content";
+        msg = Message(DB_BUNDLE_CREATE_OR_UPDATE_JOB);
+        msg.push_ulong(12345);                       // db request id
+        msg.push_string(bundleHash);
+        job.toMessage(msg);
+        onlineCluster->handleMessage(msg);
+
+        // Get the result and verify success
+        result = runCluster();
+
+        BOOST_CHECK_EQUAL(result->pop_ulong(), 12345);  // db request id
+        BOOST_CHECK_EQUAL(result->pop_bool(), true);    // success?
+
+        BOOST_CHECK_EQUAL(job.id, result->pop_ulong());
+
+        resultJob = sBundleJob::getById(job.id, onlineCluster->getName(), bundleHash);
+        BOOST_CHECK_EQUAL(resultJob.equals(job), true);
+    }
+
+    BOOST_AUTO_TEST_CASE(test_db_bundle_job_save_error) {
+        auto bundleHash = generateUUID();
+
+        // Create a Bundle Job record
+        sBundleJob job{
+                .id = 0,
+                .content = "test content"
+        };
+
+        // Try to save it
+        Message msg(DB_BUNDLE_CREATE_OR_UPDATE_JOB);
+        msg.push_ulong(1234);                       // db request id
+        msg.push_string(bundleHash);
+        job.toMessage(msg);
+        onlineCluster->handleMessage(msg);
+
+        // Get the result and verify success
+        auto result = runCluster();
+
+        BOOST_CHECK_EQUAL(result->pop_ulong(), 1234);   // db request id
+        BOOST_CHECK_EQUAL(result->pop_bool(), true);    // success?
+
+        // Job ID is returned in the message
+        job.id = result->pop_ulong();
+
+        auto resultJob = sBundleJob::getById(job.id, onlineCluster->getName(), bundleHash);
+        BOOST_CHECK_EQUAL(resultJob.equals(job), true);
+
+        // Save again, error should be set because the bundle hash is incorrect
+        job.content = "new test content";
+        msg = Message(DB_BUNDLE_CREATE_OR_UPDATE_JOB);
+        msg.push_ulong(12345);                       // db request id
+        msg.push_string(generateUUID());
+        job.toMessage(msg);
+        onlineCluster->handleMessage(msg);
+
+        // Get the result and verify success
+        result = runCluster();
+
+        BOOST_CHECK_EQUAL(result->pop_ulong(), 12345);  // db request id
+        BOOST_CHECK_EQUAL(result->pop_bool(), false);    // success?
+    }
+
+    BOOST_AUTO_TEST_CASE(test_db_bundle_job_get_by_id_success_job_exists) {
+        auto bundleHash = generateUUID();
+
+        // Create a Cluster Job record
+        sBundleJob job{
+                .id = 0,
+                .content = "test content"
+        };
+        job.save(onlineCluster->getName(), bundleHash);
+
+        // Try to fetch it
+        Message msg(DB_BUNDLE_GET_JOB_BY_ID);
+        msg.push_ulong(1234);                       // db request id
+        msg.push_string(bundleHash);
+        msg.push_ulong(job.id);
+        onlineCluster->handleMessage(msg);
+
+        // Get the result and verify success
+        auto result = runCluster();
+
+        BOOST_CHECK_EQUAL(result->pop_ulong(), 1234);   // db request id
+        BOOST_CHECK_EQUAL(result->pop_bool(), true);    // success?
+
+        auto resultJob = sBundleJob::fromMessage(*result);
+        BOOST_CHECK_EQUAL(resultJob.equals(job), true);
+    }
+
+    BOOST_AUTO_TEST_CASE(test_db_bundle_job_get_by_id_error_job_not_exist) {
+        auto bundleHash = generateUUID();
+
+        // Create a Cluster Job record, but don't save it
+        sBundleJob job;
+
+        // Try to fetch it
+        Message msg(DB_BUNDLE_GET_JOB_BY_ID);
+        msg.push_ulong(1234);                       // db request id
+        msg.push_string(bundleHash);
+        msg.push_ulong(4321);
+        onlineCluster->handleMessage(msg);
+
+        // Get the result and verify success
+        auto result = runCluster();
+
+        BOOST_CHECK_EQUAL(result->pop_ulong(), 1234);   // db request id
+        BOOST_CHECK_EQUAL(result->pop_bool(), false);    // success?
+    }
+
+    BOOST_AUTO_TEST_CASE(test_db_bundle_job_delete_success) {
+        auto bundleHash = generateUUID();
+
+        // Create a Cluster Job record
+        sBundleJob job{
+                .id = 0,
+                .content = "test content"
+        };
+        job.save(onlineCluster->getName(), bundleHash);
+
+        // Try to delete it
+        Message msg(DB_BUNDLE_DELETE_JOB);
+        msg.push_ulong(1234);                           // db request id
+        msg.push_string(bundleHash);
+        msg.push_ulong(job.id);
+        onlineCluster->handleMessage(msg);
+
+        // Get the result and verify success
+        auto result = runCluster();
+
+        BOOST_CHECK_EQUAL(result->pop_ulong(), 1234);   // db request id
+        BOOST_CHECK_EQUAL(result->pop_bool(), true);    // success?
+
+        // Job should not exist
+        BOOST_CHECK_THROW(sBundleJob::getById(job.id, onlineCluster->getName(), bundleHash), std::runtime_error);
+    }
+
+    BOOST_AUTO_TEST_CASE(test_db_bundle_job_delete_error) {
+        auto bundleHash = generateUUID();
+
+        // Create a Cluster Job record
+        sBundleJob job{
+                .id = 0,
+                .content = "test content"
+        };
+        job.save(onlineCluster->getName(), bundleHash);
+
+        // Try to delete it with a different bundleHash
+        Message msg(DB_BUNDLE_DELETE_JOB);
+        msg.push_ulong(1234);                           // db request id
+        msg.push_string(generateUUID());
+        msg.push_ulong(job.id);
+        onlineCluster->handleMessage(msg);
+
+        // Get the result and verify success
+        auto result = runCluster();
+
+        BOOST_CHECK_EQUAL(result->pop_ulong(), 1234);   // db request id
+        BOOST_CHECK_EQUAL(result->pop_bool(), false);    // success?
     }
 BOOST_AUTO_TEST_SUITE_END()
 

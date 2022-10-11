@@ -96,6 +96,93 @@ namespace schema
       };
     };
   };
+  namespace JobserverBundlejob_
+  {
+    struct Id
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "id";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T id;
+            T& operator()() { return id; }
+            const T& operator()() const { return id; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::bigint, sqlpp::tag::must_not_insert, sqlpp::tag::must_not_update>;
+    };
+    struct Cluster
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "cluster";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T cluster;
+            T& operator()() { return cluster; }
+            const T& operator()() const { return cluster; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct BundleHash
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "bundle_hash";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T bundleHash;
+            T& operator()() { return bundleHash; }
+            const T& operator()() const { return bundleHash; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::varchar, sqlpp::tag::require_insert>;
+    };
+    struct Content
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "content";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T content;
+            T& operator()() { return content; }
+            const T& operator()() const { return content; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::require_insert>;
+    };
+  } // namespace JobserverBundlejob_
+
+  struct JobserverBundlejob: sqlpp::table_t<JobserverBundlejob,
+               JobserverBundlejob_::Id,
+               JobserverBundlejob_::Cluster,
+               JobserverBundlejob_::BundleHash,
+               JobserverBundlejob_::Content>
+  {
+    struct _alias_t
+    {
+      static constexpr const char _literal[] =  "jobserver_bundlejob";
+      using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+      template<typename T>
+      struct _member_t
+      {
+        T jobserverBundlejob;
+        T& operator()() { return jobserverBundlejob; }
+        const T& operator()() const { return jobserverBundlejob; }
+      };
+    };
+  };
   namespace JobserverClusterjob_
   {
     struct Id

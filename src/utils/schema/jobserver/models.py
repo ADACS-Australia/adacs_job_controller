@@ -134,3 +134,14 @@ class ClusterJobStatus(models.Model):
 
     # The state for the update
     state = models.IntegerField(db_index=True)
+
+
+class BundleJob(models.Model):
+    # The cluster this job is for
+    cluster = models.CharField(max_length=200, db_index=True)
+
+    # The bundle hash for this bundle job
+    bundle_hash = models.CharField(max_length=40, db_index=True)
+
+    # The content for the job details (Usually a json dump)
+    content = models.TextField()
