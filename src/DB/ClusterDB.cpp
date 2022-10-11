@@ -4,6 +4,7 @@
 
 #include "ClusterDB.h"
 #include "../Cluster/Cluster.h"
+#include "sBundleJob.h"
 #include "sClusterJob.h"
 #include "sClusterJobStatus.h"
 
@@ -52,6 +53,21 @@ auto ClusterDB::maybeHandleClusterDBMessage(Message &message, const std::shared_
         // Save or update a Cluster Job Status
         case DB_JOBSTATUS_SAVE:
             saveClusterJobStatus(message, pCluster);
+            return true;
+
+        // Create or update a Bundle Job
+        case DB_BUNDLE_CREATE_OR_UPDATE_JOB:
+            createOrUpdateBundleJob(message, pCluster);
+            return true;
+
+        // Get a Bundle Job by ID
+        case DB_BUNDLE_GET_JOB_BY_ID:
+            getBundleJobById(message, pCluster);
+            return true;
+
+        // Delete a Bundle Job by ID
+        case DB_BUNDLE_DELETE_JOB:
+            deleteBundleJobById(message, pCluster);
             return true;
     }
 
@@ -239,4 +255,61 @@ auto ClusterDB::prepareResult(Message &message, const std::shared_ptr<Cluster> &
     auto result = Message(DB_RESPONSE, Message::Medium, "database_" + pCluster->getName());
     result.push_ulong(dbRequestId);
     return result;
+}
+
+void ClusterDB::createOrUpdateBundleJob(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+    auto result = prepareResult(message, pCluster);
+    auto bundleHash = message.pop_string();
+
+    try {
+        auto job = sBundleJob::fromMessage(message);
+        job.save(pCluster->getName(), bundleHash);
+
+        // Success
+        result.push_bool(true);
+        result.push_ulong(job.id);
+    } catch (std::exception &except) {
+        // An error occurred, notify the client
+        result.push_bool(false);
+    }
+
+    result.send(pCluster);
+}
+
+void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+    auto result = prepareResult(message, pCluster);
+    auto bundleHash = message.pop_string();
+
+    try {
+        auto job = sBundleJob::getById(message.pop_ulong(), pCluster->getName(), bundleHash);
+
+        // Success
+        result.push_bool(true);
+        job.toMessage(result);
+    } catch (std::exception &except) {
+        // An error occurred, notify the client
+        result.push_bool(false);
+    }
+
+    result.send(pCluster);
+}
+
+void ClusterDB::deleteBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+    auto result = prepareResult(message, pCluster);
+    auto bundleHash = message.pop_string();
+
+    try {
+        sBundleJob job = {
+                .id = message.pop_ulong()
+        };
+        job._delete(pCluster->getName(), bundleHash);
+
+        // Success
+        result.push_bool(true);
+    } catch (std::exception &except) {
+        // An error occurred, notify the client
+        result.push_bool(false);
+    }
+
+    result.send(pCluster);
 }
