@@ -257,7 +257,7 @@ auto ClusterDB::prepareResult(Message &message, const std::shared_ptr<Cluster> &
     return result;
 }
 
-static void ClusterDB::createOrUpdateBundleJob(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::createOrUpdateBundleJob(Message &message, const std::shared_ptr<Cluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
     auto bundleHash = message.pop_string();
 
@@ -276,7 +276,7 @@ static void ClusterDB::createOrUpdateBundleJob(Message &message, const std::shar
     result.send(pCluster);
 }
 
-static void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
     auto bundleHash = message.pop_string();
 
@@ -294,7 +294,7 @@ static void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<
     result.send(pCluster);
 }
 
-static void ClusterDB::deleteBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::deleteBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
     auto bundleHash = message.pop_string();
 
