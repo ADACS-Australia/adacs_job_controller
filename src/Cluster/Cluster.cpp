@@ -352,13 +352,13 @@ void Cluster::updateJob(Message &message) {
                     "Unable to find job with ID " + std::to_string(jobId) + " for application job_controller");
         }
 
-        const auto& job = &jobResults.front();
+        auto bundle = std::string{(&jobResults.front())->bundle};
 
         // Launch the file list in a new thread to prevent locking up the websocket. This is an internal system
         // operation and can run in the background, rather than on the websocket message handling thread.
         // We pass parameters by copy here intentionally, not by reference.
-        std::thread([job, jobId, this] {
-            ::handleFileList(shared_from_this(), job->bundle, jobId, true, "", nullptr);
+        std::thread([bundle, jobId, this] {
+            ::handleFileList(shared_from_this(), bundle, jobId, true, "", nullptr);
         }).detach();
     }
 }
