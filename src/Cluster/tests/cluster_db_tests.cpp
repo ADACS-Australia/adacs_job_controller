@@ -190,7 +190,6 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
         sClusterJob job1{
                 .jobId = 1234,
                 .submitting = false,
-                .queued = false,
                 .running = true
         };
         job1.save(onlineCluster->getName());
@@ -198,7 +197,6 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
         sClusterJob job2{
                 .jobId = 1234,
                 .submitting = false,
-                .queued = false,
                 .running = true
         };
         job2.save(onlineCluster->getName());
@@ -207,7 +205,6 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
         sClusterJob job3{
                 .jobId = 1234,
                 .submitting = false,
-                .queued = false,
                 .running = false
         };
         job3.save(onlineCluster->getName());
@@ -216,7 +213,6 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
         sClusterJob job4{
                 .jobId = 1234,
                 .submitting = false,
-                .queued = false,
                 .running = true
         };
         job4.save(onlineCluster->getName() + "not_this_cluster");
@@ -245,7 +241,6 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
         sClusterJob job1{
                 .jobId = 1234,
                 .submitting = false,
-                .queued = false,
                 .running = true
         };
         job1.save(onlineCluster->getName());
@@ -253,7 +248,6 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
         sClusterJob job2{
                 .jobId = 1234,
                 .submitting = false,
-                .queued = false,
                 .running = true
         };
         job2.save(onlineCluster->getName());

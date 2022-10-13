@@ -40,7 +40,8 @@ def try_connect():
     if ssh_host_name == 'localhost':
         # Use subprocess to start the client locally
         subprocess.check_output(
-            "cd {}; . venv/bin/activate; python client.py {}".format(ssh_path, ssh_token),
+            "cd {}; source env.sh; ./adacs_job_client {} || (source venv/bin/activate; python client.py {})"
+            .format(ssh_path, ssh_token, ssh_token),
             shell=True
         )
     else:
@@ -48,7 +49,8 @@ def try_connect():
         client, ssh = get_ssh_connection(ssh_host_name, ssh_user_name, ssh_key)
 
         # Construct the command
-        command = "cd {}; source env.sh; source venv/bin/activate; python client.py {}".format(ssh_path, ssh_token)
+        command = "cd {}; source env.sh; ./adacs_job_client {} || (source venv/bin/activate && python client.py {})" \
+            .format(ssh_path, ssh_token, ssh_token)
 
         # Execute the remote command to start the daemon
         ssh.exec_command(command)

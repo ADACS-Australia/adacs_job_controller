@@ -22,8 +22,6 @@ struct sClusterJob {
             and submittingCount == other.submittingCount
             and bundleHash == other.bundleHash
             and workingDirectory == other.workingDirectory
-            and queued == other.queued
-            and params == other.params
             and running == other.running;
     }
 
@@ -36,8 +34,6 @@ struct sClusterJob {
                 .submittingCount = static_cast<uint32_t>(record->submittingCount),
                 .bundleHash = record->bundleHash,
                 .workingDirectory = record->workingDirectory,
-                .queued = static_cast<uint32_t>(record->queued) == 1,
-                .params = record->params,
                 .running = static_cast<uint32_t>(record->running) == 1
         };
     }
@@ -50,8 +46,6 @@ struct sClusterJob {
         message.push_uint(submittingCount);
         message.push_string(bundleHash);
         message.push_string(workingDirectory);
-        message.push_bool(queued);
-        message.push_string(params);
         message.push_bool(running);
     }
 
@@ -64,8 +58,6 @@ struct sClusterJob {
                 .submittingCount = message.pop_uint(),
                 .bundleHash = message.pop_string(),
                 .workingDirectory = message.pop_string(),
-                .queued = message.pop_bool(),
-                .params = message.pop_string(),
                 .running = message.pop_bool()
         };
     }
@@ -88,7 +80,7 @@ struct sClusterJob {
             return fromRecord(&jobResults.front());
         }
 
-        return {};
+        return sClusterJob{};
     }
 
     static auto getRunningJobs(const std::string& cluster) -> std::vector<sClusterJob> {
@@ -101,7 +93,6 @@ struct sClusterJob {
                                 .from(_jobTable)
                                 .where(
                                         _jobTable.running == 1
-                                        and _jobTable.queued == 0
                                         and _jobTable.jobId != 0
                                         and _jobTable.submitting == 0
                                         and _jobTable.cluster == cluster
@@ -144,8 +135,6 @@ struct sClusterJob {
                                     _jobTable.submittingCount = submittingCount,
                                     _jobTable.bundleHash = bundleHash,
                                     _jobTable.workingDirectory = workingDirectory,
-                                    _jobTable.queued = queued ? 1 : 0,
-                                    _jobTable.params = params,
                                     _jobTable.running = running ? 1 : 0
                             )
                             .where(
@@ -164,8 +153,6 @@ struct sClusterJob {
                                     _jobTable.submittingCount = submittingCount,
                                     _jobTable.bundleHash = bundleHash,
                                     _jobTable.workingDirectory = workingDirectory,
-                                    _jobTable.queued = queued ? 1 : 0,
-                                    _jobTable.params = params,
                                     _jobTable.running = running ? 1 : 0,
                                     _jobTable.cluster = cluster
                             )
@@ -191,7 +178,7 @@ struct sClusterJob {
             return fromRecord(&jobResults.front());
         }
 
-        return {};
+        return sClusterJob{};
     }
 
     // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
@@ -202,9 +189,7 @@ struct sClusterJob {
     uint32_t submittingCount = 0;
     std::string bundleHash;
     std::string workingDirectory;
-    bool queued = false;
-    std::string params;
-    bool running = false;
+    bool running = true;
     // NOLINTEND(misc-non-private-member-variables-in-classes)
 };
 
