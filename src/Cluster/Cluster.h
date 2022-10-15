@@ -71,14 +71,17 @@ extern std::mutex fileDownloadPauseResumeLockMutex;
 extern std::mutex fileListMapDeletionLockMutex;
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 
+
 class Cluster : public std::enable_shared_from_this<Cluster> {
 public:
     explicit Cluster(std::shared_ptr<sClusterDetails> details);
-    virtual ~Cluster() = default;
+    virtual ~Cluster();
     Cluster(Cluster const&) = delete;
     auto operator =(Cluster const&) -> Cluster& = delete;
     Cluster(Cluster&&) = delete;
     auto operator=(Cluster&&) -> Cluster& = delete;
+
+    void stop();
 
     auto getName() { return pClusterDetails->getName(); }
 
@@ -93,26 +96,24 @@ public:
     // virtual here so that we can override this function for testing
     virtual void queueMessage(std::string source, const std::shared_ptr<std::vector<uint8_t>>& data, Message::Priority priority);
 
-    virtual auto getRoleString() -> std::string {
-        return "master";
-    }
-
     enum eRole {
         master,
         fileDownload
     };
 
-    virtual auto getRole() -> eRole {
-        return eRole::master;
+    auto getRoleString() -> std::string {
+        return roleString;
     }
 
-private:
-#ifndef BUILD_TESTS
-    [[noreturn]] void run();
-#else
-    void run();
-#endif
+    auto getRole() -> eRole {
+        return role;
+    }
 
+protected:
+    eRole role;
+    std::string roleString;
+
+private:
     std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
     std::shared_ptr<WsServer::Connection> pConnection = nullptr;
 
@@ -122,18 +123,17 @@ private:
     std::condition_variable dataCV;
     std::vector<folly::ConcurrentHashMap<std::string, std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>> queue;
 
+    bool bRunning;
+    InterruptableTimer interruptableTimer;
+
     // Threads
     std::thread schedulerThread;
     std::thread pruneThread;
     std::thread resendThread;
 
-#ifndef BUILD_TESTS
-    [[noreturn]] void pruneSources();
-#else
+    void run();
     void pruneSources();
-#endif
-
-    [[noreturn]] void resendMessages();
+    void resendMessages();
 
     auto doesHigherPriorityDataExist(uint64_t maxPriority) -> bool;
 

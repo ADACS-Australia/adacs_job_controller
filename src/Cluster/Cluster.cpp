@@ -46,13 +46,13 @@ std::mutex fileDownloadPauseResumeLockMutex;
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::mutex fileListMapDeletionLockMutex;
 
-Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std::move(details)) {
+Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std::move(details)), bRunning(true), role(eRole::master), roleString("master") {
+    std::cout << "Cluster startup for role " << getRoleString() << std::endl;
     // Create the list of priorities in order
     for (auto i = static_cast<uint32_t>(Message::Priority::Highest); i <= static_cast<uint32_t>(Message::Priority::Lowest); i++) {
         queue.emplace_back();
     }
 
-#ifndef BUILD_TESTS
     // Start the scheduler thread
     schedulerThread = std::thread([this] {
         this->run();
@@ -69,7 +69,30 @@ Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std
             this->resendMessages();
         });
     }
-#endif
+}
+
+Cluster::~Cluster() {
+    stop();
+}
+
+void Cluster::stop() {
+    bRunning = false;
+    interruptableTimer.stop();
+
+    dataReady = true;
+    dataCV.notify_one();
+
+    if (schedulerThread.joinable()) {
+        schedulerThread.join();
+    }
+
+    if (pruneThread.joinable()) {
+        pruneThread.join();
+    }
+
+    if (getRole() == eRole::master && resendThread.joinable()) {
+        resendThread.join();
+    }
 }
 
 void Cluster::handleMessage(Message &message) {
@@ -133,148 +156,130 @@ void Cluster::queueMessage(std::string source, const std::shared_ptr<std::vector
     }
 }
 
-
-#ifndef BUILD_TESTS
-[[noreturn]] void Cluster::pruneSources() {
-    // Iterate forever
-    while (true) {
-        // Wait 1 minute until the next prune
-        std::this_thread::sleep_for(std::chrono::seconds(QUEUE_SOURCE_PRUNE_SECONDS));
-#else
-
 void Cluster::pruneSources() {
-#endif
-    // Acquire the exclusive lock to prevent more data being pushed on while we are pruning
-    {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+    // Iterate every QUEUE_SOURCE_PRUNE_SECONDS seconds until the timer is cancelled or until we stop running
+    while (bRunning && interruptableTimer.wait_for(std::chrono::seconds(QUEUE_SOURCE_PRUNE_MILLISECONDS))) {
+        // Acquire the exclusive lock to prevent more data being pushed on while we are pruning
+        {
+            std::unique_lock<std::shared_mutex> lock(mutex_);
 
-        // Iterate over the priorities
-        for (auto &priority : queue) {
-            // Get a pointer to the relevant map
-            auto *pMap = &priority;
+            // Iterate over the priorities
+            for (auto &priority: queue) {
+                // Get a pointer to the relevant map
+                auto *pMap = &priority;
 
-            // Iterate over the map
-            for (auto iter = pMap->begin(); iter != pMap->end();) {
-                // Check if the vector for this source is empty
-                if ((*iter).second->empty()) {
-                    // Remove this source from the map and continue
-                    iter = pMap->erase(iter);
-                    continue;
+                // Iterate over the map
+                for (auto iter = pMap->begin(); iter != pMap->end();) {
+                    // Check if the vector for this source is empty
+                    if ((*iter).second->empty()) {
+                        // Remove this source from the map and continue
+                        iter = pMap->erase(iter);
+                        continue;
+                    }
+                    // Manually increment the iterator
+                    ++iter;
                 }
-                // Manually increment the iterator
-                ++iter;
             }
         }
     }
-#ifndef BUILD_TESTS
-    }
-#endif
 }
 
-#ifndef BUILD_TESTS
-[[noreturn]] void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
-    // Iterate forever
-    while (true) {
-#else
-
 void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
-#endif
-    {
-        std::unique_lock<std::mutex> lock(dataCVMutex);
+    // Iterate while running
+    while (bRunning) {
+        {
+            std::unique_lock<std::mutex> lock(dataCVMutex);
 
-#ifndef BUILD_TESTS
-        // Wait for data to be ready to send
-        dataCV.wait(lock, [this] { return this->dataReady; });
-#endif
-        // Reset the condition
-        this->dataReady = false;
-    }
+            // Wait for data to be ready to send
+            dataCV.wait(lock, [this] { return this->dataReady; });
 
-    reset:
+            // Reset the condition
+            this->dataReady = false;
+        }
 
-    // Iterate over the priorities
-    for (auto priority = queue.begin(); priority != queue.end(); priority++) {
+        reset:
 
-        // Get a pointer to the relevant map
-        auto *pMap = &(*priority);
+        // Iterate over the priorities
+        for (auto priority = queue.begin(); priority != queue.end(); priority++) {
 
-        // Get the current priority
-        auto currentPriority = priority - queue.begin();
+            // Get a pointer to the relevant map
+            auto *pMap = &(*priority);
 
-        // While there is still data for this priority, send it
-        bool hadData = false;
-        do {
-            hadData = false;
+            // Get the current priority
+            auto currentPriority = priority - queue.begin();
 
-            std::shared_lock<std::shared_mutex> lock(mutex_);
-            // Iterate over the map
-            for (auto iter = pMap->begin(); iter != pMap->end(); ++iter) {
-                // Check if the vector for this source is empty
-                if (!(*iter).second->empty()) {
+            // While there is still data for this priority, send it
+            bool hadData = false;
+            do {
+                hadData = false;
 
-                    // Pop the next item from the queue
-                    auto data = (*iter).second->try_dequeue();
+                std::shared_lock<std::shared_mutex> lock(mutex_);
+                // Iterate over the map
+                for (auto iter = pMap->begin(); iter != pMap->end(); ++iter) {
+                    // Check if the vector for this source is empty
+                    if (!(*iter).second->empty()) {
 
-                    try {
-                        // data should never be null as we're checking for empty
-                        if (data) {
-                            // Convert the message
-                            auto outMessage = std::make_shared<WsServer::OutMessage>((*data)->size());
-                            std::copy((*data)->begin(), (*data)->end(), std::ostream_iterator<uint8_t>(*outMessage));
+                        // Pop the next item from the queue
+                        auto data = (*iter).second->try_dequeue();
 
-                            // Send the message on the websocket
-                            if (pConnection != nullptr) {
-                                std::promise<void> sendPromise;
-                                pConnection->send(
-                                    outMessage,
-                                    [this, &sendPromise](const SimpleWeb::error_code &errorCode) {
-                                        // Data has been sent, set the promise
-                                        sendPromise.set_value();
+                        try {
+                            // data should never be null as we're checking for empty
+                            if (data) {
+                                // Convert the message
+                                auto outMessage = std::make_shared<WsServer::OutMessage>((*data)->size());
+                                std::copy((*data)->begin(), (*data)->end(), std::ostream_iterator<uint8_t>(*outMessage));
 
-                                        // Kill the connection only if the error was not indicating success
-                                        if (!errorCode){
-                                            return;
-                                        }
+                                // Send the message on the websocket
+                                if (pConnection != nullptr) {
+                                    std::promise<void> sendPromise;
+                                    pConnection->send(
+                                        outMessage,
+                                        [this, &sendPromise](const SimpleWeb::error_code &errorCode) {
+                                            // Data has been sent, set the promise
+                                            sendPromise.set_value();
 
-                                        pConnection->close();
-                                        pConnection = nullptr;
+                                            // Kill the connection only if the error was not indicating success
+                                            if (!errorCode){
+                                                return;
+                                            }
 
-                                        ClusterManager::reportWebsocketError(shared_from_this(), errorCode);
-                                    },
-                                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-                                    130
-                                );
+                                            pConnection->close();
+                                            pConnection = nullptr;
 
-                                // Wait for the data to be sent
-                                sendPromise.get_future().wait();
-                            } else {
-                                std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
+                                            ClusterManager::reportWebsocketError(shared_from_this(), errorCode);
+                                        },
+                                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                                        130
+                                    );
+
+                                    // Wait for the data to be sent
+                                    sendPromise.get_future().wait();
+                                } else {
+                                    std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
+                                }
                             }
+                        } catch (std::exception& exception) {
+                            dumpExceptions(exception);
+                            // Cluster has gone offline, reset the connection. Missed packets shouldn't matter too much,
+                            // they should be resent by other threads after some time
+                            setConnection(nullptr);
                         }
-                    } catch (std::exception& exception) {
-                        dumpExceptions(exception);
-                        // Cluster has gone offline, reset the connection. Missed packets shouldn't matter too much,
-                        // they should be resent by other threads after some time
-                        setConnection(nullptr);
+
+                        // Data existed
+                        hadData = true;
                     }
-
-                    // Data existed
-                    hadData = true;
                 }
-            }
 
-            // Check if there is higher priority data to send
-            if (doesHigherPriorityDataExist(currentPriority)) {
-                // Yes, so start the entire send process again
-                goto reset; // NOLINT(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
-            }
+                // Check if there is higher priority data to send
+                if (doesHigherPriorityDataExist(currentPriority)) {
+                    // Yes, so start the entire send process again
+                    goto reset; // NOLINT(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
+                }
 
-            // Higher priority data does not exist, so keep sending data from this priority
-        } while (hadData);
+                // Higher priority data does not exist, so keep sending data from this priority
+            } while (hadData);
+        }
     }
-#ifndef BUILD_TESTS
-    }
-#endif
 }
 
 auto Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) -> bool {
@@ -365,12 +370,9 @@ auto Cluster::isOnline() -> bool {
     return pConnection != nullptr;
 }
 
-[[noreturn]] void Cluster::resendMessages() {
-    // Iterate forever
-    while (true) {
-        // Wait 1 minute until the next check
-        std::this_thread::sleep_for(std::chrono::seconds(CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS));
-        
+void Cluster::resendMessages() {
+    // Iterate every CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS seconds until the timer is cancelled or until we stop running
+    while (bRunning && interruptableTimer.wait_for(std::chrono::seconds(CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS))) {
         // Check for jobs that need to be resubmitted
         checkUnsubmittedJobs();
 

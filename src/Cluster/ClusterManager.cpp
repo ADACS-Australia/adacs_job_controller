@@ -211,6 +211,7 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
             auto pFileDownload = std::static_pointer_cast<FileDownload>(pCluster);
 
             fileDownloadMap->erase(pFileDownload->getUuid());
+
             return;
         }
     }

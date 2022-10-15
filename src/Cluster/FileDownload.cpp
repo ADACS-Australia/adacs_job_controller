@@ -8,7 +8,8 @@
 #include <utility>
 
 FileDownload::FileDownload(const std::shared_ptr<sClusterDetails>& details, std::string uuid) : Cluster(details), uuid(std::move(uuid)) {
-
+    role = eRole::fileDownload;
+    roleString = "file download " + this->uuid;
 }
 
 void FileDownload::handleFileChunk(Message &message) {
@@ -54,7 +55,7 @@ void FileDownload::handleFileDetails(Message &message) {
 
 void FileDownload::handleFileError(Message &message) {
     // Set the error
-    fileDownloadErrorDetails = message.pop_string();;
+    fileDownloadErrorDetails = message.pop_string();
     fileDownloadError = true;
 
     // Trigger the file transfer event

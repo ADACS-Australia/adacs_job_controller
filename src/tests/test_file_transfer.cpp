@@ -82,24 +82,6 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Start the cluster scheduler
         bool running = true;
-        std::thread clusterThread([&mgr, &running]() {
-            while (running) {
-                for (auto cluster : *mgr->getmConnectedClusters()) {
-                    if (cluster.second == nullptr) {
-                        continue;
-                    }
-                    cluster.second->callrun();
-                }
-
-                for (auto cluster : *mgr->getmConnectedFileDownloads()) {
-                    if (cluster.second == nullptr) {
-                        continue;
-                    }
-
-                    cluster.second->callrun();
-                }
-            }
-        });
 
         // Set up the test http server
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
@@ -290,7 +272,6 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Finished with the servers and clients
         running = false;
-        clusterThread.join();
         websocketClient.stop();
         clientThread.join();
         httpSvr->stop();
@@ -320,24 +301,6 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Start the cluster scheduler
         bool running = true;
-        std::thread clusterThread([&mgr, &running]() {
-            while (running) {
-                for (auto& cluster : *mgr->getmConnectedClusters()) {
-                    if (cluster.second == nullptr) {
-                        continue;
-                    }
-                    cluster.second->callrun();
-                }
-
-                for (auto& cluster : *mgr->getmConnectedFileDownloads()) {
-                    if (cluster.second == nullptr) {
-                        continue;
-                    }
-
-                    cluster.second->callrun();
-                }
-            }
-        });
 
         // Set up the test http server
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
@@ -537,7 +500,6 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Finished with the servers and clients
         running = false;
-        clusterThread.join();
         websocketClient.stop();
         clientThread.join();
         httpSvr->stop();

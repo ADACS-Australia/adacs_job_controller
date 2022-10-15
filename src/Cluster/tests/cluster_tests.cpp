@@ -126,6 +126,8 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(test_queueMessage) {
+        cluster->stop();
+
         // Check the source doesn't exist
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
                           (*cluster->getqueue())[Message::Priority::Highest].end(), true);
@@ -255,6 +257,8 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(test_pruneSources) {
+        cluster->stop();
+
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
@@ -353,6 +357,7 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         auto s6_d3 = generateRandomData(randomInt(0, 255));
         onlineCluster->queueMessage("s6", s6_d3, Message::Priority::Medium);
 
+        *onlineCluster->getbRunning() = true;
         *onlineCluster->getdataReady() = true;
         onlineCluster->callrun();
 

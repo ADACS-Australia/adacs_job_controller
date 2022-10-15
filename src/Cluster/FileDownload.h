@@ -5,20 +5,11 @@
 #ifndef GWCLOUD_JOB_SERVER_FILEDOWNLOAD_H
 #define GWCLOUD_JOB_SERVER_FILEDOWNLOAD_H
 
-
 #include "Cluster.h"
 
 class FileDownload : public Cluster {
 public:
     FileDownload(const std::shared_ptr<sClusterDetails>& details, std::string uuid);
-
-    std::string getRoleString() override {
-        return "file download " + uuid;
-    }
-
-    eRole getRole() override {
-        return eRole::fileDownload;
-    }
 
     auto getUuid() -> std::string {
         return uuid;
