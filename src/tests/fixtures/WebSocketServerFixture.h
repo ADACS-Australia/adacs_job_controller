@@ -8,10 +8,8 @@
 #include "HttpServerFixture.h"
 
 struct WebSocketServerFixture : public HttpServerFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     std::shared_ptr<WebSocketServer> webSocketServer;
     bool bClusterManagerRunning = true;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     WebSocketServerFixture() {
         // Set up the test websocket server

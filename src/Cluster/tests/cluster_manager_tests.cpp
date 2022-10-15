@@ -12,9 +12,7 @@
 // NOLINTBEGIN(concurrency-mt-unsafe)
 
 struct ClusterManagerTestDataFixture : public DatabaseFixture, public HttpServerFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     std::shared_ptr<ClusterManager> mgr;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     ClusterManagerTestDataFixture() {
         mgr = std::make_shared<ClusterManager>();

@@ -9,7 +9,6 @@
 #include "../../Lib/jobserver_schema.h"
 
 struct DatabaseFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     MySqlConnector database;
 
     schema::JobserverFiledownload fileDownloadTable{};
@@ -19,7 +18,6 @@ struct DatabaseFixture {
     schema::JobserverFilelistcache jobFilelistcache{};
     schema::JobserverClusterjob jobClusterjob{};
     schema::JobserverClusterjobstatus jobClusterjobstatus{};
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     DatabaseFixture() {
         cleanDatabase();

@@ -4,10 +4,8 @@
 #include "WebSocketServerFixture.h"
 
 struct WebSocketClientFixture : public WebSocketServerFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     std::shared_ptr<TestWsClient> websocketClient;
     std::thread clientThread;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     WebSocketClientFixture() {
         // Try to reconnect the clusters so that we can get a connection token to use later to connect the client
@@ -20,7 +18,9 @@ struct WebSocketClientFixture : public WebSocketServerFixture {
     ~WebSocketClientFixture() {
         // Finished with the client
         websocketClient->stop();
-        clientThread.join();
+        if (clientThread.joinable()) {
+            clientThread.join();
+        }
     }
 
     WebSocketClientFixture(WebSocketClientFixture const&) = delete;

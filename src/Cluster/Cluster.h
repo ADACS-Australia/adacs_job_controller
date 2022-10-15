@@ -63,10 +63,8 @@ private:
     std::string key;
 };
 
-extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>>> fileDownloadMap;
 extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>> fileListMap;
 // NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
-extern std::mutex fileDownloadMapDeletionLockMutex;
 extern std::mutex fileDownloadPauseResumeLockMutex;
 extern std::mutex fileListMapDeletionLockMutex;
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
@@ -110,8 +108,8 @@ public:
     }
 
 protected:
-    eRole role;
-    std::string roleString;
+    eRole role = eRole::master;
+    std::string roleString = "master";
 
 private:
     std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
@@ -123,13 +121,13 @@ private:
     std::condition_variable dataCV;
     std::vector<folly::ConcurrentHashMap<std::string, std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>> queue;
 
-    bool bRunning;
+    bool bRunning = true;
     InterruptableTimer interruptableTimer;
 
     // Threads
-    std::thread schedulerThread;
-    std::thread pruneThread;
-    std::thread resendThread;
+    std::jthread schedulerThread;
+    std::jthread pruneThread;
+    std::jthread resendThread;
 
     void run();
     void pruneSources();
@@ -149,6 +147,7 @@ private:
 // Testing
     EXPOSE_PROPERTY_FOR_TESTING(pConnection);
     EXPOSE_PROPERTY_FOR_TESTING(pClusterDetails);
+    EXPOSE_PROPERTY_FOR_TESTING(bRunning);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(queue);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataReady);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataCV);

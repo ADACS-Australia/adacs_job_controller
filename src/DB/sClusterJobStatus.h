@@ -157,12 +157,10 @@ struct sClusterJobStatus {
         }
     }
 
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     uint64_t id = 0;
     uint64_t jobId = 0;
     std::string what;
     uint32_t state = 0;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 };
 
 #endif //GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_STATUS_H

@@ -11,7 +11,6 @@
 #include <jwt/jwt.hpp>
 
 struct HttpServerFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     const std::string sAccess = R"(
     [
         {
@@ -86,7 +85,6 @@ struct HttpServerFixture {
     std::shared_ptr<HttpServer> httpServer;
 
     jwt::jwt_object jwtToken;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     HttpServerFixture() {
         // NOLINTBEGIN(concurrency-mt-unsafe)

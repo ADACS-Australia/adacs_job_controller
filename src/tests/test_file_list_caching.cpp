@@ -9,7 +9,6 @@
 #include <boost/test/unit_test.hpp>
 
 struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     uint64_t jobId;
     bool bRaiseError = true;
     bool bReady = false;
@@ -28,7 +27,6 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
             {"/testdir/testdir1/file", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
             {"/test2", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
     };
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     FileListTestDataFixture() {
         // Fabricate data

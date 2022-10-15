@@ -16,7 +16,6 @@
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
 struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     std::vector<std::vector<uint8_t>> receivedMessages;
     bool bReady = false;
     nlohmann::json jsonClusters;
@@ -26,7 +25,6 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
     std::shared_ptr<Cluster> onlineCluster;
     uint64_t jobId;
     uint64_t jobIdTestCluster;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     ClusterTestDataFixture() :
         cluster(clusterManager->getvClusters()->back()), details(clusterManager->getvClusters()->back()->getClusterDetails()),
@@ -69,6 +67,10 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+
+        // Clusters should be stopped
+        cluster->stop();
+        onlineCluster->stop();
     }
 
     void onWebsocketMessage(auto in_message) {
@@ -270,7 +272,19 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         // Pruning the sources should not perform any action since all sources have one item in the queue
-        cluster->callpruneSources();
+        std::promise<void> runPromise;
+        auto runThread = std::thread([this, &runPromise] {
+            *cluster->getbRunning() = true;
+            runPromise.set_value();
+            cluster->callpruneSources();
+        });
+
+        runPromise.get_future().wait();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS));
+
+        cluster->stop();
+        runThread.join();
 
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
                           (*cluster->getqueue())[Message::Priority::Highest].end(), false);
@@ -283,7 +297,19 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         (*cluster->getqueue())[Message::Priority::Lowest].find("s2")->second->dequeue();
 
         // Now pruning the sources should remove s2, but not s1 or s3
-        cluster->callpruneSources();
+        runPromise = std::promise<void>();
+        runThread = std::thread([this, &runPromise] {
+            *cluster->getbRunning() = true;
+            runPromise.set_value();
+            cluster->callpruneSources();
+        });
+
+        runPromise.get_future().wait();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS));
+
+        cluster->stop();
+        runThread.join();
 
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
                           (*cluster->getqueue())[Message::Priority::Highest].end(), false);
@@ -297,7 +323,19 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         (*cluster->getqueue())[Message::Priority::Lowest].find("s3")->second->dequeue();
 
         // Now pruning the sources should remove both s1 and s3
-        cluster->callpruneSources();
+        runPromise = std::promise<void>();
+        runThread = std::thread([this, &runPromise] {
+            *cluster->getbRunning() = true;
+            runPromise.set_value();
+            cluster->callpruneSources();
+        });
+
+        runPromise.get_future().wait();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS));
+
+        cluster->stop();
+        runThread.join();
 
         // There should now be no items left in the queue
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
@@ -313,6 +351,7 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(test_run) {
         stopRunningWebSocket();
+        onlineCluster->stop();
 
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
@@ -357,15 +396,20 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         auto s6_d3 = generateRandomData(randomInt(0, 255));
         onlineCluster->queueMessage("s6", s6_d3, Message::Priority::Medium);
 
-        *onlineCluster->getbRunning() = true;
-        *onlineCluster->getdataReady() = true;
-        onlineCluster->callrun();
+        auto runThread = std::thread([this] {
+            *onlineCluster->getbRunning() = true;
+            *onlineCluster->getdataReady() = true;
+            onlineCluster->callrun();
+        });
 
         // Wait for the messages to be sent
         while (receivedMessages.size() < 14) {
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+
+        onlineCluster->stop();
+        runThread.join();
 
         // Check that the data sent was in priority/source order
         // The following order is deterministic - but sensitive.
@@ -453,6 +497,8 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(test_updateJob) {
+        onlineCluster->stop();
+
         Message msg(UPDATE_JOB);
         msg.push_uint(jobId);               // jobId
         msg.push_string("running");     // what

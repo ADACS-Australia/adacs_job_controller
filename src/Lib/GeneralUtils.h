@@ -20,7 +20,7 @@ auto acceptingConnections(uint16_t port) -> bool;
 struct InterruptableTimer {
     // Returns false if killed
     template<class R, class P>
-    bool wait_for( std::chrono::duration<R,P> const& time ) const {
+    auto wait_for( std::chrono::duration<R,P> const& time ) const -> bool {
         std::unique_lock<std::mutex> lock(m);
         return !cv.wait_for(lock, time, [&]{ return terminate; });
     }

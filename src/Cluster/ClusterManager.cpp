@@ -114,8 +114,8 @@ void ClusterManager::reconnectClusters() {
 
 auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection, const std::string &uuid) -> std::shared_ptr<Cluster> {
     // First check if this uuid is an expected file download uuid
-    auto fdIter = fileDownloadMap->find(uuid);
-    if (fdIter != fileDownloadMap->end()) {
+    auto fdIter = fileDownloadMap.find(uuid);
+    if (fdIter != fileDownloadMap.end()) {
         auto cluster = fdIter->second;
         // This connection is for a file download
         mConnectedFileDownloads[connection] = cluster;
@@ -210,7 +210,7 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
 
             auto pFileDownload = std::static_pointer_cast<FileDownload>(pCluster);
 
-            fileDownloadMap->erase(pFileDownload->getUuid());
+            fileDownloadMap.erase(pFileDownload->getUuid());
 
             return;
         }
@@ -357,7 +357,7 @@ auto ClusterManager::createFileDownload(const std::shared_ptr<Cluster>& cluster,
     auto fileDownload = std::make_shared<FileDownload>(cluster->getClusterDetails(), uuid);
 
     // Add the file download to the file download map
-    fileDownloadMap->emplace(uuid, fileDownload);
+    fileDownloadMap.emplace(uuid, fileDownload);
 
     return fileDownload;
 }

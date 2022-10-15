@@ -23,7 +23,6 @@ public:
     auto getCluster(const std::string& cluster) -> std::shared_ptr<Cluster>;
     auto isClusterOnline(const std::shared_ptr<Cluster>& cluster) -> bool;
     static void reportWebsocketError(const std::shared_ptr<Cluster>& cluster, const SimpleWeb::error_code &errorCode);
-    auto getFileDownload(const std::shared_ptr<WsServer::Connection> &connection) -> std::shared_ptr<FileDownload>;
     auto createFileDownload(const std::shared_ptr<Cluster>& cluster, const std::string& uuid) -> std::shared_ptr<FileDownload>;
 
     struct sPingPongTimes {
@@ -44,11 +43,14 @@ private:
     static void connectCluster(const std::shared_ptr<Cluster>& cluster, const std::string &token);
     void checkPings();
 
+    folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>> fileDownloadMap;
+
 // Testing
 EXPOSE_PROPERTY_FOR_TESTING(vClusters);
 EXPOSE_PROPERTY_FOR_TESTING(mConnectedClusters);
 EXPOSE_PROPERTY_FOR_TESTING(mConnectedFileDownloads);
 EXPOSE_PROPERTY_FOR_TESTING(mClusterPings);
+EXPOSE_PROPERTY_FOR_TESTING_READONLY(fileDownloadMap);
 EXPOSE_FUNCTION_FOR_TESTING(reconnectClusters);
 EXPOSE_FUNCTION_FOR_TESTING(checkPings);
 };

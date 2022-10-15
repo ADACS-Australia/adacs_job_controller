@@ -26,17 +26,9 @@
 
 // Send sources round robin, starting from the highest priority
 
-// Define a global map that can be used for storing information about file downloads
-// NOLINTNEXTLINE(cert-err58-cpp)
-const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>>> fileDownloadMap = std::make_shared<folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>>>();
-
 // Define a global map that can be used for storing information about file lists
 // NOLINTNEXTLINE(cert-err58-cpp)
 const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>> fileListMap = std::make_shared<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>>();
-
-// Define a mutex that can be used for safely removing entries from the fileDownloadMap
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::mutex fileDownloadMapDeletionLockMutex;
 
 // Define a mutex that can be used for synchronising pause/resume messages
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
@@ -46,7 +38,7 @@ std::mutex fileDownloadPauseResumeLockMutex;
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::mutex fileListMapDeletionLockMutex;
 
-Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std::move(details)), bRunning(true), role(eRole::master), roleString("master") {
+Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std::move(details)) {
     std::cout << "Cluster startup for role " << getRoleString() << std::endl;
     // Create the list of priorities in order
     for (auto i = static_cast<uint32_t>(Message::Priority::Highest); i <= static_cast<uint32_t>(Message::Priority::Lowest); i++) {
@@ -54,18 +46,18 @@ Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std
     }
 
     // Start the scheduler thread
-    schedulerThread = std::thread([this] {
+    schedulerThread = std::jthread([this] {
         this->run();
     });
 
     // Start the prune thread
-    pruneThread = std::thread([this] {
+    pruneThread = std::jthread([this] {
         this->pruneSources();
     });
 
     // Start the resend thread if this is a master cluster
     if (getRole() == eRole::master) {
-        resendThread = std::thread([this] {
+        resendThread = std::jthread([this] {
             this->resendMessages();
         });
     }
@@ -158,7 +150,7 @@ void Cluster::queueMessage(std::string source, const std::shared_ptr<std::vector
 
 void Cluster::pruneSources() {
     // Iterate every QUEUE_SOURCE_PRUNE_SECONDS seconds until the timer is cancelled or until we stop running
-    while (bRunning && interruptableTimer.wait_for(std::chrono::seconds(QUEUE_SOURCE_PRUNE_MILLISECONDS))) {
+    do {
         // Acquire the exclusive lock to prevent more data being pushed on while we are pruning
         {
             std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -181,7 +173,7 @@ void Cluster::pruneSources() {
                 }
             }
         }
-    }
+    } while (bRunning && interruptableTimer.wait_for(std::chrono::seconds(QUEUE_SOURCE_PRUNE_MILLISECONDS)));
 }
 
 void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)

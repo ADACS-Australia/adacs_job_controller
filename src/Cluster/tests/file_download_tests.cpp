@@ -16,13 +16,11 @@
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
 struct FileDownloadTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     std::vector<std::vector<uint8_t>> receivedMessages;
     bool bReady = false;
     nlohmann::json jsonClusters;
     std::shared_ptr<FileDownload> fileDownload;
     std::string uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     FileDownloadTestDataFixture() {
         // Parse the cluster configuration
@@ -40,7 +38,7 @@ struct FileDownloadTestDataFixture : public DatabaseFixture, public WebSocketCli
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        fileDownload = std::make_shared<FileDownload>(clusterManager->getvClusters()->back()->getClusterDetails(), uuid);
+        fileDownload = clusterManager->createFileDownload(clusterManager->getvClusters()->back(), uuid);
     }
 
     void onWebsocketMessage(auto in_message) {
@@ -71,52 +69,41 @@ BOOST_FIXTURE_TEST_SUITE(File_Download_test_suite, FileDownloadTestDataFixture)
 
         // Check that the uuid is correctly set
         BOOST_CHECK_EQUAL(fileDownload->getUuid(), uuid);
+
+        // Check that the file download object is correctly created
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadFileSize, -1);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadError, false);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadErrorDetails.empty(), true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadDataReady, false);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadReceivedData, false);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadReceivedBytes, 0);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadSentBytes, 0);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadClientPaused, false);
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileChunk) {
         auto chunk = generateRandomData(randomInt(0, 255));
 
-        Message msg(FILE_CHUNK);
-        msg.push_string(uuid);      // uuid
+        auto msg = Message(FILE_CHUNK);
         msg.push_bytes(*chunk);     // chunk
         fileDownload->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileDownloadMap->empty(), true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadFileSize, -1);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadError, false);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadErrorDetails.empty(), true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadDataReady, true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadReceivedData, false);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadReceivedBytes, chunk->size());
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadSentBytes, 0);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadClientPaused, false);
 
-        auto fdObj = std::make_shared<FileDownload>(nullptr, "");
-        fileDownloadMap->emplace(uuid, fdObj);
-
-        // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadFileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadError, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadErrorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadDataReady, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadSentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadClientPaused, false);
-
-        msg = Message(FILE_CHUNK);
-        msg.push_string(uuid);      // uuid
-        msg.push_bytes(*chunk);     // chunk
-        fileDownload->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadFileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadError, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadErrorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadDataReady, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedBytes, chunk->size());
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadSentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadClientPaused, false);
-
-        BOOST_CHECK_EQUAL_COLLECTIONS(chunk->begin(), chunk->end(), (*(*fileDownloadMap)[uuid]->fileDownloadQueue.try_peek())->begin(),
-                                      (*(*fileDownloadMap)[uuid]->fileDownloadQueue.try_peek())->end());
+        BOOST_CHECK_EQUAL_COLLECTIONS(chunk->begin(), chunk->end(), (*fileDownload->fileDownloadQueue.try_peek())->begin(),
+                                      (*fileDownload->fileDownloadQueue.try_peek())->end());
 
         std::vector<std::shared_ptr<std::vector<uint8_t>>> chunks = {chunk};
 
         // Fill the queue and make sure that a pause file chunk stream isn't sent until the queue is full
-        while (!(*fileDownloadMap)[uuid]->fileDownloadClientPaused) {
+        while (!fileDownload->fileDownloadClientPaused) {
             chunk = generateRandomData(randomInt(0, 255));
             chunks.push_back(chunk);
 
@@ -125,7 +112,6 @@ BOOST_FIXTURE_TEST_SUITE(File_Download_test_suite, FileDownloadTestDataFixture)
             }
 
             msg = Message(FILE_CHUNK);
-            msg.push_string(uuid);      // uuid
             msg.push_bytes(*chunk);     // chunk
             fileDownload->handleMessage(msg);
         }
@@ -140,91 +126,41 @@ BOOST_FIXTURE_TEST_SUITE(File_Download_test_suite, FileDownloadTestDataFixture)
         // Verify that the chunks were correctly queued
         bool different = false;
         for (const auto& chunk : chunks) {
-            auto queueChunk = (*(*fileDownloadMap)[uuid]->fileDownloadQueue.try_dequeue());
+            auto queueChunk = (*fileDownload->fileDownloadQueue.try_dequeue());
             different = different || !std::equal((*queueChunk).begin(), (*queueChunk).end(), (*chunk).begin());
         }
 
         BOOST_CHECK_EQUAL(different, false);
-
-        fileDownloadMap->erase(uuid);
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileError) {
-        // A uuid that isn't in the fileDownloadMap should be a noop
-        auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-
-        Message msg(FILE_ERROR);
-        msg.push_string("details");  // detail
-        fileDownload->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL(fileDownloadMap->empty(), true);
-
-        auto fdObj = std::make_shared<FileDownload>(nullptr, "");
-        fileDownloadMap->emplace(uuid, fdObj);
-
-        // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadFileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadError, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadErrorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadDataReady, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadSentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadClientPaused, false);
-
-        msg = Message(FILE_ERROR);
+        auto msg = Message(FILE_ERROR);
         msg.push_string("details");     // detail
         fileDownload->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadFileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadError, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadErrorDetails, "details");
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadDataReady, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadSentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadClientPaused, false);
-
-        fileDownloadMap->erase(uuid);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadFileSize, -1);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadError, true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadErrorDetails, "details");
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadDataReady, true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadReceivedData, false);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadReceivedBytes, 0);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadSentBytes, 0);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadClientPaused, false);
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileDetails) {
-        // A uuid that isn't in the fileDownloadMap should be a noop
-        auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-
-        Message msg(FILE_DETAILS);
+        auto msg = Message(FILE_DETAILS);
         msg.push_ulong(0x123456789abcdef);      // fileSize
         fileDownload->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileDownloadMap->empty(), true);
-
-        auto fdObj = std::make_shared<FileDownload>(nullptr, "");
-        fileDownloadMap->emplace(uuid, fdObj);
-
-        // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadFileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadError, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadErrorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadDataReady, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadSentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadClientPaused, false);
-
-        msg = Message(FILE_DETAILS);
-        msg.push_ulong(0x123456789abcdef);      // fileSize
-        fileDownload->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadFileSize, 0x123456789abcdef);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadError, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadErrorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadDataReady, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedData, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadReceivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadSentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileDownloadClientPaused, false);
-
-        fileDownloadMap->erase(uuid);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadFileSize, 0x123456789abcdef);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadError, false);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadErrorDetails.empty(), true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadDataReady, true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadReceivedData, true);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadReceivedBytes, 0);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadSentBytes, 0);
+        BOOST_CHECK_EQUAL(fileDownload->fileDownloadClientPaused, false);
     }
 BOOST_AUTO_TEST_SUITE_END()
 

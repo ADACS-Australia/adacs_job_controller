@@ -116,10 +116,8 @@ struct sBundleJob {
         }
     }
 
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     uint64_t id = 0;
     std::string content;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 };
 
 #endif //GWCLOUD_JOB_SERVER_S_BUNDLE_JOB_H

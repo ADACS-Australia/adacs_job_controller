@@ -325,30 +325,12 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
             // Check if the server received an error about the file
             if (fdObj->fileDownloadError) {
-                {
-                    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-                    // Destroy the file download object
-                    if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
-                        fileDownloadMap->erase(uuid);
-                    }
-                }
-
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, fdObj->fileDownloadErrorDetails);
                 return;
             }
 
             // Check if the server received details about the file
             if (!fdObj->fileDownloadReceivedData) {
-                {
-                    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-                    // Destroy the file download object
-                    if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
-                        fileDownloadMap->erase(uuid);
-                    }
-                }
-
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
             }
