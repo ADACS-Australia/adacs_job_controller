@@ -84,7 +84,20 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
             while (running) {
-                mgr->getvClusters()->at(0)->callrun();
+                for (auto cluster : *mgr->getmConnectedClusters()) {
+                    if (cluster.second == nullptr) {
+                        continue;
+                    }
+                    cluster.second->callrun();
+                }
+
+                for (auto cluster : *mgr->getmConnectedFileDownloads()) {
+                    if (cluster.second == nullptr) {
+                        continue;
+                    }
+
+                    cluster.second->callrun();
+                }
             }
         });
 
@@ -105,11 +118,13 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Connect a fake client to the websocket server
         TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
+        std::shared_ptr<TestWsClient> websocketFileDownloadClient;
         auto fileData = std::vector<uint8_t>();
         bool bPaused = false;
         bool bReady = false;
         std::thread pThread;
-        websocketClient.on_message = [&pThread, &fileData, &bPaused, &bReady](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
+        std::shared_ptr<std::thread> fileDownloadThread;
+        websocketClient.on_message = [&pThread, &fileData, &bPaused, &bReady, &fileDownloadThread, &websocketFileDownloadClient](const std::shared_ptr<TestWsClient::Connection>& /*connection*/, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
@@ -119,69 +134,90 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                 return;
             }
 
-            // Check if this is a pause transfer message
-            if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
-                bPaused = true;
-                return;
-            }
+            if (msg.getId() == DOWNLOAD_FILE) {
+                auto jobId = msg.pop_uint();
+                auto uuid = msg.pop_string();
+                auto sBundle = msg.pop_string();
+                auto sFilePath = msg.pop_string();
 
-            // Check if this is a resume transfer message
-            if (msg.getId() == RESUME_FILE_CHUNK_STREAM) {
-                bPaused = false;
-                return;
-            }
+                websocketFileDownloadClient = std::make_shared<TestWsClient>("localhost:8001/job/ws/?token=" + uuid);
+                websocketFileDownloadClient->on_message = [&pThread, &fileData, &bPaused](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
+                    auto data = in_message->string();
+                    auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
-            msg.pop_uint();
-            auto uuid = msg.pop_string();
-            auto sBundle = msg.pop_string();
-            auto sFilePath = msg.pop_string();
-
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-            auto fileSize = randomInt(0, 1024ULL*1024ULL);
-            fileData.reserve(fileSize);
-
-            // Send the file size to the server
-            msg = Message(FILE_DETAILS, Message::Priority::Highest, "");
-            msg.push_string(uuid);
-            msg.push_ulong(fileSize);
-
-            auto outMessage = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
-            std::ostream_iterator<uint8_t> iter(*outMessage);
-            std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-            connection->send(outMessage, nullptr, 130);
-
-            // Now send the file content in to chunks and send it to the client
-            pThread = std::thread([&bPaused, connection, fileSize, uuid, &fileData]() {
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-                auto CHUNK_SIZE = 1024*64;
-
-                uint64_t bytesSent = 0;
-                while (bytesSent < fileSize) {
-                    // Don't do anything while the stream is paused
-                    while (bPaused) {
-                        std::this_thread::yield();
+                    // Check if this is a pause transfer message
+                    if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
+                        bPaused = true;
+                        return;
                     }
 
-                    auto chunkSize = std::min(static_cast<uint32_t>(CHUNK_SIZE), static_cast<uint32_t>(fileSize-bytesSent));
-                    bytesSent += chunkSize;
+                    // Check if this is a resume transfer message
+                    if (msg.getId() == RESUME_FILE_CHUNK_STREAM) {
+                        bPaused = false;
+                        return;
+                    }
 
-                    auto data = generateRandomData(chunkSize);
+                    // Use the ready message as our prompt to start sending file data
+                    if (msg.getId() != SERVER_READY) {
+                        BOOST_FAIL("File Download client got unexpected message id " + std::to_string(msg.getId()));
+                        return;
+                    }
 
-                    fileData.insert(fileData.end(), (*data).begin(), (*data).end());
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                    auto fileSize = randomInt(0, 1024ULL*1024ULL);
+                    fileData.reserve(fileSize);
 
-                    auto msg = Message(FILE_CHUNK, Message::Priority::Lowest, "");
-                    msg.push_string(uuid);
-                    msg.push_bytes(*data);
+                    // Send the file size to the server
+                    msg = Message(FILE_DETAILS, Message::Priority::Highest, "");
+                    msg.push_ulong(fileSize);
 
-                    auto message = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
-                    std::ostream_iterator<uint8_t> iter(*message);
+                    auto outMessage = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
+                    std::ostream_iterator<uint8_t> iter(*outMessage);
                     std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
                     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-                    connection->send(message, nullptr, 130);
-                }
-            });
+                    connection->send(outMessage, nullptr, 130);
 
+                    // Now send the file content in to chunks and send it to the client
+                    pThread = std::thread([&bPaused, connection, fileSize, &fileData]() {
+                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                        auto CHUNK_SIZE = 1024*64;
+
+                        uint64_t bytesSent = 0;
+                        while (bytesSent < fileSize) {
+                            // Don't do anything while the stream is paused
+                            while (bPaused) {
+                                std::this_thread::yield();
+                            }
+
+                            auto chunkSize = std::min(static_cast<uint32_t>(CHUNK_SIZE), static_cast<uint32_t>(fileSize-bytesSent));
+                            bytesSent += chunkSize;
+
+                            auto data = generateRandomData(chunkSize);
+
+                            fileData.insert(fileData.end(), (*data).begin(), (*data).end());
+
+                            auto msg = Message(FILE_CHUNK, Message::Priority::Lowest, "");
+                            msg.push_bytes(*data);
+
+                            auto message = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
+                            std::ostream_iterator<uint8_t> iter(*message);
+                            std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
+                            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                            connection->send(message, nullptr, 130);
+                        }
+                    });
+
+                };
+
+                // Start the client
+                fileDownloadThread = std::make_shared<std::thread>([&websocketFileDownloadClient]() {
+                    websocketFileDownloadClient->start();
+                });
+
+                return;
+            }
+
+            BOOST_FAIL("Master client got unexpected message id " + std::to_string(msg.getId()));
         };
 
         // Start the client
@@ -248,12 +284,12 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
             fileData.clear();
 
             pThread.join();
+            websocketFileDownloadClient->stop();
+            fileDownloadThread->join();
         }
 
         // Finished with the servers and clients
         running = false;
-        *mgr->getvClusters()->at(0)->getdataReady() = true;
-        mgr->getvClusters()->at(0)->getdataCV()->notify_one();
         clusterThread.join();
         websocketClient.stop();
         clientThread.join();
@@ -286,7 +322,20 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         bool running = true;
         std::thread clusterThread([&mgr, &running]() {
             while (running) {
-                mgr->getvClusters()->at(0)->callrun();
+                for (auto& cluster : *mgr->getmConnectedClusters()) {
+                    if (cluster.second == nullptr) {
+                        continue;
+                    }
+                    cluster.second->callrun();
+                }
+
+                for (auto& cluster : *mgr->getmConnectedFileDownloads()) {
+                    if (cluster.second == nullptr) {
+                        continue;
+                    }
+
+                    cluster.second->callrun();
+                }
             }
         });
 
@@ -307,13 +356,15 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Connect a fake client to the websocket server
         TestWsClient websocketClient("localhost:8001/job/ws/?token=" + getLastToken());
+        std::shared_ptr<TestWsClient> websocketFileDownloadClient;
         bool bPaused = false;
         bool bReady = false;
         int pauseCount = 0;
         int resumeCount = 0;
         uint64_t fileSize = 0;
         std::shared_ptr<std::thread> pThread;
-        websocketClient.on_message = [&pThread, &bPaused, &bReady, &mgr, &fileSize, &pauseCount, &resumeCount](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
+        std::shared_ptr<std::thread> fileDownloadThread;
+        websocketClient.on_message = [&pThread, &bPaused, &bReady, &mgr, &fileSize, &pauseCount, &resumeCount, &websocketFileDownloadClient, &fileDownloadThread](const std::shared_ptr<TestWsClient::Connection>& connection, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
             auto data = in_message->string();
             auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
@@ -323,64 +374,85 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
                 return;
             }
 
-            // Check if this is a pause transfer message
-            if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
-                pauseCount++;
-                bPaused = true;
-                return;
-            }
+            if (msg.getId() == DOWNLOAD_FILE) {
+                auto jobId = msg.pop_uint();
+                auto uuid = msg.pop_string();
+                auto sBundle = msg.pop_string();
+                auto sFilePath = msg.pop_string();
 
-            // Check if this is a resume transfer message
-            if (msg.getId() == RESUME_FILE_CHUNK_STREAM) {
-                resumeCount++;
-                bPaused = false;
-                return;
-            }
+                websocketFileDownloadClient = std::make_shared<TestWsClient>("localhost:8001/job/ws/?token=" + uuid);
+                websocketFileDownloadClient->on_message = [&pThread, &bPaused, &pauseCount, &resumeCount, &fileSize, &mgr](const std::shared_ptr<TestWsClient::Connection> &connection, const std::shared_ptr<TestWsClient::InMessage> &in_message) {
+                    auto data = in_message->string();
+                    auto msg = Message(std::vector<uint8_t>(data.begin(), data.end()));
 
-            msg.pop_uint();
-            auto uuid = msg.pop_string();
-            auto sBundle = msg.pop_string();
-            auto sFilePath = msg.pop_string();
-
-            // Generate a file size between 512 and 1024Mb
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-            fileSize = randomInt(1024ULL*1024ULL*512ULL, 1024ULL*1024ULL*1024ULL);
-
-            // Send the file size to the server
-            msg = Message(FILE_DETAILS, Message::Priority::Highest, "");
-            msg.push_string(uuid);
-            msg.push_ulong(fileSize);
-
-            auto smsg = Message(**msg.getdata());
-            mgr->getvClusters()->at(0)->callhandleMessage(smsg);
-
-            // Now send the file content in to chunks and send it to the client
-            pThread = std::make_shared<std::thread>([&bPaused, connection, fileSize, uuid, &mgr]() {
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-                auto CHUNK_SIZE = 1024*64;
-
-                auto data = std::vector<uint8_t>();
-
-                uint64_t bytesSent = 0;
-                while (bytesSent < fileSize) {
-                    // Spin while the stream is paused
-                    while (bPaused) {
-                        std::this_thread::yield();
+                    // Check if this is a pause transfer message
+                    if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
+                        pauseCount++;
+                        bPaused = true;
+                        return;
                     }
 
-                    auto chunkSize = std::min(static_cast<uint64_t>(CHUNK_SIZE), static_cast<uint64_t>(fileSize-bytesSent));
-                    bytesSent += chunkSize;
-                    data.resize(chunkSize);
+                    // Check if this is a resume transfer message
+                    if (msg.getId() == RESUME_FILE_CHUNK_STREAM) {
+                        resumeCount++;
+                        bPaused = false;
+                        return;
+                    }
 
-                    auto msg = Message(FILE_CHUNK, Message::Priority::Lowest, "");
-                    msg.push_string(uuid);
-                    msg.push_bytes(data);
+                    // Use the ready message as our prompt to start sending file data
+                    if (msg.getId() != SERVER_READY) {
+                        BOOST_FAIL("File Download client got unexpected message id " + std::to_string(msg.getId()));
+                        return;
+                    }
+
+                    // Generate a file size between 512 and 1024Mb
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                    fileSize = randomInt(1024ULL * 1024ULL * 512ULL, 1024ULL * 1024ULL * 1024ULL);
+
+                    // Send the file size to the server
+                    msg = Message(FILE_DETAILS, Message::Priority::Highest, "");
+                    msg.push_ulong(fileSize);
 
                     auto smsg = Message(**msg.getdata());
-                    mgr->getvClusters()->at(0)->callhandleMessage(smsg);
-                }
-            });
+                    mgr->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
 
+                    // Now send the file content in to chunks and send it to the client
+                    pThread = std::make_shared<std::thread>([&bPaused, connection, fileSize, &mgr]() {
+                        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                        auto CHUNK_SIZE = 1024 * 64;
+
+                        auto data = std::vector<uint8_t>();
+
+                        uint64_t bytesSent = 0;
+                        while (bytesSent < fileSize) {
+                            // Spin while the stream is paused
+                            while (bPaused) {
+                                std::this_thread::yield();
+                            }
+
+                            auto chunkSize = std::min(static_cast<uint64_t>(CHUNK_SIZE),
+                                                      static_cast<uint64_t>(fileSize - bytesSent));
+                            bytesSent += chunkSize;
+                            data.resize(chunkSize);
+
+                            auto msg = Message(FILE_CHUNK, Message::Priority::Lowest, "");
+                            msg.push_bytes(data);
+
+                            auto smsg = Message(**msg.getdata());
+                            mgr->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
+                        }
+                    });
+                };
+
+                // Start the client
+                fileDownloadThread = std::make_shared<std::thread>([&websocketFileDownloadClient]() {
+                    websocketFileDownloadClient->start();
+                });
+
+                return;
+            }
+
+            BOOST_FAIL("Master client got unexpected message id " + std::to_string(msg.getId()));
         };
 
         // Start the client
@@ -465,8 +537,6 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
 
         // Finished with the servers and clients
         running = false;
-        *mgr->getvClusters()->at(0)->getdataReady() = true;
-        mgr->getvClusters()->at(0)->getdataCV()->notify_one();
         clusterThread.join();
         websocketClient.stop();
         clientThread.join();
@@ -474,6 +544,8 @@ BOOST_AUTO_TEST_SUITE(file_transfer_test_suite)
         wsSrv.stop();
 
         pThread->join();
+        websocketFileDownloadClient->stop();
+        fileDownloadThread->join();
 
         // Clean up
         database->run(remove_from(fileDownloadTable).unconditionally());

@@ -85,7 +85,7 @@ set(
         DB/ClusterDB.h
         DB/sClusterJob.h
         DB/sClusterJobStatus.h
-)
+        Cluster/FileDownload.cpp Cluster/FileDownload.h)
 
 # Set the main executable and source files
 add_executable(
@@ -116,7 +116,7 @@ add_executable(
         tests/fixtures/WebSocketServerFixture.h
         Cluster/tests/ping_pong_tests.cpp
         Cluster/tests/cluster_db_tests.cpp
-)
+        Cluster/tests/file_download_tests.cpp)
 
 # Set the link libraries
 set(
@@ -136,14 +136,14 @@ set(
 set_target_properties(
         Boost_Tests_run
         PROPERTIES
-        CXX_CLANG_TIDY "clang-tidy"
+#        CXX_CLANG_TIDY "clang-tidy"
         CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
 )
 
 set_target_properties(
         gwcloud_job_server
         PROPERTIES
-        CXX_CLANG_TIDY "clang-tidy"
+#        CXX_CLANG_TIDY "clang-tidy"
         CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
 )
 

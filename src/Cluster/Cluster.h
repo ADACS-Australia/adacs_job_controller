@@ -18,20 +18,7 @@
 #include <vector>
 
 class ClusterManager;
-
-struct sFileDownload {
-    folly::USPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false> queue;
-    uint64_t fileSize = -1;
-    bool error = false;
-    std::string errorDetails;
-    mutable std::mutex dataCVMutex;
-    bool dataReady = false;
-    std::condition_variable dataCV;
-    bool receivedData = false;
-    uint64_t receivedBytes = 0;
-    uint64_t sentBytes = 0;
-    bool clientPaused = false;
-};
+class FileDownload;
 
 struct sFile {
     std::string fileName{};
@@ -76,7 +63,7 @@ private:
     std::string key;
 };
 
-extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileDownload>>> fileDownloadMap;
+extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>>> fileDownloadMap;
 extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>> fileListMap;
 // NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
 extern std::mutex fileDownloadMapDeletionLockMutex;
@@ -99,12 +86,25 @@ public:
 
     void setConnection(const std::shared_ptr<WsServer::Connection>& pCon);
 
-    void handleMessage(Message &message);
+    virtual void handleMessage(Message &message);
 
     auto isOnline() -> bool;
 
     // virtual here so that we can override this function for testing
     virtual void queueMessage(std::string source, const std::shared_ptr<std::vector<uint8_t>>& data, Message::Priority priority);
+
+    virtual auto getRoleString() -> std::string {
+        return "master";
+    }
+
+    enum eRole {
+        master,
+        fileDownload
+    };
+
+    virtual auto getRole() -> eRole {
+        return eRole::master;
+    }
 
 private:
 #ifndef BUILD_TESTS
@@ -142,12 +142,6 @@ private:
     void checkUnsubmittedJobs();
     void checkCancellingJobs();
     void checkDeletingJobs();
-
-    static void handleFileError(Message &message);
-
-    static void handleFileDetails(Message &message);
-
-    void handleFileChunk(Message &message);
 
     static void handleFileList(Message &message);
     static void handleFileListError(Message &message);

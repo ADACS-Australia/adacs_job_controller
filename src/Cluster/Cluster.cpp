@@ -28,7 +28,7 @@
 
 // Define a global map that can be used for storing information about file downloads
 // NOLINTNEXTLINE(cert-err58-cpp)
-const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileDownload>>> fileDownloadMap = std::make_shared<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileDownload>>>();
+const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>>> fileDownloadMap = std::make_shared<folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>>>();
 
 // Define a global map that can be used for storing information about file lists
 // NOLINTNEXTLINE(cert-err58-cpp)
@@ -45,9 +45,6 @@ std::mutex fileDownloadPauseResumeLockMutex;
 // Define a mutex that can be used for safely removing entries from the fileListMap
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::mutex fileListMapDeletionLockMutex;
-
-// Define a simple HTTP/S client for fetching bundles
-using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 
 Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std::move(details)) {
     // Create the list of priorities in order
@@ -66,10 +63,12 @@ Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std
         this->pruneSources();
     });
 
-    // Start the resend thread
-    resendThread = std::thread([this] {
-        this->resendMessages();
-    });
+    // Start the resend thread if this is a master cluster
+    if (getRole() == eRole::master) {
+        resendThread = std::thread([this] {
+            this->resendMessages();
+        });
+    }
 #endif
 }
 
@@ -85,15 +84,6 @@ void Cluster::handleMessage(Message &message) {
         case UPDATE_JOB:
             this->updateJob(message);
             break;
-        case FILE_ERROR:
-            Cluster::handleFileError(message);
-            break;
-        case FILE_DETAILS:
-            Cluster::handleFileDetails(message);
-            break;
-        case FILE_CHUNK:
-            this->handleFileChunk(message);
-            break;
         case FILE_LIST:
             Cluster::handleFileList(message);
             break;
@@ -108,7 +98,7 @@ void Cluster::handleMessage(Message &message) {
 void Cluster::setConnection(const std::shared_ptr<WsServer::Connection>& pCon) {
     this->pConnection = pCon;
 
-    if (pCon != nullptr) {
+    if (pCon != nullptr && getRole() == eRole::master) {
         // See if there are any pending jobs that should be sent
         checkUnsubmittedJobs();
 
@@ -192,9 +182,10 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
     {
         std::unique_lock<std::mutex> lock(dataCVMutex);
 
+#ifndef BUILD_TESTS
         // Wait for data to be ready to send
         dataCV.wait(lock, [this] { return this->dataReady; });
-
+#endif
         // Reset the condition
         this->dataReady = false;
     }
@@ -233,9 +224,13 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
 
                             // Send the message on the websocket
                             if (pConnection != nullptr) {
+                                std::promise<void> sendPromise;
                                 pConnection->send(
-                        outMessage,
-                            [this](const SimpleWeb::error_code &errorCode){
+                                    outMessage,
+                                    [this, &sendPromise](const SimpleWeb::error_code &errorCode) {
+                                        // Data has been sent, set the promise
+                                        sendPromise.set_value();
+
                                         // Kill the connection only if the error was not indicating success
                                         if (!errorCode){
                                             return;
@@ -249,6 +244,9 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
                                     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                                     130
                                 );
+
+                                // Wait for the data to be sent
+                                sendPromise.get_future().wait();
                             } else {
                                 std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
                             }
@@ -547,29 +545,6 @@ void Cluster::checkDeletingJobs() {
     }
 }
 
-void Cluster::handleFileError(Message &message) {
-    auto uuid = message.pop_string();
-    auto detail = message.pop_string();
-
-    // Acquire the lock
-    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-    // Check that the uuid is valid
-    if (fileDownloadMap->find(uuid) == fileDownloadMap->end()) {
-        return;
-    }
-
-    auto fdObj = (*fileDownloadMap)[uuid];
-
-    // Set the error
-    fdObj->errorDetails = detail;
-    fdObj->error = true;
-
-    // Trigger the file transfer event
-    fdObj->dataReady = true;
-    fdObj->dataCV.notify_one();
-}
-
 void Cluster::handleFileListError(Message &message) {
     auto uuid = message.pop_string();
     auto detail = message.pop_string();
@@ -591,81 +566,6 @@ void Cluster::handleFileListError(Message &message) {
     // Trigger the file transfer event
     flObj->dataReady = true;
     flObj->dataCV.notify_one();
-}
-
-void Cluster::handleFileDetails(Message &message) {
-    auto uuid = message.pop_string();
-    auto fileSize = message.pop_ulong();
-
-    // Acquire the lock
-    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-    // Check that the uuid is valid
-    if (fileDownloadMap->find(uuid) == fileDownloadMap->end()) {
-        return;
-    }
-
-    auto fdObj = (*fileDownloadMap)[uuid];
-
-    // Set the file size
-    fdObj->fileSize = fileSize;
-    fdObj->receivedData = true;
-
-    // Trigger the file transfer event
-    fdObj->dataReady = true;
-    fdObj->dataCV.notify_one();
-}
-
-void Cluster::handleFileChunk(Message &message) {
-    auto uuid = message.pop_string();
-    auto chunk = message.pop_bytes();
-
-    // It's only possible for the fdObj to be deleted from now on to the end of this function. That's because in the
-    // HTTP file download code, the fdObj won't be deleted until after all bytes have been received and sent to the
-    // HTTP client. If the enqueue above is the last chunk of data, and the HTTP client is slow, then there will never
-    // be an opportunity for the dataReady check to be done by the HTTP file download code since it'll be in a loop
-    // until there are no more chunks to send. This leads to a case where the fdObj might be deleted immediately after
-    // the enqueue call above, so we need to protect any further accesses below in a unique lock.
-
-    // Acquire the lock
-    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-    // Now we're in a critical section, if the UUID still exists in the fileDownloadMap, then the fdObj hasn't yet
-    // been destroyed, and we're right to continue using it. The HTTP file download code, will wait for this mutex to
-    // be released before it tries to clean up.
-
-    // Check that the uuid is valid
-    if (fileDownloadMap->find(uuid) == fileDownloadMap->end()) {
-        return;
-    }
-
-    auto fdObj = (*fileDownloadMap)[uuid];
-
-    fdObj->receivedBytes += chunk.size();
-
-    // Copy the chunk and push it on to the queue
-    fdObj->queue.enqueue(std::make_shared<std::vector<uint8_t>>(chunk));
-
-    {
-        // The Pause/Resume messages must be synchronized to avoid a deadlock
-        std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
-
-        if (!fdObj->clientPaused) {
-            // Check if our buffer is too big
-            if (fdObj->receivedBytes - fdObj->sentBytes > MAX_FILE_BUFFER_SIZE) {
-                // Ask the client to pause the file transfer
-                fdObj->clientPaused = true;
-
-                auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
-                msg.push_string(uuid);
-                msg.send(shared_from_this());
-            }
-        }
-    }
-
-    // Trigger the file transfer event
-    fdObj->dataReady = true;
-    fdObj->dataCV.notify_one();
 }
 
 void Cluster::handleFileList(Message &message) {
