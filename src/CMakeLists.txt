@@ -85,6 +85,8 @@ set(
         DB/ClusterDB.h
         DB/sClusterJob.h
         DB/sClusterJobStatus.h
+        Cluster/FileDownload.cpp
+        Cluster/FileDownload.h
 )
 
 # Set the main executable and source files
@@ -116,6 +118,7 @@ add_executable(
         tests/fixtures/WebSocketServerFixture.h
         Cluster/tests/ping_pong_tests.cpp
         Cluster/tests/cluster_db_tests.cpp
+        Cluster/tests/file_download_tests.cpp
 )
 
 # Set the link libraries

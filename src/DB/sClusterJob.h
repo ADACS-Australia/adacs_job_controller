@@ -181,7 +181,6 @@ struct sClusterJob {
         return sClusterJob{};
     }
 
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     uint64_t id = 0;
     uint64_t jobId = 0;
     uint64_t schedulerId = 0;
@@ -190,7 +189,6 @@ struct sClusterJob {
     std::string bundleHash;
     std::string workingDirectory;
     bool running = true;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 };
 
 

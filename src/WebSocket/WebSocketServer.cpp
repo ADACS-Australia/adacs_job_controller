@@ -51,7 +51,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
         auto cluster = this->clusterManager->handleNewConnection(connection, (*queryParams.begin()).second);
         if (cluster) {
             // Everything is fine
-            std::cout << "WS: Opened connection from " << cluster->getName() << std::endl;
+            std::cout << "WS: Opened connection from " << cluster->getName() << " as role " << cluster->getRoleString() << std::endl;
 
             // Tell the client that we are ready
             Message msg(SERVER_READY, Message::Priority::Highest, SYSTEM_SOURCE);

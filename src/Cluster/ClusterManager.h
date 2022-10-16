@@ -8,6 +8,7 @@
 #include "../Lib/GeneralUtils.h"
 #include "../WebSocket/WebSocketServer.h"
 #include "Cluster.h"
+#include "FileDownload.h"
 #include <thread>
 
 class ClusterManager {
@@ -22,6 +23,7 @@ public:
     auto getCluster(const std::string& cluster) -> std::shared_ptr<Cluster>;
     auto isClusterOnline(const std::shared_ptr<Cluster>& cluster) -> bool;
     static void reportWebsocketError(const std::shared_ptr<Cluster>& cluster, const SimpleWeb::error_code &errorCode);
+    auto createFileDownload(const std::shared_ptr<Cluster>& cluster, const std::string& uuid) -> std::shared_ptr<FileDownload>;
 
     struct sPingPongTimes {
         std::chrono::time_point<std::chrono::system_clock> pingTimestamp;
@@ -33,6 +35,7 @@ private:
 
     std::vector<std::shared_ptr<Cluster>> vClusters;
     std::map<std::shared_ptr<WsServer::Connection>, std::shared_ptr<Cluster>> mConnectedClusters;
+    std::map<std::shared_ptr<WsServer::Connection>, std::shared_ptr<FileDownload>> mConnectedFileDownloads;
 
     std::map<std::shared_ptr<WsServer::Connection>, sPingPongTimes> mClusterPings;
 
@@ -40,10 +43,14 @@ private:
     static void connectCluster(const std::shared_ptr<Cluster>& cluster, const std::string &token);
     void checkPings();
 
+    folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>> fileDownloadMap;
+
 // Testing
 EXPOSE_PROPERTY_FOR_TESTING(vClusters);
 EXPOSE_PROPERTY_FOR_TESTING(mConnectedClusters);
+EXPOSE_PROPERTY_FOR_TESTING(mConnectedFileDownloads);
 EXPOSE_PROPERTY_FOR_TESTING(mClusterPings);
+EXPOSE_PROPERTY_FOR_TESTING_READONLY(fileDownloadMap);
 EXPOSE_FUNCTION_FOR_TESTING(reconnectClusters);
 EXPOSE_FUNCTION_FOR_TESTING(checkPings);
 };

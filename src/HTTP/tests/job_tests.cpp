@@ -5,128 +5,113 @@
 #include "../../tests/utils.h"
 #include "../../Cluster/ClusterManager.h"
 #include "../../Lib/JobStatus.h"
+#include "../../tests/fixtures/DatabaseFixture.h"
+#include "../../tests/fixtures/HttpClientFixture.h"
+#include "../../tests/fixtures/HttpServerFixture.h"
 #include <boost/test/unit_test.hpp>
-#include <jwt/jwt.hpp>
 
-// NOLINTBEGIN(concurrency-mt-unsafe)
-BOOST_AUTO_TEST_SUITE(Job_test_suite)
+
+struct JobTestDataFixture : public DatabaseFixture, public HttpServerFixture, public HttpClientFixture {
+    std::shared_ptr<Cluster> cluster;
+    uint64_t jobId;
+    TestHttpClient client = TestHttpClient("localhost:8000");
+
+    JobTestDataFixture() :
+            cluster(clusterManager->getvClusters()->at(1))
+    {
+        // Create the new job object
+        jobId = database->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.bundle = "whatever",
+                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                        )
+        );
+
+        // Create the first state object
+        database->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
+                                jobHistoryTable.details = "Job submitting"
+                        )
+        );
+
+        // Create the new job object
+        jobId = database->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.bundle = "whatever",
+                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                        )
+        );
+
+        // Create the first state object
+        database->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
+                                jobHistoryTable.details = "Job submitting"
+                        )
+        );
+
+        // Create the new job object
+        jobId = database->run(
+                insert_into(jobTable)
+                        .set(
+                                jobTable.user = 1,
+                                jobTable.parameters = "params1",
+                                jobTable.cluster = httpServer->getvJwtSecrets()->at(1).clusters()[0],
+                                jobTable.bundle = "whatever",
+                                jobTable.application = httpServer->getvJwtSecrets()->at(1).name()
+                        )
+        );
+
+        // Create the first state object
+        database->run(
+                insert_into(jobHistoryTable)
+                        .set(
+                                jobHistoryTable.jobId = jobId,
+                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                jobHistoryTable.what = SYSTEM_SOURCE,
+                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
+                                jobHistoryTable.details = "Job submitting"
+                        )
+        );
+
+        // Clusters should be stopped
+        cluster->stop();
+
+        auto con = std::make_shared<WsServer::Connection>(nullptr);
+        cluster->setConnection(con);
+    }
+};
+
+BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
 /*
  * This test suite is responsible for testing the Job HTTP Rest API
  */
-
-    const auto sAccess = R"(
-    [
-        {
-            "name": "app1",
-            "secret": "super_secret1",
-            "applications": [],
-            "clusters": [
-                "cluster2",
-                "cluster3"
-            ]
-        },
-        {
-            "name": "app2",
-            "secret": "super_secret2",
-            "applications": [
-                "app1"
-            ],
-            "clusters": [
-                "cluster1"
-            ]
-        },
-        {
-            "name": "app3",
-            "secret": "super_secret3",
-            "applications": [
-                "app1",
-                "app2"
-            ],
-            "clusters": [
-                "cluster1",
-                "cluster2",
-                "cluster3"
-            ]
-        },
-        {
-            "name": "app4",
-            "secret": "super_secret4",
-            "applications": [],
-            "clusters": [
-                "cluster1"
-            ]
-        }
-    ]
-    )";
-
-    const auto sClusters = R"(
-    [
-        {
-            "name": "cluster1",
-            "host": "cluster1.com",
-            "username": "user1",
-            "path": "/cluster1/",
-            "key": "cluster1_key"
-        },
-        {
-            "name": "cluster2",
-            "host": "cluster2.com",
-            "username": "user2",
-            "path": "/cluster2/",
-            "key": "cluster2_key"
-        },
-        {
-            "name": "cluster3",
-            "host": "cluster3.com",
-            "username": "user3",
-            "path": "/cluster3/",
-            "key": "cluster3_key"
-        }
-    ]
-    )";
-
     BOOST_AUTO_TEST_CASE(test_POST_new_job) {
         /*
          * Test POST requests to verify that creating new jobs works as expected
          */
-        // Delete all jobs just in case
-        auto database = MySqlConnector();
-        schema::JobserverFiledownload fileDownloadTable;
-        schema::JobserverJob jobTable;
-        schema::JobserverJobhistory jobHistoryTable;
-        database->run(remove_from(fileDownloadTable).unconditionally());
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
-
-        // Set up the test server
-        setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = std::make_shared<ClusterManager>();
-
-        setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = std::make_shared<HttpServer>(mgr);
-        svr->start();
-        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
-
-        // Set up the test client
-        TestHttpClient client("localhost:8000");
-
         // Test unauthorized user
         auto response = client.request("POST", "/job/apiv1/job/", "", {{"Authorization", "not_valid"}});
         BOOST_CHECK_EQUAL(response->content.string(), "Not authorized");
 
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-        auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
-        jwt::jwt_object jwtToken = {
-                jwt::params::algorithm("HS256"),
-                jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
-        };
-        jwtToken.add_claim("exp", now);
-
-        // Since payload above only accepts string values, we need to set up any non-string values
-        // separately
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-        jwtToken.payload().add_claim("userId", 5);
+        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
 
         // Test creating a job with invalid payload but authorized user
         response = client.request("POST", "/job/apiv1/job/", "", {{"Authorization", jwtToken.signature()}});
@@ -161,6 +146,9 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                 {"bundle",     "test_bundle_1"}
         };
 
+        // Unconnect the client
+        cluster->setConnection(nullptr);
+
         response = client.request("POST", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), (int) SimpleWeb::StatusCode::success_ok);
         BOOST_CHECK_EQUAL(response->header.find("Content-Type")->second, "application/json");
@@ -178,7 +166,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                 );
 
         const auto *dbJob = &jobResults.front();
-        BOOST_CHECK_EQUAL(dbJob->application, svr->getvJwtSecrets()->at(0).name());
+        BOOST_CHECK_EQUAL(dbJob->application, httpServer->getvJwtSecrets()->at(0).name());
         BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
         BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
         BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
@@ -198,9 +186,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
         BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) JobStatus::PENDING);
 
-        // Connect a cluster and check that the job changes to submitting rather than pending when submitting a job
         auto con = std::make_shared<WsServer::Connection>(nullptr);
-        auto cluster = mgr->getCluster(svr->getvJwtSecrets()->at(0).clusters()[0]);
         cluster->setConnection(con);
 
         response = client.request("POST", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
@@ -231,7 +217,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                 );
 
         dbJob = &jobResults.front();
-        BOOST_CHECK_EQUAL(dbJob->application, svr->getvJwtSecrets()->at(0).name());
+        BOOST_CHECK_EQUAL(dbJob->application, httpServer->getvJwtSecrets()->at(0).name());
         BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
         BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
         BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
@@ -250,128 +236,18 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         dbHistory = &jobHistoryResults.front();
         BOOST_CHECK_EQUAL(dbHistory->what, SYSTEM_SOURCE);
         BOOST_CHECK_EQUAL(static_cast<uint32_t>(dbHistory->state), static_cast<uint32_t>(JobStatus::SUBMITTING));
-
-        // Finished with the server
-        svr->stop();
-
-        // Clean up
-        database->run(remove_from(fileDownloadTable).unconditionally());
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
     }
 
     BOOST_AUTO_TEST_CASE(test_GET_get_jobs) {
         /*
          * Test GET requests to verify that fetching/filtering jobs works as expected
          */
-        // Delete all jobs just in case
-        auto database = MySqlConnector();
-        schema::JobserverFiledownload fileDownloadTable;
-        schema::JobserverJob jobTable;
-        schema::JobserverJobhistory jobHistoryTable;
-        database->run(remove_from(fileDownloadTable).unconditionally());
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
-
-        // Set up the test server
-        setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto mgr = std::make_shared<ClusterManager>();
-
-        setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = std::make_shared<HttpServer>(mgr);
-
-        // Fabricate data
-        // Create the new job object
-        auto jobId = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
-                                jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
-                        )
-        );
-
-        // Create the first state object
-        database->run(
-                insert_into(jobHistoryTable)
-                        .set(
-                                jobHistoryTable.jobId = jobId,
-                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
-                                jobHistoryTable.details = "Job submitting"
-                        )
-        );
-
-        // Create the new job object
-        jobId = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
-                                jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
-                        )
-        );
-
-        // Create the first state object
-        database->run(
-                insert_into(jobHistoryTable)
-                        .set(
-                                jobHistoryTable.jobId = jobId,
-                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
-                                jobHistoryTable.details = "Job submitting"
-                        )
-        );
-
-        // Create the new job object
-        jobId = database->run(
-                insert_into(jobTable)
-                        .set(
-                                jobTable.user = 1,
-                                jobTable.parameters = "params1",
-                                jobTable.cluster = svr->getvJwtSecrets()->at(1).clusters()[0],
-                                jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(1).name()
-                        )
-        );
-
-        // Create the first state object
-        database->run(
-                insert_into(jobHistoryTable)
-                        .set(
-                                jobHistoryTable.jobId = jobId,
-                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                jobHistoryTable.what = SYSTEM_SOURCE,
-                                jobHistoryTable.state = static_cast<uint32_t>(JobStatus::PENDING),
-                                jobHistoryTable.details = "Job submitting"
-                        )
-        );
-
-        svr->start();
-        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
-
-        // Set up the test client
-        TestHttpClient client("localhost:8000");
-
         // Test unauthorized user
         auto response = client.request("GET", "/job/apiv1/job/", {}, {{"Authorization", "not-real"}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_forbidden));
 
         // Test authorized app1 (Can't see jobs from app 2)
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-        auto now = std::chrono::system_clock::now() + std::chrono::seconds{10};
-        jwt::jwt_object jwtToken = {
-                jwt::params::algorithm("HS256"),
-                jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
-        };
-        jwtToken.add_claim("exp", now);
+        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
 
         response = client.request("GET", "/job/apiv1/job/", {}, {{"Authorization", jwtToken.signature()}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::success_ok));
@@ -383,12 +259,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         // Should be exactly two results
         BOOST_CHECK_EQUAL(result.size(), 2);
 
-        jwtToken = {
-                jwt::params::algorithm("HS256"),
-                jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr->getvJwtSecrets()->at(1).secret())
-        };
-        jwtToken.add_claim("exp", now);
+        setJwtSecret(httpServer->getvJwtSecrets()->at(1).secret());
 
         // Test authorized app2 (Can see jobs from app 1)
         response = client.request("GET", "/job/apiv1/job/", {}, {{"Authorization", jwtToken.signature()}});
@@ -400,12 +271,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         // Should be exactly three results
         BOOST_CHECK_EQUAL(result.size(), 3);
 
-        jwtToken = {
-                jwt::params::algorithm("HS256"),
-                jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr->getvJwtSecrets()->at(3).secret())
-        };
-        jwtToken.add_claim("exp", now);
+        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
 
         // Test authorized app4 (Can't see jobs from app 1 or 2)
         response = client.request("GET", "/job/apiv1/job/", {}, {{"Authorization", jwtToken.signature()}});
@@ -418,55 +284,16 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         BOOST_CHECK_EQUAL(result.empty(), true);
 
         // TODO(lewis): Test job filtering
-
-        // Finished with the server
-        svr->stop();
-
-        // Clean up
-        database->run(remove_from(fileDownloadTable).unconditionally());
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
     }
 
     // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job) {
-        // Create a new cluster manager
-        setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto manager = std::make_shared<ClusterManager>();
-
-        setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = std::make_shared<HttpServer>(manager);
-        svr->start();
-        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
-
-        // Bring the cluster online
-        auto con = std::make_shared<WsServer::Connection>(nullptr);
-        auto cluster = manager->getCluster(svr->getvJwtSecrets()->at(0).clusters()[0]);
-        cluster->setConnection(con);
-
-        // First make sure we delete all entries from the job history table
-        auto database = MySqlConnector();
-        schema::JobserverJobhistory jobHistoryTable;
-        schema::JobserverJob jobTable;
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
-
-        // Set up the test client
-        TestHttpClient client("localhost:8000");
-
         // Test unauthorized user
         auto response = client.request("PATCH", "/job/apiv1/job/", {}, {{"Authorization", "not-real"}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_forbidden));
 
         // Test authorized user
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-        auto now = std::chrono::system_clock::now() + std::chrono::seconds{10};
-        jwt::jwt_object jwtToken = {
-                jwt::params::algorithm("HS256"),
-                jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
-        };
-        jwtToken.add_claim("exp", now);
+        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
 
         // Test invalid input parameters
         response = client.request("PATCH", "/job/apiv1/job/", "null", {{"Authorization", jwtToken.signature()}});
@@ -487,7 +314,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "not-real-cluster",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
+                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -517,7 +344,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "cluster1",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
+                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -545,12 +372,12 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
+                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
                         )
         );
-        auto source = std::to_string(jobId) + "_" + svr->getvJwtSecrets()->at(0).clusters()[0];
+        auto source = std::to_string(jobId) + "_" + httpServer->getvJwtSecrets()->at(0).clusters()[0];
 
         // Create a pending job state, which should not trigger any websocket message
         database->run(
@@ -572,7 +399,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::success_ok));
         BOOST_CHECK_EQUAL(response->header.find("Content-Type")->second, "application/json");
         BOOST_CHECK_MESSAGE(
-                (*cluster->getqueue())[Message::Priority::Medium].find(source) ==(*cluster->getqueue())[Message::Priority::Medium].end(),
+                (*cluster->getqueue())[Message::Priority::Medium].find(source) == (*cluster->getqueue())[Message::Priority::Medium].end(),
                 "Queue was not empty when it should have been"
         );
 
@@ -599,7 +426,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         response = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_bad_request));
         BOOST_CHECK_MESSAGE(
-                (*cluster->getqueue())[Message::Priority::Medium].find(source) ==(*cluster->getqueue())[Message::Priority::Medium].end(),
+                (*cluster->getqueue())[Message::Priority::Medium].find(source) == (*cluster->getqueue())[Message::Priority::Medium].end(),
                 "Queue was not empty when it should have been"
         );
 
@@ -687,7 +514,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
             // Call the API to cancel the job
             response = client.request("PATCH", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
             BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_bad_request));
-            BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
+            BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->empty(), true);
 
             // The job status should be unchanged
             jobHistoryResults =
@@ -702,54 +529,16 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
             dbHistory = &jobHistoryResults.front();
             BOOST_CHECK_EQUAL((uint32_t) dbHistory->state, (uint32_t) state);
         }
-
-        // Cleanup
-        svr->stop();
-        
-        // Finally clean up all entries from the job history table
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
     }
 
     // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     BOOST_AUTO_TEST_CASE(test_DELETE_delete_job) {
-        // Create a new cluster manager
-        setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        auto manager = std::make_shared<ClusterManager>();
-
-        setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        auto svr = std::make_shared<HttpServer>(manager);
-        svr->start();
-        BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
-
-        // Bring the cluster online
-        auto con = std::make_shared<WsServer::Connection>(nullptr);
-        auto cluster = manager->getCluster(svr->getvJwtSecrets()->at(0).clusters()[0]);
-        cluster->setConnection(con);
-
-        // First make sure we delete all entries from the job history table
-        auto database = MySqlConnector();
-        schema::JobserverJobhistory jobHistoryTable;
-        schema::JobserverJob jobTable;
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
-
-        // Set up the test client
-        TestHttpClient client("localhost:8000");
-
         // Test unauthorized user
         auto response = client.request("DELETE", "/job/apiv1/job/", {}, {{"Authorization", "not-real"}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_forbidden));
 
         // Test authorized user
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-        auto now = std::chrono::system_clock::now() + std::chrono::seconds{10};
-        jwt::jwt_object jwtToken = {
-                jwt::params::algorithm("HS256"),
-                jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(svr->getvJwtSecrets()->at(0).secret())
-        };
-        jwtToken.add_claim("exp", now);
+        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
 
         // Test invalid input parameters
         response = client.request("DELETE", "/job/apiv1/job/", "null", {{"Authorization", jwtToken.signature()}});
@@ -770,7 +559,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "not-real-cluster",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
+                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -800,7 +589,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "cluster1",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
+                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -828,12 +617,12 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = svr->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = svr->getvJwtSecrets()->at(0).name()
+                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
                         )
         );
-        auto source = std::to_string(jobId) + "_" + svr->getvJwtSecrets()->at(0).clusters()[0];
+        auto source = std::to_string(jobId) + "_" + httpServer->getvJwtSecrets()->at(0).clusters()[0];
 
         // Create a pending job state, which should not trigger any websocket message
         database->run(
@@ -855,7 +644,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::success_ok));
         BOOST_CHECK_EQUAL(response->header.find("Content-Type")->second, "application/json");
         BOOST_CHECK_MESSAGE(
-                (*cluster->getqueue())[Message::Priority::Medium].find(source) ==(*cluster->getqueue())[Message::Priority::Medium].end(),
+                (*cluster->getqueue())[Message::Priority::Medium].find(source) == (*cluster->getqueue())[Message::Priority::Medium].end(),
                 "Queue was not empty when it should have been"
         );
 
@@ -882,7 +671,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
         response = client.request("DELETE", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_bad_request));
         BOOST_CHECK_MESSAGE(
-                (*cluster->getqueue())[Message::Priority::Medium].find(source) ==(*cluster->getqueue())[Message::Priority::Medium].end(),
+                (*cluster->getqueue())[Message::Priority::Medium].find(source) == (*cluster->getqueue())[Message::Priority::Medium].end(),
                 "Queue was not empty when it should have been"
         );
 
@@ -970,7 +759,7 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
             // Call the API to delete the job
             response = client.request("DELETE", "/job/apiv1/job/", params.dump(), {{"Authorization", jwtToken.signature()}});
             BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_bad_request));
-            BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 0);
+            BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->empty(), true);
 
             // The job status should be unchanged
             jobHistoryResults =
@@ -985,13 +774,5 @@ BOOST_AUTO_TEST_SUITE(Job_test_suite)
             dbHistory = &jobHistoryResults.front();
             BOOST_CHECK_EQUAL(static_cast<uint32_t>(dbHistory->state), static_cast<uint32_t>(state));
         }
-
-        // Cleanup
-        svr->stop();
-        
-        // Finally clean up all entries from the job history table
-        database->run(remove_from(jobHistoryTable).unconditionally());
-        database->run(remove_from(jobTable).unconditionally());
     }
 BOOST_AUTO_TEST_SUITE_END()
-// NOLINTEND(concurrency-mt-unsafe)

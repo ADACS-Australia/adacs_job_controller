@@ -9,11 +9,9 @@
 
 
 struct FileTestDataFixture : public DatabaseFixture, public HttpServerFixture, public HttpClientFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     uint64_t jobId1;
     uint64_t jobId2;
     uint64_t jobId3;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     FileTestDataFixture() {
         // Fabricate data

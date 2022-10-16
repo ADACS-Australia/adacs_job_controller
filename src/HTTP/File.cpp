@@ -225,7 +225,6 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
         schema::JobserverFiledownload fileDownloadTable;
 
         // Create a new file download object
-        auto fdObj = std::make_shared<sFileDownload>();
         std::string uuid;
 
         try {
@@ -301,8 +300,8 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             // Refer to https://phab.adacs.org.au/D665 for additonal details and justification
             uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
-            // Cluster is online, create the file hash object
-            fileDownloadMap->emplace(uuid, fdObj);
+            // Create the file download object
+            auto fdObj = clusterManager->createFileDownload(cluster, uuid);
 
             // Send a message to the client to initiate the file download
             auto msg = Message(DOWNLOAD_FILE, Message::Priority::Highest, uuid);
@@ -314,42 +313,24 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
             {
                 // Wait for the server to send back data, or in CLIENT_TIMEOUT_SECONDS fail
-                std::unique_lock<std::mutex> lock(fdObj->dataCVMutex);
+                std::unique_lock<std::mutex> lock(fdObj->fileDownloadDataCVMutex);
 
                 // Wait for data to be ready to send
-                if (!fdObj->dataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->dataReady; })) {
+                if (!fdObj->fileDownloadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->fileDownloadDataReady; })) {
                     // Timeout reached, set the error
-                    fdObj->error = true;
-                    fdObj->errorDetails = "Client too took long to respond.";
+                    fdObj->fileDownloadError = true;
+                    fdObj->fileDownloadErrorDetails = "Client too took long to respond.";
                 }
             }
 
             // Check if the server received an error about the file
-            if (fdObj->error) {
-                {
-                    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-                    // Destroy the file download object
-                    if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
-                        fileDownloadMap->erase(uuid);
-                    }
-                }
-
-                response->write(SimpleWeb::StatusCode::client_error_bad_request, fdObj->errorDetails);
+            if (fdObj->fileDownloadError) {
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, fdObj->fileDownloadErrorDetails);
                 return;
             }
 
             // Check if the server received details about the file
-            if (!fdObj->receivedData) {
-                {
-                    std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-                    // Destroy the file download object
-                    if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
-                        fileDownloadMap->erase(uuid);
-                    }
-                }
-
+            if (!fdObj->fileDownloadReceivedData) {
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
             }
@@ -372,7 +353,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             }
 
             // Set the content size
-            headers.emplace("Content-Length", std::to_string(fdObj->fileSize));
+            headers.emplace("Content-Length", std::to_string(fdObj->fileDownloadFileSize));
 
             // Write the headers
             response->write(headers);
@@ -389,27 +370,27 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             }
 
             // Check for error, or all data sent
-            while (!fdObj->error && fdObj->sentBytes < fdObj->fileSize) {
+            while (!fdObj->fileDownloadError && fdObj->fileDownloadSentBytes < fdObj->fileDownloadFileSize) {
                 {
                     // Wait for the server to send back data, or in CLIENT_TIMEOUT_SECONDS fail
-                    std::unique_lock<std::mutex> lock(fdObj->dataCVMutex);
+                    std::unique_lock<std::mutex> lock(fdObj->fileDownloadDataCVMutex);
 
                     // Wait for data to be ready to send
-                    if (!fdObj->dataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->dataReady; })) {
+                    if (!fdObj->fileDownloadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->fileDownloadDataReady; })) {
                         throw std::runtime_error("Client took too long to respond.");
                     }
-                    fdObj->dataReady = false;
+                    fdObj->fileDownloadDataReady = false;
                 }
 
                 // While there is data in the queue, send to the client
-                while (!fdObj->queue.empty()) {
+                while (!fdObj->fileDownloadQueue.empty()) {
                     // Get the next chunk from the queue
-                    auto data = fdObj->queue.try_dequeue();
+                    auto data = fdObj->fileDownloadQueue.try_dequeue();
 
                     // If there was one, send it to the client
                     if (data) {
                         // Increment the traffic counter
-                        fdObj->sentBytes += (*data)->size();
+                        fdObj->fileDownloadSentBytes += (*data)->size();
 
                         // Send the data
                         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
@@ -431,52 +412,24 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
                             std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
 
                             // Check if we need to resume the client file transfer
-                            if (fdObj->clientPaused) {
+                            if (fdObj->fileDownloadClientPaused) {
                                 // Check if the buffer is smaller than the setting
-                                if (fdObj->receivedBytes - fdObj->sentBytes < MIN_FILE_BUFFER_SIZE) {
+                                if (fdObj->fileDownloadReceivedBytes - fdObj->fileDownloadSentBytes < MIN_FILE_BUFFER_SIZE) {
                                     // Ask the client to resume the file transfer
-                                    fdObj->clientPaused = false;
+                                    fdObj->fileDownloadClientPaused = false;
 
                                     auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest,
                                                              uuid);
                                     resumeMsg.push_string(uuid);
-                                    resumeMsg.send(cluster);
+                                    resumeMsg.send(fdObj);
                                 }
                             }
                         }
                     }
                 }
             }
-
-            {
-                // Try to acquire the lock in case the cluster is still using it
-                std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-                // It's now safe to delete the uuid from the fileDownloadMap
-
-                // Destroy the file download object
-                if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
-                    fileDownloadMap->erase(uuid);
-                }
-
-                // The lock can now be released, because when the lock is acquired in Cluster, the first thing it will do
-                // is check for the existence of the uuid in the fileDownloadMap. But since we've removed it, Cluster is
-                // guaranteed not to use the fdObj again.
-            }
         } catch (std::exception& e) {
             dumpExceptions(e);
-
-            {
-                // Same as above
-                std::unique_lock<std::mutex> fileDownloadMapDeletionLock(fileDownloadMapDeletionLockMutex);
-
-                // Destroy the file download object
-                if (fileDownloadMap->find(uuid) != fileDownloadMap->end()) {
-                    fileDownloadMap->erase(uuid);
-                }
-
-                // Same as above
-            }
 
             // Report bad request
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");

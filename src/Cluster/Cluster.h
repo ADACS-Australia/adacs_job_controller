@@ -18,20 +18,7 @@
 #include <vector>
 
 class ClusterManager;
-
-struct sFileDownload {
-    folly::USPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false> queue;
-    uint64_t fileSize = -1;
-    bool error = false;
-    std::string errorDetails;
-    mutable std::mutex dataCVMutex;
-    bool dataReady = false;
-    std::condition_variable dataCV;
-    bool receivedData = false;
-    uint64_t receivedBytes = 0;
-    uint64_t sentBytes = 0;
-    bool clientPaused = false;
-};
+class FileDownload;
 
 struct sFile {
     std::string fileName{};
@@ -76,22 +63,23 @@ private:
     std::string key;
 };
 
-extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileDownload>>> fileDownloadMap;
 extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>> fileListMap;
 // NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
-extern std::mutex fileDownloadMapDeletionLockMutex;
 extern std::mutex fileDownloadPauseResumeLockMutex;
 extern std::mutex fileListMapDeletionLockMutex;
 // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 
+
 class Cluster : public std::enable_shared_from_this<Cluster> {
 public:
     explicit Cluster(std::shared_ptr<sClusterDetails> details);
-    virtual ~Cluster() = default;
+    virtual ~Cluster();
     Cluster(Cluster const&) = delete;
     auto operator =(Cluster const&) -> Cluster& = delete;
     Cluster(Cluster&&) = delete;
     auto operator=(Cluster&&) -> Cluster& = delete;
+
+    void stop();
 
     auto getName() { return pClusterDetails->getName(); }
 
@@ -99,20 +87,31 @@ public:
 
     void setConnection(const std::shared_ptr<WsServer::Connection>& pCon);
 
-    void handleMessage(Message &message);
+    virtual void handleMessage(Message &message);
 
     auto isOnline() -> bool;
 
     // virtual here so that we can override this function for testing
     virtual void queueMessage(std::string source, const std::shared_ptr<std::vector<uint8_t>>& data, Message::Priority priority);
 
-private:
-#ifndef BUILD_TESTS
-    [[noreturn]] void run();
-#else
-    void run();
-#endif
+    enum eRole {
+        master,
+        fileDownload
+    };
 
+    auto getRoleString() -> std::string {
+        return roleString;
+    }
+
+    auto getRole() -> eRole {
+        return role;
+    }
+
+protected:
+    eRole role = eRole::master;
+    std::string roleString = "master";
+
+private:
     std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
     std::shared_ptr<WsServer::Connection> pConnection = nullptr;
 
@@ -122,18 +121,17 @@ private:
     std::condition_variable dataCV;
     std::vector<folly::ConcurrentHashMap<std::string, std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>> queue;
 
+    bool bRunning = true;
+    InterruptableTimer interruptableTimer;
+
     // Threads
-    std::thread schedulerThread;
-    std::thread pruneThread;
-    std::thread resendThread;
+    std::jthread schedulerThread;
+    std::jthread pruneThread;
+    std::jthread resendThread;
 
-#ifndef BUILD_TESTS
-    [[noreturn]] void pruneSources();
-#else
+    void run();
     void pruneSources();
-#endif
-
-    [[noreturn]] void resendMessages();
+    void resendMessages();
 
     auto doesHigherPriorityDataExist(uint64_t maxPriority) -> bool;
 
@@ -143,18 +141,13 @@ private:
     void checkCancellingJobs();
     void checkDeletingJobs();
 
-    static void handleFileError(Message &message);
-
-    static void handleFileDetails(Message &message);
-
-    void handleFileChunk(Message &message);
-
     static void handleFileList(Message &message);
     static void handleFileListError(Message &message);
 
 // Testing
     EXPOSE_PROPERTY_FOR_TESTING(pConnection);
     EXPOSE_PROPERTY_FOR_TESTING(pClusterDetails);
+    EXPOSE_PROPERTY_FOR_TESTING(bRunning);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(queue);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataReady);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataCV);

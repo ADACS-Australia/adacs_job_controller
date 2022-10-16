@@ -6,13 +6,11 @@
 #include "../../tests/fixtures/WebSocketClientFixture.h"
 
 struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     uint64_t jobId;
     bool bReady = false;
     bool bReceivedPing = false;
     bool bClosed = false;
     std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     PingPongTestDataFixture() {
         // Fabricate data

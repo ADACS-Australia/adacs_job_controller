@@ -113,6 +113,19 @@ void ClusterManager::reconnectClusters() {
 }
 
 auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection, const std::string &uuid) -> std::shared_ptr<Cluster> {
+    // First check if this uuid is an expected file download uuid
+    auto fdIter = fileDownloadMap.find(uuid);
+    if (fdIter != fileDownloadMap.end()) {
+        auto cluster = fdIter->second;
+        // This connection is for a file download
+        mConnectedFileDownloads[connection] = cluster;
+
+        // Configure the cluster
+        cluster->setConnection(connection);
+
+        return cluster;
+    }
+
     // Get the tables
     schema::JobserverClusteruuid clusterUuidTable;
 
@@ -190,6 +203,17 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
     // Reset the cluster's connection
     if (pCluster) {
         pCluster->setConnection(nullptr);
+
+        if (pCluster->getRole() == Cluster::eRole::fileDownload) {
+            // Remove the specified connection from the connected file downloads
+            mConnectedFileDownloads.erase(connection);
+
+            auto pFileDownload = std::static_pointer_cast<FileDownload>(pCluster);
+
+            fileDownloadMap.erase(pFileDownload->getUuid());
+
+            return;
+        }
     }
 
     // Remove the specified connection from the connected clusters and clear the ping timer
@@ -289,11 +313,19 @@ auto ClusterManager::isClusterOnline(const std::shared_ptr<Cluster>& cluster) ->
 }
 
 auto ClusterManager::getCluster(const std::shared_ptr<WsServer::Connection>& connection) -> std::shared_ptr<Cluster> {
+    // Try to find the connection in the file downloads
+    auto resultFileDownload = mConnectedFileDownloads.find(connection);
+
+    // Return the file download if the connection was found
+    if (resultFileDownload != mConnectedFileDownloads.end()) {
+        return resultFileDownload->second;
+    }
+
     // Try to find the connection
-    auto result = mConnectedClusters.find(connection);
+    auto resultCluster = mConnectedClusters.find(connection);
 
     // Return the cluster if the connection was found
-    return result != mConnectedClusters.end() ? result->second : nullptr;
+    return resultCluster != mConnectedClusters.end() ? resultCluster->second : nullptr;
 }
 
 auto ClusterManager::getCluster(const std::string &cluster) -> std::shared_ptr<Cluster> {
@@ -319,4 +351,13 @@ void ClusterManager::connectCluster(const std::shared_ptr<Cluster>& cluster, con
             boost::process::env["SSH_TOKEN"] = token
     );
 #endif
+}
+
+auto ClusterManager::createFileDownload(const std::shared_ptr<Cluster>& cluster, const std::string& uuid) -> std::shared_ptr<FileDownload> {
+    auto fileDownload = std::make_shared<FileDownload>(cluster->getClusterDetails(), uuid);
+
+    // Add the file download to the file download map
+    fileDownloadMap.emplace(uuid, fileDownload);
+
+    return fileDownload;
 }

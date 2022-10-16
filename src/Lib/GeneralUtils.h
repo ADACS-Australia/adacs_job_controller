@@ -5,6 +5,9 @@
 #ifndef GWCLOUD_JOB_SERVER_GENERALUTILS_H
 #define GWCLOUD_JOB_SERVER_GENERALUTILS_H
 
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 
 auto base64Encode(std::string input) -> std::string;
@@ -13,6 +16,26 @@ auto generateUUID() -> std::string;
 void dumpExceptions(std::exception& exception);
 void handleSegv();
 auto acceptingConnections(uint16_t port) -> bool;
+
+struct InterruptableTimer {
+    // Returns false if killed
+    template<class R, class P>
+    auto wait_for( std::chrono::duration<R,P> const& time ) const -> bool {
+        std::unique_lock<std::mutex> lock(m);
+        return !cv.wait_for(lock, time, [&]{ return terminate; });
+    }
+
+    void stop() {
+        std::unique_lock<std::mutex> lock(m);
+        terminate = true;
+        cv.notify_all();
+    }
+
+private:
+    mutable std::condition_variable cv;
+    mutable std::mutex m;
+    bool terminate = false;
+};
 
 #ifdef BUILD_TESTS
 // NOLINTBEGIN

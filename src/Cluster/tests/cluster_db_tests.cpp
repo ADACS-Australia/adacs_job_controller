@@ -17,12 +17,10 @@
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
 struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClientFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     std::vector<std::shared_ptr<Message>> receivedMessages;
     bool bReady = false;
     std::shared_ptr<Cluster> onlineCluster;
     std::promise<void> promMessageReceived;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     ClusterDBTestDataFixture() :
         onlineCluster(clusterManager->getvClusters()->front())
@@ -60,13 +58,11 @@ struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClient
     };
 
     auto runCluster() -> std::shared_ptr<Message> {
-        *onlineCluster->getdataReady() = true;
-        onlineCluster->callrun();
-
         promMessageReceived.get_future().wait();
         promMessageReceived = std::promise<void>();
         auto result = receivedMessages[0];
         receivedMessages.clear();
+
         return result;
     }
 };

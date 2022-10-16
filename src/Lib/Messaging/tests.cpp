@@ -7,7 +7,7 @@
 #include <chrono>
 #include <random>
 
-// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,misc-non-private-member-variables-in-classes)
+// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
 BOOST_AUTO_TEST_SUITE(Message_test_suite)
 
@@ -373,4 +373,4 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,misc-non-private-member-variables-in-classes)
+// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)

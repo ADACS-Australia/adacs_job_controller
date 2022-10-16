@@ -16,7 +16,6 @@
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
 struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
-    // NOLINTBEGIN(misc-non-private-member-variables-in-classes)
     std::vector<std::vector<uint8_t>> receivedMessages;
     bool bReady = false;
     nlohmann::json jsonClusters;
@@ -26,7 +25,6 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
     std::shared_ptr<Cluster> onlineCluster;
     uint64_t jobId;
     uint64_t jobIdTestCluster;
-    // NOLINTEND(misc-non-private-member-variables-in-classes)
 
     ClusterTestDataFixture() :
         cluster(clusterManager->getvClusters()->back()), details(clusterManager->getvClusters()->back()->getClusterDetails()),
@@ -69,6 +67,10 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+
+        // Clusters should be stopped
+        cluster->stop();
+        onlineCluster->stop();
     }
 
     void onWebsocketMessage(auto in_message) {
@@ -126,6 +128,8 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(test_queueMessage) {
+        cluster->stop();
+
         // Check the source doesn't exist
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
                           (*cluster->getqueue())[Message::Priority::Highest].end(), true);
@@ -255,6 +259,8 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(test_pruneSources) {
+        cluster->stop();
+
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
         cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
@@ -266,7 +272,19 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         cluster->queueMessage("s3", s3_d1, Message::Priority::Lowest);
 
         // Pruning the sources should not perform any action since all sources have one item in the queue
-        cluster->callpruneSources();
+        std::promise<void> runPromise;
+        auto runThread = std::thread([this, &runPromise] {
+            *cluster->getbRunning() = true;
+            runPromise.set_value();
+            cluster->callpruneSources();
+        });
+
+        runPromise.get_future().wait();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS));
+
+        cluster->stop();
+        runThread.join();
 
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
                           (*cluster->getqueue())[Message::Priority::Highest].end(), false);
@@ -279,7 +297,19 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         (*cluster->getqueue())[Message::Priority::Lowest].find("s2")->second->dequeue();
 
         // Now pruning the sources should remove s2, but not s1 or s3
-        cluster->callpruneSources();
+        runPromise = std::promise<void>();
+        runThread = std::thread([this, &runPromise] {
+            *cluster->getbRunning() = true;
+            runPromise.set_value();
+            cluster->callpruneSources();
+        });
+
+        runPromise.get_future().wait();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS));
+
+        cluster->stop();
+        runThread.join();
 
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
                           (*cluster->getqueue())[Message::Priority::Highest].end(), false);
@@ -293,7 +323,19 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         (*cluster->getqueue())[Message::Priority::Lowest].find("s3")->second->dequeue();
 
         // Now pruning the sources should remove both s1 and s3
-        cluster->callpruneSources();
+        runPromise = std::promise<void>();
+        runThread = std::thread([this, &runPromise] {
+            *cluster->getbRunning() = true;
+            runPromise.set_value();
+            cluster->callpruneSources();
+        });
+
+        runPromise.get_future().wait();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS));
+
+        cluster->stop();
+        runThread.join();
 
         // There should now be no items left in the queue
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].find("s1") ==
@@ -309,6 +351,7 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(test_run) {
         stopRunningWebSocket();
+        onlineCluster->stop();
 
         // Create several sources and insert data in the queue
         auto s1_d1 = generateRandomData(randomInt(0, 255));
@@ -353,14 +396,20 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         auto s6_d3 = generateRandomData(randomInt(0, 255));
         onlineCluster->queueMessage("s6", s6_d3, Message::Priority::Medium);
 
-        *onlineCluster->getdataReady() = true;
-        onlineCluster->callrun();
+        auto runThread = std::thread([this] {
+            *onlineCluster->getbRunning() = true;
+            *onlineCluster->getdataReady() = true;
+            onlineCluster->callrun();
+        });
 
         // Wait for the messages to be sent
         while (receivedMessages.size() < 14) {
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+
+        onlineCluster->stop();
+        runThread.join();
 
         // Check that the data sent was in priority/source order
         // The following order is deterministic - but sensitive.
@@ -448,6 +497,8 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(test_updateJob) {
+        onlineCluster->stop();
+
         Message msg(UPDATE_JOB);
         msg.push_uint(jobId);               // jobId
         msg.push_string("running");     // what
@@ -956,167 +1007,6 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
             cluster->callcheckDeletingJobs();
             BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->empty(), true);
         }
-    }
-
-    BOOST_AUTO_TEST_CASE(test_handleFileError) {
-        // A uuid that isn't in the fileDownloadMap should be a noop
-        auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-
-        Message msg(FILE_ERROR);
-        msg.push_string(uuid);          // uuid
-        msg.push_string("details");  // detail
-        cluster->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL(fileDownloadMap->empty(), true);
-
-        auto fdObj = std::make_shared<sFileDownload>();
-        fileDownloadMap->emplace(uuid, fdObj);
-
-        // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
-
-        msg = Message(FILE_ERROR);
-        msg.push_string(uuid);          // uuid
-        msg.push_string("details");     // detail
-        cluster->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails, "details");
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
-
-        fileDownloadMap->erase(uuid);
-    }
-
-    BOOST_AUTO_TEST_CASE(test_handleFileDetails) {
-        // A uuid that isn't in the fileDownloadMap should be a noop
-        auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-
-        Message msg(FILE_DETAILS);
-        msg.push_string(uuid);                  // uuid
-        msg.push_ulong(0x123456789abcdef);      // fileSize
-        cluster->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL(fileDownloadMap->empty(), true);
-
-        auto fdObj = std::make_shared<sFileDownload>();
-        fileDownloadMap->emplace(uuid, fdObj);
-
-        // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
-
-        msg = Message(FILE_DETAILS);
-        msg.push_string(uuid);                  // uuid
-        msg.push_ulong(0x123456789abcdef);      // fileSize
-        cluster->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, 0x123456789abcdef);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
-
-        fileDownloadMap->erase(uuid);
-    }
-
-    BOOST_AUTO_TEST_CASE(test_handleFileChunk) {
-        // A uuid that isn't in the fileDownloadMap should be a noop
-        auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-
-        auto chunk = generateRandomData(randomInt(0, 255));
-
-        Message msg(FILE_CHUNK);
-        msg.push_string(uuid);      // uuid
-        msg.push_bytes(*chunk);     // chunk
-        cluster->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL(fileDownloadMap->empty(), true);
-
-        auto fdObj = std::make_shared<sFileDownload>();
-        fileDownloadMap->emplace(uuid, fdObj);
-
-        // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
-
-        msg = Message(FILE_CHUNK);
-        msg.push_string(uuid);      // uuid
-        msg.push_bytes(*chunk);     // chunk
-        cluster->handleMessage(msg);
-
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->fileSize, -1);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->error, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->dataReady, true);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedData, false);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->receivedBytes, chunk->size());
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->sentBytes, 0);
-        BOOST_CHECK_EQUAL((*fileDownloadMap)[uuid]->clientPaused, false);
-
-        BOOST_CHECK_EQUAL_COLLECTIONS(chunk->begin(), chunk->end(), (*(*fileDownloadMap)[uuid]->queue.try_peek())->begin(),
-                                      (*(*fileDownloadMap)[uuid]->queue.try_peek())->end());
-
-        std::vector<std::shared_ptr<std::vector<uint8_t>>> chunks = {chunk};
-
-        // Fill the queue and make sure that a pause file chunk stream isn't sent until the queue is full
-        while (!(*fileDownloadMap)[uuid]->clientPaused) {
-            chunk = generateRandomData(randomInt(0, 255));
-            chunks.push_back(chunk);
-
-            if (!(*cluster->getqueue())[Message::Priority::Highest].empty()) {
-                BOOST_ASSERT("PAUSE_FILE_CHUNK_STREAM was sent before it should have been");
-            }
-
-            msg = Message(FILE_CHUNK);
-            msg.push_string(uuid);      // uuid
-            msg.push_bytes(*chunk);     // chunk
-            cluster->handleMessage(msg);
-        }
-
-        // Check that a pause file chunk stream message was sent
-        BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Highest].size(), 1);
-        auto ptr = *(*cluster->getqueue())[Message::Priority::Highest].find(uuid)->second->try_dequeue();
-        msg = Message(*ptr);
-        BOOST_CHECK_EQUAL(msg.getId(), PAUSE_FILE_CHUNK_STREAM);
-        BOOST_CHECK_EQUAL(msg.pop_string(), uuid);
-
-        // Verify that the chunks were correctly queued
-        bool different = false;
-        for (const auto& chunk : chunks) {
-            auto queueChunk = (*(*fileDownloadMap)[uuid]->queue.try_dequeue());
-            different = different || !std::equal((*queueChunk).begin(), (*queueChunk).end(), (*chunk).begin());
-        }
-
-        BOOST_CHECK_EQUAL(different, false);
-
-        fileDownloadMap->erase(uuid);
     }
 
     BOOST_AUTO_TEST_CASE(test_handleFileList) {
