@@ -319,7 +319,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
                 if (!fdObj->fileDownloadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->fileDownloadDataReady; })) {
                     // Timeout reached, set the error
                     fdObj->fileDownloadError = true;
-                    fdObj->fileDownloadErrorDetails = "Client too took long to respond.";
+                    fdObj->fileDownloadErrorDetails = "Client took too long to respond.";
                 }
             }
 
