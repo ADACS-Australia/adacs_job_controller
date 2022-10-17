@@ -432,6 +432,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             dumpExceptions(e);
 
             // Report bad request
+            response->close_connection_after_response = true;
             response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
     };
