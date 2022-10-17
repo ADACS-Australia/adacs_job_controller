@@ -226,6 +226,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
         // Create a new file download object
         std::string uuid;
+        std::shared_ptr<FileDownload> fdObj;
 
         try {
             // Process the query parameters
@@ -301,7 +302,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
             // Create the file download object
-            auto fdObj = clusterManager->createFileDownload(cluster, uuid);
+            fdObj = clusterManager->createFileDownload(cluster, uuid);
 
             // Send a message to the client to initiate the file download
             auto msg = Message(DOWNLOAD_FILE, Message::Priority::Highest, uuid);
@@ -420,7 +421,6 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
                                     auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest,
                                                              uuid);
-                                    resumeMsg.push_string(uuid);
                                     resumeMsg.send(fdObj);
                                 }
                             }
@@ -431,9 +431,18 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
         } catch (std::exception& e) {
             dumpExceptions(e);
 
-            // Report bad request
-            response->close_connection_after_response = true;
-            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+            if (fdObj) {
+                // Close the connection prematurely.
+                fdObj->close();
+            }
+
+            // If the response is closed, and we try to send more data, it will raise an exception - so wrap this in a
+            // try/catch
+            try {
+                // Report bad request
+                response->close_connection_after_response = true;
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+            } catch (std::exception&) {}
         }
     };
 

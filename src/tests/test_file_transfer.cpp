@@ -49,7 +49,7 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
     std::vector<uint8_t> fileData;
     bool bPaused = false;
     std::jthread sendDataThread;
-
+    
     FileTransferTestDataFixture() :
             cluster(clusterManager->getvClusters()->front())
     {
@@ -74,6 +74,11 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
             websocketFileDownloadClient->stop();
         }
     }
+
+    FileTransferTestDataFixture(FileTransferTestDataFixture const&) = delete;
+    auto operator =(FileTransferTestDataFixture const&) -> FileTransferTestDataFixture& = delete;
+    FileTransferTestDataFixture(FileTransferTestDataFixture&&) = delete;
+    auto operator=(FileTransferTestDataFixture&&) -> FileTransferTestDataFixture& = delete;
 
     void onWebsocketMessage(const std::shared_ptr<TestWsClient::Connection>& /*connection*/, const std::shared_ptr<TestWsClient::InMessage>& in_message) {
         auto data = in_message->string();
@@ -111,7 +116,7 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
         BOOST_FAIL("Master client got unexpected message id " + std::to_string(msg.getId()));
     }
 
-    std::string requestFileDownloadId() {
+    auto requestFileDownloadId() -> std::string {
         // Create a file download
         setJwtSecret(httpServer->getvJwtSecrets()->back().secret());
 
@@ -129,7 +134,7 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
         return {result["fileId"]};
     }
 
-    void sendMessage(Message* msg, const std::shared_ptr<TestWsClient::Connection>& connection) {
+    static void sendMessage(Message* msg, const std::shared_ptr<TestWsClient::Connection>& connection) {
         auto message = std::make_shared<TestWsClient::OutMessage>(msg->getdata()->get()->size());
         std::ostream_iterator<uint8_t> iter(*message);
         std::copy(msg->getdata()->get()->begin(), msg->getdata()->get()->end(), iter);
@@ -221,7 +226,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
         }
     }
 
-    BOOST_AUTO_TEST_CASE(test_large_file_transfers) {
+    BOOST_AUTO_TEST_CASE(test_large_file_transfers) { // NOLINT(readability-function-cognitive-complexity)
         int pauseCount = 0;
         int resumeCount = 0;
         uint64_t fileSize = 0;
@@ -242,7 +247,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
 
             // Use the ready message as our prompt to start sending file data
             if (msg.getId() != SERVER_READY) {
-                BOOST_FAIL("File Download client got unexpected message id " + msg.getId());
+                BOOST_FAIL("File Download client got unexpected message id " + std::to_string(msg.getId()));
                 return;
             }
 
@@ -384,6 +389,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
     BOOST_AUTO_TEST_CASE(test_file_transfer_data_timeout) {
         fileDownloadCallback = [&](const Message& /*msg*/, const std::shared_ptr<TestWsClient::Connection>& connection) {
             auto result = Message(FILE_DETAILS, Message::Priority::Lowest, "");
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             result.push_ulong(12345);
 
             sendMessage(&result, connection);
@@ -398,10 +404,11 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
         BOOST_CHECK_THROW(httpClient.request("GET", "/job/apiv1/file/?fileId=" + fileId), boost::system::system_error);
     }
 
-    BOOST_AUTO_TEST_CASE(test_file_transfer_websocket_connection_broken) { // NOLINT(readability-function-cognitive-complexity)
+    BOOST_AUTO_TEST_CASE(test_file_transfer_websocket_connection_broken) {
         fileDownloadCallback = [&](const Message&  /*msg*/, const std::shared_ptr<TestWsClient::Connection>& connection) {
             {
                 auto result = Message(FILE_DETAILS, Message::Priority::Lowest, "");
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                 result.push_ulong(12345);
 
                 sendMessage(&result, connection);
@@ -413,6 +420,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
                 sendMessage(&result, connection);
             }
 
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             connection->close();
         };
@@ -429,29 +437,50 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
     BOOST_AUTO_TEST_CASE(test_file_transfer_http_connection_broken) { // NOLINT(readability-function-cognitive-complexity)
         bool bRunning = true;
         fileDownloadCallback = [&, this](const Message& msg, const std::shared_ptr<TestWsClient::Connection>& connection) {
-            // Use the ready message as our prompt to start sending file data
-            if (msg.getId() != SERVER_READY) {
-                BOOST_FAIL("File Download client got unexpected message id " + msg.getId());
+            // Check if this is a pause transfer message
+            if (msg.getId() == PAUSE_FILE_CHUNK_STREAM) {
                 return;
             }
 
+            // Check if this is a resume transfer message
+            if (msg.getId() == RESUME_FILE_CHUNK_STREAM) {
+                return;
+            }
+
+            // Use the ready message as our prompt to start sending file data
+            if (msg.getId() != SERVER_READY) {
+                BOOST_FAIL("File Download client got unexpected message id " + std::to_string(msg.getId()));
+                return;
+            }
+
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            auto fileSize = 1024ULL * 1024ULL * 1024ULL;
+
             // Send the file size to the server
             auto newmsg = Message(FILE_DETAILS, Message::Priority::Highest, "");
-            newmsg.push_ulong(1234500000);
+            newmsg.push_ulong(fileSize);
 
-            sendMessage(&msg, connection);
+            auto smsg = Message(**newmsg.getdata());
+            clusterManager->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
 
-            auto CHUNK_SIZE = 1024 * 64;
+            // Now send the file content in to chunks and send it to the client
+            sendDataThread = std::jthread([this, connection, &bRunning]() {
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                auto CHUNK_SIZE = 1024 * 64;
 
-            auto data = std::vector<uint8_t>();
-            while (bRunning) {
+                auto data = std::vector<uint8_t>();
                 data.resize(CHUNK_SIZE);
 
-                auto msg = Message(FILE_CHUNK, Message::Priority::Lowest, "");
-                msg.push_bytes(data);
+                while (bRunning) {
+                    auto msg = Message(FILE_CHUNK, Message::Priority::Lowest, "");
+                    msg.push_bytes(data);
 
-                sendMessage(&msg, connection);
-            }
+                    auto smsg = Message(**msg.getdata());
+                    if (!clusterManager->getmConnectedFileDownloads()->empty() && clusterManager->getmConnectedFileDownloads()->begin()->second != nullptr) {
+                        clusterManager->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
+                    }
+                }
+            });
         };
 
         startWebSocketClient();
@@ -464,25 +493,42 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
         uint64_t totalBytesReceived = 0;
         bool end = false;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-        httpClient.config.max_response_streambuf_size = static_cast<std::size_t>(1024);
+        httpClient.config.max_response_streambuf_size = static_cast<std::size_t>(1024*1024);
         httpClient.request(
                 "GET",
                 "/job/apiv1/file/?fileId=" + fileId,
-                [&totalBytesReceived, &end](const std::shared_ptr<TestHttpClient::Response>& response, const SimpleWeb::error_code &) {
+                [&](const std::shared_ptr<TestHttpClient::Response>& response, const SimpleWeb::error_code &) {
                     totalBytesReceived += response->content.size();
                     end = response->content.end;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
-                    if (totalBytesReceived > 1024*64*5) {
-                        std::cout << "Closing the connection" << std::endl;
-                        // Terminate the connection
+                    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                    if (totalBytesReceived > 1024ULL*1024ULL*128ULL) {
                         response->close();
+                        BOOST_CHECK_EQUAL(clusterManager->getmConnectedFileDownloads()->begin()->second->getpConnection() == nullptr, false);
+                        end = true;
                     }
                 }
         );
 
-        std::cout << "Request finished." << std::endl;
+        // Wait for the transfer to complete
+        while (!end) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+        // Wait until the connected clusters becomes empty again (Connection closed)
+        int count = 0;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+        for (;count < 10 && !clusterManager->getmConnectedFileDownloads()->empty(); count++) {
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+        if (count == 10) {
+            BOOST_FAIL("Websocket connection didn't close when it should have.");
+        }
+
+        bRunning = false;
+        sendDataThread.join();
     }
 BOOST_AUTO_TEST_SUITE_END()
