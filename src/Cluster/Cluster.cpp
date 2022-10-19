@@ -594,3 +594,10 @@ void Cluster::handleFileList(Message &message) {
     flObj->dataReady = true;
     flObj->dataCV.notify_one();
 }
+
+void Cluster::close() {
+    // Terminate the websocket connection forcefully.
+    if (pConnection) {
+        pConnection->close();
+    }
+}

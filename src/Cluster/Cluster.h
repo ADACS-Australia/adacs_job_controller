@@ -107,6 +107,8 @@ public:
         return role;
     }
 
+    void close();
+
 protected:
     eRole role = eRole::master;
     std::string roleString = "master";

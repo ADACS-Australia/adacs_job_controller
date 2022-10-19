@@ -121,7 +121,6 @@ BOOST_FIXTURE_TEST_SUITE(File_Download_test_suite, FileDownloadTestDataFixture)
         auto ptr = *(*fileDownload->getqueue())[Message::Priority::Highest].find(uuid)->second->try_dequeue();
         msg = Message(*ptr);
         BOOST_CHECK_EQUAL(msg.getId(), PAUSE_FILE_CHUNK_STREAM);
-        BOOST_CHECK_EQUAL(msg.pop_string(), uuid);
 
         // Verify that the chunks were correctly queued
         bool different = false;

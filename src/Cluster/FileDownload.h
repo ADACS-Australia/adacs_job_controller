@@ -20,7 +20,6 @@ public:
     void handleFileDetails(Message &message);
     void handleFileError(Message &message);
 
-
     folly::USPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false> fileDownloadQueue;
     uint64_t fileDownloadFileSize = -1;
     bool fileDownloadError = false;
