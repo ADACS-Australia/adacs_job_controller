@@ -275,7 +275,9 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_DB_test_suite, ClusterDBTestDataFixture)
         sClusterJob job{
                 .jobId = 4321,
                 .bundleHash = "test_hash",
-                .workingDirectory = "/test/working/directory/"
+                .workingDirectory = "/test/working/directory/",
+                .deleting = true,
+                .deleted = true
         };
 
         // Try to fetch it
