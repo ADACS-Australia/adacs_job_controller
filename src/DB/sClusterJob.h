@@ -22,7 +22,9 @@ struct sClusterJob {
             and submittingCount == other.submittingCount
             and bundleHash == other.bundleHash
             and workingDirectory == other.workingDirectory
-            and running == other.running;
+            and running == other.running
+            and deleting == other.deleting
+            and deleted == other.deleted;
     }
 
     static auto fromRecord(auto record) -> sClusterJob {
@@ -34,7 +36,9 @@ struct sClusterJob {
                 .submittingCount = static_cast<uint32_t>(record->submittingCount),
                 .bundleHash = record->bundleHash,
                 .workingDirectory = record->workingDirectory,
-                .running = static_cast<uint32_t>(record->running) == 1
+                .running = static_cast<uint32_t>(record->running) == 1,
+                .deleting = static_cast<uint32_t>(record->deleting) == 1,
+                .deleted = static_cast<uint32_t>(record->deleted) == 1
         };
     }
 
@@ -47,6 +51,8 @@ struct sClusterJob {
         message.push_string(bundleHash);
         message.push_string(workingDirectory);
         message.push_bool(running);
+        message.push_bool(deleting);
+        message.push_bool(deleted);
     }
 
     static auto fromMessage(Message& message) -> sClusterJob {
@@ -58,7 +64,9 @@ struct sClusterJob {
                 .submittingCount = message.pop_uint(),
                 .bundleHash = message.pop_string(),
                 .workingDirectory = message.pop_string(),
-                .running = message.pop_bool()
+                .running = message.pop_bool(),
+                .deleting = message.pop_bool(),
+                .deleted = message.pop_bool()
         };
     }
 
@@ -135,7 +143,9 @@ struct sClusterJob {
                                     _jobTable.submittingCount = submittingCount,
                                     _jobTable.bundleHash = bundleHash,
                                     _jobTable.workingDirectory = workingDirectory,
-                                    _jobTable.running = running ? 1 : 0
+                                    _jobTable.running = running ? 1 : 0,
+                                    _jobTable.deleting = deleting ? 1 : 0,
+                                    _jobTable.deleted = deleted ? 1 : 0
                             )
                             .where(
                                     _jobTable.id == static_cast<uint64_t>(id)
@@ -154,6 +164,8 @@ struct sClusterJob {
                                     _jobTable.bundleHash = bundleHash,
                                     _jobTable.workingDirectory = workingDirectory,
                                     _jobTable.running = running ? 1 : 0,
+                                    _jobTable.deleting = deleting ? 1 : 0,
+                                    _jobTable.deleted = deleted ? 1 : 0,
                                     _jobTable.cluster = cluster
                             )
             );
@@ -189,6 +201,8 @@ struct sClusterJob {
     std::string bundleHash;
     std::string workingDirectory;
     bool running = true;
+    bool deleting = false;
+    bool deleted = false;
 };
 
 
