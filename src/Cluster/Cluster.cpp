@@ -609,7 +609,7 @@ void Cluster::close(bool bForce) {
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                 pConnection->send_close(1000, "Closing connection.");
             }
-        } catch (std::exception&) {
+        } catch (...) {
             // It's possible that we try to ask the connection to close when it's already internally been closed. This
             // can lead to cases where std::runtime_error or other exceptions can be thrown. It's safe to ignore this
             // case.

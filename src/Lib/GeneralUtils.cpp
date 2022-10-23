@@ -1,5 +1,6 @@
 #include "GeneralUtils.h"
 #include "../folly/folly/experimental/exception_tracer/ExceptionTracer.h"
+#include "segvcatch.h"
 #include <algorithm>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
@@ -10,6 +11,7 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <execinfo.h>
+#include <folly/experimental/exception_tracer/StackTrace.h>
 #include <iostream>
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
@@ -118,3 +120,25 @@ auto acceptingConnections(uint16_t port) -> bool {
     return result;
 }
 // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
+// To prevent the compiler optimizing away the exception tracing from folly, we need to reference it.
+extern "C" auto getCaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTrace*;
+extern "C" auto getUncaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTraceStack*;
+
+// forceExceptionStackTraceRef is intentionally unused and marked volatile so the compiler doesn't optimize away the
+// required functions from folly. This is black magic.
+volatile void forceExceptionStackTraceRef()
+{
+    getCaughtExceptionStackTraceStack();
+    getUncaughtExceptionStackTraceStack();
+}
+
+// This is also black magic. What we're doing here is using this function as the initializer for the volatile static
+// bool bForceStartup, which can't be optimized away. This function is guaranteed to be run during program startup
+auto forceStartup() -> bool {
+    // Set up the crash handler
+    segvcatch::init_segv(&handleSegv);
+}
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,cert-err58-cpp)
+volatile static bool bForceStartup = forceStartup();
