@@ -117,6 +117,7 @@ private:
     std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
     std::shared_ptr<WsServer::Connection> pConnection = nullptr;
 
+    mutable std::mutex closeMutex;
     mutable std::shared_mutex mutex_;
     mutable std::mutex dataCVMutex;
     bool dataReady{};

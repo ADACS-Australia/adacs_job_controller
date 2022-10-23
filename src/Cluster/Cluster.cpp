@@ -235,8 +235,8 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
                                                 return;
                                             }
 
-                                            pConnection->close();
-                                            pConnection = nullptr;
+                                            // Terminate the connection forcefully
+                                            close(true);
 
                                             ClusterManager::reportWebsocketError(shared_from_this(), errorCode);
                                         },
@@ -596,13 +596,23 @@ void Cluster::handleFileList(Message &message) {
 }
 
 void Cluster::close(bool bForce) {
-    // Terminate the websocket connection forcefully.
+    // Protect this block against race conditions. It's possible for this function to be called from multiple threads
+    // which can lead to segfaults without synchronising.
+    std::unique_lock<std::mutex> closeLock(closeMutex);
+
+    // Terminate the websocket connection
     if (pConnection) {
-        if (bForce) {
-            pConnection->close();
-        } else {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-            pConnection->send_close(1000, "Closing connection.");
+        try {
+            if (bForce) {
+                pConnection->close();
+            } else {
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                pConnection->send_close(1000, "Closing connection.");
+            }
+        } catch (std::exception&) {
+            // It's possible that we try to ask the connection to close when it's already internally been closed. This
+            // can lead to cases where std::runtime_error or other exceptions can be thrown. It's safe to ignore this
+            // case.
         }
         pConnection = nullptr;
     }
