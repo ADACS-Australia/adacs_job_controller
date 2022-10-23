@@ -595,9 +595,15 @@ void Cluster::handleFileList(Message &message) {
     flObj->dataCV.notify_one();
 }
 
-void Cluster::close() {
+void Cluster::close(bool bForce) {
     // Terminate the websocket connection forcefully.
     if (pConnection) {
-        pConnection->close();
+        if (bForce) {
+            pConnection->close();
+        } else {
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            pConnection->send_close(1000, "Closing connection.");
+        }
+        pConnection = nullptr;
     }
 }

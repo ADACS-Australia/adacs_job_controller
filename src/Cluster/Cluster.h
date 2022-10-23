@@ -107,7 +107,7 @@ public:
         return role;
     }
 
-    void close();
+    void close(bool bForce = false);
 
 protected:
     eRole role = eRole::master;

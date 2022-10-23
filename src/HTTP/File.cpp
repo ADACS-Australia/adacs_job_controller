@@ -428,12 +428,14 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
                     }
                 }
             }
+
+            fdObj->close();
         } catch (std::exception& e) {
             dumpExceptions(e);
 
             if (fdObj) {
                 // Close the connection prematurely.
-                fdObj->close();
+                fdObj->close(true);
             }
 
             // If the response is closed, and we try to send more data, it will raise an exception - so wrap this in a
