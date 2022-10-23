@@ -39,6 +39,8 @@ struct FileDownloadTestDataFixture : public DatabaseFixture, public WebSocketCli
         }
 
         fileDownload = clusterManager->createFileDownload(clusterManager->getvClusters()->back(), uuid);
+
+        fileDownload->stop();
     }
 
     void onWebsocketMessage(auto in_message) {

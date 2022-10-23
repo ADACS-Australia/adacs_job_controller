@@ -2,9 +2,8 @@
 // Created by lewis on 10/15/22.
 //
 
-#include "FileDownload.h"
 #include "../Settings.h"
-
+#include "FileDownload.h"
 #include <utility>
 
 FileDownload::FileDownload(const std::shared_ptr<sClusterDetails>& details, std::string uuid) : Cluster(details), uuid(std::move(uuid)) {
