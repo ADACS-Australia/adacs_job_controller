@@ -13,6 +13,7 @@ HttpServer::HttpServer(const std::shared_ptr<ClusterManager>& clusterManager) {
     server.config.port = HTTP_PORT;
     server.config.address = "0.0.0.0";
     server.config.thread_pool_size = HTTP_WORKER_POOL_SIZE;
+    server.config.timeout_content = HTTP_CONTENT_TIMEOUT_SECONDS;
 
     // Ready the JWT token config from the environment
     auto jTokenConfig = nlohmann::json::parse(
