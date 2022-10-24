@@ -111,6 +111,10 @@ void Cluster::handleMessage(Message &message) {
 }
 
 void Cluster::setConnection(const std::shared_ptr<WsServer::Connection>& pCon) {
+    // Protect this block against race conditions. It's possible for pConnection to be
+    // set to null in multiple threads.
+    std::unique_lock<std::mutex> closeLock(connectionMutex);
+
     this->pConnection = pCon;
 
     if (pCon != nullptr && getRole() == eRole::master) {
@@ -220,6 +224,10 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
                                 // Convert the message
                                 auto outMessage = std::make_shared<WsServer::OutMessage>((*data)->size());
                                 std::copy((*data)->begin(), (*data)->end(), std::ostream_iterator<uint8_t>(*outMessage));
+
+                                // Protect this block against race conditions. It's possible for pConnection to be
+                                // set to null in multiple threads.
+                                std::unique_lock<std::mutex> closeLock(connectionMutex);
 
                                 // Send the message on the websocket
                                 if (pConnection != nullptr) {
@@ -598,7 +606,7 @@ void Cluster::handleFileList(Message &message) {
 void Cluster::close(bool bForce) {
     // Protect this block against race conditions. It's possible for this function to be called from multiple threads
     // which can lead to segfaults without synchronising.
-    std::unique_lock<std::mutex> closeLock(closeMutex);
+    std::unique_lock<std::mutex> closeLock(connectionMutex);
 
     // Terminate the websocket connection
     if (pConnection) {
