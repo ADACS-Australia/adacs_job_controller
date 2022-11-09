@@ -6,7 +6,7 @@ services:
       dockerfile: ./docker/adacs_job_controller.Dockerfile
       context: ..
       target: production
-    image: nexus.gwdc.org.au/docker/adacs_job_controller:0.55
+    image: nexus.gwdc.org.au/docker/adacs_job_controller:0.56
     container_name: adacs_job_controller
     environment:
       DATABASE_SCHEMA: jobcontroller

@@ -27,7 +27,7 @@ spec:
             - secretRef:
                 name: adacs-job-controller
           name: adacs-job-controller
-          image: nexus.gwdc.org.au/docker/adacs_job_controller:0.55
+          image: nexus.gwdc.org.au/docker/adacs_job_controller:0.56
           ports:
             - name: http
               containerPort: 8000

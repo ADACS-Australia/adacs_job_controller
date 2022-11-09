@@ -42,9 +42,6 @@ void ClusterManager::start() {
 [[noreturn]] void ClusterManager::run() {
     while (true) {
         reconnectClusters();
-
-        // Wait CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS to check again
-        std::this_thread::sleep_for(std::chrono::seconds(CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS));
     }
 }
 
@@ -58,6 +55,10 @@ void ClusterManager::start() {
 }
 
 void ClusterManager::reconnectClusters() {
+    // Make sure we can only reconnect clusters serially - we don't want to accidentally try to connect the same cluster
+    // multiple times at the same time.
+    std::unique_lock<std::mutex> mClusterReconnectionLock(mClusterReconnectionMutex);
+
     // Create a list of threads we spawn
     std::vector<std::shared_ptr<std::thread>> vThreads;
 
@@ -71,38 +72,38 @@ void ClusterManager::reconnectClusters() {
             // Get the tables
             schema::JobserverClusteruuid clusterUuidTable;
 
-            // todo: Delete any existing uuids for this cluster
+            // Delete any existing uuids for this cluster
+            database->run(
+                    remove_from(clusterUuidTable)
+                            .where(
+                                    clusterUuidTable.cluster == cluster->getName()
+                            )
+            );
 
-            // Because UUID's very occasionally collide, so try to generate a few UUID's in a row
-            try {
-                // Generate a UUID for this connection
-                auto uuid = generateUUID();
+            // Generate a UUID for this cluster
+            auto uuid = generateUUID();
 
-                // Insert the UUID in the database
-                database->run(
-                        insert_into(clusterUuidTable)
-                                .set(
-                                        clusterUuidTable.cluster = cluster->getName(),
-                                        clusterUuidTable.uuid = uuid,
-                                        clusterUuidTable.timestamp = std::chrono::system_clock::now()
-                                )
-                );
+            // Insert the UUID in the database
+            database->run(
+                    insert_into(clusterUuidTable)
+                            .set(
+                                    clusterUuidTable.cluster = cluster->getName(),
+                                    clusterUuidTable.uuid = uuid,
+                                    clusterUuidTable.timestamp = std::chrono::system_clock::now()
+                            )
+            );
 
-                // The insert was successful
-
-                // Try to connect the remote client
-                // Here we provide parameters by copy rather than reference
-                // TODO(lewis): Need to better track the created thread object and dispose of it. Perhaps we need to ensure
-                // TODO(lewis): that boost process in connectCluster times out after 30 seconds?
-                vThreads.push_back(
-                        std::make_shared<std::thread>([cluster, uuid] {
-                            connectCluster(cluster, uuid);
-                        })
-                );
-            } catch (std::exception& e) {
-                dumpExceptions(e);
-                // Should only happen if an *extremely* rare UUID collision happens
-            }
+            // Try to connect the remote client
+            // Here we provide parameters by copy rather than reference
+            vThreads.push_back(
+                    std::make_shared<std::thread>([cluster, uuid] {
+                        connectCluster(cluster, uuid);
+                        #ifndef BUILD_TESTS
+                        // Wait CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS for the client to connect or to try again
+                        std::this_thread::sleep_for(std::chrono::seconds(CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS));
+                        #endif
+                    })
+            );
         }
     }
 
@@ -231,8 +232,11 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
         connection->close();
     }
 
-    // Try to reconnect the cluster in case it's a temporary network failure
-    reconnectClusters();
+    // Try to reconnect the cluster in case it's a temporary network failure. Run this in a thread so we don't take
+    // up an unnecessary number of websocket handler threads.
+    std::thread([this]{
+        reconnectClusters();
+    }).detach();
 }
 
 void ClusterManager::handlePong(const std::shared_ptr<WsServer::Connection>& connection) {

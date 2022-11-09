@@ -45,6 +45,8 @@ private:
 
     folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>> fileDownloadMap;
 
+    std::mutex mClusterReconnectionMutex;
+
 // Testing
 EXPOSE_PROPERTY_FOR_TESTING(vClusters);
 EXPOSE_PROPERTY_FOR_TESTING(mConnectedClusters);
