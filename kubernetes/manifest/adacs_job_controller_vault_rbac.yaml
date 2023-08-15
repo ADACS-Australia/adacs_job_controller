@@ -5,7 +5,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   labels:
     app: vault-agent
-  name: job-server-role
+  name: adacs-job-controller-role
 rules:
   - apiGroups: ["*"]
     #
@@ -17,20 +17,20 @@ rules:
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: job-server-rolebinding
+  name: adacs-job-controller-rolebinding
   labels:
     app: vault-agent
 subjects:
   - kind: ServiceAccount
-    name: job-server 
-    namespace: gwcloud
+    name: adacs-job-controller
+    namespace: jobserver
 roleRef:
   kind: Role
-  name: job-server-role
+  name: adacs-job-controller-role
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: job-server 
-  namespace: gwcloud
+  name: adacs-job-controller
+  namespace: jobserver

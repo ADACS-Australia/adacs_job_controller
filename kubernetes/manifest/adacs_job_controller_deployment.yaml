@@ -3,15 +3,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gwcloud-job-server
-  namespace: gwcloud
+  name: adacs-job-controller
+  namespace: jobcontroller
   labels:
-    name: gwcloud-job-server
+    name: adacs-job-controller
 spec:
   replicas: 1
   selector:
     matchLabels:
-        name: gwcloud-job-server
+        name: adacs-job-controller
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -20,16 +20,14 @@ spec:
   template:
     metadata:
       labels:
-        name: gwcloud-job-server
+        name: adacs-job-controller
     spec:
       containers:
         - envFrom:
             - secretRef:
-                name: job-server
-            - secretRef:
-                name: common
-          name: gwcloud-job-server
-          image: nexus.gwdc.org.au/docker/gwcloud_job_server:0.53
+                name: adacs-job-controller
+          name: adacs-job-controller
+          image: nexus.gwdc.org.au/docker/adacs_job_controller:0.53
           ports:
             - name: http
               containerPort: 8000

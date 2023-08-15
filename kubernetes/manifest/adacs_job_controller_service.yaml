@@ -2,9 +2,9 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    name: gwcloud-job-server
-  name: gwcloud-job-server
-  namespace: gwcloud
+    name: adacs-job-controller
+  name: adacs-job-controller
+  namespace: jobcontroller
 spec:
   ports:
   - name: http
@@ -16,6 +16,6 @@ spec:
     protocol: TCP
     targetPort: 8001
   selector:
-    name: gwcloud-job-server
+    name: adacs-job-controller
   sessionAffinity: None
   type: ClusterIP
