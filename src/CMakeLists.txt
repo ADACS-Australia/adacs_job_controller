@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(gwcloud_job_server)
+project(adacs_job_controller)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -91,8 +91,8 @@ set(
 
 # Set the main executable and source files
 add_executable(
-        gwcloud_job_server
-        ${SOURCE_FILES}
+        adacs_job_controller
+	${SOURCE_FILES}
         main.cpp
 )
 
@@ -144,13 +144,13 @@ set_target_properties(
 )
 
 set_target_properties(
-        gwcloud_job_server
+        adacs_job_controller 
         PROPERTIES
         CXX_CLANG_TIDY "clang-tidy"
         CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
 )
 
-target_link_libraries(gwcloud_job_server ${LINK_LIBRARIES})
+target_link_libraries(adacs_job_controller ${LINK_LIBRARIES})
 target_link_libraries(Boost_Tests_run ${LINK_LIBRARIES})
 
 # Configure custom definitions for testing

@@ -3,11 +3,11 @@ version: '3.4'
 services:
   web:
     build:
-      dockerfile: ./docker/gwcloud_job_server.Dockerfile
+      dockerfile: ./docker/adacs_job_controller.Dockerfile
       context: ..
       target: test
-    image: gwcloud_job_server_test 
-    container_name: gwcloud_job_server_test
+    image: adacs_job_controller_test 
+    container_name: adacs_job_controller_test
     volumes:
       - ../test_report:/test_report
     depends_on:
@@ -15,10 +15,10 @@ services:
 
   db:
     image: mysql:5.7
-    container_name: gwcloud_job_server_mysql_test
+    container_name: adacs_job_controller_mysql_test
     volumes: 
-      - var_lib_mysql_job_server_test:/var/lib/mysql
+      - var_lib_mysql_adacs_job_controller_test:/var/lib/mysql
 
 volumes:
-  var_lib_mysql_job_server_test:
+  var_lib_mysql_adacs_job_controller_test:
 

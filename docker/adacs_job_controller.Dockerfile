@@ -25,7 +25,7 @@ RUN cmake --build . --target folly_exception_counter -- -j `nproc`
 FROM build_base AS build_production
 
 # Build the production server
-RUN cmake --build . --target gwcloud_job_server -- -j `nproc`
+RUN cmake --build . --target adacs_job_controller -- -j `nproc`
 
 
 FROM build_base AS build_tests
@@ -80,8 +80,8 @@ USER root
 RUN rm -rf /var/lib/apt/lists/
 
 # Copy the job server binary in and set permissions
-COPY --from=build_production /src/build/gwcloud_job_server ./
-RUN chmod +x gwcloud_job_server
+COPY --from=build_production /src/build/adacs_job_controller ./
+RUN chmod +x adacs_job_controller
 
 # Copy the run script
 ADD ./docker/scripts/runserver.sh /runserver.sh
