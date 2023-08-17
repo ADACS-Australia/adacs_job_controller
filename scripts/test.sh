@@ -15,4 +15,4 @@ docker-compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml 
 docker-compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml stop
 docker-compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml down
 docker-compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml rm -fs db
-docker volume rm docker_var_lib_mysql_job_server_test
+docker volume rm docker_var_lib_mysql_adacs_job_controller_test
