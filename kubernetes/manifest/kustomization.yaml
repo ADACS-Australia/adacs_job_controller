@@ -4,4 +4,3 @@ resources:
   - adacs_job_controller_service.yaml
   - adacs_job_controller_vault_rbac.yaml
   - jobcontroller.adacs.org.au.yaml
-  - kustomization.yaml
