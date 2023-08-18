@@ -23,7 +23,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: adacs-job-controller
-    namespace: jobserver
+    namespace: jobcontroller 
 roleRef:
   kind: Role
   name: adacs-job-controller-role
@@ -33,4 +33,4 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: adacs-job-controller
-  namespace: jobserver
+  namespace: jobcontroller 
