@@ -3,14 +3,14 @@ version: '3.4'
 services:
   web:
     build:
-      dockerfile: ./docker/gwcloud_job_server.Dockerfile
+      dockerfile: ./docker/adacs_job_controller.Dockerfile
       context: ..
       target: production
-    image: nexus.gwdc.org.au/docker/gwcloud_job_server:0.53
-    container_name: gwcloud_job_server
+    image: nexus.gwdc.org.au/docker/adacs_job_controller:0.54
+    container_name: adacs_job_controller
     environment:
-      DATABASE_SCHEMA: jobserver
-      DATABASE_USER: jobserver
+      DATABASE_SCHEMA: jobcontroller
+      DATABASE_USER: jobcontroller
       DATABASE_PASSWORD: 76vcqmGKP19Z1AEx
       DATABASE_HOST: db
     ports:
@@ -21,15 +21,15 @@ services:
 
   db:
     image: mysql:5.7
-    container_name: gwcloud_job_server_mysql
+    container_name: adacs_job_controller_mysql
     environment:
       MYSQL_ROOT_HOST: "0.0.0.0"
       MYSQL_ROOT_PASSWORD: 76vcqmGKP19Z1AEx
-      MYSQL_DATABASE: jobserver
-      MYSQL_USER: jobserver
+      MYSQL_DATABASE: jobcontroller
+      MYSQL_USER: jobcontroller
       MYSQL_PASSWORD: 76vcqmGKP19Z1AEx
     volumes:
-      - var_lib_mysql_job_server:/var/lib/mysql
+      - var_lib_mysql_adacs_job_controller:/var/lib/mysql
 
 volumes:
-  var_lib_mysql_job_server:
+  var_lib_mysql_adacs_job_controller:

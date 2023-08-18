@@ -1,6 +1,7 @@
 resources:
-  - gwcloud_job_server_deployment.yaml
-  - gwcloud_job_server_service.yaml
-  - gwcloud_job_server_secrets_integrator.yaml
-  - gwcloud_job_server_vault_rbac.yaml
-
+  - adacs_job_controller_deployment.yaml
+  - adacs_job_controller_secrets_integrator.yaml
+  - adacs_job_controller_service.yaml
+  - adacs_job_controller_vault_rbac.yaml
+  - jobcontroller.adacs.org.au.yaml
+  - kustomization.yaml

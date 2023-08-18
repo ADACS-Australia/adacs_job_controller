@@ -1,0 +1,24 @@
+---
+# Ingress - Configuration documentation: https://docs.nginx.com/nginx-ingress-controller/configuration/virtualserver-and-virtualserverroute-resources/
+apiVersion: k8s.nginx.org/v1
+kind: VirtualServer
+metadata:
+  name: jobcontroller-adacs-org-au-ing
+  namespace: jobcontroller
+spec:
+  host: jobcontroller.adacs.org.au
+  upstreams:
+    - name: adacs-job-controller-http
+      service: adacs-job-controller
+      port: 8000
+    - name: adacs-job-controller-websocket
+      service: adacs-job-controller
+      port: 8001
+  routes:
+    - path: ~* ^(/job/ws.*)
+      action:
+        pass: adacs-job-controller-websocket
+    - path: ~* ^(/job/.*)
+      action:
+        pass: adacs-job-controller-http
+---
