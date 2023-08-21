@@ -470,6 +470,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         BOOST_CHECK_EQUAL(lastbRecursive.back(), true);
 
         // Wait a moment for everything to settle
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
         // Reset the websocket trackers
