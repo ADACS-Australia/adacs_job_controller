@@ -146,7 +146,7 @@ BOOST_FIXTURE_TEST_SUITE(Background_Threads_test_suite, BackgroundThreadsTestDat
     }
 
     BOOST_AUTO_TEST_CASE(test_CancellingJobs) {
-        // The websocket server and client is already running and connected. Create a job that's marked as unsubmitted
+        // The websocket server and client is already running and connected. Create a job that's marked as cancelling
         // and wait a moment, then verify that the job was resubmitted to the client
 
         // Test CANCELLING works as expected
@@ -180,7 +180,7 @@ BOOST_FIXTURE_TEST_SUITE(Background_Threads_test_suite, BackgroundThreadsTestDat
     }
 
     BOOST_AUTO_TEST_CASE(test_DeletingJobs) {
-        // The websocket server and client is already running and connected. Create a job that's marked as unsubmitted
+        // The websocket server and client is already running and connected. Create a job that's marked as deleting
         // and wait a moment, then verify that the job was resubmitted to the client
 
         // Test DELETING works as expected
