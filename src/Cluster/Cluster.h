@@ -125,7 +125,8 @@ private:
     std::vector<folly::ConcurrentHashMap<std::string, std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>> queue;
 
     bool bRunning = true;
-    InterruptableTimer interruptableTimer;
+    InterruptableTimer interruptableResendTimer;
+    InterruptableTimer interruptablePruneTimer;
 
     // Threads
     std::jthread schedulerThread;

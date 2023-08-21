@@ -21,6 +21,9 @@ public:
         config->password = DATABASE_PASSWORD;
         config->host = DATABASE_HOST;
         config->port = DATABASE_PORT;
+
+        // Fixes "WARNING: MYSQL_OPT_RECONNECT is deprecated and will be removed in a future version."
+        config->auto_reconnect = false;
 #ifdef NDEBUG
         config->debug = false;
 #else

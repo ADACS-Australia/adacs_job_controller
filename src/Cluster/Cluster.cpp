@@ -69,7 +69,8 @@ Cluster::~Cluster() {
 
 void Cluster::stop() {
     bRunning = false;
-    interruptableTimer.stop();
+    interruptablePruneTimer.stop();
+    interruptableResendTimer.stop();
 
     dataReady = true;
     dataCV.notify_one();
@@ -177,7 +178,7 @@ void Cluster::pruneSources() {
                 }
             }
         }
-    } while (bRunning && interruptableTimer.wait_for(std::chrono::seconds(QUEUE_SOURCE_PRUNE_MILLISECONDS)));
+    } while (bRunning && interruptablePruneTimer.wait_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS)));
 }
 
 void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
@@ -372,7 +373,7 @@ auto Cluster::isOnline() -> bool {
 
 void Cluster::resendMessages() {
     // Iterate every CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS seconds until the timer is cancelled or until we stop running
-    while (bRunning && interruptableTimer.wait_for(std::chrono::seconds(CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS))) {
+    while (bRunning && interruptableResendTimer.wait_for(std::chrono::milliseconds(CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS))) {
         // Check for jobs that need to be resubmitted
         checkUnsubmittedJobs();
 
