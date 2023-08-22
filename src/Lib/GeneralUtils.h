@@ -26,7 +26,7 @@ struct InterruptableTimer {
     }
 
     void stop() {
-        std::unique_lock<std::mutex> lock(m);
+        std::unique_lock<std::mutex> const lock(m);
         terminate = true;
         cv.notify_all();
     }

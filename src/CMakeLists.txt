@@ -119,6 +119,7 @@ add_executable(
         Cluster/tests/ping_pong_tests.cpp
         Cluster/tests/cluster_db_tests.cpp
         Cluster/tests/file_download_tests.cpp
+        Cluster/tests/background_threads_tests.cpp
 )
 
 # Set the link libraries
