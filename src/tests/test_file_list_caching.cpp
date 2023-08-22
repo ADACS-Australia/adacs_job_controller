@@ -469,9 +469,28 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         BOOST_CHECK_EQUAL(lastDirPath.back(), "");
         BOOST_CHECK_EQUAL(lastbRecursive.back(), true);
 
-        // Wait a moment for everything to settle
+        // The file list caching can take a moment to complete in the background
+        // Check that the correct file list cache entries were added to the database
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        for (counter = 0; counter < 500; counter++) {
+            auto fileListCacheResult = database->run(
+                    select(all_of(jobFilelistcache))
+                            .from(jobFilelistcache)
+                            .where(
+                                    jobFilelistcache.jobId == static_cast<uint64_t>(jobId)
+                            )
+            );
+
+            // Has the file list cache finished being populated by the background system thread?
+            if (!fileListCacheResult.empty()) {
+                break;
+            }
+
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        BOOST_ASSERT_MSG(counter != 500, "Background file list caching thread failed to run correctly");
 
         // Reset the websocket trackers
         lastDirPath.clear();
