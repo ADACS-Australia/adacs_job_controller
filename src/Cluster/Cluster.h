@@ -17,7 +17,6 @@
 #include <string>
 #include <vector>
 
-class ClusterManager;
 class FileDownload;
 
 struct sFile {
