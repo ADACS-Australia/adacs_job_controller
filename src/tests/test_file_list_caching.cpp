@@ -199,6 +199,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         while ((lastDirPath.size() < 2 || lastbRecursive.size() < 2) && counter < 500) {
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            counter++;
         }
 
         BOOST_ASSERT_MSG(counter != 500, "Websocket took too long to respond");
@@ -246,6 +247,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
+        // Fail if counter = 500
         BOOST_ASSERT_MSG(counter != 500, "Background file list caching thread failed to run correctly");
 
         auto fileListCacheResult = database->run(
@@ -461,6 +463,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         while ((lastDirPath.empty() || lastbRecursive.empty()) && counter < 500) {
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            counter++;
         }
 
         BOOST_ASSERT_MSG(counter != 500, "Websocket took too long to respond");
@@ -490,6 +493,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
+        // Fail if counter = 500
         BOOST_ASSERT_MSG(counter != 500, "Background file list caching thread failed to run correctly");
 
         // Reset the websocket trackers
