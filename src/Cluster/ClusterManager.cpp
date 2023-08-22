@@ -62,16 +62,16 @@ void ClusterManager::reconnectClusters() {
     // Create a list of threads we spawn
     std::vector<std::shared_ptr<std::thread>> vThreads;
 
+    // Create a database connection
+    auto database = MySqlConnector();
+
+    // Get the tables
+    schema::JobserverClusteruuid clusterUuidTable;
+
     // Try to reconnect all cluster
     for (auto &cluster : vClusters) {
         // Check if the cluster is online
         if (!isClusterOnline(cluster)) {
-            // Create a database connection
-            auto database = MySqlConnector();
-
-            // Get the tables
-            schema::JobserverClusteruuid clusterUuidTable;
-
             // Delete any existing uuids for this cluster
             database->run(
                     remove_from(clusterUuidTable)
@@ -234,7 +234,7 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
 
     // Try to reconnect the cluster in case it's a temporary network failure. Run this in a thread so we don't take
     // up an unnecessary number of websocket handler threads.
-    std::thread([this]{
+    std::jthread([this]{
         reconnectClusters();
     }).detach();
 }
