@@ -1,11 +1,17 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.28)
+
+# Set Clang compiler
+set(CMAKE_CXX_COMPILER clang++)
+set(CMAKE_C_COMPILER clang)
+
 project(adacs_job_controller)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Generate maximum debug information (Dwarf version 4 for folly backtrace support)
-set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -w ")
+set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -gdwarf-4 -fpermissive -w ")
 
 # Suppress nested inexact package name searches
 set(FPHSA_NAME_MISMATCHED 1)
@@ -23,36 +29,24 @@ link_libraries(${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(MySQL REQUIRED)
 
-# Set up the hinnant date library
-set(HinnantDate_ROOT_DIR Lib/date)
-set(HinnantDate_INCLUDE_DIR Lib/date/include)
-
-# Set config for nested libraries
-set(ENABLE_TESTS Off)
-set(ENABLE_DATE_TESTING Off)
-set(USE_OPENSSL Off)
-set(CPP_JWT_BUILD_TESTS Off)
-set(CPP_JWT_BUILD_EXAMPLES Off)
-set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
-set(BUILD_MYSQL_CONNECTOR ON)
+# Find system cpp-jwt package
+find_package(cpp-jwt REQUIRED)
 
 # Include the nested libraries
 add_subdirectory(third_party/Simple-Web-Server)
 add_subdirectory(third_party/Simple-WebSocket-Server)
 add_subdirectory(third_party/folly)
 add_subdirectory(third_party/sqlpp11)
-add_subdirectory(third_party/cpp-jwt)
 
 # Set up the include directories
 include_directories(
-        third_party/json/include
-        third_party/date/include
+        /usr/include/nlohmann
+        /usr/include/date
         third_party/sqlpp11/include
         /usr/include/mysql
         third_party/folly
         third_party/Simple-Web-Server
         third_party/Simple-WebSocket-Server
-        third_party/cpp-jwt/include
         ${MYSQL_INCLUDE_DIR}
 )
 
@@ -71,8 +65,6 @@ set(
         Cluster/Cluster.h
         HTTP/Job.cpp
         DB/MySqlConnector.h
-        Settings.h
-        Lib/JobStatus.h
         HTTP/HttpUtils.cpp
         HTTP/File.cpp
         Lib/segvcatch.h
@@ -89,12 +81,14 @@ set(
         Cluster/FileDownload.h
 )
 
+
 # Set the main executable and source files
 add_executable(
         adacs_job_controller
 	${SOURCE_FILES}
         main.cpp
 )
+target_compile_features(adacs_job_controller PUBLIC cxx_std_23)
 
 # Set the test executable and source files
 add_executable(
@@ -121,6 +115,7 @@ add_executable(
         Cluster/tests/file_download_tests.cpp
         Cluster/tests/background_threads_tests.cpp
 )
+target_compile_features(Boost_Tests_run PUBLIC cxx_std_23)
 
 # Set the link libraries
 set(
@@ -133,27 +128,55 @@ set(
         folly_exception_counter
         dl
         dw
-        gcov
         mysqlclient
+        cpp-jwt::cpp-jwt
 )
 
 set_target_properties(
         Boost_Tests_run
         PROPERTIES
-        CXX_CLANG_TIDY "clang-tidy"
+        #CXX_CLANG_TIDY "clang-tidy"
         CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
 )
 
 set_target_properties(
         adacs_job_controller 
         PROPERTIES
-        CXX_CLANG_TIDY "clang-tidy"
+        #CXX_CLANG_TIDY "clang-tidy"
         CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
 )
 
-target_link_libraries(adacs_job_controller ${LINK_LIBRARIES})
-target_link_libraries(Boost_Tests_run ${LINK_LIBRARIES})
+# Define module sources once
+set(PROJECT_MODULE_SOURCES
+  Lib/JobStatus.ixx
+  Settings.ixx
+)
+
+# Production modules (no BUILD_TESTS)
+add_library(project_modules)
+target_compile_features(project_modules PUBLIC cxx_std_23)
+target_sources(project_modules
+  PUBLIC
+    FILE_SET cxx_modules TYPE CXX_MODULES FILES
+      ${PROJECT_MODULE_SOURCES}
+)
+
+# Test modules (with BUILD_TESTS)
+add_library(project_modules_test)
+target_compile_features(project_modules_test PUBLIC cxx_std_23)
+target_sources(project_modules_test
+  PUBLIC
+    FILE_SET cxx_modules TYPE CXX_MODULES FILES
+      ${PROJECT_MODULE_SOURCES}
+)
+target_compile_definitions(project_modules_test PUBLIC -DBUILD_TESTS)
+
+# Link other libraries
+target_link_libraries(adacs_job_controller PRIVATE ${LINK_LIBRARIES} project_modules)
+target_link_libraries(Boost_Tests_run PRIVATE ${LINK_LIBRARIES} project_modules_test)
 
 # Configure custom definitions for testing
 target_compile_definitions(Boost_Tests_run PUBLIC -DBUILD_TESTS)
-target_compile_options(Boost_Tests_run PUBLIC -fprofile-arcs -ftest-coverage -fPIC)
+target_compile_options(Boost_Tests_run PUBLIC --coverage -fPIC)
+
+target_link_options(Boost_Tests_run PRIVATE --coverage)

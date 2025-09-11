@@ -2,10 +2,10 @@
 // Created by lewis on 3/10/20.
 //
 
-#ifndef GWCLOUD_JOB_SERVER_JOBSTATUS_H
-#define GWCLOUD_JOB_SERVER_JOBSTATUS_H
+module;
+export module job_status;
 
-enum JobStatus {
+export enum JobStatus {
     // A job is pending if it is currently waiting for a cluster to submit the job to
     // (ie, all available clusters are offline)
     PENDING = 10,
@@ -39,4 +39,3 @@ enum JobStatus {
     COMPLETED = 500
 };
 
-#endif //GWCLOUD_JOB_SERVER_JOBSTATUS_H

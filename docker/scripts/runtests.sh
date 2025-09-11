@@ -19,9 +19,25 @@ build/Boost_Tests_run --logger=HRF,all --color_output=true --report_format=HRF -
 printf "\n\n"
 
 # Generate code coverage reports
-gcovr -r . --xml-pretty -e "third_party/" > /test_report/coverage_docker.xml
+gcovr \
+  -r . \
+  --object-directory build \
+  --gcov-executable "llvm-cov-18 gcov" \
+  --xml-pretty -o /test_report/coverage_docker.xml \
+  -e "third_party/" \
+  -e ".*/tests/.*" \
+  -e ".*_tests\.cpp$" \
+  -e ".*test_.*\.cpp$"
 
-gcovr -r . -e "third_party/"
+gcovr \
+  -r . \
+  --object-directory build \
+  --gcov-executable "llvm-cov-18 gcov" \
+  --print-summary \
+  -e "third_party/" \
+  -e ".*/tests/.*" \
+  -e ".*_tests\.cpp$" \
+  -e ".*test_.*\.cpp$"
 
 python3 utils/clang-tidy-to-code-climate.py /src/build/tidy.txt /test_report/code_climate.json /
 

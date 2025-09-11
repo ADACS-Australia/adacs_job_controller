@@ -2,7 +2,8 @@
 // Created by lewis on 10/15/22.
 //
 
-#include "../Settings.h"
+import settings;
+
 #include "FileDownload.h"
 #include <utility>
 

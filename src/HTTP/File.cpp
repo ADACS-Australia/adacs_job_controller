@@ -2,6 +2,8 @@
 // Created by lewis on 3/12/20.
 //
 
+import settings;
+
 #include "../DB/MySqlConnector.h"
 #include "../Cluster/ClusterManager.h"
 #include "../Lib/jobserver_schema.h"

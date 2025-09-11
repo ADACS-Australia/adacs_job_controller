@@ -2,8 +2,9 @@
 // Created by lewis on 2/26/20.
 //
 
+import settings;
+
 #include "../Cluster/ClusterManager.h"
-#include "../DB/MySqlConnector.h"
 #include "HttpServer.h"
 #include "HttpUtils.h"
 #include <jwt/jwt.hpp>

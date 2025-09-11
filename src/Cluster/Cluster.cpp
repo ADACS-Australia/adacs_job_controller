@@ -2,12 +2,14 @@
 // Created by lewis on 2/27/20.
 //
 
+import job_status;
+import settings;
+
 #include "Cluster.h"
 #include "../DB/ClusterDB.h"
 #include "../DB/MySqlConnector.h"
 #include "../HTTP/HttpServer.h"
 #include "../HTTP/Utils/HandleFileList.h"
-#include "../Lib/JobStatus.h"
 #include "../Lib/jobserver_schema.h"
 
 #include <client_http.hpp>

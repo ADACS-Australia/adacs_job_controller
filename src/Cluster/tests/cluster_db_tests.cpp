@@ -5,7 +5,7 @@
 #include "../../DB/sBundleJob.h"
 #include "../../DB/sClusterJob.h"
 #include "../../DB/sClusterJobStatus.h"
-#include "../../Lib/JobStatus.h"
+import job_status;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
 #include <boost/lexical_cast.hpp>

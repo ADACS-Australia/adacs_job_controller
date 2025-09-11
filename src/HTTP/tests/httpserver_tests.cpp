@@ -2,7 +2,7 @@
 // Created by lewis on 2/10/20.
 //
 
-#include "../../Settings.h"
+import settings;
 #include "../HttpServer.h"
 #include <boost/test/unit_test.hpp>
 #include <jwt/jwt.hpp>

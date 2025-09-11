@@ -2,7 +2,7 @@
 // Created by lewis on 10/6/21.
 //
 #include "../HTTP/Utils/HandleFileList.h"
-#include "../../Lib/JobStatus.h"
+import job_status;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"

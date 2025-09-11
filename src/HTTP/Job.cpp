@@ -2,16 +2,31 @@
 // Created by lewis on 3/4/20.
 //
 
+import job_status;
+import settings;
+
 #include "../Cluster/ClusterManager.h"
 #include "../DB/MySqlConnector.h"
-#include "../Lib/JobStatus.h"
 #include "../Lib/jobserver_schema.h"
+#include "../Lib/Messaging/Message.h"
+#include "../Lib/GeneralUtils.h"
 #include "HttpServer.h"
 #include "HttpUtils.h"
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
-#include <date/date.h>
+#include <boost/tokenizer.hpp>
+#include <chrono>
+#include <cstdint>
+#include <format>
 #include <exception>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <ratio>
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include <nlohmann/json.hpp>
 #include <sqlpp11/sqlpp11.h>
 
 auto getJobs(const std::vector<uint64_t> &ids) -> nlohmann::json;
@@ -76,7 +91,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
             if (std::find(
                     authResult->secret().clusters().begin(),
                     authResult->secret().clusters().end(),
-                    post_data["cluster"]
+                    std::string{post_data["cluster"]}
             ) == authResult->secret().clusters().end()) {
                 // Invalid cluster
                 throw std::runtime_error(
@@ -196,19 +211,19 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
             auto query_fields = request->parse_query_string();
 
             // Parse query parameters
-            auto startTimeGt = date::sys_seconds{
+            auto startTimeGt = std::chrono::sys_seconds{
                     std::chrono::seconds(getQueryParamAsInt(query_fields, "startTimeGt"))
             };
 
-            auto startTimeLt = date::sys_seconds{
+            auto startTimeLt = std::chrono::sys_seconds{
                     std::chrono::seconds(getQueryParamAsInt(query_fields, "startTimeLt"))
             };
 
-            auto endTimeGt = date::sys_seconds{
+            auto endTimeGt = std::chrono::sys_seconds{
                     std::chrono::seconds(getQueryParamAsInt(query_fields, "endTimeGt"))
             };
 
-            auto endTimeLt = date::sys_seconds{
+            auto endTimeLt = std::chrono::sys_seconds{
                     std::chrono::seconds(getQueryParamAsInt(query_fields, "endTimeLt"))
             };
 
@@ -770,7 +785,7 @@ auto getJobs(const std::vector<uint64_t> &ids) -> nlohmann::json {
     for (const auto &historyResult : jobHistoryResults) {
         nlohmann::json history;
         history["jobId"] = static_cast<uint64_t>(historyResult.jobId);
-        history["timestamp"] = date::format("%F %T %Z", historyResult.timestamp.value());
+        history["timestamp"] = std::format("{:%F %T %Z}", historyResult.timestamp.value());
         history["what"] = historyResult.what;
         history["state"] = static_cast<uint32_t>(historyResult.state);
         history["details"] = historyResult.details;

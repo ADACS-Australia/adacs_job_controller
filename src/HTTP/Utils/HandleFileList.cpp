@@ -2,6 +2,8 @@
 // Created by lewis on 6/7/21.
 //
 
+import settings;
+
 #include "../../DB/MySqlConnector.h"
 #include "../../Lib/jobserver_schema.h"
 #include "HandleFileList.h"
