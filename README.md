@@ -45,7 +45,7 @@ This will pull in the required third-party dependencies:
 
 
 
-This project makes heavy use of docker for testing and building the project in a controlled environment. You will need mysql running on the local host if you wish to run the tests locally, with a user configured. See `Settings.h` for the expected user details - they can be overridden using environment variables.
+This project makes heavy use of docker for testing and building the project in a controlled environment. You will need mysql running on the local host if you wish to run the tests locally, with a user configured. See `Settings.ixx` for the expected user details - they can be overridden using environment variables.
 
 
 
