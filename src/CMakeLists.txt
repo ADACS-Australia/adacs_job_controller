@@ -157,18 +157,34 @@ set_target_properties(
         CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
 )
 
+# Define module sources once
+set(PROJECT_MODULE_SOURCES
+  Lib/JobStatus.ixx
+  Settings.ixx
+)
+
+# Production modules (no BUILD_TESTS)
 add_library(project_modules)
 target_compile_features(project_modules PUBLIC cxx_std_23)
 target_sources(project_modules
   PUBLIC
     FILE_SET cxx_modules TYPE CXX_MODULES FILES
-      Lib/JobStatus.ixx
-      Settings.ixx
+      ${PROJECT_MODULE_SOURCES}
 )
+
+# Test modules (with BUILD_TESTS)
+add_library(project_modules_test)
+target_compile_features(project_modules_test PUBLIC cxx_std_23)
+target_sources(project_modules_test
+  PUBLIC
+    FILE_SET cxx_modules TYPE CXX_MODULES FILES
+      ${PROJECT_MODULE_SOURCES}
+)
+target_compile_definitions(project_modules_test PUBLIC -DBUILD_TESTS)
 
 # Link other libraries
 target_link_libraries(adacs_job_controller PRIVATE ${LINK_LIBRARIES} project_modules)
-target_link_libraries(Boost_Tests_run PRIVATE ${LINK_LIBRARIES} project_modules)
+target_link_libraries(Boost_Tests_run PRIVATE ${LINK_LIBRARIES} project_modules_test)
 
 # Configure custom definitions for testing
 target_compile_definitions(Boost_Tests_run PUBLIC -DBUILD_TESTS)
