@@ -22,16 +22,22 @@ printf "\n\n"
 gcovr \
   -r . \
   --object-directory build \
-  --gcov-executable "llvm-cov gcov" \
+  --gcov-executable "llvm-cov-18 gcov" \
   --xml-pretty -o /test_report/coverage_docker.xml \
-  -e "third_party/"
+  -e "third_party/" \
+  -e ".*/tests/.*" \
+  -e ".*_tests\.cpp$" \
+  -e ".*test_.*\.cpp$"
 
 gcovr \
   -r . \
   --object-directory build \
-  --gcov-executable "llvm-cov gcov" \
+  --gcov-executable "llvm-cov-18 gcov" \
   --print-summary \
-  -e "third_party/"
+  -e "third_party/" \
+  -e ".*/tests/.*" \
+  -e ".*_tests\.cpp$" \
+  -e ".*test_.*\.cpp$"
 
 python3 utils/clang-tidy-to-code-climate.py /src/build/tidy.txt /test_report/code_climate.json /
 
