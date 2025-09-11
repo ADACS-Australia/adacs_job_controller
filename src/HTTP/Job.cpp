@@ -17,7 +17,7 @@ import settings;
 #include <boost/tokenizer.hpp>
 #include <chrono>
 #include <cstdint>
-#include <date/date.h>
+#include <format>
 #include <exception>
 #include <iterator>
 #include <map>
@@ -211,19 +211,19 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
             auto query_fields = request->parse_query_string();
 
             // Parse query parameters
-            auto startTimeGt = date::sys_seconds{
+            auto startTimeGt = std::chrono::sys_seconds{
                     std::chrono::seconds(getQueryParamAsInt(query_fields, "startTimeGt"))
             };
 
-            auto startTimeLt = date::sys_seconds{
+            auto startTimeLt = std::chrono::sys_seconds{
                     std::chrono::seconds(getQueryParamAsInt(query_fields, "startTimeLt"))
             };
 
-            auto endTimeGt = date::sys_seconds{
+            auto endTimeGt = std::chrono::sys_seconds{
                     std::chrono::seconds(getQueryParamAsInt(query_fields, "endTimeGt"))
             };
 
-            auto endTimeLt = date::sys_seconds{
+            auto endTimeLt = std::chrono::sys_seconds{
                     std::chrono::seconds(getQueryParamAsInt(query_fields, "endTimeLt"))
             };
 
@@ -785,7 +785,7 @@ auto getJobs(const std::vector<uint64_t> &ids) -> nlohmann::json {
     for (const auto &historyResult : jobHistoryResults) {
         nlohmann::json history;
         history["jobId"] = static_cast<uint64_t>(historyResult.jobId);
-        history["timestamp"] = date::format("%F %T %Z", historyResult.timestamp.value());
+        history["timestamp"] = std::format("{:%F %T %Z}", historyResult.timestamp.value());
         history["what"] = historyResult.what;
         history["state"] = static_cast<uint32_t>(historyResult.state);
         history["details"] = historyResult.details;

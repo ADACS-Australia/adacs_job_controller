@@ -21,7 +21,7 @@ The job server has three distinct components:-
 Several system libraries are required for local development. Package names for Ubuntu 22.04 can be found in `docker/gwcloud_job_server.Dockerfile`, but at the time of writing, that list looks like:
 
 ```
-python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev clang-tidy ninja-build
+python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev libfast-float-dev clang-tidy ninja-build libcpp-jwt-dev libhowardhinnant-date-dev nlohmann-json3-dev
 ```
 
 **Note**: The project now uses C++20 modules and requires the `ninja-build` package for optimal build performance.
@@ -37,10 +37,7 @@ git submodule update --init --recursive
 This will pull in the required third-party dependencies:
 - Simple-Web-Server
 - Simple-WebSocket-Server  
-- cpp-jwt
-- date
 - folly
-- json
 - sqlpp11
 
 

@@ -29,36 +29,24 @@ link_libraries(${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(MySQL REQUIRED)
 
-# Set up the hinnant date library
-set(HinnantDate_ROOT_DIR Lib/date)
-set(HinnantDate_INCLUDE_DIR Lib/date/include)
-
-# Set config for nested libraries
-set(ENABLE_TESTS Off)
-set(ENABLE_DATE_TESTING Off)
-set(USE_OPENSSL Off)
-set(CPP_JWT_BUILD_TESTS Off)
-set(CPP_JWT_BUILD_EXAMPLES Off)
-set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
-set(BUILD_MYSQL_CONNECTOR ON)
+# Find system cpp-jwt package
+find_package(cpp-jwt REQUIRED)
 
 # Include the nested libraries
 add_subdirectory(third_party/Simple-Web-Server)
 add_subdirectory(third_party/Simple-WebSocket-Server)
 add_subdirectory(third_party/folly)
 add_subdirectory(third_party/sqlpp11)
-add_subdirectory(third_party/cpp-jwt)
 
 # Set up the include directories
 include_directories(
-        third_party/json/include
-        third_party/date/include
+        /usr/include/nlohmann
+        /usr/include/date
         third_party/sqlpp11/include
         /usr/include/mysql
         third_party/folly
         third_party/Simple-Web-Server
         third_party/Simple-WebSocket-Server
-        third_party/cpp-jwt/include
         ${MYSQL_INCLUDE_DIR}
 )
 
@@ -141,6 +129,7 @@ set(
         dl
         dw
         mysqlclient
+        cpp-jwt::cpp-jwt
 )
 
 set_target_properties(

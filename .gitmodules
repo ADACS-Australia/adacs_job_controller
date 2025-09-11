@@ -4,15 +4,6 @@
 [submodule "third_party/sqlpp11-connector-mysql"]
 	path = src/third_party/sqlpp11-connector-mysql
 	url = https://github.com/rbock/sqlpp11-connector-mysql.git
-[submodule "third_party/date"]
-	path = src/third_party/date
-	url = https://github.com/HowardHinnant/date.git
-[submodule "third_party/cpp-jwt"]
-	path = src/third_party/cpp-jwt
-	url = https://github.com/arun11299/cpp-jwt.git
-[submodule "third_party/json"]
-	path = src/third_party/json
-	url = https://github.com/nlohmann/json.git
 [submodule "third_party/Simple-WebSocket-Server"]
 	path = src/third_party/Simple-WebSocket-Server
 	url = https://gitlab.com/llakerink/Simple-WebSocket-Server.git
