@@ -4,7 +4,7 @@
 
 #include "../../tests/utils.h"
 #include "../../Cluster/ClusterManager.h"
-#include "../../Lib/JobStatus.h"
+import job_status;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/HttpServerFixture.h"

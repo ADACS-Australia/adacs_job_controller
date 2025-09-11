@@ -2,9 +2,10 @@
 // Created by lewis on 2/26/20.
 //
 
+import settings;
+
 #include "Message.h"
 #include "../../Cluster/Cluster.h"
-#include "../../Settings.h"
 
 #ifdef BUILD_TESTS
 Message::Message(uint32_t msgId) : index(0), id(msgId) {

@@ -1,4 +1,4 @@
-FROM ubuntu:jammy AS build_base
+FROM ubuntu:noble AS build_base
 
 # Update the container and install the required packages
 ENV DEBIAN_FRONTEND="noninteractive"
@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND="noninteractive"
 # Switch mirror to Australia
 RUN sed --in-place --regexp-extended "s/(\/\/)(archive\.ubuntu)/\1au.\2/" /etc/apt/sources.list
 
-RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev clang-tidy
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install clang python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev libfast-float-dev clang-tidy ninja-build
 
 # Copy in the source directory
 ADD src /src
@@ -14,32 +14,26 @@ ADD src /src
 # Set up the build directory and configure the project with cmake
 RUN mkdir /src/build
 WORKDIR /src/build
-RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
-
-# Build dependencies
-RUN cmake --build . --target folly -- -j `nproc`
-RUN cmake --build . --target folly_exception_tracer -- -j `nproc`
-RUN cmake --build . --target folly_exception_counter -- -j `nproc`
-
+RUN cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ..
 
 FROM build_base AS build_production
 
 # Build the production server
-RUN cmake --build . --target adacs_job_controller -- -j `nproc`
+RUN ninja adacs_job_controller
 
 
 FROM build_base AS build_tests
 
 # Build the test server and save the clang-tidy output
-RUN cmake --build . --target Boost_Tests_run -- -j `nproc` 2> tidy.txt
+RUN ninja Boost_Tests_run 2> tidy.txt
 
 
-FROM ubuntu:jammy AS production
+FROM ubuntu:noble AS production
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
-RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.74.0  libdouble-conversion3 libgflags2.2 libgoogle-glog0v5 libmysqlclient21 libfmt8 
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.83.0 libdouble-conversion3 libgflags2.2 libgoogle-glog0v6t64 libmysqlclient21 libfmt9 build-essential libpython3-dev libffi-dev
 
 # Set the timezone
 ENV TZ=Australia/Melbourne

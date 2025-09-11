@@ -2,6 +2,8 @@
 // Created by lewis on 10/8/22.
 //
 
+import settings;
+
 #include "ClusterDB.h"
 #include "../Cluster/Cluster.h"
 #include "sBundleJob.h"

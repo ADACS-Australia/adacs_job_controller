@@ -16,11 +16,32 @@ The job server has three distinct components:-
 
 ## Local Development
 
+### Prerequisites
+
 Several system libraries are required for local development. Package names for Ubuntu 22.04 can be found in `docker/gwcloud_job_server.Dockerfile`, but at the time of writing, that list looks like:
 
 ```
-python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev clang-tidy
+python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev clang-tidy ninja-build
 ```
+
+**Note**: The project now uses C++20 modules and requires the `ninja-build` package for optimal build performance.
+
+### Initial Setup
+
+If this is a freshly checked out repository, you'll need to initialize and update the Git submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
+This will pull in the required third-party dependencies:
+- Simple-Web-Server
+- Simple-WebSocket-Server  
+- cpp-jwt
+- date
+- folly
+- json
+- sqlpp11
 
 
 
@@ -30,19 +51,21 @@ This project makes heavy use of docker for testing and building the project in a
 
 ## Building
 
-There are two CMake targets, `gwcloud_job_server` which is the runtime binary, and `Boost_Tests_run`. Most of the time you will be building and running the `Boost_Tests_run` target. Running the `gwcloud_job_server` target locally is possible, but doesn't really serve any purpose. The `gwcloud_job_server` target is generally build and run by the docker build process.
+There are two CMake targets, `adacs_job_controller` which is the runtime binary, and `Boost_Tests_run`. Most of the time you will be building and running the `Boost_Tests_run` target. Running the `adacs_job_controller` target locally is possible, but doesn't really serve any purpose. The `adacs_job_controller` target is generally build and run by the docker build process.
 
+### Building
 
+The project uses C++20 modules and requires the Ninja build system. To build the `Boost_Tests_run` target:
 
-To build the `Boost_Tests_run` target
-
-```
+```bash
 cd src/
 mkdir build
 cd build
-cmake ..
-cmake --build . --target Boost_Tests_run -- -j `nproc`
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ..
+ninja Boost_Tests_run
 ```
+
+**Note**: This project has been migrated to use C++20 modules for improved compilation performance and better dependency management. The Ninja build system is required as it provides better support for C++20 modules compared to traditional Make.
 
 
 

@@ -8,18 +8,29 @@
 #include <boost/archive/iterators/transform_width.hpp>
 #include <boost/asio.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/system/error_code.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <exception>
 #include <execinfo.h>
+#include <folly/experimental/exception_tracer/ExceptionTracer.h>
 #include <folly/experimental/exception_tracer/StackTrace.h>
 #include <iostream>
+#include <string>
+#include <thread>
+
+// Forward declaration for acceptingConnections function
+auto acceptingConnections(uint16_t port) -> bool;
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
 auto base64Encode(std::string input) -> std::string
 {
     // The input must be in multiples of 3, otherwise the transformation
     // may overflow the input buffer, so pad with zero.
-    uint32_t num_pad_chars((3 - input.size() % 3) % 3);
+    const uint32_t num_pad_chars((3 - input.size() % 3) % 3);
     input.append(num_pad_chars, 0);
 
     // Transform to Base64
@@ -46,10 +57,10 @@ auto base64Decode(std::string input) -> std::string
     try
     {
         // If the input isn't a multiple of 4, pad with =
-        uint32_t num_pad_chars((4 - input.size() % 4) % 4);
+        const uint32_t num_pad_chars((4 - input.size() % 4) % 4);
         input.append(num_pad_chars, '=');
 
-        uint32_t pad_chars(std::count(input.begin(), input.end(), '='));
+        const uint32_t pad_chars(std::count(input.begin(), input.end(), '='));
         std::replace(input.begin(), input.end(), '=', 'A');
         std::string output(ItBinaryT(input.begin()), ItBinaryT(input.end()));
         output.erase(output.end() - pad_chars, output.end());
@@ -63,11 +74,12 @@ auto base64Decode(std::string input) -> std::string
 }
 
 auto generateUUID() -> std::string {
-    return boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+    auto uuid = boost::uuids::random_generator()();
+    return boost::uuids::to_string(uuid);
 }
 
 void dumpExceptions(std::exception& exception) {
-    std::cerr << "--- Exception: " << exception.what() << std::endl;
+    std::cerr << "--- Exception: " << exception.what() << '\n';
     auto exceptions = folly::exception_tracer::getCurrentExceptions();
     for (auto& exc : exceptions) {
         std::cerr << exc << "\n";
@@ -102,7 +114,7 @@ auto acceptingConnections(uint16_t port) -> bool {
         try {
             io_service svc;
             tcp::socket socket(svc);
-            deadline_timer tim(svc, boost::posix_time::milliseconds(100));
+            boost::asio::steady_timer tim(svc, std::chrono::milliseconds(100));
 
             tim.async_wait([&](ec) { socket.cancel(); });
             socket.async_connect({{}, port}, [&](ec errorCode) {
@@ -110,7 +122,9 @@ auto acceptingConnections(uint16_t port) -> bool {
             });
 
             svc.run();
-        } catch(...) { }
+        } catch(...) { 
+            // Ignore connection errors during port checking
+        }
 
         if (!result) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -138,7 +152,10 @@ volatile void forceExceptionStackTraceRef()
 auto forceStartup() -> bool {
     // Set up the crash handler
     segvcatch::init_segv(&handleSegv);
+    return true;
 }
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,cert-err58-cpp)
-volatile static bool bForceStartup = forceStartup();
+namespace {
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,cert-err58-cpp)
+    volatile bool bForceStartup = forceStartup();
+}
