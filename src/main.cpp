@@ -1,11 +1,12 @@
 #include "Cluster/ClusterManager.h"
+#include "Interfaces/IClusterManager.h"
 #include "HTTP/HttpServer.h"
 #include "WebSocket/WebSocketServer.h"
 
 auto main() -> int
 {
     auto clusterManager = std::make_shared<ClusterManager>();
-    auto httpServer = std::make_unique<HttpServer>(clusterManager);
+    auto httpServer = std::make_unique<HttpServer>(std::static_pointer_cast<IClusterManager>(clusterManager));
     auto websocketServer = std::make_unique<WebSocketServer>(clusterManager);
 
     // Start the websocket server

@@ -5,17 +5,22 @@
 #ifndef GWCLOUD_JOB_SERVER_HANDLEFILELIST_H
 #define GWCLOUD_JOB_SERVER_HANDLEFILELIST_H
 
-#include "../../Cluster/ClusterManager.h"
+#include "../../Interfaces/ICluster.h"
+#include "../../Interfaces/IClusterManager.h"
+#include "../../Lib/FileTypes.h"  // For sFile struct
 #include "../HttpServer.h"
 
+// Forward declarations
+class ClusterManager;
+
 void handleFileList(
-        const std::shared_ptr<ClusterManager>& clusterManager, uint64_t jobId, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<IClusterManager>& clusterManager, uint64_t jobId, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications,
         const std::shared_ptr<HttpServerImpl::Response> &response
 );
 
 void handleFileList(
-        const std::shared_ptr<Cluster> &cluster, const std::string &sBundle, uint64_t jobId, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<ICluster> &cluster, const std::string &sBundle, uint64_t jobId, bool bRecursive, const std::string &filePath,
         const std::shared_ptr<HttpServerImpl::Response> &response
 );
 

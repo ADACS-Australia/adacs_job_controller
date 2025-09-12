@@ -6,6 +6,7 @@
 #define GWCLOUD_JOB_SERVER_HTTPSERVER_H
 
 #include "../Lib/GeneralUtils.h"
+#include "../Interfaces/IClusterManager.h"
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <server_http.hpp>
@@ -13,6 +14,7 @@
 
 using HttpServerImpl = SimpleWeb::Server<SimpleWeb::HTTP>;
 
+// Forward declarations
 class ClusterManager;
 
 class eNotAuthorized : public std::exception {
@@ -70,7 +72,7 @@ private:
 
 class HttpServer {
 public:
-    explicit HttpServer(const std::shared_ptr<ClusterManager>& clusterManager);
+    explicit HttpServer(const std::shared_ptr<IClusterManager>& clusterManager);
 
     void start();
 
@@ -91,8 +93,8 @@ private:
 EXPOSE_PROPERTY_FOR_TESTING(vJwtSecrets);
 };
 
-void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager);
-void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager);
+void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<IClusterManager>& clusterManager);
+void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<IClusterManager>& clusterManager);
 
 
 #endif //GWCLOUD_JOB_SERVER_HTTPSERVER_H

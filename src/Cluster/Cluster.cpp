@@ -11,6 +11,7 @@ import settings;
 #include "../HTTP/HttpServer.h"
 #include "../HTTP/Utils/HandleFileList.h"
 #include "../Lib/jobserver_schema.h"
+#include "../Interfaces/IClusterManager.h"
 
 #include <client_http.hpp>
 #include <folly/Uri.h>
@@ -28,17 +29,6 @@ import settings;
 
 // Send sources round robin, starting from the highest priority
 
-// Define a global map that can be used for storing information about file lists
-// NOLINTNEXTLINE(cert-err58-cpp)
-const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>> fileListMap = std::make_shared<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>>();
-
-// Define a mutex that can be used for synchronising pause/resume messages
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::mutex fileDownloadPauseResumeLockMutex;
-
-// Define a mutex that can be used for safely removing entries from the fileListMap
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::mutex fileListMapDeletionLockMutex;
 
 Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std::move(details)) {
     std::cout << "Cluster startup for role " << getRoleString() << std::endl;
@@ -113,7 +103,19 @@ void Cluster::handleMessage(Message &message) {
     }
 }
 
-void Cluster::setConnection(const std::shared_ptr<WsServer::Connection>& pCon) {
+void Cluster::sendMessage(Message &message) {
+    // Cluster is responsible for sending messages
+    queueMessage(message.getSource(), message.getData(), static_cast<uint32_t>(message.getPriority()));
+}
+
+void Cluster::setClusterManager(const std::shared_ptr<void>& clusterManager) {
+    pClusterManager = clusterManager;
+}
+
+void Cluster::setConnection(const std::shared_ptr<void>& connection) {
+    // Cast the void* back to the concrete type
+    auto pCon = std::static_pointer_cast<WsServer::Connection>(connection);
+    
     // Protect this block against race conditions. It's possible for pConnection to be
     // set to null in multiple threads.
     std::unique_lock<std::mutex> closeLock(connectionMutex);
@@ -132,7 +134,7 @@ void Cluster::setConnection(const std::shared_ptr<WsServer::Connection>& pCon) {
     }
 }
 
-void Cluster::queueMessage(std::string source, const std::shared_ptr<std::vector<uint8_t>>& pData, Message::Priority priority) {
+void Cluster::queueMessage(const std::string& source, const std::shared_ptr<std::vector<uint8_t>>& pData, uint32_t priority) {
     // Get a pointer to the relevant map
     auto *pMap = &queue[priority];
 
@@ -249,7 +251,11 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
                                             // Terminate the connection forcefully
                                             close(true);
 
-                                            ClusterManager::reportWebsocketError(shared_from_this(), errorCode);
+                                            // Report error through injected cluster manager
+                                            if (pClusterManager) {
+                                                auto clusterManager = std::static_pointer_cast<IClusterManager>(pClusterManager);
+                                                clusterManager->reportWebsocketError(shared_from_this(), errorCode);
+                                            }
                                         },
                                         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                                         130
@@ -369,7 +375,7 @@ void Cluster::updateJob(Message &message) {
     }
 }
 
-auto Cluster::isOnline() -> bool {
+auto Cluster::isOnline() const -> bool {
     return pConnection != nullptr;
 }
 
@@ -465,7 +471,7 @@ void Cluster::checkUnsubmittedJobs() {
         msg.push_uint(job.id);
         msg.push_string(job.bundle);
         msg.push_string(job.parameters);
-        msg.send(shared_from_this());
+        sendMessage(msg);
 
         // Check that the job status is submitting and update it if not
         auto jobHistoryResults =
@@ -518,7 +524,7 @@ void Cluster::checkCancellingJobs() {
         auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
                         std::to_string(job.id) + "_" + std::string{job.cluster});
         msg.push_uint(job.id);
-        msg.send(shared_from_this());
+        sendMessage(msg);
     }
 }
 
@@ -546,7 +552,7 @@ void Cluster::checkDeletingJobs() {
         auto msg = Message(DELETE_JOB, Message::Priority::Medium,
                         std::to_string(job.id) + "_" + std::string{job.cluster});
         msg.push_uint(job.id);
-        msg.send(shared_from_this());
+        sendMessage(msg);
     }
 }
 

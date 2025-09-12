@@ -2,9 +2,6 @@
 // Created by lewis on 10/8/22.
 //
 
-#include "../../DB/sBundleJob.h"
-#include "../../DB/sClusterJob.h"
-#include "../../DB/sClusterJobStatus.h"
 import job_status;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
@@ -12,6 +9,9 @@ import job_status;
 #include <boost/test/unit_test.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <random>
+#include "../../DB/sBundleJob.h"
+#include "../../DB/sClusterJob.h"
+#include "../../DB/sClusterJobStatus.h"
 #include <utility>
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)

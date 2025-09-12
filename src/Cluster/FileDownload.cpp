@@ -31,7 +31,7 @@ void FileDownload::handleFileChunk(Message &message) {
                 fileDownloadClientPaused = true;
 
                 auto msg = Message(PAUSE_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
-                msg.send(shared_from_this());
+                sendMessage(msg);
             }
         }
     }

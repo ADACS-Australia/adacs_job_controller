@@ -8,6 +8,7 @@ import settings;
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
 #include "ClusterManager.h"
+#include "../Interfaces/ICluster.h"
 #include <algorithm>
 #include <boost/process.hpp>
 #include <iostream>
@@ -114,7 +115,7 @@ void ClusterManager::reconnectClusters() {
     }
 }
 
-auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection, const std::string &uuid) -> std::shared_ptr<Cluster> {
+auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection, const std::string &uuid) -> std::shared_ptr<ICluster> {
     // First check if this uuid is an expected file download uuid
     auto fdIter = fileDownloadMap.find(uuid);
     if (fdIter != fileDownloadMap.end()) {
@@ -185,7 +186,8 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
     }
 
     // Record the connected cluster and reset the ping timer
-    mConnectedClusters[connection] = cluster;
+    auto concreteCluster = std::static_pointer_cast<Cluster>(cluster);
+    mConnectedClusters[connection] = concreteCluster;
     {
         std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
         mClusterPings[connection] = {};
@@ -302,19 +304,19 @@ void ClusterManager::checkPings() {
     }
 }
 
-void ClusterManager::reportWebsocketError(const std::shared_ptr<Cluster>& cluster, const SimpleWeb::error_code &errorCode) {
+void ClusterManager::reportWebsocketError(const std::shared_ptr<ICluster>& cluster, const boost::system::error_code &errorCode) {
     // Log this
     std::cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "
               << "Error: " << errorCode << ", error message: " << errorCode.message() << std::endl;
 }
 
-auto ClusterManager::isClusterOnline(const std::shared_ptr<Cluster>& cluster) -> bool {
+auto ClusterManager::isClusterOnline(const std::shared_ptr<ICluster>& cluster) -> bool {
     // Check if any connected clusters matches the provided cluster
     return std::any_of(mConnectedClusters.begin(), mConnectedClusters.end(),
                        [cluster](auto other) { return other.second == cluster; });
 }
 
-auto ClusterManager::getCluster(const std::shared_ptr<WsServer::Connection>& connection) -> std::shared_ptr<Cluster> {
+auto ClusterManager::getCluster(const std::shared_ptr<WsServer::Connection>& connection) -> std::shared_ptr<ICluster> {
     // Try to find the connection in the file downloads
     auto resultFileDownload = mConnectedFileDownloads.find(connection);
 
@@ -330,7 +332,7 @@ auto ClusterManager::getCluster(const std::shared_ptr<WsServer::Connection>& con
     return resultCluster != mConnectedClusters.end() ? resultCluster->second : nullptr;
 }
 
-auto ClusterManager::getCluster(const std::string &cluster) -> std::shared_ptr<Cluster> {
+auto ClusterManager::getCluster(const std::string &cluster) -> std::shared_ptr<ICluster> {
     // Find the cluster by name
     for (auto &other : vClusters) {
         if (other->getName() == cluster) {
@@ -355,7 +357,7 @@ void ClusterManager::connectCluster(const std::shared_ptr<Cluster>& cluster, con
 #endif
 }
 
-auto ClusterManager::createFileDownload(const std::shared_ptr<Cluster>& cluster, const std::string& uuid) -> std::shared_ptr<FileDownload> {
+auto ClusterManager::createFileDownload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid) -> std::shared_ptr<FileDownload> {
     auto fileDownload = std::make_shared<FileDownload>(cluster->getClusterDetails(), uuid);
 
     // Add the file download to the file download map
@@ -363,3 +365,4 @@ auto ClusterManager::createFileDownload(const std::shared_ptr<Cluster>& cluster,
 
     return fileDownload;
 }
+

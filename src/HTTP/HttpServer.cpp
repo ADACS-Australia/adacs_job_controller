@@ -4,13 +4,14 @@
 
 import settings;
 
-#include "../Cluster/ClusterManager.h"
+#include "../Interfaces/IClusterManager.h"
+#include "../Interfaces/ICluster.h"
 #include "HttpServer.h"
 #include "HttpUtils.h"
 #include <jwt/jwt.hpp>
 #include <memory>
 
-HttpServer::HttpServer(const std::shared_ptr<ClusterManager>& clusterManager) {
+HttpServer::HttpServer(const std::shared_ptr<IClusterManager>& clusterManager) {
     server.config.port = HTTP_PORT;
     server.config.address = "0.0.0.0";
     server.config.thread_pool_size = HTTP_WORKER_POOL_SIZE;

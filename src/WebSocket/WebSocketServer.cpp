@@ -6,7 +6,7 @@ import settings;
 
 #include "../Cluster/ClusterManager.h"
 #include "WebSocketServer.h"
-#include "../Lib/Messaging/Message.h"
+import Message;
 #include "../Lib/GeneralUtils.h"
 #include <iostream>
 #include <memory>
@@ -59,7 +59,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
 
             // Tell the client that we are ready
             Message msg(SERVER_READY, Message::Priority::Highest, SYSTEM_SOURCE);
-            msg.send(cluster);
+            cluster->sendMessage(msg);
         } else {
             // Invalid Token
             std::cout << "WS: Invalid token used - " << (*queryParams.begin()).second << std::endl;
@@ -91,7 +91,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
             this->clusterManager->removeConnection(connection);
         }
 
-        ClusterManager::reportWebsocketError(cluster, errorCode);
+        this->clusterManager->reportWebsocketError(cluster, errorCode);
     };
 
     wsEp.on_pong = [this](const std::shared_ptr<WsServer::Connection>& connection) {

@@ -57,8 +57,6 @@ set(
         HTTP/HttpServer.h
         WebSocket/WebSocketServer.cpp
         WebSocket/WebSocketServer.h
-        Lib/Messaging/Message.cpp
-        Lib/Messaging/Message.h
         Cluster/ClusterManager.cpp
         Cluster/ClusterManager.h
         Cluster/Cluster.cpp
@@ -72,11 +70,16 @@ set(
         Lib/x86_64-signal.h
         Lib/GeneralUtils.h
         Lib/GeneralUtils.cpp
+        Lib/GlobalState.cpp
         HTTP/Utils/HandleFileList.cpp
         DB/ClusterDB.cpp
         DB/ClusterDB.h
         DB/sClusterJob.h
+        DB/sClusterJob.cpp
+        DB/sBundleJob.h
+        DB/sBundleJob.cpp
         DB/sClusterJobStatus.h
+        DB/sClusterJobStatus.cpp
         Cluster/FileDownload.cpp
         Cluster/FileDownload.h
 )
@@ -150,6 +153,7 @@ set_target_properties(
 set(PROJECT_MODULE_SOURCES
   Lib/JobStatus.ixx
   Settings.ixx
+  Lib/Messaging/Message.cppm
 )
 
 # Production modules (no BUILD_TESTS)

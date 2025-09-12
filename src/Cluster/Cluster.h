@@ -6,8 +6,11 @@
 #define GWCLOUD_JOB_SERVER_CLUSTER_H
 
 #include "../Lib/GeneralUtils.h"
-#include "../Lib/Messaging/Message.h"
+import Message;
+#include "../Lib/FileTypes.h"
+#include "../Lib/GlobalState.h"
 #include "../WebSocket/WebSocketServer.h"
+#include "../Interfaces/ICluster.h"
 #include <boost/concept_check.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <folly/concurrency/ConcurrentHashMap.h>
@@ -18,22 +21,6 @@
 #include <vector>
 
 class FileDownload;
-
-struct sFile {
-    std::string fileName{};
-    uint64_t fileSize = 0;
-    uint32_t permissions = 0;
-    bool isDirectory = false;
-};
-
-struct sFileList {
-    std::vector<sFile> files;
-    bool error = false;
-    std::string errorDetails;
-    mutable std::mutex dataCVMutex;
-    bool dataReady = false;
-    std::condition_variable dataCV;
-};
 
 struct sClusterDetails {
     explicit inline sClusterDetails(nlohmann::json cluster) {
@@ -62,14 +49,9 @@ private:
     std::string key;
 };
 
-extern const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>> fileListMap;
-// NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
-extern std::mutex fileDownloadPauseResumeLockMutex;
-extern std::mutex fileListMapDeletionLockMutex;
-// NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 
 
-class Cluster : public std::enable_shared_from_this<Cluster> {
+class Cluster : public std::enable_shared_from_this<Cluster>, public ICluster {
 public:
     explicit Cluster(std::shared_ptr<sClusterDetails> details);
     virtual ~Cluster();
@@ -80,33 +62,40 @@ public:
 
     void stop();
 
-    auto getName() { return pClusterDetails->getName(); }
+    // ICluster interface implementation
+    auto getName() const -> std::string override { return pClusterDetails->getName(); }
 
-    auto getClusterDetails() { return pClusterDetails; }
+    auto getClusterDetails() const -> std::shared_ptr<sClusterDetails> override { return pClusterDetails; }
 
-    void setConnection(const std::shared_ptr<WsServer::Connection>& pCon);
+    void setConnection(const std::shared_ptr<void>& connection) override;
 
-    virtual void handleMessage(Message &message);
+    virtual void handleMessage(Message &message) override;
 
-    auto isOnline() -> bool;
+    virtual void sendMessage(Message &message) override;
+
+    auto isOnline() const -> bool override;
 
     // virtual here so that we can override this function for testing
-    virtual void queueMessage(std::string source, const std::shared_ptr<std::vector<uint8_t>>& data, Message::Priority priority);
+    virtual void queueMessage(const std::string& source, const std::shared_ptr<std::vector<uint8_t>>& data, uint32_t priority) override;
 
     enum eRole {
         master,
         fileDownload
     };
 
-    auto getRoleString() -> std::string {
+    // ICluster interface implementation
+    auto getRoleString() const -> std::string override {
         return roleString;
     }
 
-    auto getRole() -> eRole {
-        return role;
+    auto getRole() const -> int override {
+        return static_cast<int>(role);
     }
 
     void close(bool bForce = false);
+
+    // ICluster interface implementation
+    void setClusterManager(const std::shared_ptr<void>& clusterManager) override;
 
 protected:
     eRole role = eRole::master;
@@ -115,6 +104,7 @@ protected:
 private:
     std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
     std::shared_ptr<WsServer::Connection> pConnection = nullptr;
+    std::shared_ptr<void> pClusterManager = nullptr; // void* to avoid circular dependency
 
     mutable std::mutex connectionMutex;
     mutable std::shared_mutex mutex_;

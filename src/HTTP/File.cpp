@@ -5,7 +5,9 @@
 import settings;
 
 #include "../DB/MySqlConnector.h"
-#include "../Cluster/ClusterManager.h"
+#include "../Interfaces/IClusterManager.h"
+#include "../Interfaces/ICluster.h"
+#include "../Cluster/FileDownload.h"
 #include "../Lib/jobserver_schema.h"
 #include "HttpServer.h"
 #include "Utils/HandleFileList.h"
@@ -16,7 +18,7 @@ import settings;
 
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager) {
+void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<IClusterManager>& clusterManager) {
     // Get      -> Download file (file uuid)
     // Post     -> Create new file download
     // Delete   -> Delete file download (file uuid)
@@ -312,7 +314,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             msg.push_string(uuid);
             msg.push_string(sBundle);
             msg.push_string(sFilePath);
-            msg.send(cluster);
+            cluster->sendMessage(msg);
 
             {
                 // Wait for the server to send back data, or in CLIENT_TIMEOUT_SECONDS fail
@@ -423,7 +425,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
                                     auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest,
                                                              uuid);
-                                    resumeMsg.send(fdObj);
+                                    fdObj->sendMessage(resumeMsg);
                                 }
                             }
                         }

@@ -91,7 +91,7 @@ void ClusterDB::saveClusterJobStatus(Message &message, const std::shared_ptr<Clu
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::deleteClusterJobStatusByIdList(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -113,7 +113,7 @@ void ClusterDB::deleteClusterJobStatusByIdList(Message &message, const std::shar
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::getClusterJobStatusByJobId(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -133,7 +133,7 @@ void ClusterDB::getClusterJobStatusByJobId(Message &message, const std::shared_p
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::getClusterJobStatusByJobIdAndWhat(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -155,7 +155,7 @@ void ClusterDB::getClusterJobStatusByJobIdAndWhat(Message &message, const std::s
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::saveClusterJob(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -173,7 +173,7 @@ void ClusterDB::saveClusterJob(Message &message, const std::shared_ptr<Cluster> 
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::deleteClusterJob(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -192,7 +192,7 @@ void ClusterDB::deleteClusterJob(Message &message, const std::shared_ptr<Cluster
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::getRunningClusterJobs(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -212,7 +212,7 @@ void ClusterDB::getRunningClusterJobs(Message &message, const std::shared_ptr<Cl
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::getClusterJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -230,7 +230,7 @@ void ClusterDB::getClusterJobById(Message &message, const std::shared_ptr<Cluste
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::getClusterJobByJobId(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -248,7 +248,7 @@ void ClusterDB::getClusterJobByJobId(Message &message, const std::shared_ptr<Clu
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 auto ClusterDB::prepareResult(Message &message, const std::shared_ptr<Cluster> &pCluster) -> Message {
@@ -275,7 +275,7 @@ void ClusterDB::createOrUpdateBundleJob(Message &message, const std::shared_ptr<
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -293,7 +293,7 @@ void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<Cluster
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
 void ClusterDB::deleteBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
@@ -313,5 +313,5 @@ void ClusterDB::deleteBundleJobById(Message &message, const std::shared_ptr<Clus
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }

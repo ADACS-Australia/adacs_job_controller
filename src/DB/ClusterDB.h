@@ -5,7 +5,8 @@
 #ifndef GWCLOUD_JOB_SERVER_CLUSTERDB_H
 #define GWCLOUD_JOB_SERVER_CLUSTERDB_H
 
-#include "../Lib/Messaging/Message.h"
+import Message;
+#include "../Cluster/Cluster.h"
 #include <memory>
 
 

@@ -155,7 +155,5 @@ auto forceStartup() -> bool {
     return true;
 }
 
-namespace {
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,cert-err58-cpp)
-    volatile bool bForceStartup = forceStartup();
-}
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,cert-err58-cpp)
+volatile bool bForceStartup = forceStartup();

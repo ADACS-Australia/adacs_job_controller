@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "../Lib/jobserver_schema.h"
 
 std::shared_ptr<std::default_random_engine> rng = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 

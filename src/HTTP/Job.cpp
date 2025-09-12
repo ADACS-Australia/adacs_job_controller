@@ -5,10 +5,11 @@
 import job_status;
 import settings;
 
-#include "../Cluster/ClusterManager.h"
+#include "../Interfaces/IClusterManager.h"
+#include "../Interfaces/ICluster.h"
 #include "../DB/MySqlConnector.h"
 #include "../Lib/jobserver_schema.h"
-#include "../Lib/Messaging/Message.h"
+import Message;
 #include "../Lib/GeneralUtils.h"
 #include "HttpServer.h"
 #include "HttpUtils.h"
@@ -40,7 +41,7 @@ auto filterJobs(
         std::vector<std::string> &applications) -> nlohmann::json;
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager) {
+void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<IClusterManager>& clusterManager) {
     // Get      -> Get job status (job id)
     // Post     -> Create new job
     // Delete   -> Delete job (job id)
@@ -134,7 +135,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
                 msg.push_uint(jobId);
                 msg.push_string(post_data["bundle"]);
                 msg.push_string(post_data["parameters"]);
-                msg.send(cluster);
+                cluster->sendMessage(msg);
 
                 // Mark the job as submitting
                 database->run(
@@ -410,7 +411,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
                     auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
                                     std::to_string(job->id) + "_" + std::string{job->cluster});
                     msg.push_uint(job->id);
-                    msg.send(cluster);
+                    cluster->sendMessage(msg);
                 }
             }
 
@@ -577,7 +578,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
                     auto msg = Message(DELETE_JOB, Message::Priority::Medium,
                                     std::to_string(job->id) + "_" + std::string{job->cluster});
                     msg.push_uint(job->id);
-                    msg.send(cluster);
+                    cluster->sendMessage(msg);
                 }
             }
 

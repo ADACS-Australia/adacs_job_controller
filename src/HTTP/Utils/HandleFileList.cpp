@@ -6,6 +6,10 @@ import settings;
 
 #include "../../DB/MySqlConnector.h"
 #include "../../Lib/jobserver_schema.h"
+#include "../../Lib/FileTypes.h"
+#include "../../Lib/GlobalState.h"
+import Message;
+#include "../../Interfaces/ICluster.h"
 #include "HandleFileList.h"
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
@@ -66,7 +70,7 @@ auto filterFiles(const std::vector<sFile> &files, const std::string &filePath, b
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity,misc-no-recursion)
 void handleFileList(
-        const std::shared_ptr<Cluster>& cluster, const std::string& sBundle, uint64_t jobId, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<ICluster>& cluster, const std::string& sBundle, uint64_t jobId, bool bRecursive, const std::string &filePath,
         const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
@@ -171,7 +175,7 @@ void handleFileList(
         msg.push_string(sBundle);
         msg.push_string(filePath);
         msg.push_bool(bRecursive);
-        msg.send(cluster);
+        cluster->sendMessage(msg);
 
         {
             // Wait for the server to send back data, or in 30 seconds fail
@@ -316,7 +320,7 @@ void handleFileList(
 
 void handleFileList(
         // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-        const std::shared_ptr<ClusterManager>& clusterManager, uint64_t jobId, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<IClusterManager>& clusterManager, uint64_t jobId, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications, const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
