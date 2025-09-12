@@ -62,7 +62,6 @@ set(
         Cluster/Cluster.cpp
         Cluster/Cluster.h
         HTTP/Job.cpp
-        DB/MySqlConnector.h
         HTTP/HttpUtils.cpp
         HTTP/File.cpp
         Lib/segvcatch.h
@@ -74,12 +73,6 @@ set(
         HTTP/Utils/HandleFileList.cpp
         DB/ClusterDB.cpp
         DB/ClusterDB.h
-        DB/sClusterJob.h
-        DB/sClusterJob.cpp
-        DB/sBundleJob.h
-        DB/sBundleJob.cpp
-        DB/sClusterJobStatus.h
-        DB/sClusterJobStatus.cpp
         Cluster/FileDownload.cpp
         Cluster/FileDownload.h
 )
@@ -154,6 +147,11 @@ set(PROJECT_MODULE_SOURCES
   Lib/JobStatus.ixx
   Settings.ixx
   Lib/Messaging/Message.cppm
+  Lib/jobserver_schema.ixx
+  DB/MySqlConnector.ixx
+  DB/sClusterJob.cppm
+  DB/sClusterJobStatus.cppm
+  DB/sBundleJob.cppm
 )
 
 # Production modules (no BUILD_TESTS)

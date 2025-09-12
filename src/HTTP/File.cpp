@@ -3,18 +3,19 @@
 //
 
 import settings;
+import MySqlConnector;
 
-#include "../DB/MySqlConnector.h"
 #include "../Interfaces/IClusterManager.h"
 #include "../Interfaces/ICluster.h"
 #include "../Cluster/FileDownload.h"
-#include "../Lib/jobserver_schema.h"
+import jobserver_schema;
 #include "HttpServer.h"
 #include "Utils/HandleFileList.h"
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <sqlpp11/sqlpp11.h>
 
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)

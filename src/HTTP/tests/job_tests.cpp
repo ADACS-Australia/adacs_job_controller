@@ -2,6 +2,7 @@
 // Created by lewis on 22/10/20.
 //
 
+import settings;
 #include "../../tests/utils.h"
 #include "../../Cluster/ClusterManager.h"
 import job_status;
@@ -9,6 +10,7 @@ import job_status;
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/HttpServerFixture.h"
 #include <boost/test/unit_test.hpp>
+#include <sqlpp11/sqlpp11.h>
 
 
 struct JobTestDataFixture : public DatabaseFixture, public HttpServerFixture, public HttpClientFixture {

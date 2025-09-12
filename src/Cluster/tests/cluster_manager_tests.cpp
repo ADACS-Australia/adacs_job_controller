@@ -2,12 +2,16 @@
 // Created by lewis on 2/10/20.
 //
 
+import settings;
+
 #include "../ClusterManager.h"
-#include "../../DB/MySqlConnector.h"
-#include "../../Lib/jobserver_schema.h"
+import jobserver_schema;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpServerFixture.h"
 #include <boost/test/unit_test.hpp>
+#include <sqlpp11/sqlpp11.h>
+
+import MySqlConnector;
 
 // NOLINTBEGIN(concurrency-mt-unsafe)
 

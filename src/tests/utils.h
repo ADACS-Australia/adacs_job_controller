@@ -1,7 +1,6 @@
 #ifndef GWCLOUD_JOB_SERVER_UTILS_H
 #define GWCLOUD_JOB_SERVER_UTILS_H
 
-#include "../DB/MySqlConnector.h"
 #include "../HTTP/HttpServer.h"
 #include <client_http.hpp>
 #include <client_ws.hpp>
@@ -10,6 +9,8 @@
 #include <server_https.hpp>
 #include <server_ws.hpp>
 #include <vector>
+
+import MySqlConnector;
 
 auto getLastToken() -> std::string;
 auto randomInt(uint64_t start, uint64_t end) -> uint64_t;

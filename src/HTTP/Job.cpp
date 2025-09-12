@@ -7,8 +7,7 @@ import settings;
 
 #include "../Interfaces/IClusterManager.h"
 #include "../Interfaces/ICluster.h"
-#include "../DB/MySqlConnector.h"
-#include "../Lib/jobserver_schema.h"
+import jobserver_schema;
 import Message;
 #include "../Lib/GeneralUtils.h"
 #include "HttpServer.h"
@@ -29,6 +28,11 @@ import Message;
 #include <vector>
 #include <nlohmann/json.hpp>
 #include <sqlpp11/sqlpp11.h>
+#include <sqlpp11/mysql/mysql.h>
+
+import MySqlConnector;
+
+using namespace sqlpp;
 
 auto getJobs(const std::vector<uint64_t> &ids) -> nlohmann::json;
 

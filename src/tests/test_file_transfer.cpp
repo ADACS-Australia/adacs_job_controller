@@ -2,6 +2,7 @@
 // Created by lewis on 10/6/21.
 //
 
+import settings;
 #include "../../Cluster/ClusterManager.h"
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
@@ -9,6 +10,7 @@
 #include "../../tests/utils.h"
 #include <boost/test/unit_test.hpp>
 #include <cstddef>
+#include <sqlpp11/sqlpp11.h>
 
 // TODO(lewis): parseLine and getCurrentMemoryUsage functions require a refactor
 auto parseLine(char* line) -> size_t{

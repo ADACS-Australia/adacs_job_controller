@@ -3,6 +3,7 @@
 //
 
 import job_status;
+import settings;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
@@ -12,6 +13,7 @@ import job_status;
 #include <boost/uuid/uuid_io.hpp>
 #include <random>
 #include <utility>
+#include <sqlpp11/sqlpp11.h>
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 

@@ -3,12 +3,13 @@
 //
 
 import settings;
+import sClusterJob;
+import sClusterJobStatus;
+import sBundleJob;
+import Message;
 
 #include "ClusterDB.h"
 #include "../Cluster/Cluster.h"
-#include "sBundleJob.h"
-#include "sClusterJob.h"
-#include "sClusterJobStatus.h"
 
 auto ClusterDB::maybeHandleClusterDBMessage(Message &message, const std::shared_ptr<Cluster> &pCluster) -> bool {
     switch (message.getId()) {

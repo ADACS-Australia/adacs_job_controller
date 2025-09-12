@@ -7,15 +7,19 @@ import settings;
 
 #include "Cluster.h"
 #include "../DB/ClusterDB.h"
-#include "../DB/MySqlConnector.h"
 #include "../HTTP/HttpServer.h"
 #include "../HTTP/Utils/HandleFileList.h"
-#include "../Lib/jobserver_schema.h"
+import jobserver_schema;
 #include "../Interfaces/IClusterManager.h"
 
 #include <client_http.hpp>
 #include <folly/Uri.h>
 #include <iostream>
+#include <sqlpp11/sqlpp11.h>
+
+import MySqlConnector;
+
+using namespace sqlpp;
 
 // Packet Queue is a:
 //  list of priorities - doesn't need any sync because it never changes

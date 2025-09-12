@@ -3,6 +3,7 @@
 //
 
 import job_status;
+import settings;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"

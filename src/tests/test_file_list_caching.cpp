@@ -1,12 +1,14 @@
 //
 // Created by lewis on 10/6/21.
 //
+import settings;
 #include "../HTTP/Utils/HandleFileList.h"
 import job_status;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
 #include <boost/test/unit_test.hpp>
+#include <sqlpp11/sqlpp11.h>
 
 struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
     uint64_t jobId;

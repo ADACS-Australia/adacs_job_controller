@@ -5,8 +5,10 @@
 #ifndef GWCLOUD_JOB_SERVER_DATABASEFIXTURE_H
 #define GWCLOUD_JOB_SERVER_DATABASEFIXTURE_H
 
-#include "../../DB/MySqlConnector.h"
-#include "../../Lib/jobserver_schema.h"
+#include <sqlpp11/sqlpp11.h>
+import jobserver_schema;
+
+import MySqlConnector;
 
 struct DatabaseFixture {
     MySqlConnector database;

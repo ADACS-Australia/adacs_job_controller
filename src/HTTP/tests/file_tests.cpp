@@ -2,10 +2,12 @@
 // Created by lewis on 22/10/20.
 //
 import job_status;
+import settings;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/HttpServerFixture.h"
 #include <boost/test/unit_test.hpp>
+#include <sqlpp11/sqlpp11.h>
 
 
 struct FileTestDataFixture : public DatabaseFixture, public HttpServerFixture, public HttpClientFixture {

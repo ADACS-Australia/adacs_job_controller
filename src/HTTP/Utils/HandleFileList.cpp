@@ -3,9 +3,9 @@
 //
 
 import settings;
+import MySqlConnector;
 
-#include "../../DB/MySqlConnector.h"
-#include "../../Lib/jobserver_schema.h"
+import jobserver_schema;
 #include "../../Lib/FileTypes.h"
 #include "../../Lib/GlobalState.h"
 import Message;
@@ -16,6 +16,7 @@ import Message;
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <filesystem>
+#include <sqlpp11/sqlpp11.h>
 
 auto filterFiles(const std::vector<sFile> &files, const std::string &filePath, bool bRecursive) -> std::vector<sFile> {
     std::vector<sFile> matchedFiles;

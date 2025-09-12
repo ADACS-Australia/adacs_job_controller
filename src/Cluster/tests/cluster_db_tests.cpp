@@ -2,18 +2,20 @@
 // Created by lewis on 10/8/22.
 //
 
-import job_status;
+
+import settings;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
 #include <boost/lexical_cast.hpp>
 #include <boost/test/unit_test.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <random>
-#include "../../DB/sBundleJob.h"
-#include "../../DB/sClusterJob.h"
-#include "../../DB/sClusterJobStatus.h"
 #include <utility>
 
+import job_status;
+import sClusterJob;
+import sClusterJobStatus;
+import sBundleJob;
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
 struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClientFixture {

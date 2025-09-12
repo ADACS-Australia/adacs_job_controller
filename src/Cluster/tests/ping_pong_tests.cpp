@@ -2,8 +2,11 @@
 // Created by lewis on 8/17/22.
 //
 
+import settings;
+
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
+#include <sqlpp11/sqlpp11.h>
 
 struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientFixture {
     uint64_t jobId;

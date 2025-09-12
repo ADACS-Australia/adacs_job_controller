@@ -3,16 +3,17 @@
 //
 
 import settings;
+import MySqlConnector;
 
 #include "Cluster.h"
-#include "../DB/MySqlConnector.h"
-#include "../Lib/jobserver_schema.h"
+import jobserver_schema;
 #include "ClusterManager.h"
 #include "../Interfaces/ICluster.h"
 #include <algorithm>
 #include <boost/process.hpp>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <sqlpp11/sqlpp11.h>
 
 // Define a mutex that can be used for safely removing entries from the mClusterPings map
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
