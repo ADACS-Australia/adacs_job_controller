@@ -6,7 +6,7 @@ import job_status;
 import settings;
 
 #include "Cluster.h"
-#include "../DB/ClusterDB.h"
+import ClusterDB;
 #include "../HTTP/HttpServer.h"
 #include "../HTTP/Utils/HandleFileList.h"
 import jobserver_schema;
