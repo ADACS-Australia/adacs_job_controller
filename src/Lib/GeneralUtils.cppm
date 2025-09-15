@@ -1,6 +1,12 @@
-#include "GeneralUtils.h"
-#include "../folly/folly/experimental/exception_tracer/ExceptionTracer.h"
-#include "segvcatch.h"
+//
+// Created by lewis on 2/10/20.
+//
+
+module;
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <string>
 #include <algorithm>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
@@ -11,22 +17,23 @@
 #include <boost/system/error_code.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <iostream>
+#include <thread>
 #include <execinfo.h>
 #include <folly/experimental/exception_tracer/ExceptionTracer.h>
 #include <folly/experimental/exception_tracer/StackTrace.h>
-#include <iostream>
-#include <string>
-#include <thread>
+#include "segvcatch.h"
 
-// Forward declaration for acceptingConnections function
-auto acceptingConnections(uint16_t port) -> bool;
+export module GeneralUtils;
+
+// Forward declarations
+export void dumpExceptions(std::exception& exception);
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
-auto base64Encode(std::string input) -> std::string
+export auto base64Encode(std::string input) -> std::string
 {
     // The input must be in multiples of 3, otherwise the transformation
     // may overflow the input buffer, so pad with zero.
@@ -47,7 +54,7 @@ auto base64Encode(std::string input) -> std::string
 }
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
-auto base64Decode(std::string input) -> std::string
+export auto base64Decode(std::string input) -> std::string
 {
     using boost::archive::iterators::transform_width, boost::archive::iterators::remove_whitespace, boost::archive::iterators::binary_from_base64;
 
@@ -73,38 +80,15 @@ auto base64Decode(std::string input) -> std::string
     }
 }
 
-auto generateUUID() -> std::string {
+export auto generateUUID() -> std::string {
     auto uuid = boost::uuids::random_generator()();
     return boost::uuids::to_string(uuid);
 }
 
-void dumpExceptions(std::exception& exception) {
-    std::cerr << "--- Exception: " << exception.what() << '\n';
-    auto exceptions = folly::exception_tracer::getCurrentExceptions();
-    for (auto& exc : exceptions) {
-        std::cerr << exc << "\n";
-    }
-}
 
-void handleSegv()
-{
-    // NOLINTBEGIN
-    void *array[10];
-    int size;
-
-    // get void*'s for all entries on the stack
-    size = backtrace(array, 10);
-
-    // print out all the frames to stderr
-    fprintf(stderr, "Error: SEGFAULT:\n");
-    backtrace_symbols_fd(array, size, STDERR_FILENO);
-
-    throw std::runtime_error("Seg Fault Error");
-    // NOLINTEND
-}
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-auto acceptingConnections(uint16_t port) -> bool {
+export auto acceptingConnections(uint16_t port) -> bool {
     using boost::asio::io_service, boost::asio::deadline_timer, boost::asio::ip::tcp;
     using ec = boost::system::error_code;
 
@@ -135,6 +119,51 @@ auto acceptingConnections(uint16_t port) -> bool {
 }
 // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
+export struct InterruptableTimer {
+    // Returns false if killed
+    template<class R, class P>
+    auto wait_for( std::chrono::duration<R,P> const& time ) const -> bool {
+        std::unique_lock<std::mutex> lock(m);
+        return !cv.wait_for(lock, time, [&]{ return terminate; });
+    }
+
+    void stop() {
+        std::unique_lock<std::mutex> const lock(m);
+        terminate = true;
+        cv.notify_all();
+    }
+
+private:
+    mutable std::condition_variable cv;
+    mutable std::mutex m;
+    bool terminate = false;
+};
+
+// Exception dumping functions
+void dumpExceptions(std::exception& exception) {
+    std::cerr << "--- Exception: " << exception.what() << '\n';
+    auto exceptions = folly::exception_tracer::getCurrentExceptions();
+    for (auto& exc : exceptions) {
+        std::cerr << exc << "\n";
+    }
+}
+
+void handleSegv() {
+    // NOLINTBEGIN
+    void *array[10];
+    int size;
+
+    // get void*'s for all entries on the stack
+    size = backtrace(array, 10);
+
+    // print out all the frames to stderr
+    fprintf(stderr, "Error: SEGFAULT:\n");
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+
+    throw std::runtime_error("Seg Fault Error");
+    // NOLINTEND
+}
+
 // To prevent the compiler optimizing away the exception tracing from folly, we need to reference it.
 extern "C" auto getCaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTrace*;
 extern "C" auto getUncaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTraceStack*;
@@ -152,8 +181,14 @@ volatile void forceExceptionStackTraceRef()
 auto forceStartup() -> bool {
     // Set up the crash handler
     segvcatch::init_segv(&handleSegv);
+    
+    // Force reference to exception tracing functions to prevent optimization
+    forceExceptionStackTraceRef();
+    
     return true;
 }
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,cert-err58-cpp)
 volatile bool bForceStartup = forceStartup();
+
+

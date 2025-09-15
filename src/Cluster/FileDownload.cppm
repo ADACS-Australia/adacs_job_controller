@@ -2,12 +2,52 @@
 // Created by lewis on 10/15/22.
 //
 
-import settings;
-
-#include "FileDownload.h"
+module;
+#include <memory>
+#include <string>
+#include <mutex>
+#include <condition_variable>
+#include <folly/concurrency/UnboundedQueue.h>
 #include <utility>
+#include <iostream>
+export module FileDownload;
 
-FileDownload::FileDownload(const std::shared_ptr<sClusterDetails>& details, std::string uuid) : Cluster(details), uuid(std::move(uuid)) {
+import settings;
+import ICluster;
+import Cluster;
+import Message;
+import IApplication;
+
+export class FileDownload : public Cluster {
+public:
+    FileDownload(const std::shared_ptr<sClusterDetails>& details, std::string uuid, std::shared_ptr<IApplication> app);
+
+    auto getUuid() -> std::string {
+        return uuid;
+    }
+
+    void handleMessage(Message &message) override;
+    void handleFileChunk(Message &message);
+    void handleFileDetails(Message &message);
+    void handleFileError(Message &message);
+
+    folly::USPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false> fileDownloadQueue;
+    uint64_t fileDownloadFileSize = -1;
+    bool fileDownloadError = false;
+    std::string fileDownloadErrorDetails;
+    mutable std::mutex fileDownloadDataCVMutex;
+    bool fileDownloadDataReady = false;
+    std::condition_variable fileDownloadDataCV;
+    bool fileDownloadReceivedData = false;
+    uint64_t fileDownloadReceivedBytes = 0;
+    uint64_t fileDownloadSentBytes = 0;
+    bool fileDownloadClientPaused = false;
+
+private:
+    std::string uuid;
+};
+
+FileDownload::FileDownload(const std::shared_ptr<sClusterDetails>& details, std::string uuid, std::shared_ptr<IApplication> app) : Cluster(details, std::move(app)), uuid(std::move(uuid)) {
     role = eRole::fileDownload;
     roleString = "file download " + this->uuid;
 }
@@ -22,7 +62,7 @@ void FileDownload::handleFileChunk(Message &message) {
 
     {
         // The Pause/Resume messages must be synchronized to avoid a deadlock
-        std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
+        std::unique_lock<std::mutex> fileDownloadPauseResumeLock(app->getFileDownloadPauseResumeLockMutex());
 
         if (!fileDownloadClientPaused) {
             // Check if our buffer is too big
@@ -53,9 +93,8 @@ void FileDownload::handleFileDetails(Message &message) {
 }
 
 void FileDownload::handleFileError(Message &message) {
-    // Set the error
-    fileDownloadErrorDetails = message.pop_string();
     fileDownloadError = true;
+    fileDownloadErrorDetails = message.pop_string();
 
     // Trigger the file transfer event
     fileDownloadDataReady = true;
@@ -63,9 +102,7 @@ void FileDownload::handleFileError(Message &message) {
 }
 
 void FileDownload::handleMessage(Message &message) {
-    auto msgId = message.getId();
-
-    switch (msgId) {
+    switch (message.getId()) {
         case FILE_CHUNK:
             handleFileChunk(message);
             break;
@@ -76,6 +113,7 @@ void FileDownload::handleMessage(Message &message) {
             handleFileError(message);
             break;
         default:
-            std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << std::endl;
+            std::cout << "FileDownload: Unknown message type: " << message.getId() << std::endl;
+            break;
     }
 }

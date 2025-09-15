@@ -3,12 +3,16 @@
 //
 import job_status;
 import settings;
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/HttpServerFixture.h"
 #include <boost/test/unit_test.hpp>
 #include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
 
+import Message;
+import HttpServer;
 
 struct FileTestDataFixture : public DatabaseFixture, public HttpServerFixture, public HttpClientFixture {
     uint64_t jobId1;
@@ -23,9 +27,9 @@ struct FileTestDataFixture : public DatabaseFixture, public HttpServerFixture, p
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -47,9 +51,9 @@ struct FileTestDataFixture : public DatabaseFixture, public HttpServerFixture, p
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -71,9 +75,9 @@ struct FileTestDataFixture : public DatabaseFixture, public HttpServerFixture, p
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(1).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(1).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).name()
                         )
         );
 
@@ -104,7 +108,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(create_download_invalid_payload) {
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Test creating a file download with invalid payload but authorized user
         auto result = httpClient.request("POST", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
@@ -114,7 +118,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(create_download_job1_success) {
         // Test creating a file download for job1 - should be successful because job1 was created by app1 making this request
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         jsonParams = {
                 {"jobId", jobId1},
@@ -133,7 +137,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_invalid_payload) {
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Test that creating a file download without specifying a jobId, bundle, or cluster fails
         jsonParams = {
@@ -167,12 +171,12 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_success) {
         // Test that creating a file download without a jobId works correctly
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // No jobId key
         jsonParams = {
                 {"bundle", "test_bundle"},
-                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"cluster", std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0]},
                 {"path",  "/an_awesome_path/"}
         };
 
@@ -190,7 +194,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
         jsonParams = {
                 {"jobId", 0},
                 {"bundle", "test_bundle"},
-                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"cluster", std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0]},
                 {"path",  "/an_awesome_path/"}
         };
 
@@ -208,12 +212,12 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
     BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_no_cluster_access) {
         // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
         // to fails
-        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(3).secret());
 
         // No jobId key
         jsonParams = {
                 {"bundle",  "test_bundle"},
-                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"cluster", std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0]},
                 {"path",    "/an_awesome_path/"}
         };
 
@@ -225,7 +229,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
     BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_invalid_cluster) {
         // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
         // to fails
-        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(3).secret());
 
         // No jobId key
         jsonParams = {
@@ -241,7 +245,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(create_download_app2_can_access_app1) {
         // Check that app2 can request a file download for a job run by app1
-        setJwtSecret(httpServer->getvJwtSecrets()->at(1).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).secret());
 
         jsonParams = {
                 {"jobId", jobId1},
@@ -261,7 +265,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(create_download_app4_cant_access_app1) {
         // Check that app4 can't request a file download for a job run by app1
-        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(3).secret());
 
         jsonParams = {
                 {"jobId", jobId1},
@@ -277,7 +281,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(create_download_multiple) {
         // Test creating multiple file downloads for job1
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         jsonParams = {
                 {"jobId", jobId1},
@@ -308,7 +312,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(create_download_empty_path_list_no_exception) {
         // Test empty file path list doesn't cause an exception
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         jsonParams = {
                 {"jobId", jobId1},
@@ -335,7 +339,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(get_file_list_invalid_payload) {
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Test requesting a file list with invalid payload but authorized user
         auto result = httpClient.request("PATCH", "/job/apiv1/file/", "", {{"Authorization", jwtToken.signature()}});
@@ -345,7 +349,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(get_file_list_job1_success) {
         // Test requesting a file list for job1 - should be successful because job1 was created by app1 making this request
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
         
         jsonParams = {
                 {"jobId",     jobId1},
@@ -362,7 +366,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(get_file_list_app2_can_access_app1) {
         // Check that app2 can request a file list for a job run by app1
-        setJwtSecret(httpServer->getvJwtSecrets()->at(1).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).secret());
 
         jsonParams = {
                 {"jobId",     jobId1},
@@ -379,7 +383,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(get_file_list_app4_cant_access_app1) {
         // Check that app4 can't request a file list for a job run by app1
-        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(3).secret());
 
         jsonParams = {
                 {"jobId",     jobId1},
@@ -393,7 +397,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(get_file_list_job1_no_jobid_invalid_payload) {
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Test that getting a file list without specifying a jobId, bundle, or cluster fails
         jsonParams = {
@@ -430,12 +434,12 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
 
     BOOST_AUTO_TEST_CASE(get_file_list_job1_no_jobid_success) {
         // Test that creating a file download without a jobId works correctly
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // No jobId key
         jsonParams = {
                 {"bundle", "test_bundle"},
-                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"cluster", std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0]},
                 {"recursive", true},
                 {"path",  "/an_awesome_path/"}
         };
@@ -450,7 +454,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
         jsonParams = {
                 {"jobId", 0},
                 {"bundle", "test_bundle"},
-                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"cluster", std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0]},
                 {"recursive", true},
                 {"path",  "/an_awesome_path/"}
         };
@@ -465,12 +469,12 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
     BOOST_AUTO_TEST_CASE(get_file_list_job1_no_jobid_no_cluster_access) {
         // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
         // to fails
-        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(3).secret());
 
         // No jobId key
         jsonParams = {
                 {"bundle",  "test_bundle"},
-                {"cluster", httpServer->getvJwtSecrets()->at(0).clusters()[0]},
+                {"cluster", std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0]},
                 {"recursive", true},
                 {"path",    "/an_awesome_path/"}
         };
@@ -483,7 +487,7 @@ BOOST_FIXTURE_TEST_SUITE(File_test_suite, FileTestDataFixture)
     BOOST_AUTO_TEST_CASE(get_file_list_job1_no_jobid_invalid_cluster) {
         // Test that creating a file download without a jobId referencing a cluster that the secret doesn't have access
         // to fails
-        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(3).secret());
 
         // No jobId key
         jsonParams = {

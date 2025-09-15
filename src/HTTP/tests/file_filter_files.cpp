@@ -1,9 +1,8 @@
 //
 // Created by lewis on 22/10/20.
 //
-#include "../../Cluster/Cluster.h"
-#include "../Utils/HandleFileList.h"
 #include <boost/test/unit_test.hpp>
+import HandleFileList;
 
 extern auto randomInt(uint64_t start, uint64_t end) -> uint64_t;
 

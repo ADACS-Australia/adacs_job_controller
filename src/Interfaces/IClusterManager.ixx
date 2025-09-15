@@ -3,29 +3,25 @@
 // This breaks circular dependencies by providing a pure interface
 //
 
-#ifndef GWCLOUD_JOB_SERVER_I_CLUSTER_MANAGER_H
-#define GWCLOUD_JOB_SERVER_I_CLUSTER_MANAGER_H
-
+module;
 #include <memory>
 #include <string>
 #include <cstdint>
-
-// Include necessary headers for WebSocket types
 #include <boost/system/error_code.hpp>
-#include <memory>
+#include "../third_party/Simple-WebSocket-Server/server_ws.hpp"
+
+export module IClusterManager;
+
+import ICluster;
 
 // Forward declarations to avoid circular dependencies
-class ICluster;
 class FileDownload;
-
-// Include SimpleWeb headers for proper type definitions
-#include "../third_party/Simple-WebSocket-Server/server_ws.hpp"
 
 // Define the WsServer alias
 using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 
 // Interface for cluster management operations
-class IClusterManager {
+export class IClusterManager {
 public:
     virtual ~IClusterManager() = default;
     
@@ -48,5 +44,3 @@ public:
     // Connection management
     virtual void handlePong(const std::shared_ptr<WsServer::Connection>& connection) = 0;
 };
-
-#endif //GWCLOUD_JOB_SERVER_I_CLUSTER_MANAGER_H

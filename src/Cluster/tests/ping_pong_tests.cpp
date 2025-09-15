@@ -4,9 +4,15 @@
 
 import settings;
 
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
 #include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
+
+import Message;
+import HttpServer;
+import ClusterManager;
 
 struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientFixture {
     uint64_t jobId;
@@ -23,9 +29,9 @@ struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientF
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(2).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(2).clusters()[0],
                                 jobTable.bundle = "my_test_bundle",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -68,7 +74,7 @@ struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientF
     void runCheckPings() {
         bReceivedPing = false;
 
-        clusterManager->callcheckPings();
+        std::static_pointer_cast<ClusterManager>(clusterManager)->callcheckPings();
 
         while (!bReceivedPing && !bClosed) {
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -84,10 +90,10 @@ struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientF
 BOOST_FIXTURE_TEST_SUITE(ping_pong_test_suite, PingPongTestDataFixture)
     BOOST_AUTO_TEST_CASE(test_mClusterPing_has_correct_entry_after_connection) {
         // Check that the default setup for the mClusterPings is correct
-        BOOST_CHECK_EQUAL(clusterManager->getmClusterPings()->size(), 1);
-        BOOST_CHECK_EQUAL(clusterManager->getmClusterPings()->begin()->first, *clusterManager->getvClusters()->at(0)->getpConnection());
-        BOOST_CHECK_MESSAGE(clusterManager->getmClusterPings()->begin()->second.pingTimestamp == zeroTime, "pingTimestamp was not zero when it should have been");
-        BOOST_CHECK_MESSAGE(clusterManager->getmClusterPings()->begin()->second.pongTimestamp == zeroTime, "pongTimestamp was not zero when it should have been");
+        BOOST_CHECK_EQUAL(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->size(), 1);
+        BOOST_CHECK_EQUAL(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->first, *std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->at(0)->getpConnection());
+        BOOST_CHECK_MESSAGE(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pingTimestamp == zeroTime, "pingTimestamp was not zero when it should have been");
+        BOOST_CHECK_MESSAGE(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pongTimestamp == zeroTime, "pongTimestamp was not zero when it should have been");
     }
 
     BOOST_AUTO_TEST_CASE(test_checkPings_send_ping_success) {
@@ -96,25 +102,25 @@ BOOST_FIXTURE_TEST_SUITE(ping_pong_test_suite, PingPongTestDataFixture)
         runCheckPings();
 
         // Check that neither ping or pong timestamp is zero
-        BOOST_CHECK_MESSAGE(clusterManager->getmClusterPings()->begin()->second.pingTimestamp != zeroTime, "pingTimestamp was zero when it should not have been");
-        BOOST_CHECK_MESSAGE(clusterManager->getmClusterPings()->begin()->second.pongTimestamp != zeroTime, "pongTimestamp was zero when it should not have been");
+        BOOST_CHECK_MESSAGE(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pingTimestamp != zeroTime, "pingTimestamp was zero when it should not have been");
+        BOOST_CHECK_MESSAGE(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pongTimestamp != zeroTime, "pongTimestamp was zero when it should not have been");
 
         // The cluster should still be connected
-        BOOST_CHECK_EQUAL(clusterManager->getmClusterPings()->size(), 1);
-        BOOST_CHECK_EQUAL(clusterManager->getmConnectedClusters()->size(), 1);
+        BOOST_CHECK_EQUAL(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->size(), 1);
+        BOOST_CHECK_EQUAL(std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedClusters()->size(), 1);
 
-        auto previousPingTimestamp = clusterManager->getmClusterPings()->begin()->second.pingTimestamp;
-        auto previousPongTimestamp = clusterManager->getmClusterPings()->begin()->second.pongTimestamp;
+        auto previousPingTimestamp = std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pingTimestamp;
+        auto previousPongTimestamp = std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pongTimestamp;
 
         // Run the ping pong again, the new ping/pong timestamps should be greater than the previous ones
         runCheckPings();
 
         // Check that neither ping or pong timestamp is zero
-        BOOST_CHECK_MESSAGE(clusterManager->getmClusterPings()->begin()->second.pingTimestamp > previousPingTimestamp, "pingTimestamp was not greater than the previous ping timestamp when it should not have been");
-        BOOST_CHECK_MESSAGE(clusterManager->getmClusterPings()->begin()->second.pongTimestamp > previousPongTimestamp, "pongTimestamp was not greater than the previous pong timestamp when it should not have been");
+        BOOST_CHECK_MESSAGE(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pingTimestamp > previousPingTimestamp, "pingTimestamp was not greater than the previous ping timestamp when it should not have been");
+        BOOST_CHECK_MESSAGE(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pongTimestamp > previousPongTimestamp, "pongTimestamp was not greater than the previous pong timestamp when it should not have been");
 
         // The cluster should still be connected
-        BOOST_CHECK_EQUAL(clusterManager->getmConnectedClusters()->size(), 1);
+        BOOST_CHECK_EQUAL(std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedClusters()->size(), 1);
     }
 
     BOOST_AUTO_TEST_CASE(test_checkPings_handle_zero_time) {
@@ -124,7 +130,7 @@ BOOST_FIXTURE_TEST_SUITE(ping_pong_test_suite, PingPongTestDataFixture)
         runCheckPings();
 
         // Set the pongTimeout back to zero
-        clusterManager->getmClusterPings()->begin()->second.pongTimestamp = zeroTime;
+        std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->begin()->second.pongTimestamp = zeroTime;
 
         // Running checkPings should now terminate the connection
         runCheckPings();
@@ -135,8 +141,8 @@ BOOST_FIXTURE_TEST_SUITE(ping_pong_test_suite, PingPongTestDataFixture)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
-        BOOST_CHECK_EQUAL(clusterManager->getmClusterPings()->size(), 0);
-        BOOST_CHECK_EQUAL(clusterManager->getmConnectedClusters()->size(), 0);
+        BOOST_CHECK_EQUAL(std::static_pointer_cast<ClusterManager>(clusterManager)->getmClusterPings()->size(), 0);
+        BOOST_CHECK_EQUAL(std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedClusters()->size(), 0);
     }
 BOOST_AUTO_TEST_SUITE_END()
   

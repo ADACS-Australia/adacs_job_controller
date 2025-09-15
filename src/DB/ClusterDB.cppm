@@ -5,7 +5,6 @@
 module;
 #include <memory>
 #include <vector>
-#include "../Interfaces/ICluster.h"
 
 export module ClusterDB;
 
@@ -14,6 +13,7 @@ import settings;
 import sClusterJob;
 import sClusterJobStatus;
 import sBundleJob;
+import ICluster;
 
 export class ClusterDB {
 public:

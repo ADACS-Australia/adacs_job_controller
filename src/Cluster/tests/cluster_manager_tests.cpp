@@ -4,14 +4,21 @@
 
 import settings;
 
-#include "../ClusterManager.h"
 import jobserver_schema;
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpServerFixture.h"
 #include <boost/test/unit_test.hpp>
 #include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
 
+import ClusterManager;
+import Cluster;
 import MySqlConnector;
+import Application;
+import IApplication;
+
+using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 
 // NOLINTBEGIN(concurrency-mt-unsafe)
 
@@ -19,7 +26,8 @@ struct ClusterManagerTestDataFixture : public DatabaseFixture, public HttpServer
     std::shared_ptr<ClusterManager> mgr;
 
     ClusterManagerTestDataFixture() {
-        mgr = std::make_shared<ClusterManager>();
+        // Use the application from HttpServerFixture instead of creating a new one
+        mgr = std::static_pointer_cast<ClusterManager>(application->getClusterManager());
     }
 };
 
@@ -27,11 +35,13 @@ BOOST_FIXTURE_TEST_SUITE(ClusterManager_test_suite, ClusterManagerTestDataFixtur
     BOOST_AUTO_TEST_CASE(test_constructor) {
         // First check that instantiating ClusterManager with no cluster config works as expected
         unsetenv(CLUSTER_CONFIG_ENV_VARIABLE);
-        auto mgr = std::make_shared<ClusterManager>();
+        auto testApp = createApplication();
+        auto mgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
         BOOST_CHECK_EQUAL(mgr->getvClusters()->size(), 0);
 
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        mgr = std::make_shared<ClusterManager>();
+        testApp = createApplication();
+        mgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
 
         // Double check that the cluster json was correctly parsed
         BOOST_CHECK_EQUAL(mgr->getvClusters()->size(), 3);

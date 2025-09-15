@@ -1,5 +1,5 @@
 //
-// Created by lewis on 2/10/20.
+// Testing macros for exposing private members and functions for testing
 //
 
 #ifndef GWCLOUD_JOB_SERVER_TESTINGMACROS_H

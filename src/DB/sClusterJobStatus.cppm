@@ -5,7 +5,7 @@
 module;
 #include <sqlpp11/sqlpp11.h>
 #include <sqlpp11/mysql/mysql.h>
-#include "../Lib/sqlpp_shim.h"
+#include "../Lib/shims/sqlpp_shim.h"
 import jobserver_schema;
 
 export module sClusterJobStatus;

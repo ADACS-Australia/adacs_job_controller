@@ -6,6 +6,7 @@
 #define GWCLOUD_JOB_SERVER_DATABASEFIXTURE_H
 
 #include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
 import jobserver_schema;
 
 import MySqlConnector;

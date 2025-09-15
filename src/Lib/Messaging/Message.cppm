@@ -9,11 +9,12 @@ module;
 #include <memory>
 #include <cstring>
 #include <array>
-#include "../GeneralUtils.h"
+#include "../TestingMacros.h"
 
 export module Message;
 
 import settings;
+import GeneralUtils;
 
 // Message type constants
 export constexpr const char* SYSTEM_SOURCE = "system";

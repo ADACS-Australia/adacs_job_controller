@@ -32,6 +32,9 @@ find_package(MySQL REQUIRED)
 # Find system cpp-jwt package
 find_package(cpp-jwt REQUIRED)
 
+# Find date library
+find_package(date REQUIRED)
+
 # Include the nested libraries
 add_subdirectory(third_party/Simple-Web-Server)
 add_subdirectory(third_party/Simple-WebSocket-Server)
@@ -48,7 +51,7 @@ set(COMMON_INCLUDE_DIRS
         third_party/Simple-Web-Server
         third_party/Simple-WebSocket-Server
         ${MYSQL_INCLUDE_DIR}
-        ${CMAKE_CURRENT_BINARY_DIR}/third_party/folly/folly
+        ${CMAKE_CURRENT_BINARY_DIR}/third_party/folly
 )
 
 # Set up the include directories
@@ -60,26 +63,12 @@ set(COMMON_COMPILE_FEATURES cxx_std_23)
 # Define the source files
 set(
         SOURCE_FILES
-        HTTP/HttpServer.cpp
-        HTTP/HttpServer.h
-        WebSocket/WebSocketServer.cpp
-        WebSocket/WebSocketServer.h
-        Cluster/ClusterManager.cpp
-        Cluster/ClusterManager.h
-        Cluster/Cluster.cpp
-        Cluster/Cluster.h
-        HTTP/Job.cpp
-        HTTP/HttpUtils.cpp
-        HTTP/File.cpp
         Lib/segvcatch.h
         Lib/segvcatch.cpp
         Lib/x86_64-signal.h
-        Lib/GeneralUtils.h
-        Lib/GeneralUtils.cpp
-        Lib/GlobalState.cpp
-        HTTP/Utils/HandleFileList.cpp
-        Cluster/FileDownload.cpp
-        Cluster/FileDownload.h
+        Lib/shims/sqlpp_shim.h
+        Lib/shims/date_shim.h
+        Lib/TestingMacros.h
 )
 
 
@@ -131,6 +120,7 @@ set(
         dw
         mysqlclient
         cpp-jwt::cpp-jwt
+        date::date-tz
 )
 
 set_target_properties(
@@ -149,7 +139,18 @@ set_target_properties(
 
 # Define module sources once
 set(PROJECT_MODULE_SOURCES
+  IApplication.ixx
+  Application.cppm
+  Interfaces/IServer.ixx
+  HTTP/IHttpServer.ixx
+  HTTP/HttpServer.cppm
+  HTTP/HttpUtils.cppm
+  HTTP/File.cppm
+  HTTP/Job.cppm
+  WebSocket/IWebSocketServer.ixx
+  WebSocket/WebSocketServer.cppm
   Lib/JobStatus.ixx
+  Lib/GeneralUtils.cppm
   Settings.ixx
   Lib/Messaging/Message.cppm
   Lib/jobserver_schema.ixx
@@ -158,6 +159,12 @@ set(PROJECT_MODULE_SOURCES
   DB/sClusterJobStatus.cppm
   DB/sBundleJob.cppm
   DB/ClusterDB.cppm
+  Cluster/Cluster.cppm
+  Cluster/ClusterManager.cppm
+  Cluster/FileDownload.cppm
+  Interfaces/ICluster.ixx
+  Interfaces/IClusterManager.ixx
+  HTTP/Utils/HandleFileList.cppm
 )
 
 # Production modules (no BUILD_TESTS)

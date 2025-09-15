@@ -1,13 +1,12 @@
 //
 // Created by lewis on 2/26/20.
 //
-#include "../../Interfaces/ICluster.h"
-#include "../../Cluster/Cluster.h"  // For sClusterDetails
-import Message;
 #include <boost/test/unit_test.hpp>
 #include <chrono>
 #include <random>
 
+import Message;
+import ICluster;
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
 BOOST_AUTO_TEST_SUITE(Message_test_suite)

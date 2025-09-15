@@ -3,20 +3,47 @@
 // This breaks circular dependencies by providing a pure interface
 //
 
-#ifndef GWCLOUD_JOB_SERVER_I_CLUSTER_H
-#define GWCLOUD_JOB_SERVER_I_CLUSTER_H
-
+module;
 #include <memory>
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <nlohmann/json.hpp>
+
+export module ICluster;
+
 import Message;
 
-// Forward declarations to avoid circular dependencies
-struct sClusterDetails;
+// sClusterDetails definition
+export struct sClusterDetails {
+    explicit inline sClusterDetails(nlohmann::json cluster) {
+        name = cluster["name"];
+        host = cluster["host"];
+        username = cluster["username"];
+        path = cluster["path"];
+        key = cluster["key"];
+    }
+
+    auto getName() { return name; };
+
+    auto getSshHost() { return host; };
+
+    auto getSshUsername() { return username; };
+
+    auto getSshPath() { return path; };
+
+    auto getSshKey() { return key; };
+
+private:
+    std::string name;
+    std::string host;
+    std::string username;
+    std::string path;
+    std::string key;
+};
 
 // Interface for cluster operations
-class ICluster {
+export class ICluster {
 public:
     virtual ~ICluster() = default;
     
@@ -44,5 +71,3 @@ public:
     // Dependency injection
     virtual void setClusterManager(const std::shared_ptr<void>& clusterManager) = 0;
 };
-
-#endif //GWCLOUD_JOB_SERVER_I_CLUSTER_H

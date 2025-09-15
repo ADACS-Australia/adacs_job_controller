@@ -2,21 +2,50 @@
 // Created by lewis on 6/7/21.
 //
 
-import settings;
-import MySqlConnector;
-
-import jobserver_schema;
+module;
 #include "../../Lib/FileTypes.h"
-#include "../../Lib/GlobalState.h"
-import Message;
-#include "../../Interfaces/ICluster.h"
-#include "HandleFileList.h"
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <filesystem>
 #include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
+#include "../../Lib/shims/date_shim.h"
+#include <status_code.hpp>
+#include <nlohmann/json.hpp>
+#include "../../Lib/FollyTypes.h"
+#include <thread>
+#include <chrono>
+#include <utility.hpp>
+
+export module HandleFileList;
+
+import IApplication;
+import IClusterManager;
+import HttpServer;
+import settings;
+import MySqlConnector;
+import jobserver_schema;
+import Message;
+import ICluster;
+import GeneralUtils;
+
+// Re-export sFile from FileTypes.h
+export using sFile = ::sFile;
+
+export void handleFileList(
+        std::shared_ptr<IApplication> app, const std::shared_ptr<IClusterManager>& clusterManager, uint64_t jobId, bool bRecursive, const std::string &filePath,
+        const std::string &appName, const std::vector<std::string> &applications,
+        const std::shared_ptr<HttpServerImpl::Response> &response
+);
+
+export void handleFileList(
+        std::shared_ptr<IApplication> app, const std::shared_ptr<ICluster> &cluster, const std::string &sBundle, uint64_t jobId, bool bRecursive, const std::string &filePath,
+        const std::shared_ptr<HttpServerImpl::Response> &response
+);
+
+export auto filterFiles(const std::vector<sFile>& files, const std::string& filePath, bool bRecursive) -> std::vector<sFile>;
 
 auto filterFiles(const std::vector<sFile> &files, const std::string &filePath, bool bRecursive) -> std::vector<sFile> {
     std::vector<sFile> matchedFiles;
@@ -71,7 +100,7 @@ auto filterFiles(const std::vector<sFile> &files, const std::string &filePath, b
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity,misc-no-recursion)
 void handleFileList(
-        const std::shared_ptr<ICluster>& cluster, const std::string& sBundle, uint64_t jobId, bool bRecursive, const std::string &filePath,
+        std::shared_ptr<IApplication> app, const std::shared_ptr<ICluster>& cluster, const std::string& sBundle, uint64_t jobId, bool bRecursive, const std::string &filePath,
         const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
@@ -166,16 +195,19 @@ void handleFileList(
             }
         }
 
-        // Cluster is online, create the file list object
+        // Store the file list object in the application map
+        auto fileListMap = app->getFileListMap();
         fileListMap->emplace(uuid, flObj);
 
-        // Send a message to the client to initiate the file list
+        // Create a message to request the file list
         auto msg = Message(FILE_LIST, Message::Priority::Highest, uuid);
         msg.push_uint(jobId);
         msg.push_string(uuid);
         msg.push_string(sBundle);
         msg.push_string(filePath);
         msg.push_bool(bRecursive);
+
+        // Send the message to the cluster
         cluster->sendMessage(msg);
 
         {
@@ -194,7 +226,7 @@ void handleFileList(
         if (flObj->error) {
             {
                 // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-                std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+                std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
                 // Remove the file list object
                 if (fileListMap->find(uuid) != fileListMap->end()) {
@@ -277,14 +309,14 @@ void handleFileList(
             // Launch the file list in a new thread to prevent unexpected HTTP request delays. This is fine to run in
             // the background since it's a system operation at this point and not related to the original HTTP request.
             // We pass parameters by copy here intentionally, not by reference.
-            std::thread([cluster, sBundle, jobId] {
-                ::handleFileList(cluster, sBundle, jobId, true, "", nullptr);
+            std::thread([cluster, sBundle, jobId, &app] {
+                handleFileList(app, cluster, sBundle, jobId, true, "", nullptr);
             }).detach();
         }
 
         {
             // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-            std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+            std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
             // Remove the file list object
             if (fileListMap->find(uuid) != fileListMap->end()) {
@@ -299,14 +331,16 @@ void handleFileList(
         if (response) {
             response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
         }
+
     } catch (std::exception& exception) {
         dumpExceptions(exception);
 
         {
             // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-            std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+            std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
             // Remove the file list object
+            auto fileListMap = app->getFileListMap();
             if (fileListMap->find(uuid) != fileListMap->end()) {
                 fileListMap->erase(uuid);
             }
@@ -321,7 +355,7 @@ void handleFileList(
 
 void handleFileList(
         // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-        const std::shared_ptr<IClusterManager>& clusterManager, uint64_t jobId, bool bRecursive, const std::string &filePath,
+        std::shared_ptr<IApplication> app, const std::shared_ptr<IClusterManager>& clusterManager, uint64_t jobId, bool bRecursive, const std::string &filePath,
         const std::string &appName, const std::vector<std::string> &applications, const std::shared_ptr<HttpServerImpl::Response> &response
 ) {
     // Create a database connection
@@ -374,7 +408,7 @@ void handleFileList(
             throw std::runtime_error("Invalid cluster");
         }
 
-        handleFileList(cluster, sBundle, job->id, bRecursive, filePath, response);
+        handleFileList(app, cluster, sBundle, job->id, bRecursive, filePath, response);
     } catch (std::exception& e) {
         dumpExceptions(e);
 

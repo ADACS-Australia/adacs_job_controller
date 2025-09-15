@@ -3,14 +3,20 @@
 //
 
 import settings;
-#include "../../Cluster/ClusterManager.h"
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
-#include "../../tests/utils.h"
 #include <boost/test/unit_test.hpp>
 #include <cstddef>
 #include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
+
+#include "../../tests/utils.h"
+import ClusterManager;
+import Cluster;
+import Message;
+import HttpServer;
 
 // TODO(lewis): parseLine and getCurrentMemoryUsage functions require a refactor
 auto parseLine(char* line) -> size_t{
@@ -53,7 +59,7 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
     std::jthread sendDataThread;
     
     FileTransferTestDataFixture() :
-            cluster(clusterManager->getvClusters()->front())
+            cluster(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->front())
     {
         jobId = database->run(
                 insert_into(jobTable)
@@ -62,7 +68,7 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = cluster->getName(),
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->back().name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->back().name()
                         )
         );
 
@@ -120,7 +126,7 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
 
     auto requestFileDownloadId() -> std::string {
         // Create a file download
-        setJwtSecret(httpServer->getvJwtSecrets()->back().secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->back().secret());
 
         // Create params
         nlohmann::json params = {
@@ -262,7 +268,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
             newmsg.push_ulong(fileSize);
 
             auto smsg = Message(**newmsg.getdata());
-            clusterManager->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
+            std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
 
             // Now send the file content in to chunks and send it to the client
             sendDataThread = std::jthread([this, connection, fileSize]() {
@@ -287,7 +293,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
                     msg.push_bytes(data);
 
                     auto smsg = Message(**msg.getdata());
-                    clusterManager->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
+                    std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
                 }
             });
         };
@@ -463,7 +469,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
             newmsg.push_ulong(fileSize);
 
             auto smsg = Message(**newmsg.getdata());
-            clusterManager->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
+            std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
 
             // Now send the file content in to chunks and send it to the client
             sendDataThread = std::jthread([this, connection, &bRunning]() {
@@ -478,8 +484,8 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
                     msg.push_bytes(data);
 
                     auto smsg = Message(**msg.getdata());
-                    if (!clusterManager->getmConnectedFileDownloads()->empty() && clusterManager->getmConnectedFileDownloads()->begin()->second != nullptr) {
-                        clusterManager->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
+                    if (!std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->empty() && std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->begin()->second != nullptr) {
+                        std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->begin()->second->callhandleMessage(smsg);
                     }
                 }
             });
@@ -506,7 +512,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
                     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                     if (totalBytesReceived > 1024ULL*1024ULL*128ULL) {
                         response->close();
-                        BOOST_CHECK_EQUAL(clusterManager->getmConnectedFileDownloads()->begin()->second->getpConnection() == nullptr, false);
+                        BOOST_CHECK_EQUAL(std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->begin()->second->getpConnection() == nullptr, false);
                         end = true;
                     }
                 }
@@ -520,7 +526,7 @@ BOOST_FIXTURE_TEST_SUITE(file_transfer_test_suite, FileTransferTestDataFixture)
         // Wait until the connected clusters becomes empty again (Connection closed)
         int count = 0;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-        for (;count < 10 && !clusterManager->getmConnectedFileDownloads()->empty(); count++) {
+        for (;count < 10 && !std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->empty(); count++) {
             // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
