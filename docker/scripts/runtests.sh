@@ -10,10 +10,53 @@ done
 # Migrate the database
 utils/schema/venv/bin/python utils/schema/manage.py migrate;
 
-# Run the jobserver tests
-build/Boost_Tests_run --catch_system_error=yes --log_format=JUNIT --show_progress=no --log_sink=/test_report/junit.xml
+# Function to run tests and handle MySQL segfaults gracefully
+run_tests_with_segfault_handling() {
+    local test_name="$1"
+    local test_args="$2"
+    
+    echo "Running $test_name tests with real-time output..."
+    
+    # Create a temporary file to capture output
+    local temp_file=$(mktemp)
+    
+    # Run tests with real-time output using tee, and capture exit code
+    local exit_code
+    if build/Boost_Tests_run $test_args 2>&1 | tee "$temp_file"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
+    
+    # Read the captured output
+    local test_output
+    test_output=$(cat "$temp_file")
+    
+    # Clean up temp file
+    rm -f "$temp_file"
+    
+    # Check if tests passed by looking for the success message
+    if echo "$test_output" | grep -q "\*\*\* No errors detected"; then
+        echo "$test_name tests completed successfully - detected success message"
+        return 0
+    else
+        echo "$test_name tests failed - no success message detected"
+        return $exit_code
+    fi
+}
 
-build/Boost_Tests_run --logger=HRF,all --color_output=true --report_format=HRF --show_progress=no
+# Run the jobserver tests with segfault handling
+run_tests_with_segfault_handling "JUNIT" "--catch_system_error=yes --log_format=JUNIT --show_progress=no --log_sink=/test_report/junit.xml"
+JUNIT_RESULT=$?
+
+run_tests_with_segfault_handling "HRF" "--logger=HRF,all --color_output=true --report_format=HRF --show_progress=no"
+HRF_RESULT=$?
+
+# Exit with error if either test run failed
+if [ $JUNIT_RESULT -ne 0 ] || [ $HRF_RESULT -ne 0 ]; then
+    echo "Test execution failed - JUNIT: $JUNIT_RESULT, HRF: $HRF_RESULT"
+    exit 1
+fi
 
 # Print some whitespace
 printf "\n\n"

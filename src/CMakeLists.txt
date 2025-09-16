@@ -185,6 +185,7 @@ target_sources(project_modules_test
       ${PROJECT_MODULE_SOURCES}
 )
 target_compile_definitions(project_modules_test PUBLIC -DBUILD_TESTS)
+target_compile_options(project_modules_test PUBLIC --coverage -fPIC)
 
 # Link other libraries
 target_link_libraries(adacs_job_controller PRIVATE ${LINK_LIBRARIES} project_modules)
