@@ -2,10 +2,9 @@
 // Created by lewis on 10/8/22.
 //
 
-#include "../../DB/sBundleJob.h"
-#include "../../DB/sClusterJob.h"
-#include "../../DB/sClusterJobStatus.h"
-import job_status;
+
+import settings;
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
 #include <boost/lexical_cast.hpp>
@@ -13,6 +12,14 @@ import job_status;
 #include <boost/uuid/uuid_io.hpp>
 #include <random>
 #include <utility>
+
+import job_status;
+import sClusterJob;
+import sClusterJobStatus;
+import sBundleJob;
+import Message;
+import Cluster;
+import ClusterManager;
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
@@ -23,7 +30,7 @@ struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClient
     std::promise<void> promMessageReceived;
 
     ClusterDBTestDataFixture() :
-        onlineCluster(clusterManager->getvClusters()->front())
+        onlineCluster(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->front())
     {
         websocketClient->on_message = [&]([[maybe_unused]] auto connection, auto in_message) {
             onWebsocketMessage(in_message);

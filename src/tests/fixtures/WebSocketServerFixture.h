@@ -6,14 +6,18 @@
 #define GWCLOUD_JOB_SERVER_WEBSOCKETSERVERFIXTURE_H
 
 #include "HttpServerFixture.h"
+import WebSocketServer;
+import IWebSocketServer;
+import Application;
+import IApplication;
 
 struct WebSocketServerFixture : public HttpServerFixture {
-    std::shared_ptr<WebSocketServer> webSocketServer;
+    std::shared_ptr<IWebSocketServer> webSocketServer;
     bool bClusterManagerRunning = true;
 
     WebSocketServerFixture() {
-        // Set up the test websocket server
-        webSocketServer = std::make_shared<WebSocketServer>(clusterManager);
+        // Use the application from HttpServerFixture
+        webSocketServer = application->getWebSocketServer();
         webSocketServer->start();
 
         BOOST_CHECK_EQUAL(acceptingConnections(8001), true);
@@ -26,7 +30,8 @@ struct WebSocketServerFixture : public HttpServerFixture {
     }
 
     void stopRunningWebSocket() {
-        clusterManager->getvClusters()->front()->stop();
+        auto concreteClusterManager = std::static_pointer_cast<ClusterManager>(clusterManager);
+        concreteClusterManager->getvClusters()->front()->stop();
     }
     
     WebSocketServerFixture(WebSocketServerFixture const&) = delete;

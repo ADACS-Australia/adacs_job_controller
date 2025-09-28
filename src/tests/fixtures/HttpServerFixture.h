@@ -5,10 +5,16 @@
 #ifndef GWCLOUD_JOB_SERVER_HTTPSERVERFIXTURE_H
 #define GWCLOUD_JOB_SERVER_HTTPSERVERFIXTURE_H
 
-#include "../../Cluster/ClusterManager.h"
 #include "../utils.h"
 #include <boost/test/unit_test.hpp>
-#include <jwt/jwt.hpp>
+
+import ClusterManager;
+import IClusterManager;
+import HttpServer;
+import IHttpServer;
+import Application;
+import IApplication;
+import GeneralUtils;
 
 struct HttpServerFixture {
     const std::string sAccess = R"(
@@ -81,8 +87,9 @@ struct HttpServerFixture {
     ]
     )";
 
-    std::shared_ptr<ClusterManager> clusterManager;
-    std::shared_ptr<HttpServer> httpServer;
+    std::shared_ptr<IApplication> application;
+    std::shared_ptr<IClusterManager> clusterManager;
+    std::shared_ptr<IHttpServer> httpServer;
 
     jwt::jwt_object jwtToken;
 
@@ -90,10 +97,11 @@ struct HttpServerFixture {
         // NOLINTBEGIN(concurrency-mt-unsafe)
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        clusterManager = std::make_shared<ClusterManager>();
-
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        httpServer = std::make_shared<HttpServer>(clusterManager);
+        
+        application = createApplication();
+        clusterManager = application->getClusterManager();
+        httpServer = application->getHttpServer();
         // NOLINTEND(concurrency-mt-unsafe)
 
         // Start the http server

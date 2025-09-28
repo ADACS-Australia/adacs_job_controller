@@ -2,14 +2,25 @@
 // Created by lewis on 22/10/20.
 //
 
+import settings;
+
+#include <jwt/jwt.hpp>
+#include <string>
+#include <bits/stringfwd.h>
 #include "../../tests/utils.h"
-#include "../../Cluster/ClusterManager.h"
-import job_status;
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/HttpServerFixture.h"
 #include <boost/test/unit_test.hpp>
+#include <sqlpp11/sqlpp11.h>
 
+import job_status;
+import ClusterManager;
+import Message;
+import Cluster;
+import HttpServer;
+
+using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 
 struct JobTestDataFixture : public DatabaseFixture, public HttpServerFixture, public HttpClientFixture {
     std::shared_ptr<Cluster> cluster;
@@ -17,7 +28,7 @@ struct JobTestDataFixture : public DatabaseFixture, public HttpServerFixture, pu
     TestHttpClient client = TestHttpClient("localhost:8000");
 
     JobTestDataFixture() :
-            cluster(clusterManager->getvClusters()->at(1))
+            cluster(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->at(1))
     {
         // Create the new job object
         jobId = database->run(
@@ -25,9 +36,9 @@ struct JobTestDataFixture : public DatabaseFixture, public HttpServerFixture, pu
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -49,9 +60,9 @@ struct JobTestDataFixture : public DatabaseFixture, public HttpServerFixture, pu
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -73,9 +84,9 @@ struct JobTestDataFixture : public DatabaseFixture, public HttpServerFixture, pu
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(1).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(1).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).name()
                         )
         );
 
@@ -111,7 +122,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
         auto response = client.request("POST", "/job/apiv1/job/", "", {{"Authorization", "not_valid"}});
         BOOST_CHECK_EQUAL(response->content.string(), "Not authorized");
 
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Test creating a job with invalid payload but authorized user
         response = client.request("POST", "/job/apiv1/job/", "", {{"Authorization", jwtToken.signature()}});
@@ -166,7 +177,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
                 );
 
         const auto *dbJob = &jobResults.front();
-        BOOST_CHECK_EQUAL(dbJob->application, httpServer->getvJwtSecrets()->at(0).name());
+        BOOST_CHECK_EQUAL(dbJob->application, std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name());
         BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
         BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
         BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
@@ -217,7 +228,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
                 );
 
         dbJob = &jobResults.front();
-        BOOST_CHECK_EQUAL(dbJob->application, httpServer->getvJwtSecrets()->at(0).name());
+        BOOST_CHECK_EQUAL(dbJob->application, std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name());
         BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
         BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
         BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
@@ -247,7 +258,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_forbidden));
 
         // Test authorized app1 (Can't see jobs from app 2)
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         response = client.request("GET", "/job/apiv1/job/", {}, {{"Authorization", jwtToken.signature()}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::success_ok));
@@ -259,7 +270,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
         // Should be exactly two results
         BOOST_CHECK_EQUAL(result.size(), 2);
 
-        setJwtSecret(httpServer->getvJwtSecrets()->at(1).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).secret());
 
         // Test authorized app2 (Can see jobs from app 1)
         response = client.request("GET", "/job/apiv1/job/", {}, {{"Authorization", jwtToken.signature()}});
@@ -271,7 +282,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
         // Should be exactly three results
         BOOST_CHECK_EQUAL(result.size(), 3);
 
-        setJwtSecret(httpServer->getvJwtSecrets()->at(3).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(3).secret());
 
         // Test authorized app4 (Can't see jobs from app 1 or 2)
         response = client.request("GET", "/job/apiv1/job/", {}, {{"Authorization", jwtToken.signature()}});
@@ -293,7 +304,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_forbidden));
 
         // Test authorized user
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Test invalid input parameters
         response = client.request("PATCH", "/job/apiv1/job/", "null", {{"Authorization", jwtToken.signature()}});
@@ -314,7 +325,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "not-real-cluster",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -344,7 +355,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "cluster1",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -372,12 +383,12 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
-        auto source = std::to_string(jobId) + "_" + httpServer->getvJwtSecrets()->at(0).clusters()[0];
+        auto source = std::to_string(jobId) + "_" + std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0];
 
         // Create a pending job state, which should not trigger any websocket message
         database->run(
@@ -538,7 +549,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), static_cast<int>(SimpleWeb::StatusCode::client_error_forbidden));
 
         // Test authorized user
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Test invalid input parameters
         response = client.request("DELETE", "/job/apiv1/job/", "null", {{"Authorization", jwtToken.signature()}});
@@ -559,7 +570,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "not-real-cluster",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -589,7 +600,7 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
                                 jobTable.parameters = "params1",
                                 jobTable.cluster = "cluster1",
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -617,12 +628,12 @@ BOOST_FIXTURE_TEST_SUITE(Job_test_suite, JobTestDataFixture)
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(0).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0],
                                 jobTable.bundle = "whatever",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
-        auto source = std::to_string(jobId) + "_" + httpServer->getvJwtSecrets()->at(0).clusters()[0];
+        auto source = std::to_string(jobId) + "_" + std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0];
 
         // Create a pending job state, which should not trigger any websocket message
         database->run(

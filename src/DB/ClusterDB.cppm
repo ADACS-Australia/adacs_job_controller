@@ -2,15 +2,51 @@
 // Created by lewis on 10/8/22.
 //
 
+module;
+#include <memory>
+#include <vector>
+
+export module ClusterDB;
+
+import Message;
 import settings;
+import sClusterJob;
+import sClusterJobStatus;
+import sBundleJob;
+import ICluster;
 
-#include "ClusterDB.h"
-#include "../Cluster/Cluster.h"
-#include "sBundleJob.h"
-#include "sClusterJob.h"
-#include "sClusterJobStatus.h"
+export class ClusterDB {
+public:
+    static auto maybeHandleClusterDBMessage(Message& message, const std::shared_ptr<ICluster>& pCluster) -> bool;
 
-auto ClusterDB::maybeHandleClusterDBMessage(Message &message, const std::shared_ptr<Cluster> &pCluster) -> bool {
+    static void getClusterJobByJobId(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void getClusterJobById(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void getRunningClusterJobs(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void deleteClusterJob(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void saveClusterJob(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void getClusterJobStatusByJobIdAndWhat(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void getClusterJobStatusByJobId(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void deleteClusterJobStatusByIdList(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void saveClusterJobStatus(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void createOrUpdateBundleJob(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void getBundleJobById(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static void deleteBundleJobById(Message &message, const std::shared_ptr<ICluster> &pCluster);
+
+    static auto prepareResult(Message &message, const std::shared_ptr<ICluster> &pCluster) -> Message;
+};
+
+auto ClusterDB::maybeHandleClusterDBMessage(Message &message, const std::shared_ptr<ICluster> &pCluster) -> bool {
     switch (message.getId()) {
         // Get ClusterJob by Job ID
         case DB_JOB_GET_BY_JOB_ID:
@@ -76,7 +112,7 @@ auto ClusterDB::maybeHandleClusterDBMessage(Message &message, const std::shared_
     return false;
 }
 
-void ClusterDB::saveClusterJobStatus(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::saveClusterJobStatus(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -91,10 +127,10 @@ void ClusterDB::saveClusterJobStatus(Message &message, const std::shared_ptr<Clu
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::deleteClusterJobStatusByIdList(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::deleteClusterJobStatusByIdList(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -113,10 +149,10 @@ void ClusterDB::deleteClusterJobStatusByIdList(Message &message, const std::shar
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::getClusterJobStatusByJobId(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::getClusterJobStatusByJobId(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -133,10 +169,10 @@ void ClusterDB::getClusterJobStatusByJobId(Message &message, const std::shared_p
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::getClusterJobStatusByJobIdAndWhat(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::getClusterJobStatusByJobIdAndWhat(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -155,10 +191,10 @@ void ClusterDB::getClusterJobStatusByJobIdAndWhat(Message &message, const std::s
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::saveClusterJob(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::saveClusterJob(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -173,10 +209,10 @@ void ClusterDB::saveClusterJob(Message &message, const std::shared_ptr<Cluster> 
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::deleteClusterJob(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::deleteClusterJob(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -192,10 +228,10 @@ void ClusterDB::deleteClusterJob(Message &message, const std::shared_ptr<Cluster
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::getRunningClusterJobs(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::getRunningClusterJobs(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -212,10 +248,10 @@ void ClusterDB::getRunningClusterJobs(Message &message, const std::shared_ptr<Cl
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::getClusterJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::getClusterJobById(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -230,10 +266,10 @@ void ClusterDB::getClusterJobById(Message &message, const std::shared_ptr<Cluste
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::getClusterJobByJobId(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::getClusterJobByJobId(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
 
     try {
@@ -248,10 +284,10 @@ void ClusterDB::getClusterJobByJobId(Message &message, const std::shared_ptr<Clu
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-auto ClusterDB::prepareResult(Message &message, const std::shared_ptr<Cluster> &pCluster) -> Message {
+auto ClusterDB::prepareResult(Message &message, const std::shared_ptr<ICluster> &pCluster) -> Message {
     auto dbRequestId = message.pop_ulong();
 
     auto result = Message(DB_RESPONSE, Message::Medium, "database_" + pCluster->getName());
@@ -259,7 +295,7 @@ auto ClusterDB::prepareResult(Message &message, const std::shared_ptr<Cluster> &
     return result;
 }
 
-void ClusterDB::createOrUpdateBundleJob(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::createOrUpdateBundleJob(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
     auto bundleHash = message.pop_string();
 
@@ -275,10 +311,10 @@ void ClusterDB::createOrUpdateBundleJob(Message &message, const std::shared_ptr<
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
     auto bundleHash = message.pop_string();
 
@@ -293,10 +329,10 @@ void ClusterDB::getBundleJobById(Message &message, const std::shared_ptr<Cluster
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }
 
-void ClusterDB::deleteBundleJobById(Message &message, const std::shared_ptr<Cluster> &pCluster) {
+void ClusterDB::deleteBundleJobById(Message &message, const std::shared_ptr<ICluster> &pCluster) {
     auto result = prepareResult(message, pCluster);
     auto bundleHash = message.pop_string();
 
@@ -313,5 +349,5 @@ void ClusterDB::deleteBundleJobById(Message &message, const std::shared_ptr<Clus
         result.push_bool(false);
     }
 
-    result.send(pCluster);
+    pCluster->sendMessage(result);
 }

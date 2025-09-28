@@ -1,4 +1,4 @@
-version: '3.4'
+version: "3.4"
 
 services:
   web:
@@ -6,7 +6,7 @@ services:
       dockerfile: ./docker/adacs_job_controller.Dockerfile
       context: ..
       target: test
-    image: adacs_job_controller_valgrind 
+    image: adacs_job_controller_valgrind
     container_name: adacs_job_controller_valgrind
     depends_on:
       - db
@@ -14,9 +14,8 @@ services:
   db:
     image: mysql:5.7
     container_name: adacs_job_controller_mysql_valgrind
-    volumes: 
+    volumes:
       - var_lib_mysql_adacs_jobcontroller_valgrind:/var/lib/mysql
 
 volumes:
-  var_lib_mysql_adacs_job_controller_valgrind:
-
+  var_lib_mysql_adacs_jobcontroller_valgrind:

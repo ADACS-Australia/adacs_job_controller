@@ -3,6 +3,8 @@
 //
 
 import job_status;
+import settings;
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
@@ -12,6 +14,13 @@ import job_status;
 #include <boost/uuid/uuid_io.hpp>
 #include <random>
 #include <utility>
+#include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
+
+import ICluster;
+import Cluster;
+import Message;
+import ClusterManager;
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
@@ -25,7 +34,7 @@ struct BackgroundThreadsTestDataFixture : public DatabaseFixture, public WebSock
     std::string uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
     BackgroundThreadsTestDataFixture() :
-        onlineCluster(clusterManager->getvClusters()->front()), onlineDetails(clusterManager->getvClusters()->front()->getClusterDetails())
+        onlineCluster(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->front()), onlineDetails(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->front()->getClusterDetails())
     {
         // Parse the cluster configuration
         jsonClusters = nlohmann::json::parse(sClusters);

@@ -2,18 +2,19 @@
 // Created by lewis on 10/5/22.
 //
 
-#ifndef GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_H
-#define GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_H
+module;
+#include <sqlpp11/sqlpp11.h>
+#include <sqlpp11/mysql/mysql.h>
+import jobserver_schema;
 
-#include "../Lib/Messaging/Message.h"
-#include "../Lib/jobserver_schema.h"
-#include "MySqlConnector.h"
-#include <cstdint>
-#include <string>
-#include <thread>
+export module sClusterJob;
 
+import Message;
+import MySqlConnector;
 
-struct sClusterJob {
+using namespace sqlpp;
+
+export struct sClusterJob {
     auto equals(sClusterJob& other) const -> bool {
         return id == other.id
             and jobId == other.jobId
@@ -70,6 +71,7 @@ struct sClusterJob {
         };
     }
 
+    // Database methods
     static auto getOrCreateByJobId(uint64_t jobId, const std::string& cluster) -> sClusterJob {
         auto _database = MySqlConnector();
         schema::JobserverClusterjob _jobTable;
@@ -204,6 +206,3 @@ struct sClusterJob {
     bool deleting = false;
     bool deleted = false;
 };
-
-
-#endif //GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_H

@@ -32,14 +32,17 @@ find_package(MySQL REQUIRED)
 # Find system cpp-jwt package
 find_package(cpp-jwt REQUIRED)
 
+# Find date library
+find_package(date REQUIRED)
+
 # Include the nested libraries
 add_subdirectory(third_party/Simple-Web-Server)
 add_subdirectory(third_party/Simple-WebSocket-Server)
 add_subdirectory(third_party/folly)
 add_subdirectory(third_party/sqlpp11)
 
-# Set up the include directories
-include_directories(
+# Define common include directories
+set(COMMON_INCLUDE_DIRS
         /usr/include/nlohmann
         /usr/include/date
         third_party/sqlpp11/include
@@ -48,37 +51,24 @@ include_directories(
         third_party/Simple-Web-Server
         third_party/Simple-WebSocket-Server
         ${MYSQL_INCLUDE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/third_party/folly
 )
+
+# Set up the include directories
+include_directories(${COMMON_INCLUDE_DIRS})
+
+# Define common compile features
+set(COMMON_COMPILE_FEATURES cxx_std_23)
 
 # Define the source files
 set(
         SOURCE_FILES
-        HTTP/HttpServer.cpp
-        HTTP/HttpServer.h
-        WebSocket/WebSocketServer.cpp
-        WebSocket/WebSocketServer.h
-        Lib/Messaging/Message.cpp
-        Lib/Messaging/Message.h
-        Cluster/ClusterManager.cpp
-        Cluster/ClusterManager.h
-        Cluster/Cluster.cpp
-        Cluster/Cluster.h
-        HTTP/Job.cpp
-        DB/MySqlConnector.h
-        HTTP/HttpUtils.cpp
-        HTTP/File.cpp
         Lib/segvcatch.h
         Lib/segvcatch.cpp
         Lib/x86_64-signal.h
-        Lib/GeneralUtils.h
-        Lib/GeneralUtils.cpp
-        HTTP/Utils/HandleFileList.cpp
-        DB/ClusterDB.cpp
-        DB/ClusterDB.h
-        DB/sClusterJob.h
-        DB/sClusterJobStatus.h
-        Cluster/FileDownload.cpp
-        Cluster/FileDownload.h
+        Lib/shims/sqlpp_shim.h
+        Lib/shims/date_shim.h
+        Lib/TestingMacros.h
 )
 
 
@@ -88,7 +78,7 @@ add_executable(
 	${SOURCE_FILES}
         main.cpp
 )
-target_compile_features(adacs_job_controller PUBLIC cxx_std_23)
+target_compile_features(adacs_job_controller PUBLIC ${COMMON_COMPILE_FEATURES})
 
 # Set the test executable and source files
 add_executable(
@@ -115,7 +105,7 @@ add_executable(
         Cluster/tests/file_download_tests.cpp
         Cluster/tests/background_threads_tests.cpp
 )
-target_compile_features(Boost_Tests_run PUBLIC cxx_std_23)
+target_compile_features(Boost_Tests_run PUBLIC ${COMMON_COMPILE_FEATURES})
 
 # Set the link libraries
 set(
@@ -130,6 +120,7 @@ set(
         dw
         mysqlclient
         cpp-jwt::cpp-jwt
+        date::date-tz
 )
 
 set_target_properties(
@@ -148,13 +139,37 @@ set_target_properties(
 
 # Define module sources once
 set(PROJECT_MODULE_SOURCES
+  IApplication.ixx
+  Application.cppm
+  Interfaces/IServer.ixx
+  HTTP/IHttpServer.ixx
+  HTTP/HttpServer.cppm
+  HTTP/HttpUtils.cppm
+  HTTP/File.cppm
+  HTTP/Job.cppm
+  WebSocket/IWebSocketServer.ixx
+  WebSocket/WebSocketServer.cppm
   Lib/JobStatus.ixx
+  Lib/GeneralUtils.cppm
   Settings.ixx
+  Lib/Messaging/Message.cppm
+  Lib/jobserver_schema.ixx
+  DB/MySqlConnector.ixx
+  DB/sClusterJob.cppm
+  DB/sClusterJobStatus.cppm
+  DB/sBundleJob.cppm
+  DB/ClusterDB.cppm
+  Cluster/Cluster.cppm
+  Cluster/ClusterManager.cppm
+  Cluster/FileDownload.cppm
+  Interfaces/ICluster.ixx
+  Interfaces/IClusterManager.ixx
+  HTTP/Utils/HandleFileList.cppm
 )
 
 # Production modules (no BUILD_TESTS)
 add_library(project_modules)
-target_compile_features(project_modules PUBLIC cxx_std_23)
+target_compile_features(project_modules PUBLIC ${COMMON_COMPILE_FEATURES})
 target_sources(project_modules
   PUBLIC
     FILE_SET cxx_modules TYPE CXX_MODULES FILES
@@ -163,20 +178,18 @@ target_sources(project_modules
 
 # Test modules (with BUILD_TESTS)
 add_library(project_modules_test)
-target_compile_features(project_modules_test PUBLIC cxx_std_23)
+target_compile_features(project_modules_test PUBLIC ${COMMON_COMPILE_FEATURES})
 target_sources(project_modules_test
   PUBLIC
     FILE_SET cxx_modules TYPE CXX_MODULES FILES
       ${PROJECT_MODULE_SOURCES}
 )
 target_compile_definitions(project_modules_test PUBLIC -DBUILD_TESTS)
+target_compile_options(project_modules_test PUBLIC --coverage -fPIC)
 
 # Link other libraries
 target_link_libraries(adacs_job_controller PRIVATE ${LINK_LIBRARIES} project_modules)
 target_link_libraries(Boost_Tests_run PRIVATE ${LINK_LIBRARIES} project_modules_test)
-
-# Configure custom definitions for testing
-target_compile_definitions(Boost_Tests_run PUBLIC -DBUILD_TESTS)
 target_compile_options(Boost_Tests_run PUBLIC --coverage -fPIC)
 
 target_link_options(Boost_Tests_run PRIVATE --coverage)

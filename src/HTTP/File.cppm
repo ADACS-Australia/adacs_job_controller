@@ -2,25 +2,45 @@
 // Created by lewis on 3/12/20.
 //
 
-import settings;
+module;
+#include <iomanip>
+#include <ostream>
+#include <chrono>
+#include "../Lib/shims/date_shim.h"
 
-#include "../DB/MySqlConnector.h"
-#include "../Cluster/ClusterManager.h"
-#include "../Lib/jobserver_schema.h"
-#include "HttpServer.h"
-#include "Utils/HandleFileList.h"
 #include <boost/filesystem.hpp>
+#include <status_code.hpp>
+#include <utility.hpp>
+#include <asio_compatibility.hpp>
+#include <nlohmann/json.hpp>
+#include <future>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <sqlpp11/sqlpp11.h>
 
+import MySqlConnector;
+import IClusterManager;
+import ICluster;
+import FileDownload;
+import jobserver_schema;
+import Message;
+import settings;
+import IApplication;
+import HttpServer;
+import HandleFileList;
+import GeneralUtils;
+
+export module File;
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager) {
+export void FileApi(const std::string &path, std::shared_ptr<HttpServer> server, std::shared_ptr<IApplication> app) {
     // Get      -> Download file (file uuid)
     // Post     -> Create new file download
     // Delete   -> Delete file download (file uuid)
     // Patch    -> List files in directory
+    
+    auto clusterManager = app->getClusterManager();
 
     // Create a new file download
     server->getServer().resource["^" + path + "$"]["POST"] = [server](
@@ -215,7 +235,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
     // Download file
     // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager](
+    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, app](
             const std::shared_ptr<HttpServerImpl::Response> &response,
             const std::shared_ptr<HttpServerImpl::Request> &request) {
 
@@ -312,7 +332,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             msg.push_string(uuid);
             msg.push_string(sBundle);
             msg.push_string(sFilePath);
-            msg.send(cluster);
+            cluster->sendMessage(msg);
 
             {
                 // Wait for the server to send back data, or in CLIENT_TIMEOUT_SECONDS fail
@@ -412,7 +432,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
                         {
                             // The Pause/Resume messages must be synchronized to avoid a deadlock
-                            std::unique_lock<std::mutex> fileDownloadPauseResumeLock(fileDownloadPauseResumeLockMutex);
+                            std::unique_lock<std::mutex> fileDownloadPauseResumeLock(app->getFileDownloadPauseResumeLockMutex());
 
                             // Check if we need to resume the client file transfer
                             if (fdObj->fileDownloadClientPaused) {
@@ -423,7 +443,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
                                     auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest,
                                                              uuid);
-                                    resumeMsg.send(fdObj);
+                                    fdObj->sendMessage(resumeMsg);
                                 }
                             }
                         }
@@ -451,7 +471,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
     };
 
     // List files in the specified directory
-    server->getServer().resource["^" + path + "$"]["PATCH"] = [clusterManager, server](
+    server->getServer().resource["^" + path + "$"]["PATCH"] = [clusterManager, server, app](
             const std::shared_ptr<HttpServerImpl::Response> &response,
             const std::shared_ptr<HttpServerImpl::Request> &request) {
 
@@ -489,7 +509,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
             if (jobId != 0) {
                 // Handle the file list request
                 handleFileList(
-                        clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
+                        app, clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
                         response
                 );
             } else {
@@ -521,7 +541,7 @@ void FileApi(const std::string &path, HttpServer *server, const std::shared_ptr<
 
                 // Handle the file list request
                 handleFileList(
-                        cluster, sBundle, 0, bRecursive, filePath, response
+                        app, cluster, sBundle, 0, bRecursive, filePath, response
                 );
             }
         } catch (std::exception& exception) {

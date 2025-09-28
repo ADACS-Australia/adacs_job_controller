@@ -2,19 +2,146 @@
 // Created by lewis on 2/27/20.
 //
 
-import job_status;
-import settings;
-
-#include "Cluster.h"
-#include "../DB/ClusterDB.h"
-#include "../DB/MySqlConnector.h"
-#include "../HTTP/HttpServer.h"
-#include "../HTTP/Utils/HandleFileList.h"
-#include "../Lib/jobserver_schema.h"
-
+module;
+#include "../Lib/FileTypes.h"
+#include "../Lib/TestingMacros.h"
+#include <boost/concept_check.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <nlohmann/json.hpp>
+#include <shared_mutex>
+#include <string>
+#include <vector>
 #include <client_http.hpp>
+#include "../Lib/FollyTypes.h"
 #include <folly/Uri.h>
 #include <iostream>
+#include <sqlpp11/sqlpp11.h>
+#include "../Lib/shims/sqlpp_shim.h"
+
+export module Cluster;
+
+import IClusterManager;
+import Message;
+import job_status;
+import settings;
+import ClusterDB;
+import jobserver_schema;
+import MySqlConnector;
+import ICluster;
+import IApplication;
+import HandleFileList;
+import WebSocketServer;
+import GeneralUtils;
+
+export class Cluster : public std::enable_shared_from_this<Cluster>, public ICluster {
+public:
+    explicit Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IApplication> app);
+    virtual ~Cluster();
+    Cluster(Cluster const&) = delete;
+    auto operator =(Cluster const&) -> Cluster& = delete;
+    Cluster(Cluster&&) = delete;
+    auto operator=(Cluster&&) -> Cluster& = delete;
+
+    void stop();
+
+    // ICluster interface implementation
+    auto getName() const -> std::string override { return pClusterDetails->getName(); }
+
+    auto getClusterDetails() const -> std::shared_ptr<sClusterDetails> override { return pClusterDetails; }
+
+    void setConnection(const std::shared_ptr<void>& connection) override;
+
+    virtual void handleMessage(Message &message) override;
+
+    virtual void sendMessage(Message &message) override;
+
+    auto isOnline() const -> bool override;
+
+    // virtual here so that we can override this function for testing
+    virtual void queueMessage(const std::string& source, const std::shared_ptr<std::vector<uint8_t>>& data, uint32_t priority) override;
+
+    enum eRole {
+        master,
+        fileDownload
+    };
+
+    // ICluster interface implementation
+    auto getRoleString() const -> std::string override {
+        return roleString;
+    }
+
+    auto getRole() const -> int override {
+        return static_cast<int>(role);
+    }
+
+    void close(bool bForce = false);
+
+    // ICluster interface implementation
+    void setClusterManager(const std::shared_ptr<void>& clusterManager) override;
+
+protected:
+    eRole role = eRole::master;
+    std::string roleString = "master";
+
+protected:
+    std::shared_ptr<IApplication> app;
+
+private:
+    std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
+    std::shared_ptr<WsServer::Connection> pConnection = nullptr;
+    std::shared_ptr<void> pClusterManager = nullptr; // void* to avoid circular dependency
+
+    mutable std::mutex connectionMutex;
+    mutable std::shared_mutex mutex;
+    mutable std::mutex dataCVMutex;
+    bool dataReady{};
+    std::condition_variable dataCV;
+    std::vector<folly::ConcurrentHashMap<std::string, std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>> queue;
+
+    bool bRunning = true;
+    InterruptableTimer interruptableResendTimer;
+    InterruptableTimer interruptablePruneTimer;
+
+    // Threads
+    std::jthread schedulerThread;
+    std::jthread pruneThread;
+    std::jthread resendThread;
+
+    void run();
+    void pruneSources();
+    void resendMessages();
+
+    auto doesHigherPriorityDataExist(uint64_t maxPriority) -> bool;
+
+    void updateJob(Message &message);
+
+    void checkUnsubmittedJobs();
+    void checkCancellingJobs();
+    void checkDeletingJobs();
+
+    void handleFileList(Message &message);
+    void handleFileListError(Message &message);
+
+// Testing
+    EXPOSE_PROPERTY_FOR_TESTING(pConnection);
+    EXPOSE_PROPERTY_FOR_TESTING(pClusterDetails);
+    EXPOSE_PROPERTY_FOR_TESTING(bRunning);
+    EXPOSE_PROPERTY_FOR_TESTING_READONLY(queue);
+    EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataReady);
+    EXPOSE_PROPERTY_FOR_TESTING_READONLY(dataCV);
+    EXPOSE_PROPERTY_FOR_TESTING_READONLY(interruptablePruneTimer);
+
+    EXPOSE_FUNCTION_FOR_TESTING(pruneSources);
+    EXPOSE_FUNCTION_FOR_TESTING(run);
+    EXPOSE_FUNCTION_FOR_TESTING(checkUnsubmittedJobs);
+    EXPOSE_FUNCTION_FOR_TESTING(checkCancellingJobs);
+    EXPOSE_FUNCTION_FOR_TESTING(checkDeletingJobs);
+
+    EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(handleMessage, Message&);
+    EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(doesHigherPriorityDataExist, uint64_t);
+};
+
+using namespace sqlpp;
 
 // Packet Queue is a:
 //  list of priorities - doesn't need any sync because it never changes
@@ -28,19 +155,8 @@ import settings;
 
 // Send sources round robin, starting from the highest priority
 
-// Define a global map that can be used for storing information about file lists
-// NOLINTNEXTLINE(cert-err58-cpp)
-const std::shared_ptr<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>> fileListMap = std::make_shared<folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>>();
 
-// Define a mutex that can be used for synchronising pause/resume messages
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::mutex fileDownloadPauseResumeLockMutex;
-
-// Define a mutex that can be used for safely removing entries from the fileListMap
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-std::mutex fileListMapDeletionLockMutex;
-
-Cluster::Cluster(std::shared_ptr<sClusterDetails> details) : pClusterDetails(std::move(details)) {
+Cluster::Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IApplication> app) : pClusterDetails(std::move(details)), app(std::move(app)) {
     std::cout << "Cluster startup for role " << getRoleString() << std::endl;
     // Create the list of priorities in order
     for (auto i = static_cast<uint32_t>(Message::Priority::Highest); i <= static_cast<uint32_t>(Message::Priority::Lowest); i++) {
@@ -103,17 +219,29 @@ void Cluster::handleMessage(Message &message) {
             this->updateJob(message);
             break;
         case FILE_LIST:
-            Cluster::handleFileList(message);
+            handleFileList(message);
             break;
         case FILE_LIST_ERROR:
-            Cluster::handleFileListError(message);
+            handleFileListError(message);
             break;
         default:
             std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << std::endl;
     }
 }
 
-void Cluster::setConnection(const std::shared_ptr<WsServer::Connection>& pCon) {
+void Cluster::sendMessage(Message &message) {
+    // Cluster is responsible for sending messages
+    queueMessage(message.getSource(), message.getData(), static_cast<uint32_t>(message.getPriority()));
+}
+
+void Cluster::setClusterManager(const std::shared_ptr<void>& clusterManager) {
+    pClusterManager = clusterManager;
+}
+
+void Cluster::setConnection(const std::shared_ptr<void>& connection) {
+    // Cast the void* back to the concrete type
+    auto pCon = std::static_pointer_cast<WsServer::Connection>(connection);
+    
     // Protect this block against race conditions. It's possible for pConnection to be
     // set to null in multiple threads.
     std::unique_lock<std::mutex> closeLock(connectionMutex);
@@ -132,13 +260,13 @@ void Cluster::setConnection(const std::shared_ptr<WsServer::Connection>& pCon) {
     }
 }
 
-void Cluster::queueMessage(std::string source, const std::shared_ptr<std::vector<uint8_t>>& pData, Message::Priority priority) {
+void Cluster::queueMessage(const std::string& source, const std::shared_ptr<std::vector<uint8_t>>& pData, uint32_t priority) {
     // Get a pointer to the relevant map
     auto *pMap = &queue[priority];
 
     // Lock the access mutex to check if the source exists in the map
     {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::shared_lock<std::shared_mutex> lock(mutex);
 
         // Make sure that this source exists in the map
         auto sQueue = std::make_shared<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>();
@@ -155,32 +283,31 @@ void Cluster::queueMessage(std::string source, const std::shared_ptr<std::vector
     }
 }
 
-void Cluster::pruneSources() {
-    // Iterate every QUEUE_SOURCE_PRUNE_SECONDS seconds until the timer is cancelled or until we stop running
-    do {
-        // Acquire the exclusive lock to prevent more data being pushed on while we are pruning
-        {
-            std::unique_lock<std::shared_mutex> lock(mutex_);
+auto Cluster::isOnline() const -> bool {
+    return pConnection != nullptr;
+}
 
-            // Iterate over the priorities
-            for (auto &priority: queue) {
-                // Get a pointer to the relevant map
-                auto *pMap = &priority;
+void Cluster::close(bool bForce) {
+    // Protect this block against race conditions. It's possible for this function to be called from multiple threads
+    // which can lead to segfaults without synchronising.
+    std::unique_lock<std::mutex> closeLock(connectionMutex);
 
-                // Iterate over the map
-                for (auto iter = pMap->begin(); iter != pMap->end();) {
-                    // Check if the vector for this source is empty
-                    if ((*iter).second->empty()) {
-                        // Remove this source from the map and continue
-                        iter = pMap->erase(iter);
-                        continue;
-                    }
-                    // Manually increment the iterator
-                    ++iter;
-                }
+    // Terminate the websocket connection
+    if (pConnection) {
+        try {
+            if (bForce) {
+                pConnection->close();
+            } else {
+                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+                pConnection->send_close(1000, "Closing connection.");
             }
+        } catch (...) {
+            // It's possible that we try to ask the connection to close when it's already internally been closed. This
+            // can lead to cases where std::runtime_error or other exceptions can be thrown. It's safe to ignore this
+            // case.
         }
-    } while (bRunning && interruptablePruneTimer.wait_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS)));
+        pConnection = nullptr;
+    }
 }
 
 void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
@@ -212,7 +339,7 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
             do {
                 hadData = false;
 
-                std::shared_lock<std::shared_mutex> lock(mutex_);
+                std::shared_lock<std::shared_mutex> lock(mutex);
                 // Iterate over the map
                 for (auto iter = pMap->begin(); iter != pMap->end(); ++iter) {
                     // Check if the vector for this source is empty
@@ -249,7 +376,11 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
                                             // Terminate the connection forcefully
                                             close(true);
 
-                                            ClusterManager::reportWebsocketError(shared_from_this(), errorCode);
+                                            // Report error through injected cluster manager
+                                            if (pClusterManager) {
+                                                auto clusterManager = std::static_pointer_cast<IClusterManager>(pClusterManager);
+                                                clusterManager->reportWebsocketError(shared_from_this(), errorCode);
+                                            }
                                         },
                                         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                                         130
@@ -282,6 +413,48 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
                 // Higher priority data does not exist, so keep sending data from this priority
             } while (hadData);
         }
+    }
+}
+
+void Cluster::pruneSources() {
+    // Iterate every QUEUE_SOURCE_PRUNE_SECONDS seconds until the timer is cancelled or until we stop running
+    do {
+        // Acquire the exclusive lock to prevent more data being pushed on while we are pruning
+        {
+            std::unique_lock<std::shared_mutex> lock(mutex);
+
+            // Iterate over the priorities
+            for (auto &priority: queue) {
+                // Get a pointer to the relevant map
+                auto *pMap = &priority;
+
+                // Iterate over the map
+                for (auto iter = pMap->begin(); iter != pMap->end();) {
+                    // Check if the vector for this source is empty
+                    if ((*iter).second->empty()) {
+                        // Remove this source from the map and continue
+                        iter = pMap->erase(iter);
+                        continue;
+                    }
+                    // Manually increment the iterator
+                    ++iter;
+                }
+            }
+        }
+    } while (bRunning && interruptablePruneTimer.wait_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS)));
+}
+
+void Cluster::resendMessages() {
+    // Iterate every CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS seconds until the timer is cancelled or until we stop running
+    while (bRunning && interruptableResendTimer.wait_for(std::chrono::milliseconds(CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS))) {
+        // Check for jobs that need to be resubmitted
+        checkUnsubmittedJobs();
+
+        // Check for jobs that need to be cancelled
+        checkCancellingJobs();
+
+        // Check for jobs that need to be deleted
+        checkDeletingJobs();
     }
 }
 
@@ -364,26 +537,8 @@ void Cluster::updateJob(Message &message) {
         // operation and can run in the background, rather than on the websocket message handling thread.
         // We pass parameters by copy here intentionally, not by reference.
         std::thread([bundle, jobId, this] {
-            ::handleFileList(shared_from_this(), bundle, jobId, true, "", nullptr);
+            ::handleFileList(app, shared_from_this(), bundle, jobId, true, "", nullptr);
         }).detach();
-    }
-}
-
-auto Cluster::isOnline() -> bool {
-    return pConnection != nullptr;
-}
-
-void Cluster::resendMessages() {
-    // Iterate every CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS seconds until the timer is cancelled or until we stop running
-    while (bRunning && interruptableResendTimer.wait_for(std::chrono::milliseconds(CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS))) {
-        // Check for jobs that need to be resubmitted
-        checkUnsubmittedJobs();
-
-        // Check for jobs that need to be cancelled
-        checkCancellingJobs();
-
-        // Check for jobs that need to be deleted
-        checkDeletingJobs();
     }
 }
 
@@ -465,7 +620,7 @@ void Cluster::checkUnsubmittedJobs() {
         msg.push_uint(job.id);
         msg.push_string(job.bundle);
         msg.push_string(job.parameters);
-        msg.send(shared_from_this());
+        sendMessage(msg);
 
         // Check that the job status is submitting and update it if not
         auto jobHistoryResults =
@@ -518,7 +673,7 @@ void Cluster::checkCancellingJobs() {
         auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
                         std::to_string(job.id) + "_" + std::string{job.cluster});
         msg.push_uint(job.id);
-        msg.send(shared_from_this());
+        sendMessage(msg);
     }
 }
 
@@ -546,7 +701,7 @@ void Cluster::checkDeletingJobs() {
         auto msg = Message(DELETE_JOB, Message::Priority::Medium,
                         std::to_string(job.id) + "_" + std::string{job.cluster});
         msg.push_uint(job.id);
-        msg.send(shared_from_this());
+        sendMessage(msg);
     }
 }
 
@@ -555,14 +710,15 @@ void Cluster::handleFileListError(Message &message) {
     auto detail = message.pop_string();
 
     // Acquire the lock
-    std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+    std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
     // Check that the uuid is valid
+    auto fileListMap = app->getFileListMap();
     if (fileListMap->find(uuid) == fileListMap->end()) {
         return;
     }
 
-    auto flObj = (*fileListMap)[uuid];
+    auto flObj = fileListMap->at(uuid);
 
     // Set the error
     flObj->errorDetails = detail;
@@ -577,14 +733,15 @@ void Cluster::handleFileList(Message &message) {
     auto uuid = message.pop_string();
 
     // Acquire the lock
-    std::unique_lock<std::mutex> fileListMapDeletionLock(fileListMapDeletionLockMutex);
+    std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
     // Check that the uuid is valid
+    auto fileListMap = app->getFileListMap();
     if (fileListMap->find(uuid) == fileListMap->end()) {
         return;
     }
 
-    auto flObj = (*fileListMap)[uuid];
+    auto flObj = fileListMap->at(uuid);
 
     // Get the number of files in the message
     auto numFiles = message.pop_uint();
@@ -604,27 +761,4 @@ void Cluster::handleFileList(Message &message) {
     // Tell the HTTP side that the data is ready
     flObj->dataReady = true;
     flObj->dataCV.notify_one();
-}
-
-void Cluster::close(bool bForce) {
-    // Protect this block against race conditions. It's possible for this function to be called from multiple threads
-    // which can lead to segfaults without synchronising.
-    std::unique_lock<std::mutex> closeLock(connectionMutex);
-
-    // Terminate the websocket connection
-    if (pConnection) {
-        try {
-            if (bForce) {
-                pConnection->close();
-            } else {
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-                pConnection->send_close(1000, "Closing connection.");
-            }
-        } catch (...) {
-            // It's possible that we try to ask the connection to close when it's already internally been closed. This
-            // can lead to cases where std::runtime_error or other exceptions can be thrown. It's safe to ignore this
-            // case.
-        }
-        pConnection = nullptr;
-    }
 }

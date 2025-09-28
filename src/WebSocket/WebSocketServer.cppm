@@ -1,18 +1,46 @@
 //
-// Created by lewis on 2/26/20.
+// WebSocketServer C++20 module
 //
 
-import settings;
-
-#include "../Cluster/ClusterManager.h"
-#include "WebSocketServer.h"
-#include "../Lib/Messaging/Message.h"
-#include "../Lib/GeneralUtils.h"
+module;
+// Hack to prevent DEPRECATED from being undefined in server_ws.hpp
+#ifndef DEPRECATED
+#define DEPRECATED
+#endif
+#include <server_ws.hpp>
 #include <iostream>
 #include <memory>
 #include <utility>
 
-WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager) : clusterManager(std::move(clusterManager)) {
+export module WebSocketServer;
+
+import settings;
+import Message;
+import IClusterManager;
+import IApplication;
+import GeneralUtils;
+import IWebSocketServer;
+
+export using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
+
+export class WebSocketServer : public IWebSocketServer {
+public:
+    explicit WebSocketServer(std::shared_ptr<IApplication> app);
+
+    void start() override;
+    void join() override;
+    void stop() override;
+    bool is_running() const override;
+
+private:
+    WsServer server;
+    std::thread server_thread;
+
+    std::shared_ptr<IApplication> app;
+};
+
+// Implementation
+WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::move(app)) {
     server.config.port = WEBSOCKET_PORT;
     server.config.address = "0.0.0.0";
     server.config.thread_pool_size = WEBSOCKET_WORKER_POOL_SIZE;
@@ -21,7 +49,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
 
     wsEp.on_message = [this](const std::shared_ptr<WsServer::Connection>& connection, const std::shared_ptr<WsServer::InMessage>& in_message) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->getCluster(connection);
+        auto cluster = this->app->getClusterManager()->getCluster(connection);
         if (!cluster) {
             // What?
             connection->close();
@@ -29,10 +57,8 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
         }
 
         // Convert the string to a vector and create the message object
-        auto message = Message(in_message->data());
-
-        // Handle the message
-        cluster->handleMessage(message);
+        auto msg = Message(in_message->data());
+        cluster->handleMessage(msg);
     };
 
     wsEp.on_open = [this](const std::shared_ptr<WsServer::Connection>& connection) {
@@ -52,14 +78,14 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
         }
 
         // Check that the token is valid
-        auto cluster = this->clusterManager->handleNewConnection(connection, (*queryParams.begin()).second);
+        auto cluster = this->app->getClusterManager()->handleNewConnection(connection, (*queryParams.begin()).second);
         if (cluster) {
             // Everything is fine
             std::cout << "WS: Opened connection from " << cluster->getName() << " as role " << cluster->getRoleString() << std::endl;
 
             // Tell the client that we are ready
             Message msg(SERVER_READY, Message::Priority::Highest, SYSTEM_SOURCE);
-            msg.send(cluster);
+            cluster->sendMessage(msg);
         } else {
             // Invalid Token
             std::cout << "WS: Invalid token used - " << (*queryParams.begin()).second << std::endl;
@@ -67,54 +93,44 @@ WebSocketServer::WebSocketServer(std::shared_ptr<ClusterManager> clusterManager)
         }
     };
 
-    // See RFC 6455 7.4.1. for status codes
     wsEp.on_close = [this](const std::shared_ptr<WsServer::Connection>& connection, int status, const std::string & /*reason*/) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->getCluster(connection);
+        auto cluster = this->app->getClusterManager()->getCluster(connection);
 
         // Remove the cluster from the connected list
         if (cluster) {
-            this->clusterManager->removeConnection(connection);
+            this->app->getClusterManager()->removeConnection(connection);
         }
 
         // Log this
         std::cout << "WS: Closed connection with " << std::string(cluster ? cluster->getName() : "unknown?") << " with status code " << status << std::endl;
     };
 
-    // See http://www.boost.org/doc/libs/1_55_0/doc/html/boost_asio/reference.html, Error Codes for error code meanings
     wsEp.on_error = [this](const std::shared_ptr<WsServer::Connection>& connection, const SimpleWeb::error_code &errorCode) {
         // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->getCluster(connection);
+        auto cluster = this->app->getClusterManager()->getCluster(connection);
 
         // Remove the cluster from the connected list
         if (cluster) {
-            this->clusterManager->removeConnection(connection);
+            this->app->getClusterManager()->removeConnection(connection);
         }
 
-        ClusterManager::reportWebsocketError(cluster, errorCode);
+        this->app->getClusterManager()->reportWebsocketError(cluster, errorCode);
     };
 
     wsEp.on_pong = [this](const std::shared_ptr<WsServer::Connection>& connection) {
-        // Try to get the cluster from the connection
-        auto cluster = this->clusterManager->getCluster(connection);
-
-        // Get the cluster manager to handle the pong
+        // Get the cluster associated with this connection
+        auto cluster = this->app->getClusterManager()->getCluster(connection);
         if (cluster) {
-            this->clusterManager->handlePong(connection);
+            this->app->getClusterManager()->handlePong(connection);
         }
     };
 }
 
 void WebSocketServer::start() {
     server_thread = std::thread([this]() {
-        // Start server
-        this->server.start();
+        server.start();
     });
-
-    // Wait a for the server to initialise
-    while (!acceptingConnections(server.config.port)){ }
-
-    std::cout << "WS: Server listening on port " << server.config.port << std::endl;
 }
 
 void WebSocketServer::join() {
@@ -123,5 +139,11 @@ void WebSocketServer::join() {
 
 void WebSocketServer::stop() {
     server.stop();
-    join();
+    if (server_thread.joinable()) {
+        server_thread.join();
+    }
+}
+
+bool WebSocketServer::is_running() const {
+    return server_thread.joinable();
 }

@@ -1,12 +1,23 @@
 //
 // Created by lewis on 10/6/21.
 //
-#include "../HTTP/Utils/HandleFileList.h"
+
+import settings;
 import job_status;
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
 #include <boost/test/unit_test.hpp>
+#include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
+#include "../Lib/FileTypes.h"
+
+import HandleFileList;
+import Message;
+import IApplication;
+import HttpServer;
+import ClusterManager;
 
 struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
     uint64_t jobId;
@@ -36,9 +47,9 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
                         .set(
                                 jobTable.user = 1,
                                 jobTable.parameters = "params1",
-                                jobTable.cluster = httpServer->getvJwtSecrets()->at(2).clusters()[0],
+                                jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(2).clusters()[0],
                                 jobTable.bundle = "my_test_bundle",
-                                jobTable.application = httpServer->getvJwtSecrets()->at(0).name()
+                                jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()
                         )
         );
 
@@ -74,6 +85,8 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
         auto wsJobId = msg.pop_uint();
         auto uuid = msg.pop_string();
         auto bundleHash = msg.pop_string();
+        auto filePath = msg.pop_string();
+        auto bRecursive = msg.pop_bool();
 
         // The job id passed on the websocket should always be 0
         BOOST_CHECK_EQUAL(wsJobId, jobId);
@@ -95,8 +108,8 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
             return;
         }
 
-        lastDirPath.push_back(msg.pop_string());
-        lastbRecursive.push_back(msg.pop_bool());
+        lastDirPath.push_back(filePath);
+        lastbRecursive.push_back(bRecursive);
 
         auto filteredFiles = filterFiles(fileListData, lastDirPath.back(), lastbRecursive.back());
 
@@ -120,7 +133,7 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
 
 BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
     BOOST_AUTO_TEST_CASE(test_file_list) { // NOLINT(readability-function-cognitive-complexity)
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Create jsonParams
         jsonParams = {
@@ -133,7 +146,8 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         auto response = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
         BOOST_CHECK_EQUAL(response->content.string(), "test error");
-        BOOST_CHECK_EQUAL(fileListMap->size(), 0);
+        auto fileListMap1 = application->getFileListMap();
+        BOOST_CHECK_EQUAL(fileListMap1->size(), 0);
 
         // Finish error testing
         bRaiseError = false;
@@ -142,7 +156,8 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         // _job_completion_ job history objects
         response = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
 
-        BOOST_CHECK_EQUAL(fileListMap->size(), 0);
+        auto fileListMap2 = application->getFileListMap();
+        BOOST_CHECK_EQUAL(fileListMap2->size(), 0);
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(jsonParams["path"]));
@@ -366,7 +381,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(test_job_finished_update) { // NOLINT(readability-function-cognitive-complexity)
-        setJwtSecret(httpServer->getvJwtSecrets()->at(0).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
         // Create jsonParams
         jsonParams = {
@@ -421,7 +436,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         msg.push_string("running");             // what
         msg.push_uint(static_cast<uint32_t>(JobStatus::COMPLETED)); // status
         msg.push_string("it's fine");           // details
-        clusterManager->getvClusters()->at(0)->handleMessage(msg);
+        std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->at(0)->handleMessage(msg);
 
         response = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
 
@@ -454,7 +469,7 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         msg.push_string("_job_completion_");    // what
         msg.push_uint(static_cast<uint32_t>(JobStatus::ERROR)); // status
         msg.push_string("it's fine");           // details
-        clusterManager->getvClusters()->at(0)->handleMessage(msg);
+        std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->at(0)->handleMessage(msg);
 
         // Wait until the file list websocket call is made (Should be triggered because of the job completion status
         int counter = 0;
@@ -639,14 +654,14 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
     }
 
     BOOST_AUTO_TEST_CASE(test_file_list_no_jobid) { // NOLINT(readability-function-cognitive-complexity)
-        setJwtSecret(httpServer->getvJwtSecrets()->at(1).secret());
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).secret());
 
         // The jobId received by the websocket should always be 0 in this test
         jobId = 0;
 
         // Create jsonParams
         jsonParams = {
-                {"cluster", httpServer->getvJwtSecrets()->at(2).clusters()[0]},
+                {"cluster", std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(2).clusters()[0]},
                 {"bundle", "my_test_bundle"},
                 {"recursive", false},
                 {"path",  "/testdir"}
@@ -656,7 +671,8 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         auto response = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
         BOOST_CHECK_EQUAL(std::stoi(response->status_code), (int) SimpleWeb::StatusCode::client_error_bad_request);
         BOOST_CHECK_EQUAL(response->content.string(), "test error");
-        BOOST_CHECK_EQUAL(fileListMap->size(), 0);
+        auto fileListMap3 = application->getFileListMap();
+        BOOST_CHECK_EQUAL(fileListMap3->size(), 0);
 
         // Finish error testing
         bRaiseError = false;
@@ -665,7 +681,8 @@ BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
         // _job_completion_ job history objects
         response = httpClient.request("PATCH", "/job/apiv1/file/", jsonParams.dump(), {{"Authorization", jwtToken.signature()}});
 
-        BOOST_CHECK_EQUAL(fileListMap->size(), 0);
+        auto fileListMap4 = application->getFileListMap();
+        BOOST_CHECK_EQUAL(fileListMap4->size(), 0);
 
         BOOST_CHECK_EQUAL(lastDirPath.size(), 1);
         BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(jsonParams["path"]));

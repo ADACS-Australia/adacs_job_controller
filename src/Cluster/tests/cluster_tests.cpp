@@ -3,6 +3,8 @@
 //
 
 import job_status;
+import settings;
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
@@ -12,9 +14,18 @@ import job_status;
 #include <boost/uuid/uuid_io.hpp>
 #include <random>
 #include <utility>
+#include <sqlpp11/sqlpp11.h>
+#include "../../Lib/shims/sqlpp_shim.h"
+#include "../../Lib/FileTypes.h"
+
+import ICluster;
+import Cluster;
+import Message;
+import IApplication;
+import ClusterManager;
+
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
-
 struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture {
     std::vector<std::vector<uint8_t>> receivedMessages;
     bool bReady = false;
@@ -27,8 +38,8 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
     uint64_t jobIdTestCluster;
 
     ClusterTestDataFixture() :
-        cluster(clusterManager->getvClusters()->back()), details(clusterManager->getvClusters()->back()->getClusterDetails()),
-        onlineCluster(clusterManager->getvClusters()->front()), onlineDetails(clusterManager->getvClusters()->front()->getClusterDetails())
+        cluster(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->back()), details(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->back()->getClusterDetails()),
+        onlineCluster(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->front()), onlineDetails(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->front()->getClusterDetails())
     {
         // Parse the cluster configuration
         jsonClusters = nlohmann::json::parse(sClusters);
@@ -75,11 +86,14 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
 
     void onWebsocketMessage(auto in_message) {
         auto data = in_message->string();
+        std::cout << "DEBUG: Received WebSocket message, size: " << data.size() << std::endl;
 
         // Don't parse the message if the ws connection is ready
         if (!bReady) {
             Message msg(std::vector<uint8_t>(data.begin(), data.end()));
+            std::cout << "DEBUG: Parsed message, ID: " << msg.getId() << ", SERVER_READY: " << SERVER_READY << std::endl;
             if (msg.getId() == SERVER_READY) {
+                std::cout << "DEBUG: Received SERVER_READY message, setting bReady = true" << std::endl;
                 bReady = true;
                 return;
             }
@@ -1030,6 +1044,7 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         msg.push_ulong(0x4321);     // fileSize
         cluster->handleMessage(msg);
 
+        auto fileListMap = application->getFileListMap();
         BOOST_CHECK_EQUAL(fileListMap->empty(), true);
 
         auto fdObj = std::make_shared<sFileList>();
@@ -1088,28 +1103,29 @@ BOOST_FIXTURE_TEST_SUITE(Cluster_test_suite, ClusterTestDataFixture)
         msg.push_string("details");     // detail
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL(fileListMap->empty(), true);
+        auto fileListMap2 = application->getFileListMap();
+        BOOST_CHECK_EQUAL(fileListMap2->empty(), true);
 
         auto flObj = std::make_shared<sFileList>();
-        fileListMap->emplace(uuid, flObj);
+        fileListMap2->emplace(uuid, flObj);
 
         // Check that the file download object is correctly created
-        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files.empty(), true);
-        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->error, false);
-        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->errorDetails.empty(), true);
-        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->dataReady, false);
+        BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->files.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->error, false);
+        BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->errorDetails.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->dataReady, false);
 
         msg = Message(FILE_LIST_ERROR);
         msg.push_string(uuid);          // uuid
         msg.push_string("details");     // detail
         cluster->handleMessage(msg);
 
-        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->files.empty(), true);
-        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->error, true);
-        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->errorDetails, "details");
-        BOOST_CHECK_EQUAL((*fileListMap)[uuid]->dataReady, true);
+        BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->files.empty(), true);
+        BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->error, true);
+        BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->errorDetails, "details");
+        BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->dataReady, true);
 
-        fileListMap->erase(uuid);
+        fileListMap2->erase(uuid);
     }
 
 BOOST_AUTO_TEST_SUITE_END()

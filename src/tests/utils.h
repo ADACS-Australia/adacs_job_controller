@@ -1,9 +1,6 @@
 #ifndef GWCLOUD_JOB_SERVER_UTILS_H
 #define GWCLOUD_JOB_SERVER_UTILS_H
 
-#include "../DB/MySqlConnector.h"
-#include "../HTTP/HttpServer.h"
-#include "../Lib/jobserver_schema.h"
 #include <client_http.hpp>
 #include <client_ws.hpp>
 #include <iostream>

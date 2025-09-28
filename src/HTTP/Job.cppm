@@ -2,49 +2,67 @@
 // Created by lewis on 3/4/20.
 //
 
-import job_status;
-import settings;
-
-#include "../Cluster/ClusterManager.h"
-#include "../DB/MySqlConnector.h"
-#include "../Lib/jobserver_schema.h"
-#include "../Lib/Messaging/Message.h"
-#include "../Lib/GeneralUtils.h"
-#include "HttpServer.h"
-#include "HttpUtils.h"
+module;
+#include <chrono>
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/tokenizer.hpp>
-#include <chrono>
-#include <cstdint>
+#include <nlohmann/json.hpp>
+#include <sqlpp11/sqlpp11.h>
+#include <sqlpp11/mysql/mysql.h>
+#include "../Lib/shims/sqlpp_shim.h"
+#include "../Lib/FileTypes.h"
+#include "../Lib/shims/date_shim.h"
 #include <format>
 #include <exception>
 #include <iterator>
 #include <map>
-#include <memory>
 #include <ratio>
 #include <stdexcept>
-#include <string>
-#include <vector>
-#include <nlohmann/json.hpp>
-#include <sqlpp11/sqlpp11.h>
+#include <server_http.hpp>
+#include <status_code.hpp>
+#include <utility.hpp>
+
+export module Job;
+
+import job_status;
+import settings;
+import IClusterManager;
+import IApplication;
+import HttpUtils;
+import HttpServer;
+import GeneralUtils;
+import ICluster;
+import jobserver_schema;
+import Message;
+import MySqlConnector;
+
+using namespace sqlpp;
 
 auto getJobs(const std::vector<uint64_t> &ids) -> nlohmann::json;
 
 auto filterJobs(
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeLt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *endTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *endTimeLt,
-        std::vector<uint64_t> *jobIds, std::map<std::string, uint32_t> *jobSteps,
-        std::vector<std::string> &applications) -> nlohmann::json;
+        std::optional<std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>>> startTimeGt,
+        std::optional<std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>>> startTimeLt,
+        std::optional<std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>>> endTimeGt,
+        std::optional<std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>>> endTimeLt,
+        std::optional<std::vector<uint64_t>> jobIds, std::optional<std::map<std::string, uint32_t>> jobSteps,
+        const std::vector<std::string> &applications) -> nlohmann::json;
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<ClusterManager>& clusterManager) {
+export void JobApi(const std::string &path, std::shared_ptr<HttpServer> server, std::shared_ptr<IApplication> app) {
     // Get      -> Get job status (job id)
     // Post     -> Create new job
     // Delete   -> Delete job (job id)
     // Patch    -> Cancel job (job id)
+    
+    auto clusterManager = app->getClusterManager();
 
     // Create a new job
     server->getServer().resource["^" + path + "$"]["POST"] = [clusterManager, server](
@@ -134,7 +152,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
                 msg.push_uint(jobId);
                 msg.push_string(post_data["bundle"]);
                 msg.push_string(post_data["parameters"]);
-                msg.send(cluster);
+                cluster->sendMessage(msg);
 
                 // Mark the job as submitting
                 database->run(
@@ -247,12 +265,12 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
                       std::back_inserter(applications));
 
             auto result = filterJobs(
-                    hasQueryParam(query_fields, "startTimeGt") ? &startTimeGt : nullptr,
-                    hasQueryParam(query_fields, "startTimeLt") ? &startTimeLt : nullptr,
-                    hasQueryParam(query_fields, "endTimeGt") ? &endTimeGt : nullptr,
-                    hasQueryParam(query_fields, "endTimeLt") ? &endTimeLt : nullptr,
-                    hasQueryParam(query_fields, "jobIds") ? &jobIds : nullptr,
-                    hasQueryParam(query_fields, "jobSteps") ? &jobSteps : nullptr,
+                    hasQueryParam(query_fields, "startTimeGt") ? std::make_optional(startTimeGt) : std::nullopt,
+                    hasQueryParam(query_fields, "startTimeLt") ? std::make_optional(startTimeLt) : std::nullopt,
+                    hasQueryParam(query_fields, "endTimeGt") ? std::make_optional(endTimeGt) : std::nullopt,
+                    hasQueryParam(query_fields, "endTimeLt") ? std::make_optional(endTimeLt) : std::nullopt,
+                    hasQueryParam(query_fields, "jobIds") ? std::make_optional(jobIds) : std::nullopt,
+                    hasQueryParam(query_fields, "jobSteps") ? std::make_optional(jobSteps) : std::nullopt,
                     applications
             );
 
@@ -410,7 +428,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
                     auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
                                     std::to_string(job->id) + "_" + std::string{job->cluster});
                     msg.push_uint(job->id);
-                    msg.send(cluster);
+                    cluster->sendMessage(msg);
                 }
             }
 
@@ -577,7 +595,7 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
                     auto msg = Message(DELETE_JOB, Message::Priority::Medium,
                                     std::to_string(job->id) + "_" + std::string{job->cluster});
                     msg.push_uint(job->id);
-                    msg.send(cluster);
+                    cluster->sendMessage(msg);
                 }
             }
 
@@ -606,20 +624,20 @@ void JobApi(const std::string &path, HttpServer *server, const std::shared_ptr<C
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
 auto filterJobs(
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *startTimeLt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *endTimeGt,
-        std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>> *endTimeLt,
-        std::vector<uint64_t> *jobIds, std::map<std::string, uint32_t> *jobSteps,
-        std::vector<std::string> &applications) -> nlohmann::json {
+        std::optional<std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>>> startTimeGt,
+        std::optional<std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>>> startTimeLt,
+        std::optional<std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>>> endTimeGt,
+        std::optional<std::chrono::time_point<std::chrono::system_clock, std::chrono::duration<int64_t, std::ratio<1, 1>>>> endTimeLt,
+        std::optional<std::vector<uint64_t>> jobIds, std::optional<std::map<std::string, uint32_t>> jobSteps,
+        const std::vector<std::string> &applications) -> nlohmann::json {
 // NOLINTEND(bugprone-easily-swappable-parameters)
 
     // Check for valid parameters
-    if ((endTimeGt != nullptr) && (endTimeLt != nullptr)) {
+    if (endTimeGt.has_value() && endTimeLt.has_value()) {
         throw std::runtime_error("Can't have both endTimeGt and endTimeLt");
     }
 
-    if ((startTimeGt != nullptr) && (startTimeLt != nullptr)) {
+    if (startTimeGt.has_value() && startTimeLt.has_value()) {
         throw std::runtime_error("Can't have both startTimeGt and startTimeLt");
     }
 
@@ -667,38 +685,38 @@ auto filterJobs(
     // initial system history created at job creation time
 
     // If the greater than start time is provided, add the condition to the where statement
-    if (startTimeGt != nullptr) {
-        systemStartTimeFilter.where.add(jobHistoryTable.timestamp >= *startTimeGt);
+    if (startTimeGt.has_value()) {
+        systemStartTimeFilter.where.add(jobHistoryTable.timestamp >= startTimeGt.value());
     }
 
     // If the less than start time is provided add the condition to the where statement
-    if (startTimeLt != nullptr) {
-        systemStartTimeFilter.where.add(jobHistoryTable.timestamp <= *startTimeLt);
+    if (startTimeLt.has_value()) {
+        systemStartTimeFilter.where.add(jobHistoryTable.timestamp <= startTimeLt.value());
     }
 
     // Create a temporary history filter, true here as it is combined below with AND if an end time is not provided
     auto endTimeFilter = sqlpp::boolean_expression<mysql::connection>(true);
-    if (endTimeGt != nullptr) {
+    if (endTimeGt.has_value()) {
         // Create the end time greater than comparison
         endTimeFilter = sqlpp::boolean_expression<mysql::connection>(
-                jobHistoryTable.what == "_job_completion_" and jobHistoryTable.timestamp >= *endTimeGt
+                jobHistoryTable.what == "_job_completion_" and jobHistoryTable.timestamp >= endTimeGt.value()
         );
     }
 
-    if (endTimeLt != nullptr) {
+    if (endTimeLt.has_value()) {
         // endTimeLt and endTimeGt are mutually exclusive, so no problem with reassigning
         endTimeFilter = sqlpp::boolean_expression<mysql::connection>(
-                jobHistoryTable.what == "_job_completion_" and jobHistoryTable.timestamp <= *endTimeLt
+                jobHistoryTable.what == "_job_completion_" and jobHistoryTable.timestamp <= endTimeLt.value()
         );
     }
 
     // Next filter by job step histories
     // Create an initial value filter of false as we will compare with OR. If job steps is not supplied, the default
     // comparison should be true
-    auto jobStepFilter = sqlpp::boolean_expression<mysql::connection>(jobSteps == nullptr);
+    auto jobStepFilter = sqlpp::boolean_expression<mysql::connection>(!jobSteps.has_value());
 
-    if (jobSteps != nullptr) {
-        for (const auto &step : *jobSteps) {
+    if (jobSteps.has_value()) {
+        for (const auto &step : jobSteps.value()) {
             jobStepFilter = sqlpp::boolean_expression<mysql::connection>(
                     (jobHistoryTable.what == step.first and jobHistoryTable.state == step.second) or jobStepFilter
             );
@@ -733,8 +751,8 @@ auto filterJobs(
     );
 
     // If the user has provided a list of job id's add that to the filter
-    if (jobIds != nullptr) {
-        historyResultsFilter.where.add(jobHistoryTable.jobId.in(sqlpp::value_list(*jobIds)));
+    if (jobIds.has_value()) {
+        historyResultsFilter.where.add(jobHistoryTable.jobId.in(sqlpp::value_list(jobIds.value())));
     }
 
     // Group by the job id to eliminate duplicate job ids

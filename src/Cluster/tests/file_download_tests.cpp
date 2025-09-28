@@ -3,6 +3,8 @@
 //
 
 import job_status;
+import settings;
+#include <jwt/jwt.hpp>
 #include "../../tests/fixtures/DatabaseFixture.h"
 #include "../../tests/fixtures/HttpClientFixture.h"
 #include "../../tests/fixtures/WebSocketClientFixture.h"
@@ -12,6 +14,10 @@ import job_status;
 #include <boost/uuid/uuid_io.hpp>
 #include <random>
 #include <utility>
+
+import FileDownload;
+import Message;
+import ClusterManager;
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
@@ -38,7 +44,7 @@ struct FileDownloadTestDataFixture : public DatabaseFixture, public WebSocketCli
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        fileDownload = clusterManager->createFileDownload(clusterManager->getvClusters()->back(), uuid);
+        fileDownload = clusterManager->createFileDownload(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->back(), uuid);
 
         fileDownload->stop();
     }
@@ -63,7 +69,7 @@ struct FileDownloadTestDataFixture : public DatabaseFixture, public WebSocketCli
 BOOST_FIXTURE_TEST_SUITE(File_Download_test_suite, FileDownloadTestDataFixture)
     BOOST_AUTO_TEST_CASE(test_constructor) {
         // Check that the cluster details and the manager are set correctly
-        BOOST_CHECK_EQUAL(*fileDownload->getpClusterDetails(), clusterManager->getvClusters()->back()->getClusterDetails());
+        BOOST_CHECK_EQUAL(*fileDownload->getpClusterDetails(), std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->back()->getClusterDetails());
 
         // Check that the right number of queue levels are created (+1 because 0 is a priority level itself)
         BOOST_CHECK_EQUAL(fileDownload->getqueue()->size(),

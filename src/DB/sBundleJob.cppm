@@ -2,20 +2,20 @@
 // Created by lewis on 10/5/22.
 //
 
-#ifndef GWCLOUD_JOB_SERVER_S_BUNDLE_JOB_H
-#define GWCLOUD_JOB_SERVER_S_BUNDLE_JOB_H
+module;
+#include <sqlpp11/sqlpp11.h>
+#include <sqlpp11/mysql/mysql.h>
+#include "../Lib/shims/sqlpp_shim.h"
 
-#include "../Lib/Messaging/Message.h"
-#include "../Lib/jobserver_schema.h"
-#include "MySqlConnector.h"
-#include "sClusterJob.h"
-#include <cstdint>
-#include <string>
-#include <thread>
-#include <vector>
+export module sBundleJob;
 
+import Message;
+import MySqlConnector;
+import jobserver_schema;
 
-struct sBundleJob {
+using namespace sqlpp;
+
+export struct sBundleJob {
     [[nodiscard]] auto equals(const sBundleJob& other) const -> bool {
         return id == other.id
             and content == other.content;
@@ -40,8 +40,9 @@ struct sBundleJob {
         };
     }
 
+    // Database methods
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-    static auto getById(uint64_t jobId, const std::string& cluster, const std::string& bundleHash) {
+    static auto getById(uint64_t jobId, const std::string& cluster, const std::string& bundleHash) -> sBundleJob {
         auto _database = MySqlConnector();
         schema::JobserverBundlejob _bundleJobTable;
 
@@ -119,5 +120,3 @@ struct sBundleJob {
     uint64_t id = 0;
     std::string content;
 };
-
-#endif //GWCLOUD_JOB_SERVER_S_BUNDLE_JOB_H

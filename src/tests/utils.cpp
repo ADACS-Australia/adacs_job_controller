@@ -1,4 +1,8 @@
 #include "utils.h"
+#include <sqlpp11/sqlpp11.h>
+
+import jobserver_schema;
+import MySqlConnector;
 
 std::shared_ptr<std::default_random_engine> rng = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 

@@ -2,20 +2,21 @@
 // Created by lewis on 10/5/22.
 //
 
-#ifndef GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_STATUS_H
-#define GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_STATUS_H
+module;
+#include <sqlpp11/sqlpp11.h>
+#include <sqlpp11/mysql/mysql.h>
+#include "../Lib/shims/sqlpp_shim.h"
+import jobserver_schema;
 
-#include "../Lib/Messaging/Message.h"
-#include "../Lib/jobserver_schema.h"
-#include "MySqlConnector.h"
-#include "sClusterJob.h"
-#include <cstdint>
-#include <string>
-#include <thread>
-#include <vector>
+export module sClusterJobStatus;
 
+import Message;
+import sClusterJob;
+import MySqlConnector;
 
-struct sClusterJobStatus {
+using namespace sqlpp;
+
+export struct sClusterJobStatus {
     [[nodiscard]] auto equals(const sClusterJobStatus& other) const -> bool {
         return id == other.id
             and jobId == other.jobId
@@ -48,8 +49,9 @@ struct sClusterJobStatus {
         };
     }
 
+    // Database methods
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-    static auto getJobStatusByJobIdAndWhat(uint64_t jobId, const std::string& what, const std::string& cluster) {
+    static auto getJobStatusByJobIdAndWhat(uint64_t jobId, const std::string& what, const std::string& cluster) -> std::vector<sClusterJobStatus> {
         auto _database = MySqlConnector();
         schema::JobserverClusterjobstatus _jobStatusTable;
 
@@ -60,7 +62,7 @@ struct sClusterJobStatus {
         }
 
         auto statusResults = _database->operator()(
-                select(all_of(_jobStatusTable))
+                sqlpp::select(sqlpp::all_of(_jobStatusTable))
                         .from(_jobStatusTable)
                         .where(
                                 _jobStatusTable.jobId == jobId
@@ -77,7 +79,7 @@ struct sClusterJobStatus {
         return vStatus;
     }
 
-    static auto getJobStatusByJobId(uint64_t jobId, const std::string& cluster) {
+    static auto getJobStatusByJobId(uint64_t jobId, const std::string& cluster) -> std::vector<sClusterJobStatus> {
         auto _database = MySqlConnector();
         schema::JobserverClusterjobstatus _jobStatusTable;
 
@@ -88,7 +90,7 @@ struct sClusterJobStatus {
         }
 
         auto statusResults = _database->operator()(
-                select(all_of(_jobStatusTable))
+                sqlpp::select(sqlpp::all_of(_jobStatusTable))
                         .from(_jobStatusTable)
                         .where(
                                 _jobStatusTable.jobId == jobId
@@ -111,11 +113,11 @@ struct sClusterJobStatus {
 
         // Remove any records where the id is in "ids", and the job id is in any jobs which have the same cluster
         _database->run(
-                remove_from(_jobStatusTable)
+                sqlpp::remove_from(_jobStatusTable)
                         .where(
                                 _jobStatusTable.id.in(sqlpp::value_list(ids))
                                 and _jobStatusTable.jobId.in(
-                                        select(_jobTable.id).from(_jobTable).where(_jobTable.cluster == cluster)
+                                        sqlpp::select(_jobTable.id).from(_jobTable).where(_jobTable.cluster == cluster)
                                 )
                         )
         );
@@ -134,7 +136,7 @@ struct sClusterJobStatus {
         if (id != 0) {
             // Update the record
             _database->run(
-                    update(_jobStatusTable)
+                    sqlpp::update(_jobStatusTable)
                             .set(
                                     _jobStatusTable.jobId = jobId,
                                     _jobStatusTable.what = what,
@@ -147,7 +149,7 @@ struct sClusterJobStatus {
         } else {
             // Create the record
             id = _database->run(
-                    insert_into(_jobStatusTable)
+                    sqlpp::insert_into(_jobStatusTable)
                             .set(
                                     _jobStatusTable.jobId = jobId,
                                     _jobStatusTable.what = what,
@@ -162,5 +164,3 @@ struct sClusterJobStatus {
     std::string what;
     uint32_t state = 0;
 };
-
-#endif //GWCLOUD_JOB_SERVER_S_CLUSTER_JOB_STATUS_H

@@ -6,6 +6,7 @@
 #define GWCLOUD_JOB_SERVER_HTTPCLIENTFIXTURE_H
 
 #include "../utils.h"
+#include <nlohmann/json.hpp>
 
 struct HttpClientFixture {
     TestHttpClient httpClient = TestHttpClient("localhost:8000");
