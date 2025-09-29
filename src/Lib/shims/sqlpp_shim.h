@@ -9,39 +9,39 @@
 
 namespace sqlpp {
 // 3-parameter form: (tuple, sep, context)
-//template <typename Tuple, typename Context>
-//inline Context& interpret_tuple(const Tuple& t, const char* sep, Context& ctx)
+// template <typename Tuple, typename Context>
+// inline Context& interpret_tuple(const Tuple& t, const char* sep, Context& ctx)
 //{
 //  const char c = (sep && *sep) ? *sep : '\0';
 //  return interpret_tuple(t, c, ctx);
 //}
 
-//template <typename Tuple, typename Context>
-//inline Context& interpret_tuple(const Tuple& t, std::string_view sep, Context& ctx)
+// template <typename Tuple, typename Context>
+// inline Context& interpret_tuple(const Tuple& t, std::string_view sep, Context& ctx)
 //{
-//  const char c = (!sep.empty()) ? sep.front() : '\0';
-//  return interpret_tuple(t, c, ctx);
-//}
+//   const char c = (!sep.empty()) ? sep.front() : '\0';
+//   return interpret_tuple(t, c, ctx);
+// }
 
 // 4-parameter form seen in some headers: (tuple, sep, context, useBraces)
-//template <typename Tuple, typename Context, typename UseBraces>
-//inline Context& interpret_tuple(const Tuple& t, const char* sep, Context& ctx, UseBraces useBraces)
+// template <typename Tuple, typename Context, typename UseBraces>
+// inline Context& interpret_tuple(const Tuple& t, const char* sep, Context& ctx, UseBraces useBraces)
 //{
 //  const char c = (sep && *sep) ? *sep : '\0';
 //  return interpret_tuple(t, c, ctx, useBraces);
 //}
 
-//template <typename Tuple, typename Context, typename UseBraces>
-//inline Context& interpret_tuple(const Tuple& t, std::string_view sep, Context& ctx, UseBraces useBraces)
+// template <typename Tuple, typename Context, typename UseBraces>
+// inline Context& interpret_tuple(const Tuple& t, std::string_view sep, Context& ctx, UseBraces useBraces)
 //{
-//  const char c = (!sep.empty()) ? sep.front() : '\0';
-//  return interpret_tuple(t, c, ctx, useBraces);
-//}
+//   const char c = (!sep.empty()) ? sep.front() : '\0';
+//   return interpret_tuple(t, c, ctx, useBraces);
+// }
 
-  // 5-parameter element bridge: (element, sep, context, useBraces, index)
+// 5-parameter element bridge: (element, sep, context, useBraces, index)
 // Prints the separator for index>0, then delegates to serialize().
-//template <typename Element, typename Separator, typename Context, typename UseBraces>
-//inline void interpret_tuple_element(const Element& e,
+// template <typename Element, typename Separator, typename Context, typename UseBraces>
+// inline void interpret_tuple_element(const Element& e,
 //                                    Separator sep,
 //                                    Context& ctx,
 //                                    UseBraces /*useBraces*/,
@@ -52,7 +52,7 @@ namespace sqlpp {
 //
 //  using ::sqlpp::serialize; // enable ADL
 //  serialize(e, ctx);
-//} 
+//}
 
 // 5-arg form when separator is a single char
 template <typename Element, typename Context, typename UseBraces>
@@ -62,11 +62,11 @@ inline void interpret_tuple_element(const Element& e,
                                     UseBraces /*useBraces*/,
                                     std::size_t index)
 {
-  if (index)
-    ctx << sep;
+    if (index)
+        ctx << sep;
 
-  using ::sqlpp::serialize; // enable ADL
-  serialize(e, ctx);
+    using ::sqlpp::serialize;  // enable ADL
+    serialize(e, ctx);
 }
 
 // 5-arg form when separator is a string literal (e.g. ",")
@@ -77,9 +77,9 @@ inline void interpret_tuple_element(const Element& e,
                                     UseBraces useBraces,
                                     std::size_t index)
 {
-  // forward to the char version with the first character
-  const char c = N ? sep[0] : '\0';
-  interpret_tuple_element(e, c, ctx, useBraces, index);
+    // forward to the char version with the first character
+    const char c = N ? sep[0] : '\0';
+    interpret_tuple_element(e, c, ctx, useBraces, index);
 }
-    
-} // namespace sqlpp
+
+}  // namespace sqlpp

@@ -5,9 +5,10 @@
 
 #pragma once
 
+#include <chrono>
 #include <iomanip>
 #include <ostream>
-#include <chrono>
+
 #include <date/date.h>
 #include <date/tz.h>
 
@@ -17,29 +18,30 @@ namespace date {
 namespace detail {
 
 // Helper function to format hh_mm_ss with microseconds
-template<class CharT, class Traits>
-inline void format_hh_mm_ss_microseconds(std::basic_ostream<CharT, Traits>& os, 
-                                         const hh_mm_ss<std::chrono::duration<long, std::ratio<1l, 1000000l>>>& tod) {
-  auto f = os.flags();
-  auto fill = os.fill();
+template <class CharT, class Traits>
+inline void format_hh_mm_ss_microseconds(std::basic_ostream<CharT, Traits>& os,
+                                         const hh_mm_ss<std::chrono::duration<long, std::ratio<1l, 1000000l>>>& tod)
+{
+    auto f    = os.flags();
+    auto fill = os.fill();
 
-  os << std::setw(2) << std::setfill(CharT('0')) << tod.hours().count()
-     << CharT(':') << std::setw(2) << tod.minutes().count()
-     << CharT(':') << std::setw(2) << tod.seconds().count()
-     << CharT('.') << std::setw(6) << std::setfill(CharT('0')) << tod.subseconds().count();
+    os << std::setw(2) << std::setfill(CharT('0')) << tod.hours().count() << CharT(':') << std::setw(2)
+       << tod.minutes().count() << CharT(':') << std::setw(2) << tod.seconds().count() << CharT('.') << std::setw(6)
+       << std::setfill(CharT('0')) << tod.subseconds().count();
 
-  os.fill(fill);
-  os.flags(f);
+    os.fill(fill);
+    os.flags(f);
 }
 
-} // namespace detail
-} // namespace date
+}  // namespace detail
+}  // namespace date
 
 // Provide the operator<< in the global namespace to avoid conflicts
-template<class CharT, class Traits>
-inline std::basic_ostream<CharT, Traits>&
-operator<<(std::basic_ostream<CharT, Traits>& os, 
-           const date::hh_mm_ss<std::chrono::duration<long, std::ratio<1l, 1000000l>>>& tod) {
-  date::detail::format_hh_mm_ss_microseconds(os, tod);
-  return os;
+template <class CharT, class Traits>
+inline std::basic_ostream<CharT, Traits>& operator<<(
+    std::basic_ostream<CharT, Traits>& os,
+    const date::hh_mm_ss<std::chrono::duration<long, std::ratio<1l, 1000000l>>>& tod)
+{
+    date::detail::format_hh_mm_ss_microseconds(os, tod);
+    return os;
 }

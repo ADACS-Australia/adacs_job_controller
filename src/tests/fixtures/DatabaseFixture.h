@@ -6,12 +6,14 @@
 #define GWCLOUD_JOB_SERVER_DATABASEFIXTURE_H
 
 #include <sqlpp11/sqlpp11.h>
+
 #include "../../Lib/shims/sqlpp_shim.h"
 import jobserver_schema;
 
 import MySqlConnector;
 
-struct DatabaseFixture {
+struct DatabaseFixture
+{
     MySqlConnector database;
 
     schema::JobserverFiledownload fileDownloadTable{};
@@ -22,22 +24,25 @@ struct DatabaseFixture {
     schema::JobserverClusterjob jobClusterjob{};
     schema::JobserverClusterjobstatus jobClusterjobstatus{};
 
-    DatabaseFixture() {
+    DatabaseFixture()
+    {
         cleanDatabase();
     }
 
     // NOLINTNEXTLINE(bugprone-exception-escape)
-    ~DatabaseFixture() {
+    ~DatabaseFixture()
+    {
         cleanDatabase();
     }
 
-    DatabaseFixture(DatabaseFixture const&) = delete;
-    auto operator =(DatabaseFixture const&) -> DatabaseFixture& = delete;
-    DatabaseFixture(DatabaseFixture&&) = delete;
-    auto operator=(DatabaseFixture&&) -> DatabaseFixture& = delete;
+    DatabaseFixture(DatabaseFixture const&)                    = delete;
+    auto operator=(DatabaseFixture const&) -> DatabaseFixture& = delete;
+    DatabaseFixture(DatabaseFixture&&)                         = delete;
+    auto operator=(DatabaseFixture&&) -> DatabaseFixture&      = delete;
 
 private:
-    void cleanDatabase() const {
+    void cleanDatabase() const
+    {
         // Sanitize all records from the database
         database->run(remove_from(jobFilelistcache).unconditionally());
         database->run(remove_from(fileDownloadTable).unconditionally());
@@ -49,4 +54,4 @@ private:
     }
 };
 
-#endif //GWCLOUD_JOB_SERVER_DATABASEFIXTURE_H
+#endif  // GWCLOUD_JOB_SERVER_DATABASEFIXTURE_H

@@ -9,8 +9,9 @@ module;
 #include <mutex>
 #include <string>
 #include <vector>
-#include "Lib/FollyTypes.h"
+
 #include "Lib/FileTypes.h"
+#include "Lib/FollyTypes.h"
 
 export module Application;
 
@@ -24,32 +25,35 @@ import IClusterManager;
 import Job;
 import File;
 
-class Application : public IApplication, public std::enable_shared_from_this<Application> {
+class Application : public IApplication, public std::enable_shared_from_this<Application>
+{
 private:
     std::shared_ptr<FileListMap> fileListMap;
     std::mutex fileDownloadPauseResumeLockMutex;
     std::mutex fileListMapDeletionLockMutex;
     bool running;
-    
+
     // Server components
     std::shared_ptr<ClusterManager> clusterManager;
     std::shared_ptr<IHttpServer> httpServer;
     std::shared_ptr<IWebSocketServer> websocketServer;
 
 public:
-    Application() : running(false) {
+    Application() : running(false)
+    {
         fileListMap = std::make_shared<FileListMap>();
     }
 
-    void initializeComponents() {
+    void initializeComponents()
+    {
         // Initialize server components with this application reference
-        clusterManager = std::make_shared<ClusterManager>(shared_from_this());
+        clusterManager               = std::make_shared<ClusterManager>(shared_from_this());
         // Create concrete HttpServer but store as interface
-        auto concreteHttpServer = std::make_shared<HttpServer>(shared_from_this());
-        httpServer = concreteHttpServer;
+        auto concreteHttpServer      = std::make_shared<HttpServer>(shared_from_this());
+        httpServer                   = concreteHttpServer;
         // Create concrete WebSocketServer but store as interface
         auto concreteWebSocketServer = std::make_shared<WebSocketServer>(shared_from_this());
-        websocketServer = concreteWebSocketServer;
+        websocketServer              = concreteWebSocketServer;
 
         JobApi("/job/apiv1/job/", concreteHttpServer, shared_from_this());
         FileApi("/job/apiv1/file/", concreteHttpServer, shared_from_this());
@@ -58,49 +62,59 @@ public:
     ~Application() override = default;
 
     // IApplication interface implementation
-    std::shared_ptr<FileListMap> getFileListMap() override {
+    std::shared_ptr<FileListMap> getFileListMap() override
+    {
         return fileListMap;
     }
 
-    std::mutex& getFileDownloadPauseResumeLockMutex() override {
+    std::mutex& getFileDownloadPauseResumeLockMutex() override
+    {
         return fileDownloadPauseResumeLockMutex;
     }
 
-    std::mutex& getFileListMapDeletionLockMutex() override {
+    std::mutex& getFileListMapDeletionLockMutex() override
+    {
         return fileListMapDeletionLockMutex;
     }
 
-    void initialize() override {
+    void initialize() override
+    {
         std::cout << "Application initializing..." << std::endl;
         running = true;
     }
 
-    void shutdown() override {
+    void shutdown() override
+    {
         std::cout << "Application shutting down..." << std::endl;
         running = false;
     }
 
-    bool isRunning() const override {
+    bool isRunning() const override
+    {
         return running;
     }
-    
+
     // Server component access
-    std::shared_ptr<IClusterManager> getClusterManager() override {
+    std::shared_ptr<IClusterManager> getClusterManager() override
+    {
         return clusterManager;
     }
 
-    std::shared_ptr<IHttpServer> getHttpServer() override {
+    std::shared_ptr<IHttpServer> getHttpServer() override
+    {
         return httpServer;
     }
 
-    std::shared_ptr<IWebSocketServer> getWebSocketServer() override {
+    std::shared_ptr<IWebSocketServer> getWebSocketServer() override
+    {
         return websocketServer;
     }
-    
+
     // Main application run method
-    void run() {
+    void run()
+    {
         initialize();
-        
+
         // Start the websocket server
         websocketServer->start();
 
@@ -114,7 +128,8 @@ public:
 };
 
 // Factory function to create application instance
-export std::shared_ptr<IApplication> createApplication() {
+export std::shared_ptr<IApplication> createApplication()
+{
     auto app = std::make_shared<Application>();
     app->initializeComponents();
     return app;

@@ -7,9 +7,10 @@
 
 #include <folly/concurrency/ConcurrentHashMap.h>
 #include <folly/concurrency/UnboundedQueue.h>
+
 #include "FileTypes.h"
 
 // Type aliases for commonly used folly types
 using FileListMap = folly::ConcurrentHashMap<std::string, std::shared_ptr<sFileList>>;
 
-#endif //GWCLOUD_JOB_SERVER_FOLLY_TYPES_H
+#endif  // GWCLOUD_JOB_SERVER_FOLLY_TYPES_H

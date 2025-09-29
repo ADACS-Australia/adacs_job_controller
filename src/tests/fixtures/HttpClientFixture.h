@@ -5,13 +5,15 @@
 #ifndef GWCLOUD_JOB_SERVER_HTTPCLIENTFIXTURE_H
 #define GWCLOUD_JOB_SERVER_HTTPCLIENTFIXTURE_H
 
-#include "../utils.h"
 #include <nlohmann/json.hpp>
 
-struct HttpClientFixture {
+#include "../utils.h"
+
+struct HttpClientFixture
+{
     TestHttpClient httpClient = TestHttpClient("localhost:8000");
     nlohmann::json jsonResult;
     nlohmann::json jsonParams;
 };
 
-#endif //GWCLOUD_JOB_SERVER_HTTPCLIENTFIXTURE_H
+#endif  // GWCLOUD_JOB_SERVER_HTTPCLIENTFIXTURE_H

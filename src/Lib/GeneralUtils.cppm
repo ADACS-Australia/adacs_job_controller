@@ -3,11 +3,19 @@
 //
 
 module;
+#include <execinfo.h>
+
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
+#include <cstdlib>
+#include <exception>
+#include <iostream>
 #include <mutex>
 #include <string>
-#include <algorithm>
+#include <thread>
+
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/remove_whitespace.hpp>
@@ -17,14 +25,9 @@ module;
 #include <boost/system/error_code.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <cstdint>
-#include <cstdlib>
-#include <exception>
-#include <iostream>
-#include <thread>
-#include <execinfo.h>
 #include <folly/experimental/exception_tracer/ExceptionTracer.h>
 #include <folly/experimental/exception_tracer/StackTrace.h>
+
 #include "segvcatch.h"
 
 export module GeneralUtils;
@@ -44,8 +47,7 @@ export auto base64Encode(std::string input) -> std::string
     using boost::archive::iterators::transform_width, boost::archive::iterators::base64_from_binary;
     // NOLINTNEXTLINE (cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
     using ItBase64T = base64_from_binary<transform_width<std::string::const_iterator, 6, 8>>;
-    std::string output(ItBase64T(input.begin()),
-                       ItBase64T(input.end() - num_pad_chars));
+    std::string output(ItBase64T(input.begin()), ItBase64T(input.end() - num_pad_chars));
 
     // Pad blank characters with =
     output.append(num_pad_chars, '=');
@@ -56,7 +58,8 @@ export auto base64Encode(std::string input) -> std::string
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
 export auto base64Decode(std::string input) -> std::string
 {
-    using boost::archive::iterators::transform_width, boost::archive::iterators::remove_whitespace, boost::archive::iterators::binary_from_base64;
+    using boost::archive::iterators::transform_width, boost::archive::iterators::remove_whitespace,
+        boost::archive::iterators::binary_from_base64;
 
     // NOLINTNEXTLINE (cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
     using ItBinaryT = transform_width<binary_from_base64<remove_whitespace<std::string::const_iterator>>, 8, 6>;
@@ -73,61 +76,74 @@ export auto base64Decode(std::string input) -> std::string
         output.erase(output.end() - pad_chars, output.end());
         return output;
     }
-    catch (std::exception& e) 
+    catch (std::exception& e)
     {
         dumpExceptions(e);
         return {""};
     }
 }
 
-export auto generateUUID() -> std::string {
+export auto generateUUID() -> std::string
+{
     auto uuid = boost::uuids::random_generator()();
     return boost::uuids::to_string(uuid);
 }
 
-
-
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-export auto acceptingConnections(uint16_t port) -> bool {
+export auto acceptingConnections(uint16_t port) -> bool
+{
     using boost::asio::io_service, boost::asio::deadline_timer, boost::asio::ip::tcp;
     using ec = boost::system::error_code;
 
     bool result = false;
 
-    for (auto counter = 0; counter < 10 && !result; counter++) {
-        try {
+    for (auto counter = 0; counter < 10 && !result; counter++)
+    {
+        try
+        {
             io_service svc;
             tcp::socket socket(svc);
             boost::asio::steady_timer tim(svc, std::chrono::milliseconds(100));
 
-            tim.async_wait([&](ec) { socket.cancel(); });
+            tim.async_wait([&](ec) {
+                socket.cancel();
+            });
             socket.async_connect({{}, port}, [&](ec errorCode) {
                 result = !errorCode;
             });
 
             svc.run();
-        } catch(...) { 
+        }
+        catch (...)
+        {
             // Ignore connection errors during port checking
         }
 
-        if (!result) {
+        if (!result)
+        {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
 
     return result;
 }
+
 // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
-export struct InterruptableTimer {
+export struct InterruptableTimer
+{
     // Returns false if killed
-    template<class R, class P>
-    auto wait_for( std::chrono::duration<R,P> const& time ) const -> bool {
+    template <class R, class P>
+    auto wait_for(std::chrono::duration<R, P> const& time) const -> bool
+    {
         std::unique_lock<std::mutex> lock(m);
-        return !cv.wait_for(lock, time, [&]{ return terminate; });
+        return !cv.wait_for(lock, time, [&] {
+            return terminate;
+        });
     }
 
-    void stop() {
+    void stop()
+    {
         std::unique_lock<std::mutex> const lock(m);
         terminate = true;
         cv.notify_all();
@@ -140,17 +156,20 @@ private:
 };
 
 // Exception dumping functions
-void dumpExceptions(std::exception& exception) {
+void dumpExceptions(std::exception& exception)
+{
     std::cerr << "--- Exception: " << exception.what() << '\n';
     auto exceptions = folly::exception_tracer::getCurrentExceptions();
-    for (auto& exc : exceptions) {
+    for (auto& exc : exceptions)
+    {
         std::cerr << exc << "\n";
     }
 }
 
-void handleSegv() {
+void handleSegv()
+{
     // NOLINTBEGIN
-    void *array[10];
+    void* array[10];
     int size;
 
     // get void*'s for all entries on the stack
@@ -178,17 +197,16 @@ volatile void forceExceptionStackTraceRef()
 
 // This is also black magic. What we're doing here is using this function as the initializer for the volatile static
 // bool bForceStartup, which can't be optimized away. This function is guaranteed to be run during program startup
-auto forceStartup() -> bool {
+auto forceStartup() -> bool
+{
     // Set up the crash handler
     segvcatch::init_segv(&handleSegv);
-    
+
     // Force reference to exception tracing functions to prevent optimization
     forceExceptionStackTraceRef();
-    
+
     return true;
 }
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,cert-err58-cpp)
 volatile bool bForceStartup = forceStartup();
-
-
