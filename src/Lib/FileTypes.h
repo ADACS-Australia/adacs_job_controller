@@ -6,19 +6,21 @@
 #ifndef GWCLOUD_JOB_SERVER_FILE_TYPES_H
 #define GWCLOUD_JOB_SERVER_FILE_TYPES_H
 
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <vector>
-#include <mutex>
-#include <condition_variable>
 
-struct sFile {
+struct sFile
+{
     std::string fileName{};
-    uint64_t fileSize = 0;
+    uint64_t fileSize    = 0;
     uint32_t permissions = 0;
-    bool isDirectory = false;
+    bool isDirectory     = false;
 };
 
-struct sFileList {
+struct sFileList
+{
     std::vector<sFile> files;
     bool error = false;
     std::string errorDetails;
@@ -27,4 +29,4 @@ struct sFileList {
     std::condition_variable dataCV;
 };
 
-#endif //GWCLOUD_JOB_SERVER_FILE_TYPES_H
+#endif  // GWCLOUD_JOB_SERVER_FILE_TYPES_H

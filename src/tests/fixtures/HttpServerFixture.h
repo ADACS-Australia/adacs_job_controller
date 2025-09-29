@@ -5,8 +5,9 @@
 #ifndef GWCLOUD_JOB_SERVER_HTTPSERVERFIXTURE_H
 #define GWCLOUD_JOB_SERVER_HTTPSERVERFIXTURE_H
 
-#include "../utils.h"
 #include <boost/test/unit_test.hpp>
+
+#include "../utils.h"
 
 import ClusterManager;
 import IClusterManager;
@@ -16,8 +17,9 @@ import Application;
 import IApplication;
 import GeneralUtils;
 
-struct HttpServerFixture {
-    const std::string sAccess = R"(
+struct HttpServerFixture
+{
+    const std::string sAccess   = R"(
     [
         {
             "name": "app1",
@@ -93,15 +95,16 @@ struct HttpServerFixture {
 
     jwt::jwt_object jwtToken;
 
-    HttpServerFixture() {
+    HttpServerFixture()
+    {
         // NOLINTBEGIN(concurrency-mt-unsafe)
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-        
-        application = createApplication();
+
+        application    = createApplication();
         clusterManager = application->getClusterManager();
-        httpServer = application->getHttpServer();
+        httpServer     = application->getHttpServer();
         // NOLINTEND(concurrency-mt-unsafe)
 
         // Start the http server
@@ -111,23 +114,26 @@ struct HttpServerFixture {
         BOOST_CHECK_EQUAL(acceptingConnections(8000), true);
     }
 
-    ~HttpServerFixture() {
+    ~HttpServerFixture()
+    {
         // Finished with the server
         httpServer->stop();
     }
 
-    HttpServerFixture(HttpServerFixture const&) = delete;
-    auto operator =(HttpServerFixture const&) -> HttpServerFixture& = delete;
-    HttpServerFixture(HttpServerFixture&&) = delete;
-    auto operator=(HttpServerFixture&&) -> HttpServerFixture& = delete;
+    HttpServerFixture(HttpServerFixture const&)                    = delete;
+    auto operator=(HttpServerFixture const&) -> HttpServerFixture& = delete;
+    HttpServerFixture(HttpServerFixture&&)                         = delete;
+    auto operator=(HttpServerFixture&&) -> HttpServerFixture&      = delete;
 
-    void setJwtSecret(auto secret) {
+    void setJwtSecret(auto secret)
+    {
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto timeNow = std::chrono::system_clock::now() + std::chrono::minutes{10};
-        jwtToken = {
-                jwt::params::algorithm("HS256"),
-                jwt::params::payload({{"userName", "User"}}),
-                jwt::params::secret(secret)
+        jwtToken     = {
+            jwt::params::algorithm("HS256"),
+            jwt::params::payload({{"userName", "User"}}
+            ),
+            jwt::params::secret(secret)
         };
         jwtToken.add_claim("exp", timeNow);
 
@@ -138,4 +144,4 @@ struct HttpServerFixture {
     }
 };
 
-#endif //GWCLOUD_JOB_SERVER_HTTPSERVERFIXTURE_H
+#endif  // GWCLOUD_JOB_SERVER_HTTPSERVERFIXTURE_H

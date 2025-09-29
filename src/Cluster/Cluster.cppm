@@ -3,19 +3,21 @@
 //
 
 module;
-#include "../Lib/FileTypes.h"
-#include "../Lib/TestingMacros.h"
-#include <boost/concept_check.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <nlohmann/json.hpp>
+#include <iostream>
 #include <shared_mutex>
 #include <string>
 #include <vector>
+
+#include <boost/concept_check.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <client_http.hpp>
-#include "../Lib/FollyTypes.h"
 #include <folly/Uri.h>
-#include <iostream>
+#include <nlohmann/json.hpp>
 #include <sqlpp11/sqlpp11.h>
+
+#include "../Lib/FileTypes.h"
+#include "../Lib/FollyTypes.h"
+#include "../Lib/TestingMacros.h"
 #include "../Lib/shims/sqlpp_shim.h"
 
 export module Cluster;
@@ -33,44 +35,56 @@ import HandleFileList;
 import WebSocketServer;
 import GeneralUtils;
 
-export class Cluster : public std::enable_shared_from_this<Cluster>, public ICluster {
+export class Cluster : public std::enable_shared_from_this<Cluster>, public ICluster
+{
 public:
     explicit Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IApplication> app);
     virtual ~Cluster();
-    Cluster(Cluster const&) = delete;
-    auto operator =(Cluster const&) -> Cluster& = delete;
-    Cluster(Cluster&&) = delete;
-    auto operator=(Cluster&&) -> Cluster& = delete;
+    Cluster(Cluster const&)                    = delete;
+    auto operator=(Cluster const&) -> Cluster& = delete;
+    Cluster(Cluster&&)                         = delete;
+    auto operator=(Cluster&&) -> Cluster&      = delete;
 
     void stop();
 
     // ICluster interface implementation
-    auto getName() const -> std::string override { return pClusterDetails->getName(); }
+    auto getName() const -> std::string override
+    {
+        return pClusterDetails->getName();
+    }
 
-    auto getClusterDetails() const -> std::shared_ptr<sClusterDetails> override { return pClusterDetails; }
+    auto getClusterDetails() const -> std::shared_ptr<sClusterDetails> override
+    {
+        return pClusterDetails;
+    }
 
     void setConnection(const std::shared_ptr<void>& connection) override;
 
-    virtual void handleMessage(Message &message) override;
+    virtual void handleMessage(Message& message) override;
 
-    virtual void sendMessage(Message &message) override;
+    virtual void sendMessage(Message& message) override;
 
     auto isOnline() const -> bool override;
 
     // virtual here so that we can override this function for testing
-    virtual void queueMessage(const std::string& source, const std::shared_ptr<std::vector<uint8_t>>& data, uint32_t priority) override;
+    virtual void queueMessage(const std::string& source,
+                              const std::shared_ptr<std::vector<uint8_t>>& data,
+                              uint32_t priority) override;
 
-    enum eRole {
+    enum eRole
+    {
         master,
         fileDownload
     };
 
     // ICluster interface implementation
-    auto getRoleString() const -> std::string override {
+    auto getRoleString() const -> std::string override
+    {
         return roleString;
     }
 
-    auto getRole() const -> int override {
+    auto getRole() const -> int override
+    {
         return static_cast<int>(role);
     }
 
@@ -80,23 +94,26 @@ public:
     void setClusterManager(const std::shared_ptr<void>& clusterManager) override;
 
 protected:
-    eRole role = eRole::master;
+    eRole role             = eRole::master;
     std::string roleString = "master";
 
 protected:
     std::shared_ptr<IApplication> app;
 
 private:
-    std::shared_ptr<sClusterDetails> pClusterDetails = nullptr;
+    std::shared_ptr<sClusterDetails> pClusterDetails  = nullptr;
     std::shared_ptr<WsServer::Connection> pConnection = nullptr;
-    std::shared_ptr<void> pClusterManager = nullptr; // void* to avoid circular dependency
+    std::shared_ptr<void> pClusterManager             = nullptr;  // void* to avoid circular dependency
 
     mutable std::mutex connectionMutex;
     mutable std::shared_mutex mutex;
     mutable std::mutex dataCVMutex;
     bool dataReady{};
     std::condition_variable dataCV;
-    std::vector<folly::ConcurrentHashMap<std::string, std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>> queue;
+    std::vector<
+        folly::ConcurrentHashMap<std::string,
+                                 std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>>
+        queue;
 
     bool bRunning = true;
     InterruptableTimer interruptableResendTimer;
@@ -113,16 +130,16 @@ private:
 
     auto doesHigherPriorityDataExist(uint64_t maxPriority) -> bool;
 
-    void updateJob(Message &message);
+    void updateJob(Message& message);
 
     void checkUnsubmittedJobs();
     void checkCancellingJobs();
     void checkDeletingJobs();
 
-    void handleFileList(Message &message);
-    void handleFileListError(Message &message);
+    void handleFileList(Message& message);
+    void handleFileListError(Message& message);
 
-// Testing
+    // Testing
     EXPOSE_PROPERTY_FOR_TESTING(pConnection);
     EXPOSE_PROPERTY_FOR_TESTING(pClusterDetails);
     EXPOSE_PROPERTY_FOR_TESTING(bRunning);
@@ -156,10 +173,15 @@ using namespace sqlpp;
 // Send sources round robin, starting from the highest priority
 
 
-Cluster::Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IApplication> app) : pClusterDetails(std::move(details)), app(std::move(app)) {
+Cluster::Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IApplication> app)
+    : pClusterDetails(std::move(details)), app(std::move(app))
+{
     std::cout << "Cluster startup for role " << getRoleString() << std::endl;
     // Create the list of priorities in order
-    for (auto i = static_cast<uint32_t>(Message::Priority::Highest); i <= static_cast<uint32_t>(Message::Priority::Lowest); i++) {
+    for (auto i = static_cast<uint32_t>(Message::Priority::Highest);
+         i <= static_cast<uint32_t>(Message::Priority::Lowest);
+         i++)
+    {
         queue.emplace_back();
     }
 
@@ -174,18 +196,21 @@ Cluster::Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IAppl
     });
 
     // Start the resend thread if this is a master cluster
-    if (getRole() == eRole::master) {
+    if (getRole() == eRole::master)
+    {
         resendThread = std::jthread([this] {
             this->resendMessages();
         });
     }
 }
 
-Cluster::~Cluster() {
+Cluster::~Cluster()
+{
     stop();
 }
 
-void Cluster::stop() {
+void Cluster::stop()
+{
     bRunning = false;
     interruptablePruneTimer.stop();
     interruptableResendTimer.stop();
@@ -193,28 +218,34 @@ void Cluster::stop() {
     dataReady = true;
     dataCV.notify_one();
 
-    if (schedulerThread.joinable()) {
+    if (schedulerThread.joinable())
+    {
         schedulerThread.join();
     }
 
-    if (pruneThread.joinable()) {
+    if (pruneThread.joinable())
+    {
         pruneThread.join();
     }
 
-    if (getRole() == eRole::master && resendThread.joinable()) {
+    if (getRole() == eRole::master && resendThread.joinable())
+    {
         resendThread.join();
     }
 }
 
-void Cluster::handleMessage(Message &message) {
+void Cluster::handleMessage(Message& message)
+{
     // Check if the message can be handled by the cluster database
-    if (ClusterDB::maybeHandleClusterDBMessage(message, shared_from_this())) {
+    if (ClusterDB::maybeHandleClusterDBMessage(message, shared_from_this()))
+    {
         return;
     }
 
     auto msgId = message.getId();
 
-    switch (msgId) {
+    switch (msgId)
+    {
         case UPDATE_JOB:
             this->updateJob(message);
             break;
@@ -229,26 +260,30 @@ void Cluster::handleMessage(Message &message) {
     }
 }
 
-void Cluster::sendMessage(Message &message) {
+void Cluster::sendMessage(Message& message)
+{
     // Cluster is responsible for sending messages
     queueMessage(message.getSource(), message.getData(), static_cast<uint32_t>(message.getPriority()));
 }
 
-void Cluster::setClusterManager(const std::shared_ptr<void>& clusterManager) {
+void Cluster::setClusterManager(const std::shared_ptr<void>& clusterManager)
+{
     pClusterManager = clusterManager;
 }
 
-void Cluster::setConnection(const std::shared_ptr<void>& connection) {
+void Cluster::setConnection(const std::shared_ptr<void>& connection)
+{
     // Cast the void* back to the concrete type
     auto pCon = std::static_pointer_cast<WsServer::Connection>(connection);
-    
+
     // Protect this block against race conditions. It's possible for pConnection to be
     // set to null in multiple threads.
     std::unique_lock<std::mutex> closeLock(connectionMutex);
 
     this->pConnection = pCon;
 
-    if (pCon != nullptr && getRole() == eRole::master) {
+    if (pCon != nullptr && getRole() == eRole::master)
+    {
         // See if there are any pending jobs that should be sent
         checkUnsubmittedJobs();
 
@@ -260,9 +295,12 @@ void Cluster::setConnection(const std::shared_ptr<void>& connection) {
     }
 }
 
-void Cluster::queueMessage(const std::string& source, const std::shared_ptr<std::vector<uint8_t>>& pData, uint32_t priority) {
+void Cluster::queueMessage(const std::string& source,
+                           const std::shared_ptr<std::vector<uint8_t>>& pData,
+                           uint32_t priority)
+{
     // Get a pointer to the relevant map
-    auto *pMap = &queue[priority];
+    auto* pMap = &queue[priority];
 
     // Lock the access mutex to check if the source exists in the map
     {
@@ -283,25 +321,34 @@ void Cluster::queueMessage(const std::string& source, const std::shared_ptr<std:
     }
 }
 
-auto Cluster::isOnline() const -> bool {
+auto Cluster::isOnline() const -> bool
+{
     return pConnection != nullptr;
 }
 
-void Cluster::close(bool bForce) {
+void Cluster::close(bool bForce)
+{
     // Protect this block against race conditions. It's possible for this function to be called from multiple threads
     // which can lead to segfaults without synchronising.
     std::unique_lock<std::mutex> closeLock(connectionMutex);
 
     // Terminate the websocket connection
-    if (pConnection) {
-        try {
-            if (bForce) {
+    if (pConnection)
+    {
+        try
+        {
+            if (bForce)
+            {
                 pConnection->close();
-            } else {
+            }
+            else
+            {
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
                 pConnection->send_close(1000, "Closing connection.");
             }
-        } catch (...) {
+        }
+        catch (...)
+        {
             // It's possible that we try to ask the connection to close when it's already internally been closed. This
             // can lead to cases where std::runtime_error or other exceptions can be thrown. It's safe to ignore this
             // case.
@@ -310,66 +357,78 @@ void Cluster::close(bool bForce) {
     }
 }
 
-void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
+void Cluster::run()
+{  // NOLINT(readability-function-cognitive-complexity)
     // Iterate while running
-    while (bRunning) {
+    while (bRunning)
+    {
         {
             std::unique_lock<std::mutex> lock(dataCVMutex);
 
             // Wait for data to be ready to send
-            dataCV.wait(lock, [this] { return this->dataReady; });
+            dataCV.wait(lock, [this] {
+                return this->dataReady;
+            });
 
             // Reset the condition
             this->dataReady = false;
         }
 
-        reset:
+    reset:
 
         // Iterate over the priorities
-        for (auto priority = queue.begin(); priority != queue.end(); priority++) {
-
+        for (auto priority = queue.begin(); priority != queue.end(); priority++)
+        {
             // Get a pointer to the relevant map
-            auto *pMap = &(*priority);
+            auto* pMap = &(*priority);
 
             // Get the current priority
             auto currentPriority = priority - queue.begin();
 
             // While there is still data for this priority, send it
             bool hadData = false;
-            do {
+            do
+            {
                 hadData = false;
 
                 std::shared_lock<std::shared_mutex> lock(mutex);
                 // Iterate over the map
-                for (auto iter = pMap->begin(); iter != pMap->end(); ++iter) {
+                for (auto iter = pMap->begin(); iter != pMap->end(); ++iter)
+                {
                     // Check if the vector for this source is empty
-                    if (!(*iter).second->empty()) {
-
+                    if (!(*iter).second->empty())
+                    {
                         // Pop the next item from the queue
                         auto data = (*iter).second->try_dequeue();
 
-                        try {
+                        try
+                        {
                             // data should never be null as we're checking for empty
-                            if (data) {
+                            if (data)
+                            {
                                 // Convert the message
                                 auto outMessage = std::make_shared<WsServer::OutMessage>((*data)->size());
-                                std::copy((*data)->begin(), (*data)->end(), std::ostream_iterator<uint8_t>(*outMessage));
+                                std::copy((*data)->begin(),
+                                          (*data)->end(),
+                                          std::ostream_iterator<uint8_t>(*outMessage));
 
                                 // Protect this block against race conditions. It's possible for pConnection to be
                                 // set to null in multiple threads.
                                 std::unique_lock<std::mutex> closeLock(connectionMutex);
 
                                 // Send the message on the websocket
-                                if (pConnection != nullptr) {
+                                if (pConnection != nullptr)
+                                {
                                     std::promise<void> sendPromise;
                                     pConnection->send(
                                         outMessage,
-                                        [this, &sendPromise](const SimpleWeb::error_code &errorCode) {
+                                        [this, &sendPromise](const SimpleWeb::error_code& errorCode) {
                                             // Data has been sent, set the promise
                                             sendPromise.set_value();
 
                                             // Kill the connection only if the error was not indicating success
-                                            if (!errorCode){
+                                            if (!errorCode)
+                                            {
                                                 return;
                                             }
 
@@ -377,22 +436,27 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
                                             close(true);
 
                                             // Report error through injected cluster manager
-                                            if (pClusterManager) {
-                                                auto clusterManager = std::static_pointer_cast<IClusterManager>(pClusterManager);
+                                            if (pClusterManager)
+                                            {
+                                                auto clusterManager =
+                                                    std::static_pointer_cast<IClusterManager>(pClusterManager);
                                                 clusterManager->reportWebsocketError(shared_from_this(), errorCode);
                                             }
                                         },
                                         // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-                                        130
-                                    );
+                                        130);
 
                                     // Wait for the data to be sent
                                     sendPromise.get_future().wait();
-                                } else {
+                                }
+                                else
+                                {
                                     std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
                                 }
                             }
-                        } catch (std::exception& exception) {
+                        }
+                        catch (std::exception& exception)
+                        {
                             dumpExceptions(exception);
                             // Cluster has gone offline, reset the connection. Missed packets shouldn't matter too much,
                             // they should be resent by other threads after some time
@@ -405,33 +469,40 @@ void Cluster::run() { // NOLINT(readability-function-cognitive-complexity)
                 }
 
                 // Check if there is higher priority data to send
-                if (doesHigherPriorityDataExist(currentPriority)) {
+                if (doesHigherPriorityDataExist(currentPriority))
+                {
                     // Yes, so start the entire send process again
-                    goto reset; // NOLINT(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
+                    goto reset;  // NOLINT(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
                 }
 
                 // Higher priority data does not exist, so keep sending data from this priority
-            } while (hadData);
+            }
+            while (hadData);
         }
     }
 }
 
-void Cluster::pruneSources() {
+void Cluster::pruneSources()
+{
     // Iterate every QUEUE_SOURCE_PRUNE_SECONDS seconds until the timer is cancelled or until we stop running
-    do {
+    do
+    {
         // Acquire the exclusive lock to prevent more data being pushed on while we are pruning
         {
             std::unique_lock<std::shared_mutex> lock(mutex);
 
             // Iterate over the priorities
-            for (auto &priority: queue) {
+            for (auto& priority : queue)
+            {
                 // Get a pointer to the relevant map
-                auto *pMap = &priority;
+                auto* pMap = &priority;
 
                 // Iterate over the map
-                for (auto iter = pMap->begin(); iter != pMap->end();) {
+                for (auto iter = pMap->begin(); iter != pMap->end();)
+                {
                     // Check if the vector for this source is empty
-                    if ((*iter).second->empty()) {
+                    if ((*iter).second->empty())
+                    {
                         // Remove this source from the map and continue
                         iter = pMap->erase(iter);
                         continue;
@@ -441,12 +512,17 @@ void Cluster::pruneSources() {
                 }
             }
         }
-    } while (bRunning && interruptablePruneTimer.wait_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS)));
+    }
+    while (bRunning && interruptablePruneTimer.wait_for(std::chrono::milliseconds(QUEUE_SOURCE_PRUNE_MILLISECONDS)));
 }
 
-void Cluster::resendMessages() {
-    // Iterate every CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS seconds until the timer is cancelled or until we stop running
-    while (bRunning && interruptableResendTimer.wait_for(std::chrono::milliseconds(CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS))) {
+void Cluster::resendMessages()
+{
+    // Iterate every CLUSTER_RESEND_MESSAGE_INTERVAL_SECONDS seconds until the timer is cancelled or until we stop
+    // running
+    while (bRunning &&
+           interruptableResendTimer.wait_for(std::chrono::milliseconds(CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS)))
+    {
         // Check for jobs that need to be resubmitted
         checkUnsubmittedJobs();
 
@@ -458,21 +534,26 @@ void Cluster::resendMessages() {
     }
 }
 
-auto Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) -> bool {
-    for (auto priority = queue.begin(); priority != queue.end(); priority++) {
+auto Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) -> bool
+{
+    for (auto priority = queue.begin(); priority != queue.end(); priority++)
+    {
         // Get a pointer to the relevant map
-        auto *pMap = &(*priority);
+        auto* pMap = &(*priority);
 
         // Check if the current priority is greater or equal to max priority and return false if not.
         auto currentPriority = priority - queue.begin();
-        if (currentPriority >= maxPriority) {
+        if (currentPriority >= maxPriority)
+        {
             return false;
         }
 
         // Iterate over the map
-        for (auto iter = pMap->begin(); iter != pMap->end();) {
+        for (auto iter = pMap->begin(); iter != pMap->end();)
+        {
             // Check if the vector for this source is empty
-            if (!(*iter).second->empty()) {
+            if (!(*iter).second->empty())
+            {
                 // It'iter not empty so data does exist
                 return true;
             }
@@ -485,11 +566,12 @@ auto Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) -> bool {
     return false;
 }
 
-void Cluster::updateJob(Message &message) {
+void Cluster::updateJob(Message& message)
+{
     // Read the details from the message
-    auto jobId = message.pop_uint();
-    auto what = message.pop_string();
-    auto status = message.pop_uint();
+    auto jobId   = message.pop_uint();
+    auto what    = message.pop_string();
+    auto status  = message.pop_uint();
     auto details = message.pop_string();
 
     // Create a database connection
@@ -502,33 +584,26 @@ void Cluster::updateJob(Message &message) {
     // Todo: Verify the job id belongs to this cluster, and that the status is valid
 
     // Add the new job history record
-    database->run(
-            insert_into(jobHistoryTable)
-                    .set(
-                            jobHistoryTable.jobId = jobId,
-                            jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                            jobHistoryTable.what = what,
-                            jobHistoryTable.state = status,
-                            jobHistoryTable.details = details
-                    )
-    );
+    database->run(insert_into(jobHistoryTable)
+                      .set(jobHistoryTable.jobId     = jobId,
+                           jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                           jobHistoryTable.what      = what,
+                           jobHistoryTable.state     = status,
+                           jobHistoryTable.details   = details));
 
     // Check if this status update was the final job complete status, then try to cache the file list by listing the
     // files for the job. If for some reason this call fails internally (Maybe cluster is under load, or network issues)
     // then the next time the HTTP side requests files for the job the file list will be cached
-    if (what == "_job_completion_") {
-        auto jobResults = database->run(
-                select(all_of(jobTable))
-                        .from(jobTable)
-                        .where(
-                                jobTable.id == static_cast<uint64_t>(jobId)
-                        )
-        );
+    if (what == "_job_completion_")
+    {
+        auto jobResults =
+            database->run(select(all_of(jobTable)).from(jobTable).where(jobTable.id == static_cast<uint64_t>(jobId)));
 
         // Check that a job was actually found
-        if (jobResults.empty()) {
-            throw std::runtime_error(
-                    "Unable to find job with ID " + std::to_string(jobId) + " for application job_controller");
+        if (jobResults.empty())
+        {
+            throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) +
+                                     " for application job_controller");
         }
 
         auto bundle = std::string{(&jobResults.front())->bundle};
@@ -542,7 +617,8 @@ void Cluster::updateJob(Message &message) {
     }
 }
 
-auto getJobsByMostRecentStatus(const std::vector<uint32_t>& states, const std::string& cluster) {
+auto getJobsByMostRecentStatus(const std::vector<uint32_t>& states, const std::string& cluster)
+{
     /*
      Finds all jobs currently in a state provided by the states argument that are older than
      CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS, for the current cluster
@@ -556,54 +632,38 @@ auto getJobsByMostRecentStatus(const std::vector<uint32_t>& states, const std::s
     schema::JobserverJobhistory jobHistoryTable;
 
     // Find any jobs with a state in states older than 60 seconds
-    auto jobResults =
-            database->run(
-                    select(all_of(jobTable))
-                            .from(jobTable)
-                            .where(
-                                    jobTable.cluster == cluster
-                                    and
-                                    jobTable.id == select(jobHistoryTable.jobId)
-                                            .from(jobHistoryTable)
-                                            .where(
-                                                    jobHistoryTable.state.in(
-                                                            sqlpp::value_list(
-                                                                    states
-                                                            )
-                                                    )
-                                                    and
-                                                    jobHistoryTable.id == select(jobHistoryTable.id)
-                                                            .from(jobHistoryTable)
-                                                            .where(
-                                                                    jobHistoryTable.jobId == jobTable.id
-                                                                    and
-                                                                    jobHistoryTable.timestamp <=
-                                                                    std::chrono::system_clock::now() -
-                                                                    std::chrono::seconds(CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS)
-                                                            )
-                                                            .order_by(jobHistoryTable.timestamp.desc())
-                                                            .limit(1U)
-                                            )
-                            )
-            );
+    auto jobResults = database->run(
+        select(all_of(jobTable))
+            .from(jobTable)
+            .where(jobTable.cluster == cluster and
+                   jobTable.id ==
+                       select(jobHistoryTable.jobId)
+                           .from(jobHistoryTable)
+                           .where(jobHistoryTable.state.in(sqlpp::value_list(states)) and
+                                  jobHistoryTable.id ==
+                                      select(jobHistoryTable.id)
+                                          .from(jobHistoryTable)
+                                          .where(jobHistoryTable.jobId == jobTable.id and
+                                                 jobHistoryTable.timestamp <=
+                                                     std::chrono::system_clock::now() -
+                                                         std::chrono::seconds(CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS))
+                                          .order_by(jobHistoryTable.timestamp.desc())
+                                          .limit(1U))));
 
     return jobResults;
 }
 
-void Cluster::checkUnsubmittedJobs() {
+void Cluster::checkUnsubmittedJobs()
+{
     // Check if the cluster is online and resend the submit messages
-    if (!isOnline()) {
+    if (!isOnline())
+    {
         return;
     }
 
     // Get all jobs where the most recent job history is
     // pending or submitting and is more than a minute old
-    auto states = std::vector<uint32_t>(
-            {
-                    static_cast<uint32_t>(PENDING),
-                    static_cast<uint32_t>(SUBMITTING)
-            }
-    );
+    auto states = std::vector<uint32_t>({static_cast<uint32_t>(PENDING), static_cast<uint32_t>(SUBMITTING)});
 
     auto jobs = getJobsByMostRecentStatus(states, this->getName());
 
@@ -611,102 +671,96 @@ void Cluster::checkUnsubmittedJobs() {
     schema::JobserverJobhistory jobHistoryTable;
 
     // Resubmit any jobs that matched
-    for (const auto &job : jobs) {
+    for (const auto& job : jobs)
+    {
         std::cout << "Resubmitting: " << job.id << std::endl;
 
         // Submit the job to the cluster
-        auto msg = Message(SUBMIT_JOB, Message::Priority::Medium,
-                           std::to_string(job.id) + "_" + std::string{job.cluster});
+        auto msg =
+            Message(SUBMIT_JOB, Message::Priority::Medium, std::to_string(job.id) + "_" + std::string{job.cluster});
         msg.push_uint(job.id);
         msg.push_string(job.bundle);
         msg.push_string(job.parameters);
         sendMessage(msg);
 
         // Check that the job status is submitting and update it if not
-        auto jobHistoryResults =
-                database->run(
-                        select(all_of(jobHistoryTable))
-                                .from(jobHistoryTable)
-                                .where(jobHistoryTable.jobId == job.id)
-                                .order_by(jobHistoryTable.timestamp.desc())
-                                .limit(1U)
-                );
+        auto jobHistoryResults = database->run(select(all_of(jobHistoryTable))
+                                                   .from(jobHistoryTable)
+                                                   .where(jobHistoryTable.jobId == job.id)
+                                                   .order_by(jobHistoryTable.timestamp.desc())
+                                                   .limit(1U));
 
-        const auto *dbHistory = &jobHistoryResults.front();
-        if (static_cast<uint32_t>(dbHistory->state) == static_cast<uint32_t>(JobStatus::PENDING)) {
+        const auto* dbHistory = &jobHistoryResults.front();
+        if (static_cast<uint32_t>(dbHistory->state) == static_cast<uint32_t>(JobStatus::PENDING))
+        {
             // The current state is pending for this job, so update the status to submitting
-            database->run(
-                    insert_into(jobHistoryTable)
-                            .set(
-                                    jobHistoryTable.jobId = job.id,
-                                    jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                    jobHistoryTable.what = SYSTEM_SOURCE,
-                                    jobHistoryTable.state = static_cast<uint32_t>(JobStatus::SUBMITTING),
-                                    jobHistoryTable.details = "Job submitting"
-                            )
-            );
+            database->run(insert_into(jobHistoryTable)
+                              .set(jobHistoryTable.jobId     = job.id,
+                                   jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                   jobHistoryTable.what      = SYSTEM_SOURCE,
+                                   jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::SUBMITTING),
+                                   jobHistoryTable.details   = "Job submitting"));
         }
     }
 }
 
-void Cluster::checkCancellingJobs() {
+void Cluster::checkCancellingJobs()
+{
     // Check if the cluster is online and resend the submit messages
-    if (!isOnline()) {
+    if (!isOnline())
+    {
         return;
     }
 
     // Get all jobs where the most recent job history is
     // deleting and is more than a minute old
-    auto states = std::vector<uint32_t>(
-            {
-                    static_cast<uint32_t>(CANCELLING)
-            }
-    );
+    auto states = std::vector<uint32_t>({static_cast<uint32_t>(CANCELLING)});
 
     auto jobs = getJobsByMostRecentStatus(states, this->getName());
 
     // Resubmit any jobs that matched
-    for (const auto &job : jobs) {
+    for (const auto& job : jobs)
+    {
         std::cout << "Recancelling: " << job.id << std::endl;
 
         // Ask the cluster to cancel the job
-        auto msg = Message(CANCEL_JOB, Message::Priority::Medium,
-                        std::to_string(job.id) + "_" + std::string{job.cluster});
+        auto msg =
+            Message(CANCEL_JOB, Message::Priority::Medium, std::to_string(job.id) + "_" + std::string{job.cluster});
         msg.push_uint(job.id);
         sendMessage(msg);
     }
 }
 
-void Cluster::checkDeletingJobs() {
+void Cluster::checkDeletingJobs()
+{
     // Check if the cluster is online and resend the submit messages
-    if (!isOnline()) {
+    if (!isOnline())
+    {
         return;
     }
 
     // Get all jobs where the most recent job history is
     // deleting and is more than a minute old
-    auto states = std::vector<uint32_t>(
-            {
-                    static_cast<uint32_t>(DELETING)
-            }
-    );
+    auto states = std::vector<uint32_t>({static_cast<uint32_t>(DELETING)});
 
     auto jobs = getJobsByMostRecentStatus(states, this->getName());
 
     // Resubmit any jobs that matched
-    for (const auto &job : jobs) {
+    for (const auto& job : jobs)
+    {
         std::cout << "Redeleting: " << job.id << std::endl;
 
         // Ask the cluster to delete the job
-        auto msg = Message(DELETE_JOB, Message::Priority::Medium,
-                        std::to_string(job.id) + "_" + std::string{job.cluster});
+        auto msg =
+            Message(DELETE_JOB, Message::Priority::Medium, std::to_string(job.id) + "_" + std::string{job.cluster});
         msg.push_uint(job.id);
         sendMessage(msg);
     }
 }
 
-void Cluster::handleFileListError(Message &message) {
-    auto uuid = message.pop_string();
+void Cluster::handleFileListError(Message& message)
+{
+    auto uuid   = message.pop_string();
     auto detail = message.pop_string();
 
     // Acquire the lock
@@ -714,7 +768,8 @@ void Cluster::handleFileListError(Message &message) {
 
     // Check that the uuid is valid
     auto fileListMap = app->getFileListMap();
-    if (fileListMap->find(uuid) == fileListMap->end()) {
+    if (fileListMap->find(uuid) == fileListMap->end())
+    {
         return;
     }
 
@@ -722,14 +777,15 @@ void Cluster::handleFileListError(Message &message) {
 
     // Set the error
     flObj->errorDetails = detail;
-    flObj->error = true;
+    flObj->error        = true;
 
     // Trigger the file transfer event
     flObj->dataReady = true;
     flObj->dataCV.notify_one();
 }
 
-void Cluster::handleFileList(Message &message) {
+void Cluster::handleFileList(Message& message)
+{
     auto uuid = message.pop_string();
 
     // Acquire the lock
@@ -737,7 +793,8 @@ void Cluster::handleFileList(Message &message) {
 
     // Check that the uuid is valid
     auto fileListMap = app->getFileListMap();
-    if (fileListMap->find(uuid) == fileListMap->end()) {
+    if (fileListMap->find(uuid) == fileListMap->end())
+    {
         return;
     }
 
@@ -747,12 +804,13 @@ void Cluster::handleFileList(Message &message) {
     auto numFiles = message.pop_uint();
 
     // Iterate over the files and add them to the file list map
-    for (auto i = 0; i < numFiles; i++) {
+    for (auto i = 0; i < numFiles; i++)
+    {
         sFile file;
         // todo: Need to get file permissions
-        file.fileName = message.pop_string();
+        file.fileName    = message.pop_string();
         file.isDirectory = message.pop_bool();
-        file.fileSize = message.pop_ulong();
+        file.fileSize    = message.pop_ulong();
 
         // Add the file to the list
         flObj->files.push_back(file);

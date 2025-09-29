@@ -7,14 +7,14 @@
 // NOLINTBEGIN
 
 #include "segvcatch.h"
+
 #include <stdexcept>
 #include <string>
 
-namespace
-{
+namespace {
 
-    segvcatch::handler handler_segv = 0;
-    segvcatch::handler handler_fpe = 0;
+segvcatch::handler handler_segv = 0;
+segvcatch::handler handler_fpe  = 0;
 
 #if defined __GNUC__ && __linux
 
@@ -28,31 +28,31 @@ namespace
 
 #endif /*defined __GNUC__ && __linux*/
 
-    void default_segv()
-    {
-        throw std::runtime_error("Segmentation fault");
-    }
+void default_segv()
+{
+    throw std::runtime_error("Segmentation fault");
+}
 
-    void default_fpe()
-    {
-        throw std::runtime_error("Floating-point exception");
-    }
+void default_fpe()
+{
+    throw std::runtime_error("Floating-point exception");
+}
 
-    void handle_segv()
-    {
-        if (handler_segv)
-            handler_segv();
-    }
+void handle_segv()
+{
+    if (handler_segv)
+        handler_segv();
+}
 
-    void handle_fpe()
-    {
-        if (handler_fpe)
-            handler_fpe();
-    }
+void handle_fpe()
+{
+    if (handler_fpe)
+        handler_fpe();
+}
 
-#if defined (HANDLE_SEGV) || defined(HANDLE_FPE)
+#if defined(HANDLE_SEGV) || defined(HANDLE_FPE)
 
-    #include <execinfo.h>
+#include <execinfo.h>
 
 /* Unblock a signal.  Unless we do this, the signal may only be sent
    once.  */
@@ -69,7 +69,7 @@ static void unblock_signal(int signum __attribute__((__unused__)))
 
 #ifdef HANDLE_SEGV
 
-    SIGNAL_HANDLER(catch_segv)
+SIGNAL_HANDLER(catch_segv)
 {
     unblock_signal(SIGSEGV);
     MAKE_THROW_FRAME(nullp);
@@ -79,7 +79,7 @@ static void unblock_signal(int signum __attribute__((__unused__)))
 
 #ifdef HANDLE_FPE
 
-    SIGNAL_HANDLER(catch_fpe)
+SIGNAL_HANDLER(catch_fpe)
 {
     unblock_signal(SIGFPE);
 #ifdef HANDLE_DIVIDE_OVERFLOW
@@ -92,7 +92,7 @@ static void unblock_signal(int signum __attribute__((__unused__)))
 #endif
 
 #ifdef WIN32
-    #include <windows.h>
+#include <windows.h>
 
 static LONG CALLBACK win32_exception_handler(LPEXCEPTION_POINTERS e)
 {
@@ -110,43 +110,40 @@ static LONG CALLBACK win32_exception_handler(LPEXCEPTION_POINTERS e)
         return EXCEPTION_CONTINUE_SEARCH;
 }
 #endif
-}
+}  // namespace
 
+namespace segvcatch {
 
-namespace segvcatch
+void init_segv(handler h)
 {
-
-    void init_segv(handler h)
-    {
-        if (h)
-            handler_segv = h;
-        else
-            handler_segv = default_segv;
+    if (h)
+        handler_segv = h;
+    else
+        handler_segv = default_segv;
 #ifdef HANDLE_SEGV
-        INIT_SEGV;
+    INIT_SEGV;
 #endif
 
 #ifdef WIN32
-        SetUnhandledExceptionFilter(win32_exception_handler);
+    SetUnhandledExceptionFilter(win32_exception_handler);
 #endif
-    }
-
-    void init_fpe(handler h)
-    {
-        if (h)
-            handler_fpe = h;
-        else
-            handler_fpe = default_fpe;
-#ifdef HANDLE_FPE
-        INIT_FPE;
-#endif
-
-#ifdef WIN32
-        SetUnhandledExceptionFilter(win32_exception_handler);
-#endif
-
-    }
-
 }
+
+void init_fpe(handler h)
+{
+    if (h)
+        handler_fpe = h;
+    else
+        handler_fpe = default_fpe;
+#ifdef HANDLE_FPE
+    INIT_FPE;
+#endif
+
+#ifdef WIN32
+    SetUnhandledExceptionFilter(win32_exception_handler);
+#endif
+}
+
+}  // namespace segvcatch
 
 // NOLINTEND

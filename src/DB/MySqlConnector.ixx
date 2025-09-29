@@ -11,15 +11,17 @@ import settings;
 
 namespace mysql = sqlpp::mysql;
 
-export class MySqlConnector {
+export class MySqlConnector
+{
 public:
-    MySqlConnector() {
-        auto config = std::make_shared<mysql::connection_config>();
-        config->user = DATABASE_USER;
+    MySqlConnector()
+    {
+        auto config      = std::make_shared<mysql::connection_config>();
+        config->user     = DATABASE_USER;
         config->database = DATABASE_SCHEMA;
         config->password = DATABASE_PASSWORD;
-        config->host = DATABASE_HOST;
-        config->port = DATABASE_PORT;
+        config->host     = DATABASE_HOST;
+        config->port     = DATABASE_PORT;
 
 #ifdef NDEBUG
         config->debug = false;
@@ -29,17 +31,21 @@ public:
         database = std::make_shared<mysql::connection>(config);
     }
 
-    virtual ~MySqlConnector() = default;
-    MySqlConnector(MySqlConnector const&) = delete;
-    auto operator =(MySqlConnector const&) -> MySqlConnector& = delete;
-    MySqlConnector(MySqlConnector&&) = delete;
-    auto operator=(MySqlConnector&&) -> MySqlConnector& = delete;
+    virtual ~MySqlConnector()                                = default;
+    MySqlConnector(MySqlConnector const&)                    = delete;
+    auto operator=(MySqlConnector const&) -> MySqlConnector& = delete;
+    MySqlConnector(MySqlConnector&&)                         = delete;
+    auto operator=(MySqlConnector&&) -> MySqlConnector&      = delete;
 
     auto operator->() const -> std::shared_ptr<mysql::connection>
-    { return database; }
+    {
+        return database;
+    }
 
     [[nodiscard]] auto getDb() const -> std::shared_ptr<mysql::connection>
-    { return database; }
+    {
+        return database;
+    }
 
 private:
     std::shared_ptr<mysql::connection> database;

@@ -13,6 +13,19 @@ default:
     - apk upgrade --available && sync
     - apk add git bash xmlstarlet
 
+stages:
+  - lint
+  - test
+
+# Clang-format check job
+clang-format-check:
+  stage: lint
+  image: ubuntu:24.04
+  before_script:
+    - apt-get update && apt-get install -y clang-format
+  script:
+    - ./scripts/check-format.sh
+  allow_failure: false
 
 tests:
   stage: test

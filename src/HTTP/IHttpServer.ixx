@@ -4,8 +4,9 @@
 
 module;
 
-#include <string>
 #include <memory>
+#include <string>
+
 #include <server_http.hpp>
 
 export module IHttpServer;
@@ -17,7 +18,8 @@ class IApplication;
 
 export using HttpServerImpl = SimpleWeb::Server<SimpleWeb::HTTP>;
 
-export class IHttpServer : public IServer {
+export class IHttpServer : public IServer
+{
 public:
     // No API registration methods needed - endpoints are registered directly in Application
 };

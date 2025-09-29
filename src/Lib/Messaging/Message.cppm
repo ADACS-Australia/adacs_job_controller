@@ -3,12 +3,13 @@
 //
 
 module;
+#include <array>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
-#include <cstring>
-#include <array>
+
 #include "../TestingMacros.h"
 
 export module Message;
@@ -26,51 +27,55 @@ export constexpr uint32_t UPDATE_JOB = 2001;
 export constexpr uint32_t CANCEL_JOB = 2002;
 export constexpr uint32_t DELETE_JOB = 2003;
 
-export constexpr uint32_t DOWNLOAD_FILE = 4000;
-export constexpr uint32_t FILE_DETAILS = 4001;
-export constexpr uint32_t FILE_ERROR = 4002;
-export constexpr uint32_t FILE_CHUNK = 4003;
-export constexpr uint32_t PAUSE_FILE_CHUNK_STREAM = 4004;
+export constexpr uint32_t DOWNLOAD_FILE            = 4000;
+export constexpr uint32_t FILE_DETAILS             = 4001;
+export constexpr uint32_t FILE_ERROR               = 4002;
+export constexpr uint32_t FILE_CHUNK               = 4003;
+export constexpr uint32_t PAUSE_FILE_CHUNK_STREAM  = 4004;
 export constexpr uint32_t RESUME_FILE_CHUNK_STREAM = 4005;
-export constexpr uint32_t FILE_LIST = 4006;
-export constexpr uint32_t FILE_LIST_ERROR = 4007;
+export constexpr uint32_t FILE_LIST                = 4006;
+export constexpr uint32_t FILE_LIST_ERROR          = 4007;
 
 // ClusterJob DB messages
-export constexpr uint32_t DB_JOB_GET_BY_JOB_ID = 5000;
-export constexpr uint32_t DB_JOB_GET_BY_ID = 5001;
+export constexpr uint32_t DB_JOB_GET_BY_JOB_ID    = 5000;
+export constexpr uint32_t DB_JOB_GET_BY_ID        = 5001;
 export constexpr uint32_t DB_JOB_GET_RUNNING_JOBS = 5002;
-export constexpr uint32_t DB_JOB_DELETE = 5003;
-export constexpr uint32_t DB_JOB_SAVE = 5004;
+export constexpr uint32_t DB_JOB_DELETE           = 5003;
+export constexpr uint32_t DB_JOB_SAVE             = 5004;
 
 // ClusterJobStatus DB messages
 export constexpr uint32_t DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT = 6000;
-export constexpr uint32_t DB_JOBSTATUS_GET_BY_JOB_ID = 6001;
-export constexpr uint32_t DB_JOBSTATUS_DELETE_BY_ID_LIST = 6002;
-export constexpr uint32_t DB_JOBSTATUS_SAVE = 6003;
+export constexpr uint32_t DB_JOBSTATUS_GET_BY_JOB_ID          = 6001;
+export constexpr uint32_t DB_JOBSTATUS_DELETE_BY_ID_LIST      = 6002;
+export constexpr uint32_t DB_JOBSTATUS_SAVE                   = 6003;
 
 export constexpr uint32_t DB_RESPONSE = 7000;
 
 export constexpr uint32_t DB_BUNDLE_CREATE_OR_UPDATE_JOB = 8000;
-export constexpr uint32_t DB_BUNDLE_GET_JOB_BY_ID = 8001;
-export constexpr uint32_t DB_BUNDLE_DELETE_JOB = 8002;
+export constexpr uint32_t DB_BUNDLE_GET_JOB_BY_ID        = 8001;
+export constexpr uint32_t DB_BUNDLE_DELETE_JOB           = 8002;
 
-export class Message {
+export class Message
+{
 public:
-    enum Priority {
-        Lowest = 19,
-        Medium = 10,
+    enum Priority
+    {
+        Lowest  = 19,
+        Medium  = 10,
         Highest = 0
     };
 
 #ifdef BUILD_TESTS
-    explicit Message(uint32_t msgId) : index(0), id(msgId) {
+    explicit Message(uint32_t msgId) : index(0), id(msgId)
+    {
         // Constructor only used for testing
         data = std::make_shared<std::vector<uint8_t>>();
         data->reserve(MESSAGE_INITIAL_VECTOR_SIZE);
     }
 #endif
 
-    Message(uint32_t msgId, Priority priority, const std::string& source) : priority(priority), index(0), source(source) {
+    Message(uint32_t msgId, Priority priority, const std::string& source) : priority(priority), index(0), source(source)
+    {
         data = std::make_shared<std::vector<uint8_t>>();
         data->reserve(MESSAGE_INITIAL_VECTOR_SIZE);
 
@@ -81,46 +86,57 @@ public:
         push_uint(msgId);
     }
 
-    explicit Message(const std::vector<uint8_t>& vdata) :
-    data(std::make_shared<std::vector<uint8_t>>(vdata)), index(0), source(pop_string()), id(pop_uint()) {}
+    explicit Message(const std::vector<uint8_t>& vdata)
+        : data(std::make_shared<std::vector<uint8_t>>(vdata)), index(0), source(pop_string()), id(pop_uint())
+    {}
 
-    void push_bool(bool value) {
+    void push_bool(bool value)
+    {
         push_ubyte(value ? 1 : 0);
     }
 
-    auto pop_bool() -> bool {
+    auto pop_bool() -> bool
+    {
         auto result = pop_ubyte();
         return result == 1;
     }
 
-    void push_ubyte(uint8_t value) {
+    void push_ubyte(uint8_t value)
+    {
         data->push_back(value);
     }
 
-    auto pop_ubyte() -> uint8_t {
+    auto pop_ubyte() -> uint8_t
+    {
         auto result = (*data)[index++];
         return result;
     }
 
-    void push_byte(int8_t value) {
+    void push_byte(int8_t value)
+    {
         push_ubyte(static_cast<uint8_t>(value));
     }
 
-    auto pop_byte() -> int8_t {
+    auto pop_byte() -> int8_t
+    {
         return static_cast<int8_t>(pop_ubyte());
     }
 
-    void push_ushort(uint16_t value) {
+    void push_ushort(uint16_t value)
+    {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array) {
+        for (unsigned char nextbyte : data_array)
+        {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_ushort() -> uint16_t {
+    auto pop_ushort() -> uint16_t
+    {
         std::array<uint8_t, sizeof(uint16_t)> data_array{};
-        for (auto i = 0; i < sizeof(uint16_t); i++) {
+        for (auto i = 0; i < sizeof(uint16_t); i++)
+        {
             data_array.at(i) = pop_ubyte();
         }
         uint16_t result;
@@ -128,17 +144,21 @@ public:
         return result;
     }
 
-    void push_short(int16_t value) {
+    void push_short(int16_t value)
+    {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array) {
+        for (unsigned char nextbyte : data_array)
+        {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_short() -> int16_t {
+    auto pop_short() -> int16_t
+    {
         std::array<uint8_t, sizeof(int16_t)> data_array{};
-        for (auto i = 0; i < sizeof(int16_t); i++) {
+        for (auto i = 0; i < sizeof(int16_t); i++)
+        {
             data_array.at(i) = pop_ubyte();
         }
         int16_t result;
@@ -146,17 +166,21 @@ public:
         return result;
     }
 
-    void push_uint(uint32_t value) {
+    void push_uint(uint32_t value)
+    {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array) {
+        for (unsigned char nextbyte : data_array)
+        {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_uint() -> uint32_t {
+    auto pop_uint() -> uint32_t
+    {
         std::array<uint8_t, sizeof(uint32_t)> data_array{};
-        for (auto i = 0; i < sizeof(uint32_t); i++) {
+        for (auto i = 0; i < sizeof(uint32_t); i++)
+        {
             data_array.at(i) = pop_ubyte();
         }
         uint32_t result;
@@ -164,17 +188,21 @@ public:
         return result;
     }
 
-    void push_int(int32_t value) {
+    void push_int(int32_t value)
+    {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array) {
+        for (unsigned char nextbyte : data_array)
+        {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_int() -> int32_t {
+    auto pop_int() -> int32_t
+    {
         std::array<uint8_t, sizeof(int32_t)> data_array{};
-        for (auto i = 0; i < sizeof(int32_t); i++) {
+        for (auto i = 0; i < sizeof(int32_t); i++)
+        {
             data_array.at(i) = pop_ubyte();
         }
         int32_t result;
@@ -182,17 +210,21 @@ public:
         return result;
     }
 
-    void push_ulong(uint64_t value) {
+    void push_ulong(uint64_t value)
+    {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array) {
+        for (unsigned char nextbyte : data_array)
+        {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_ulong() -> uint64_t {
+    auto pop_ulong() -> uint64_t
+    {
         std::array<uint8_t, sizeof(uint64_t)> data_array{};
-        for (auto i = 0; i < sizeof(uint64_t); i++) {
+        for (auto i = 0; i < sizeof(uint64_t); i++)
+        {
             data_array.at(i) = pop_ubyte();
         }
         uint64_t result;
@@ -200,17 +232,21 @@ public:
         return result;
     }
 
-    void push_long(int64_t value) {
+    void push_long(int64_t value)
+    {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array) {
+        for (unsigned char nextbyte : data_array)
+        {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_long() -> int64_t {
+    auto pop_long() -> int64_t
+    {
         std::array<uint8_t, sizeof(int64_t)> data_array{};
-        for (auto i = 0; i < sizeof(int64_t); i++) {
+        for (auto i = 0; i < sizeof(int64_t); i++)
+        {
             data_array.at(i) = pop_ubyte();
         }
         int64_t result;
@@ -218,17 +254,21 @@ public:
         return result;
     }
 
-    void push_float(float value) {
+    void push_float(float value)
+    {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array) {
+        for (unsigned char nextbyte : data_array)
+        {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_float() -> float {
+    auto pop_float() -> float
+    {
         std::array<uint8_t, sizeof(float)> data_array{};
-        for (auto i = 0; i < sizeof(float); i++) {
+        for (auto i = 0; i < sizeof(float); i++)
+        {
             data_array.at(i) = pop_ubyte();
         }
         float result;
@@ -236,17 +276,21 @@ public:
         return result;
     }
 
-    void push_double(double value) {
+    void push_double(double value)
+    {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array) {
+        for (unsigned char nextbyte : data_array)
+        {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_double() -> double {
+    auto pop_double() -> double
+    {
         std::array<uint8_t, sizeof(double)> data_array{};
-        for (auto i = 0; i < sizeof(double); i++) {
+        for (auto i = 0; i < sizeof(double); i++)
+        {
             data_array.at(i) = pop_ubyte();
         }
         double result;
@@ -254,37 +298,54 @@ public:
         return result;
     }
 
-    void push_string(const std::string& value) {
+    void push_string(const std::string& value)
+    {
         push_ulong(value.size());
         data->insert(data->end(), value.begin(), value.end());
     }
 
-    auto pop_string() -> std::string {
+    auto pop_string() -> std::string
+    {
         auto result = pop_bytes();
         return {result.begin(), result.end()};
     }
 
-    void push_bytes(const std::vector<uint8_t>& value) {
+    void push_bytes(const std::vector<uint8_t>& value)
+    {
         push_ulong(value.size());
         data->insert(data->end(), value.begin(), value.end());
     }
 
-    auto pop_bytes() -> std::vector<uint8_t> {
-        auto len = pop_ulong();
-        auto result = std::vector<uint8_t>(
-            data->begin() + static_cast<int64_t>(index),
-            data->begin() + static_cast<int64_t>(index) + static_cast<int64_t>(len)
-        );
-        index += len;
+    auto pop_bytes() -> std::vector<uint8_t>
+    {
+        auto len     = pop_ulong();
+        auto result  = std::vector<uint8_t>(data->begin() + static_cast<int64_t>(index),
+                                           data->begin() + static_cast<int64_t>(index) + static_cast<int64_t>(len));
+        index       += len;
         return result;
     }
 
     // Message no longer knows about clusters - clusters send messages
 
-    [[nodiscard]] auto getId() const -> uint32_t { return id; }
-    [[nodiscard]] auto getSource() const -> const std::string& { return source; }
-    [[nodiscard]] auto getPriority() const -> Priority { return priority; }
-    [[nodiscard]] auto getData() const -> const std::shared_ptr<std::vector<uint8_t>>& { return data; }
+    [[nodiscard]] auto getId() const -> uint32_t
+    {
+        return id;
+    }
+
+    [[nodiscard]] auto getSource() const -> const std::string&
+    {
+        return source;
+    }
+
+    [[nodiscard]] auto getPriority() const -> Priority
+    {
+        return priority;
+    }
+
+    [[nodiscard]] auto getData() const -> const std::shared_ptr<std::vector<uint8_t>>&
+    {
+        return data;
+    }
 
 private:
     std::shared_ptr<std::vector<uint8_t>> data;

@@ -3,21 +3,22 @@
 //
 
 module;
+#include <chrono>
+#include <future>
 #include <iomanip>
 #include <ostream>
-#include <chrono>
-#include "../Lib/shims/date_shim.h"
 
-#include <boost/filesystem.hpp>
-#include <status_code.hpp>
-#include <utility.hpp>
 #include <asio_compatibility.hpp>
-#include <nlohmann/json.hpp>
-#include <future>
+#include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <nlohmann/json.hpp>
 #include <sqlpp11/sqlpp11.h>
+#include <status_code.hpp>
+#include <utility.hpp>
+
+#include "../Lib/shims/date_shim.h"
 
 import MySqlConnector;
 import IClusterManager;
@@ -34,211 +35,222 @@ import GeneralUtils;
 export module File;
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-export void FileApi(const std::string &path, std::shared_ptr<HttpServer> server, std::shared_ptr<IApplication> app) {
+export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server, std::shared_ptr<IApplication> app)
+{
     // Get      -> Download file (file uuid)
     // Post     -> Create new file download
     // Delete   -> Delete file download (file uuid)
     // Patch    -> List files in directory
-    
+
     auto clusterManager = app->getClusterManager();
 
     // Create a new file download
-    server->getServer().resource["^" + path + "$"]["POST"] = [server](
-            const std::shared_ptr<HttpServerImpl::Response> &response,
-            const std::shared_ptr<HttpServerImpl::Request> &request) {
+    server->getServer().resource["^" + path + "$"]["POST"] =
+        [server](const std::shared_ptr<HttpServerImpl::Response>& response,
+                 const std::shared_ptr<HttpServerImpl::Request>& request) {
+            // Verify that the user is authorized
+            std::unique_ptr<sAuthorizationResult> authResult;
+            try
+            {
+                authResult = server->isAuthorized(request->header);
+            }
+            catch (std::exception& e)
+            {
+                dumpExceptions(e);
 
-        // Verify that the user is authorized
-        std::unique_ptr<sAuthorizationResult> authResult;
-        try {
-            authResult = server->isAuthorized(request->header);
-        } catch (std::exception& e) {
-            dumpExceptions(e);
-
-            // Invalid request
-            response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
-            return;
-        }
-
-        // Create a database connection
-        auto database = MySqlConnector();
-
-        // Start a transaction
-        database->start_transaction();
-
-        // Create a vector which includes the application from the secret, and any other applications it has access to
-        auto applications = std::vector<std::string>({authResult->secret().name()});
-        std::copy(authResult->secret().applications().begin(), authResult->secret().applications().end(),
-                  std::back_inserter(applications));
-
-        // Get the tables
-        schema::JobserverJob jobTable;
-        schema::JobserverFiledownload fileDownloadTable;
-
-        try {
-            // Read the json from the post body
-            nlohmann::json post_data;
-            request->content >> post_data;
-
-            // Get the job to fetch files for if one was provided
-            auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data["jobId"]) : 0;
-
-            // Get the path to the file to fetch (relative to the project)
-            bool hasPaths = false;
-            std::vector<std::string> filePaths;
-            if (post_data.contains("paths")) {
-                filePaths = post_data["paths"].get<std::vector<std::string>>();
-                hasPaths = true;
-            } else {
-                filePaths.push_back(std::string{post_data["path"]});
+                // Invalid request
+                response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
+                return;
             }
 
-            // Check that there were actually file paths provided
-            if (filePaths.empty()) {
-                // Return an empty result, this is only possible when using "paths"
+            // Create a database connection
+            auto database = MySqlConnector();
+
+            // Start a transaction
+            database->start_transaction();
+
+            // Create a vector which includes the application from the secret, and any other applications it has access
+            // to
+            auto applications = std::vector<std::string>({authResult->secret().name()});
+            std::copy(authResult->secret().applications().begin(),
+                      authResult->secret().applications().end(),
+                      std::back_inserter(applications));
+
+            // Get the tables
+            schema::JobserverJob jobTable;
+            schema::JobserverFiledownload fileDownloadTable;
+
+            try
+            {
+                // Read the json from the post body
+                nlohmann::json post_data;
+                request->content >> post_data;
+
+                // Get the job to fetch files for if one was provided
+                auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data["jobId"]) : 0;
+
+                // Get the path to the file to fetch (relative to the project)
+                bool hasPaths = false;
+                std::vector<std::string> filePaths;
+                if (post_data.contains("paths"))
+                {
+                    filePaths = post_data["paths"].get<std::vector<std::string>>();
+                    hasPaths  = true;
+                }
+                else
+                {
+                    filePaths.push_back(std::string{post_data["path"]});
+                }
+
+                // Check that there were actually file paths provided
+                if (filePaths.empty())
+                {
+                    // Return an empty result, this is only possible when using "paths"
+                    nlohmann::json result;
+                    result["fileIds"] = std::vector<std::string>();
+
+                    SimpleWeb::CaseInsensitiveMultimap headers;
+                    headers.emplace("Content-Type", "application/json");
+
+                    response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+                    return;
+                }
+
+                auto sCluster = std::string{};
+                auto sBundle  = std::string{};
+
+                // If a job ID was provided, fetch the cluster and bundle details from that job
+                if (jobId != 0)
+                {
+                    // Look up the job
+                    auto jobResults =
+                        database->run(select(all_of(jobTable))
+                                          .from(jobTable)
+                                          .where(jobTable.id == static_cast<uint64_t>(jobId) and
+                                                 jobTable.application.in(sqlpp::value_list(applications))));
+
+                    // Check that a job was actually found
+                    if (jobResults.empty())
+                    {
+                        throw std::runtime_error("Unable to find job with ID " + std::to_string(jobId) +
+                                                 " for application " + authResult->secret().name());
+                    }
+
+                    // Get the cluster and bundle from the job
+                    const auto* job = &jobResults.front();
+                    sCluster        = std::string{job->cluster};
+                    sBundle         = std::string{job->bundle};
+                }
+                else
+                {
+                    // A job ID was not provided, we need to use the cluster and bundle details from the json request
+                    // Check that the bundle and cluster were provided in the POST json
+                    if (!post_data.contains("cluster") || !post_data.contains("bundle"))
+                    {
+                        throw std::runtime_error(
+                            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'");
+                    }
+
+                    sCluster = std::string{post_data["cluster"]};
+                    sBundle  = std::string{post_data["bundle"]};
+
+                    // Confirm that the current JWT secret can access the provided cluster
+                    const auto& clusters = authResult->secret().clusters();
+                    if (std::find(clusters.begin(), clusters.end(), sCluster) == clusters.end())
+                    {
+                        throw std::runtime_error("Application " + authResult->secret().name() +
+                                                 " does not have access to cluster " + sCluster);
+                    }
+                }
+
+                // Create a multi insert query
+                auto insert_query = insert_into(fileDownloadTable)
+                                        .columns(fileDownloadTable.user,
+                                                 fileDownloadTable.job,
+                                                 fileDownloadTable.cluster,
+                                                 fileDownloadTable.bundle,
+                                                 fileDownloadTable.uuid,
+                                                 fileDownloadTable.path,
+                                                 fileDownloadTable.timestamp);
+
+                // Now iterate over the file paths and generate UUID's for them
+                std::vector<std::string> uuids;
+                for (const auto& path : filePaths)
+                {
+                    // Generate a UUID for the download
+                    auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+
+                    // Save the path
+                    uuids.push_back(uuid);
+
+                    // Add the record to be inserted
+                    insert_query.values.add(
+                        fileDownloadTable.user    = static_cast<int>(authResult->payload()["userId"]),
+                        fileDownloadTable.job     = static_cast<int>(jobId),
+                        fileDownloadTable.cluster = sCluster,
+                        fileDownloadTable.bundle  = sBundle,
+                        fileDownloadTable.uuid    = uuid,
+                        fileDownloadTable.path    = std::string(path),
+                        fileDownloadTable.timestamp =
+                            std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()));
+                }
+
+                // Try inserting the values in the database
+                try
+                {
+                    database->run(insert_query);
+
+                    // Commit the changes in the database
+                    database->commit_transaction();
+                }
+                catch (sqlpp::exception& e)
+                {
+                    dumpExceptions(e);
+
+                    // Uh oh, an error occurred
+                    // Abort the transaction
+                    database->rollback_transaction(false);
+
+                    // Report bad request
+                    response->write(SimpleWeb::StatusCode::client_error_bad_request,
+                                    "Unable to insert records in the database, please try again later");
+                    return;
+                }
+
+                // Report success
                 nlohmann::json result;
-                result["fileIds"] = std::vector<std::string>();
+                if (hasPaths)
+                {
+                    result["fileIds"] = uuids;
+                }
+                else
+                {
+                    result["fileId"] = uuids[0];
+                }
 
                 SimpleWeb::CaseInsensitiveMultimap headers;
                 headers.emplace("Content-Type", "application/json");
 
                 response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-                return;
             }
-
-            auto sCluster = std::string{};
-            auto sBundle = std::string{};
-
-            // If a job ID was provided, fetch the cluster and bundle details from that job
-            if (jobId != 0) {
-                // Look up the job
-                auto jobResults =
-                        database->run(
-                                select(all_of(jobTable))
-                                        .from(jobTable)
-                                        .where(
-                                                jobTable.id == static_cast<uint64_t>(jobId)
-                                                and jobTable.application.in(sqlpp::value_list(applications))
-                                        )
-                        );
-
-                // Check that a job was actually found
-                if (jobResults.empty()) {
-                    throw std::runtime_error(
-                            "Unable to find job with ID " + std::to_string(jobId) + " for application " +
-                            authResult->secret().name());
-                }
-
-                // Get the cluster and bundle from the job
-                const auto *job = &jobResults.front();
-                sCluster = std::string{job->cluster};
-                sBundle = std::string{job->bundle};
-            } else {
-                // A job ID was not provided, we need to use the cluster and bundle details from the json request
-                // Check that the bundle and cluster were provided in the POST json
-                if (!post_data.contains("cluster") || !post_data.contains("bundle")) {
-                    throw std::runtime_error(
-                            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
-                            );
-                }
-
-                sCluster = std::string{post_data["cluster"]};
-                sBundle = std::string{post_data["bundle"]};
-
-                // Confirm that the current JWT secret can access the provided cluster
-                const auto& clusters = authResult->secret().clusters();
-                if (std::find(clusters.begin(), clusters.end(), sCluster) == clusters.end()) {
-                    throw std::runtime_error(
-                            "Application " + authResult->secret().name() + " does not have access to cluster " + sCluster
-                            );
-                }
-            }
-
-            // Create a multi insert query
-            auto insert_query = insert_into(fileDownloadTable).columns(
-                    fileDownloadTable.user,
-                    fileDownloadTable.job,
-                    fileDownloadTable.cluster,
-                    fileDownloadTable.bundle,
-                    fileDownloadTable.uuid,
-                    fileDownloadTable.path,
-                    fileDownloadTable.timestamp
-            );
-
-            // Now iterate over the file paths and generate UUID's for them
-            std::vector<std::string> uuids;
-            for (const auto &path : filePaths) {
-                // Generate a UUID for the download
-                auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
-
-                // Save the path
-                uuids.push_back(uuid);
-
-                // Add the record to be inserted
-                insert_query.values.add(
-                        fileDownloadTable.user = static_cast<int>(authResult->payload()["userId"]),
-                        fileDownloadTable.job = static_cast<int>(jobId),
-                        fileDownloadTable.cluster = sCluster,
-                        fileDownloadTable.bundle = sBundle,
-                        fileDownloadTable.uuid = uuid,
-                        fileDownloadTable.path = std::string(path),
-                        fileDownloadTable.timestamp =
-                                std::chrono::time_point_cast<std::chrono::microseconds>(
-                                        std::chrono::system_clock::now()
-                                )
-                );
-            }
-
-            // Try inserting the values in the database
-            try {
-                database->run(insert_query);
-
-                // Commit the changes in the database
-                database->commit_transaction();
-            } catch (sqlpp::exception &e) {
+            catch (std::exception& e)
+            {
                 dumpExceptions(e);
 
-                // Uh oh, an error occurred
                 // Abort the transaction
                 database->rollback_transaction(false);
 
                 // Report bad request
-                response->write(
-                        SimpleWeb::StatusCode::client_error_bad_request,
-                        "Unable to insert records in the database, please try again later"
-                );
-                return;
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
             }
-
-            // Report success
-            nlohmann::json result;
-            if (hasPaths) {
-                result["fileIds"] = uuids;
-            } else {
-                result["fileId"] = uuids[0];
-            }
-
-            SimpleWeb::CaseInsensitiveMultimap headers;
-            headers.emplace("Content-Type", "application/json");
-
-            response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
-
-        } catch (std::exception& e) {
-            dumpExceptions(e);
-
-            // Abort the transaction
-            database->rollback_transaction(false);
-
-            // Report bad request
-            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
-        }
-    };
+        };
 
     // Download file
     // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-    server->getServer().resource["^" + path + "$"]["GET"] = [clusterManager, app](
-            const std::shared_ptr<HttpServerImpl::Response> &response,
-            const std::shared_ptr<HttpServerImpl::Request> &request) {
-
+    server->getServer()
+        .resource["^" + path + "$"]["GET"] = [clusterManager,
+                                              app](const std::shared_ptr<HttpServerImpl::Response>& response,
+                                                   const std::shared_ptr<HttpServerImpl::Request>& request) {
         // Create a database connection
         auto database = MySqlConnector();
 
@@ -250,77 +262,77 @@ export void FileApi(const std::string &path, std::shared_ptr<HttpServer> server,
         std::string uuid;
         std::shared_ptr<FileDownload> fdObj;
 
-        try {
+        try
+        {
             // Process the query parameters
             auto query_fields = request->parse_query_string();
 
             // Check if jobId is provided
             auto uuidPtr = query_fields.find("fileId");
-            if (uuidPtr != query_fields.end()) {
+            if (uuidPtr != query_fields.end())
+            {
                 uuid = uuidPtr->second;
             }
 
-            if (uuid.empty()) {
+            if (uuid.empty())
+            {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
                 return;
             }
 
             // Check if forceDownload is provided
-            auto fdPtr = query_fields.find("forceDownload");
+            auto fdPtr         = query_fields.find("forceDownload");
             bool forceDownload = false;
-            if (fdPtr != query_fields.end()) {
+            if (fdPtr != query_fields.end())
+            {
                 forceDownload = true;
             }
 
             // Expire any old file downloads
-            database->run(
-                    remove_from(fileDownloadTable)
-                            .where(
-                                    fileDownloadTable.timestamp <=
-                                    std::chrono::system_clock::now() -
-                                    std::chrono::seconds(FILE_DOWNLOAD_EXPIRY_TIME)
-                            )
+            database->run(remove_from(fileDownloadTable)
+                              .where(fileDownloadTable.timestamp <=
+                                     std::chrono::system_clock::now() - std::chrono::seconds(FILE_DOWNLOAD_EXPIRY_TIME))
 
             );
 
             // Look up the file download
             auto dlResults = database->run(
-                    select(all_of(fileDownloadTable))
-                            .from(fileDownloadTable)
-                            .where(fileDownloadTable.uuid == uuid)
-            );
+                select(all_of(fileDownloadTable)).from(fileDownloadTable).where(fileDownloadTable.uuid == uuid));
 
             // Check that the uuid existed in the database
-            if (dlResults.empty()) {
+            if (dlResults.empty())
+            {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
                 return;
             }
 
             // Get the cluster and bundle from the job
-            const auto *dlResult = &dlResults.front();
+            const auto* dlResult = &dlResults.front();
 
             auto sCluster = std::string{dlResult->cluster};
-            auto sBundle = std::string{dlResult->bundle};
+            auto sBundle  = std::string{dlResult->bundle};
 
             auto sFilePath = std::string{dlResult->path};
-            auto jobId = static_cast<uint64_t>(dlResult->job);
+            auto jobId     = static_cast<uint64_t>(dlResult->job);
 
             // Check that the cluster is online
             // Get the cluster to submit to
             auto cluster = clusterManager->getCluster(sCluster);
-            if (!cluster) {
+            if (!cluster)
+            {
                 // Invalid cluster
                 throw std::runtime_error("Invalid cluster");
             }
 
             // If the cluster isn't online then there isn't anything to do
-            if (!cluster->isOnline()) {
+            if (!cluster->isOnline())
+            {
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
             }
 
-            // Generate a new uuid so that simultanious downloads of the same file don't cause a collision between server->client
-            // Refer to https://phab.adacs.org.au/D665 for additonal details and justification
+            // Generate a new uuid so that simultanious downloads of the same file don't cause a collision between
+            // server->client Refer to https://phab.adacs.org.au/D665 for additonal details and justification
             uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
             // Create the file download object
@@ -339,21 +351,26 @@ export void FileApi(const std::string &path, std::shared_ptr<HttpServer> server,
                 std::unique_lock<std::mutex> lock(fdObj->fileDownloadDataCVMutex);
 
                 // Wait for data to be ready to send
-                if (!fdObj->fileDownloadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->fileDownloadDataReady; })) {
+                if (!fdObj->fileDownloadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] {
+                        return fdObj->fileDownloadDataReady;
+                    }))
+                {
                     // Timeout reached, set the error
-                    fdObj->fileDownloadError = true;
+                    fdObj->fileDownloadError        = true;
                     fdObj->fileDownloadErrorDetails = "Client took too long to respond.";
                 }
             }
 
             // Check if the server received an error about the file
-            if (fdObj->fileDownloadError) {
+            if (fdObj->fileDownloadError)
+            {
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, fdObj->fileDownloadErrorDetails);
                 return;
             }
 
             // Check if the server received details about the file
-            if (!fdObj->fileDownloadReceivedData) {
+            if (!fdObj->fileDownloadReceivedData)
+            {
                 response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
                 return;
             }
@@ -369,9 +386,12 @@ export void FileApi(const std::string &path, std::shared_ptr<HttpServer> server,
             boost::filesystem::path filePath(sFilePath);
 
             // Check if we need to tell the browser to force the download
-            if (forceDownload) {
+            if (forceDownload)
+            {
                 headers.emplace("Content-Disposition", "attachment; filename=\"" + filePath.filename().string() + "\"");
-            } else {
+            }
+            else
+            {
                 headers.emplace("Content-Disposition", "filename=\"" + filePath.filename().string() + "\"");
             }
 
@@ -381,68 +401,82 @@ export void FileApi(const std::string &path, std::shared_ptr<HttpServer> server,
             // Write the headers
             response->write(headers);
             std::promise<SimpleWeb::error_code> headerPromise;
-            response->send([&headerPromise](const SimpleWeb::error_code &errorCode) {
+            response->send([&headerPromise](const SimpleWeb::error_code& errorCode) {
                 headerPromise.set_value(errorCode);
             });
 
-            if (auto errorCode = headerPromise.get_future().get()) {
+            if (auto errorCode = headerPromise.get_future().get())
+            {
                 throw std::runtime_error(
-                        "Error transmitting file transfer headers to client. Perhaps client has disconnected? "
-                        + std::to_string(errorCode.value()) + " " + errorCode.message()
-                );
+                    "Error transmitting file transfer headers to client. Perhaps client has disconnected? " +
+                    std::to_string(errorCode.value()) + " " + errorCode.message());
             }
 
             // Check for error, or all data sent
-            while (!fdObj->fileDownloadError && fdObj->fileDownloadSentBytes < fdObj->fileDownloadFileSize) {
+            while (!fdObj->fileDownloadError && fdObj->fileDownloadSentBytes < fdObj->fileDownloadFileSize)
+            {
                 {
                     // Wait for the server to send back data, or in CLIENT_TIMEOUT_SECONDS fail
                     std::unique_lock<std::mutex> lock(fdObj->fileDownloadDataCVMutex);
 
                     // Wait for data to be ready to send
-                    if (!fdObj->fileDownloadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fdObj] { return fdObj->fileDownloadDataReady; })) {
+                    if (!fdObj->fileDownloadDataCV.wait_for(lock,
+                                                            std::chrono::seconds(CLIENT_TIMEOUT_SECONDS),
+                                                            [&fdObj] {
+                                                                return fdObj->fileDownloadDataReady;
+                                                            }))
+                    {
                         throw std::runtime_error("Client took too long to respond.");
                     }
                     fdObj->fileDownloadDataReady = false;
                 }
 
                 // While there is data in the queue, send to the client
-                while (!fdObj->fileDownloadQueue.empty()) {
+                while (!fdObj->fileDownloadQueue.empty())
+                {
                     // Get the next chunk from the queue
                     auto data = fdObj->fileDownloadQueue.try_dequeue();
 
                     // If there was one, send it to the client
-                    if (data) {
+                    if (data)
+                    {
                         // Increment the traffic counter
                         fdObj->fileDownloadSentBytes += (*data)->size();
 
                         // Send the data
                         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-                        response->write(reinterpret_cast<const char *>((*data)->data()), static_cast<std::streamsize>((*data)->size()));
+                        response->write(reinterpret_cast<const char*>((*data)->data()),
+                                        static_cast<std::streamsize>((*data)->size()));
 
                         std::promise<SimpleWeb::error_code> contentPromise;
-                        response->send([&contentPromise](const SimpleWeb::error_code &errorCode) {
+                        response->send([&contentPromise](const SimpleWeb::error_code& errorCode) {
                             contentPromise.set_value(errorCode);
                         });
 
-                        if (auto errorCode = contentPromise.get_future().get()) {
+                        if (auto errorCode = contentPromise.get_future().get())
+                        {
                             throw std::runtime_error(
-                                    "Error transmitting file content to client. Perhaps client has disconnected? "
-                                    + std::to_string(errorCode.value()) + " " + errorCode.message());
+                                "Error transmitting file content to client. Perhaps client has disconnected? " +
+                                std::to_string(errorCode.value()) + " " + errorCode.message());
                         }
 
                         {
                             // The Pause/Resume messages must be synchronized to avoid a deadlock
-                            std::unique_lock<std::mutex> fileDownloadPauseResumeLock(app->getFileDownloadPauseResumeLockMutex());
+                            std::unique_lock<std::mutex> fileDownloadPauseResumeLock(
+                                app->getFileDownloadPauseResumeLockMutex());
 
                             // Check if we need to resume the client file transfer
-                            if (fdObj->fileDownloadClientPaused) {
+                            if (fdObj->fileDownloadClientPaused)
+                            {
                                 // Check if the buffer is smaller than the setting
-                                if (fdObj->fileDownloadReceivedBytes - fdObj->fileDownloadSentBytes < MIN_FILE_BUFFER_SIZE) {
+                                if (fdObj->fileDownloadReceivedBytes - fdObj->fileDownloadSentBytes <
+                                    MIN_FILE_BUFFER_SIZE)
+                                {
                                     // Ask the client to resume the file transfer
                                     fdObj->fileDownloadClientPaused = false;
 
-                                    auto resumeMsg = Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest,
-                                                             uuid);
+                                    auto resumeMsg =
+                                        Message(RESUME_FILE_CHUNK_STREAM, Message::Priority::Highest, uuid);
                                     fdObj->sendMessage(resumeMsg);
                                 }
                             }
@@ -452,102 +486,121 @@ export void FileApi(const std::string &path, std::shared_ptr<HttpServer> server,
             }
 
             fdObj->close();
-        } catch (std::exception& e) {
+        }
+        catch (std::exception& e)
+        {
             dumpExceptions(e);
 
-            if (fdObj) {
+            if (fdObj)
+            {
                 // Close the connection prematurely.
                 fdObj->close(true);
             }
 
             // If the response is closed, and we try to send more data, it will raise an exception - so wrap this in a
             // try/catch
-            try {
+            try
+            {
                 // Report bad request
                 response->close_connection_after_response = true;
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
-            } catch (std::exception&) {}
+            }
+            catch (std::exception&)
+            {}
         }
     };
 
     // List files in the specified directory
-    server->getServer().resource["^" + path + "$"]["PATCH"] = [clusterManager, server, app](
-            const std::shared_ptr<HttpServerImpl::Response> &response,
-            const std::shared_ptr<HttpServerImpl::Request> &request) {
-
-        // Verify that the user is authorized
-        std::unique_ptr<sAuthorizationResult> authResult;
-        try {
-            authResult = server->isAuthorized(request->header);
-        } catch (std::exception& e) {
-            dumpExceptions(e);
-
-            // Invalid request
-            response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
-            return;
-        }
-
-        try {
-            // Create a vector which includes the application from the secret, and any other applications it has access to
-            auto applications = std::vector<std::string>({authResult->secret().name()});
-            std::copy(authResult->secret().applications().begin(), authResult->secret().applications().end(),
-                      std::back_inserter(applications));
-
-            // Read the json from the post body
-            nlohmann::json post_data;
-            request->content >> post_data;
-
-            // Get the job to fetch files for if one was provided
-            auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data["jobId"]) : 0;
-
-            // Get the job to fetch files for
-            auto bRecursive = static_cast<bool>(post_data["recursive"]);
-
-            // Get the path to the file to fetch (relative to the project)
-            auto filePath = std::string{post_data["path"]};
-
-            if (jobId != 0) {
-                // Handle the file list request
-                handleFileList(
-                        app, clusterManager, jobId, bRecursive, filePath, authResult->secret().name(), applications,
-                        response
-                );
-            } else {
-                // A job ID was not provided, we need to use the cluster and bundle details from the json request
-                // Check that the bundle and cluster were provided in the POST json
-                if (!post_data.contains("cluster") || !post_data.contains("bundle")) {
-                    throw std::runtime_error(
-                            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
-                    );
-                }
-
-                auto sCluster = std::string{post_data["cluster"]};
-                auto sBundle = std::string{post_data["bundle"]};
-
-                // Get the cluster to submit to
-                auto cluster = clusterManager->getCluster(sCluster);
-                if (!cluster) {
-                    // Invalid cluster
-                    throw std::runtime_error("Invalid cluster");
-                }
-
-                // Confirm that the current JWT secret can access the provided cluster
-                const auto& clusters = authResult->secret().clusters();
-                if (std::find(clusters.begin(), clusters.end(), sCluster) == clusters.end()) {
-                    throw std::runtime_error(
-                            "Application " + authResult->secret().name() + " does not have access to cluster " + sCluster
-                    );
-                }
-
-                // Handle the file list request
-                handleFileList(
-                        app, cluster, sBundle, 0, bRecursive, filePath, response
-                );
+    server->getServer().resource["^" + path + "$"]["PATCH"] =
+        [clusterManager, server, app](const std::shared_ptr<HttpServerImpl::Response>& response,
+                                      const std::shared_ptr<HttpServerImpl::Request>& request) {
+            // Verify that the user is authorized
+            std::unique_ptr<sAuthorizationResult> authResult;
+            try
+            {
+                authResult = server->isAuthorized(request->header);
             }
-        } catch (std::exception& exception) {
-            dumpExceptions(exception);
-            
-            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
-        }
-    };
+            catch (std::exception& e)
+            {
+                dumpExceptions(e);
+
+                // Invalid request
+                response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
+                return;
+            }
+
+            try
+            {
+                // Create a vector which includes the application from the secret, and any other applications it has
+                // access to
+                auto applications = std::vector<std::string>({authResult->secret().name()});
+                std::copy(authResult->secret().applications().begin(),
+                          authResult->secret().applications().end(),
+                          std::back_inserter(applications));
+
+                // Read the json from the post body
+                nlohmann::json post_data;
+                request->content >> post_data;
+
+                // Get the job to fetch files for if one was provided
+                auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data["jobId"]) : 0;
+
+                // Get the job to fetch files for
+                auto bRecursive = static_cast<bool>(post_data["recursive"]);
+
+                // Get the path to the file to fetch (relative to the project)
+                auto filePath = std::string{post_data["path"]};
+
+                if (jobId != 0)
+                {
+                    // Handle the file list request
+                    handleFileList(app,
+                                   clusterManager,
+                                   jobId,
+                                   bRecursive,
+                                   filePath,
+                                   authResult->secret().name(),
+                                   applications,
+                                   response);
+                }
+                else
+                {
+                    // A job ID was not provided, we need to use the cluster and bundle details from the json request
+                    // Check that the bundle and cluster were provided in the POST json
+                    if (!post_data.contains("cluster") || !post_data.contains("bundle"))
+                    {
+                        throw std::runtime_error(
+                            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'");
+                    }
+
+                    auto sCluster = std::string{post_data["cluster"]};
+                    auto sBundle  = std::string{post_data["bundle"]};
+
+                    // Get the cluster to submit to
+                    auto cluster = clusterManager->getCluster(sCluster);
+                    if (!cluster)
+                    {
+                        // Invalid cluster
+                        throw std::runtime_error("Invalid cluster");
+                    }
+
+                    // Confirm that the current JWT secret can access the provided cluster
+                    const auto& clusters = authResult->secret().clusters();
+                    if (std::find(clusters.begin(), clusters.end(), sCluster) == clusters.end())
+                    {
+                        throw std::runtime_error("Application " + authResult->secret().name() +
+                                                 " does not have access to cluster " + sCluster);
+                    }
+
+                    // Handle the file list request
+                    handleFileList(app, cluster, sBundle, 0, bRecursive, filePath, response);
+                }
+            }
+            catch (std::exception& exception)
+            {
+                dumpExceptions(exception);
+
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+            }
+        };
 }
