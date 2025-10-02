@@ -1,10 +1,19 @@
 cmake_minimum_required(VERSION 3.28)
 
-# Set Clang compiler
-set(CMAKE_CXX_COMPILER clang++)
-set(CMAKE_C_COMPILER clang)
+# Set Clang 22 compiler for C++20 module support
+set(CMAKE_CXX_COMPILER clang++-22)
+set(CMAKE_C_COMPILER clang-22)
 
 project(adacs_job_controller)
+
+# Option to enable/disable clang-tidy
+option(ENABLE_CLANG_TIDY "Enable clang-tidy static analysis" ON)
+
+if(ENABLE_CLANG_TIDY)
+    message(STATUS "clang-tidy static analysis: ENABLED")
+else()
+    message(STATUS "clang-tidy static analysis: DISABLED")
+endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -58,7 +67,7 @@ set(COMMON_INCLUDE_DIRS
 include_directories(${COMMON_INCLUDE_DIRS})
 
 # Define common compile features
-set(COMMON_COMPILE_FEATURES cxx_std_23)
+set(COMMON_COMPILE_FEATURES cxx_std_20)
 
 # Define the source files
 set(
@@ -123,20 +132,6 @@ set(
         date::date-tz
 )
 
-set_target_properties(
-        Boost_Tests_run
-        PROPERTIES
-        #CXX_CLANG_TIDY "clang-tidy"
-        CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
-)
-
-set_target_properties(
-        adacs_job_controller 
-        PROPERTIES
-        #CXX_CLANG_TIDY "clang-tidy"
-        CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
-)
-
 # Define module sources once
 set(PROJECT_MODULE_SOURCES
   IApplication.ixx
@@ -193,3 +188,56 @@ target_link_libraries(Boost_Tests_run PRIVATE ${LINK_LIBRARIES} project_modules_
 target_compile_options(Boost_Tests_run PUBLIC --coverage -fPIC)
 
 target_link_options(Boost_Tests_run PRIVATE --coverage)
+
+set_target_properties(
+        Boost_Tests_run
+        PROPERTIES
+        CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
+)
+
+if(ENABLE_CLANG_TIDY)
+    set_target_properties(
+            adacs_job_controller 
+            PROPERTIES
+            CXX_CLANG_TIDY "clang-tidy-22;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
+            CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
+    )
+else()
+    set_target_properties(
+            adacs_job_controller 
+            PROPERTIES
+            CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
+    )
+endif()
+
+if(ENABLE_CLANG_TIDY)
+    # Enable clang-tidy-22 with experimental module support for project_modules
+    set_target_properties(
+            project_modules 
+            PROPERTIES
+            CXX_CLANG_TIDY "clang-tidy-22;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
+            CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
+    )
+else()
+    set_target_properties(
+            project_modules 
+            PROPERTIES
+            CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
+    )
+endif()
+
+if(ENABLE_CLANG_TIDY)
+    # Enable clang-tidy-22 with experimental module support for project_modules_test
+    set_target_properties(
+            project_modules_test 
+            PROPERTIES
+            CXX_CLANG_TIDY "clang-tidy-22;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
+            CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
+    )
+else()
+    set_target_properties(
+            project_modules_test 
+            PROPERTIES
+            CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
+    )
+endif()

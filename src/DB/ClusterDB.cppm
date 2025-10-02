@@ -110,6 +110,9 @@ auto ClusterDB::maybeHandleClusterDBMessage(Message& message, const std::shared_
         case DB_BUNDLE_DELETE_JOB:
             deleteBundleJobById(message, pCluster);
             return true;
+
+        default:
+            break;
     }
 
     return false;
@@ -145,6 +148,7 @@ void ClusterDB::deleteClusterJobStatusByIdList(Message& message, const std::shar
     {
         std::vector<uint64_t> ids;
         auto count = message.pop_uint();
+        ids.reserve(count);
         for (uint32_t index = 0; index < count; index++)
         {
             ids.push_back(message.pop_ulong());
@@ -244,7 +248,7 @@ void ClusterDB::deleteClusterJob(Message& message, const std::shared_ptr<ICluste
 
     try
     {
-        sClusterJob job = {.id = message.pop_ulong()};
+        const sClusterJob job = {.id = message.pop_ulong()};
         job._delete(pCluster->getName());
 
         // Success
@@ -332,7 +336,7 @@ auto ClusterDB::prepareResult(Message& message, const std::shared_ptr<ICluster>&
 {
     auto dbRequestId = message.pop_ulong();
 
-    auto result = Message(DB_RESPONSE, Message::Medium, "database_" + pCluster->getName());
+    auto result = Message(DB_RESPONSE, Message::Priority::Medium, "database_" + pCluster->getName());
     result.push_ulong(dbRequestId);
     return result;
 }
@@ -389,7 +393,7 @@ void ClusterDB::deleteBundleJobById(Message& message, const std::shared_ptr<IClu
 
     try
     {
-        sBundleJob job = {.id = message.pop_ulong()};
+        const sBundleJob job = {.id = message.pop_ulong()};
         job._delete(pCluster->getName(), bundleHash);
 
         // Success

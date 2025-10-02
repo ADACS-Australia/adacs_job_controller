@@ -24,7 +24,7 @@ export class FileDownload : public Cluster
 public:
     FileDownload(const std::shared_ptr<sClusterDetails>& details, std::string uuid, std::shared_ptr<IApplication> app);
 
-    auto getUuid() -> std::string
+    [[nodiscard]] auto getUuid() -> std::string
     {
         return uuid;
     }
@@ -70,7 +70,7 @@ void FileDownload::handleFileChunk(Message& message)
 
     {
         // The Pause/Resume messages must be synchronized to avoid a deadlock
-        std::unique_lock<std::mutex> fileDownloadPauseResumeLock(app->getFileDownloadPauseResumeLockMutex());
+        const std::unique_lock<std::mutex> fileDownloadPauseResumeLock(app->getFileDownloadPauseResumeLockMutex());
 
         if (!fileDownloadClientPaused)
         {
@@ -127,7 +127,7 @@ void FileDownload::handleMessage(Message& message)
             handleFileError(message);
             break;
         default:
-            std::cout << "FileDownload: Unknown message type: " << message.getId() << std::endl;
+            std::cout << "FileDownload: Unknown message type: " << message.getId() << '\n';
             break;
     }
 }

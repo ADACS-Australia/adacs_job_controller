@@ -44,18 +44,22 @@ def convert_header_to_module(header_file_path, output_file_path):
     
     # Don't add export to structs inside exported namespace - they're already exported
     
-    # Add module declaration at the top
+    # Add module declaration at the top with NOLINTBEGIN to suppress clang-tidy warnings
+    # for auto-generated database schema code
     module_content = """module;
+// NOLINTBEGIN - Auto-generated database schema code
 #include <sqlpp11/table.h>
 #include <sqlpp11/data_types.h>
 #include <sqlpp11/char_sequence.h>
 
 export module jobserver_schema;
-
 """
     
     # Add the converted content
     module_content += content
+    
+    # Add NOLINTEND at the end to close the suppression region
+    module_content += "\n// NOLINTEND\n"
     
     # Write the module file
     with open(output_file_path, 'w', encoding='utf-8') as f:

@@ -48,31 +48,35 @@ This project makes heavy use of docker for testing and building the project in a
 
 ## Building
 
-There are two CMake targets, `adacs_job_controller` which is the runtime binary, and `Boost_Tests_run`. Most of the time you will be building and running the `Boost_Tests_run` target. Running the `adacs_job_controller` target locally is possible, but doesn't really serve any purpose. The `adacs_job_controller` target is generally build and run by the docker build process.
+The project uses C++20 modules and requires the Ninja build system. The main targets are `adacs_job_controller` (runtime binary) and `Boost_Tests_run` (test suite).
 
-### Building
-
-The project uses C++20 modules and requires the Ninja build system. To build the `Boost_Tests_run` target:
+### Standard Build Process
 
 ```bash
-cd src/
+cd src
 mkdir build
 cd build
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ..
-ninja Boost_Tests_run
+ninja
 ```
 
-**Note**: This project has been migrated to use C++20 modules for improved compilation performance and better dependency management. The Ninja build system is required as it provides better support for C++20 modules compared to traditional Make.
+### Build Options
 
+**Static Analysis**: By default, clang-tidy static analysis is enabled. To disable it for faster builds:
 
+```bash
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_CLANG_TIDY=OFF ..
+```
 
-You can then run the generated `Boost_Tests_run` target which will run the full test suite.
+### Running Tests
 
+You can run the generated `Boost_Tests_run` target which will execute the full test suite:
 
+```bash
+./Boost_Tests_run
+```
 
-A comprehensive test suite (used by the CI) can be run by running `bash scripts/test.sh` from the repository root. This will report any test failures, and will also generate a code coverage report. To run valgrind on the project, another script exists `bash scipts/valgrind.sh` - you can expect this to take some time to run.
-
-
+A comprehensive test suite (used by the CI) can be run by running `bash scripts/test.sh` from the repository root. This will report any test failures, and will also generate a code coverage report. To run valgrind on the project, another script exists `bash scripts/valgrind.sh` - you can expect this to take some time to run.
 
 Finally, to build the production docker asset, run `bash scripts/build.sh`, then push the docker image.
 

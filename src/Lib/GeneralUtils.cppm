@@ -21,7 +21,6 @@ module;
 #include <boost/archive/iterators/remove_whitespace.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
 #include <boost/asio.hpp>
-#include <boost/lexical_cast.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -31,9 +30,6 @@ module;
 #include "segvcatch.h"
 
 export module GeneralUtils;
-
-// Forward declarations
-export void dumpExceptions(std::exception& exception);
 
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
 export auto base64Encode(std::string input) -> std::string
@@ -55,6 +51,17 @@ export auto base64Encode(std::string input) -> std::string
     return output;
 }
 
+// Exception dumping functions
+export void dumpExceptions(std::exception& exception)
+{
+    std::cerr << "--- Exception: " << exception.what() << '\n';
+    auto exceptions = folly::exception_tracer::getCurrentExceptions();
+    for (auto& exc : exceptions)
+    {
+        std::cerr << exc << "\n";
+    }
+}
+
 // From https://github.com/kenba/via-httplib/blob/master/include/via/http/authentication/base64.hpp
 export auto base64Decode(std::string input) -> std::string
 {
@@ -70,8 +77,8 @@ export auto base64Decode(std::string input) -> std::string
         const uint32_t num_pad_chars((4 - input.size() % 4) % 4);
         input.append(num_pad_chars, '=');
 
-        const uint32_t pad_chars(std::count(input.begin(), input.end(), '='));
-        std::replace(input.begin(), input.end(), '=', 'A');
+        const uint32_t pad_chars(std::ranges::count(input, '='));
+        std::ranges::replace(input, '=', 'A');
         std::string output(ItBinaryT(input.begin()), ItBinaryT(input.end()));
         output.erase(output.end() - pad_chars, output.end());
         return output;
@@ -83,7 +90,7 @@ export auto base64Decode(std::string input) -> std::string
     }
 }
 
-export auto generateUUID() -> std::string
+export [[nodiscard]] auto generateUUID() -> std::string
 {
     auto uuid = boost::uuids::random_generator()();
     return boost::uuids::to_string(uuid);
@@ -92,29 +99,27 @@ export auto generateUUID() -> std::string
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 export auto acceptingConnections(uint16_t port) -> bool
 {
-    using boost::asio::io_service, boost::asio::deadline_timer, boost::asio::ip::tcp;
-    using ec = boost::system::error_code;
-
     bool result = false;
 
     for (auto counter = 0; counter < 10 && !result; counter++)
     {
         try
         {
-            io_service svc;
-            tcp::socket socket(svc);
+            boost::asio::io_service svc;
+            boost::asio::ip::tcp::socket socket(svc);
             boost::asio::steady_timer tim(svc, std::chrono::milliseconds(100));
 
-            tim.async_wait([&](ec) {
+            tim.async_wait([&](boost::system::error_code) {
                 socket.cancel();
             });
-            socket.async_connect({{}, port}, [&](ec errorCode) {
+            socket.async_connect({{}, port}, [&](boost::system::error_code errorCode) {
+                // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
                 result = !errorCode;
             });
 
             svc.run();
         }
-        catch (...)
+        catch (...)  // NOLINT(bugprone-empty-catch)
         {
             // Ignore connection errors during port checking
         }
@@ -155,17 +160,21 @@ private:
     bool terminate = false;
 };
 
-// Exception dumping functions
-void dumpExceptions(std::exception& exception)
+// To prevent the compiler optimizing away the exception tracing from folly, we need to reference it.
+extern "C" auto getCaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTrace*;
+extern "C" auto getUncaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTraceStack*;
+
+namespace {
+// forceExceptionStackTraceRef is intentionally unused and marked volatile so the compiler doesn't optimize away the
+// required functions from folly. This is black magic.
+// NOLINTNEXTLINE(misc-use-internal-linkage,llvm-prefer-static-over-anonymous-namespace)
+volatile void forceExceptionStackTraceRef()
 {
-    std::cerr << "--- Exception: " << exception.what() << '\n';
-    auto exceptions = folly::exception_tracer::getCurrentExceptions();
-    for (auto& exc : exceptions)
-    {
-        std::cerr << exc << "\n";
-    }
+    getCaughtExceptionStackTraceStack();
+    getUncaughtExceptionStackTraceStack();
 }
 
+// NOLINTNEXTLINE(misc-use-internal-linkage,llvm-prefer-static-over-anonymous-namespace,cppcoreguidelines-avoid-non-const-global-variables)
 void handleSegv()
 {
     // NOLINTBEGIN
@@ -183,20 +192,9 @@ void handleSegv()
     // NOLINTEND
 }
 
-// To prevent the compiler optimizing away the exception tracing from folly, we need to reference it.
-extern "C" auto getCaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTrace*;
-extern "C" auto getUncaughtExceptionStackTraceStack() -> const folly::exception_tracer::StackTraceStack*;
-
-// forceExceptionStackTraceRef is intentionally unused and marked volatile so the compiler doesn't optimize away the
-// required functions from folly. This is black magic.
-volatile void forceExceptionStackTraceRef()
-{
-    getCaughtExceptionStackTraceStack();
-    getUncaughtExceptionStackTraceStack();
-}
-
 // This is also black magic. What we're doing here is using this function as the initializer for the volatile static
 // bool bForceStartup, which can't be optimized away. This function is guaranteed to be run during program startup
+// NOLINTNEXTLINE(misc-use-internal-linkage,llvm-prefer-static-over-anonymous-namespace)
 auto forceStartup() -> bool
 {
     // Set up the crash handler
@@ -208,5 +206,6 @@ auto forceStartup() -> bool
     return true;
 }
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,cert-err58-cpp)
+// NOLINTNEXTLINE(misc-use-internal-linkage,llvm-prefer-static-over-anonymous-namespace,bugprone-throwing-static-initialization,cert-err58-cpp,cppcoreguidelines-avoid-non-const-global-variables)
 volatile bool bForceStartup = forceStartup();
+}  // namespace

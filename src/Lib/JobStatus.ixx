@@ -3,9 +3,11 @@
 //
 
 module;
+#include <cstdint>
+
 export module job_status;
 
-export enum JobStatus
+export enum class JobStatus : std::uint16_t
 {
     // A job is pending if it is currently waiting for a cluster to submit the job to
     // (ie, all available clusters are offline)

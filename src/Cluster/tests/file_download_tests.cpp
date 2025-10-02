@@ -21,8 +21,6 @@ import FileDownload;
 import Message;
 import ClusterManager;
 
-// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
-
 struct FileDownloadTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture
 {
     std::vector<std::vector<uint8_t>> receivedMessages;
@@ -36,7 +34,7 @@ struct FileDownloadTestDataFixture : public DatabaseFixture, public WebSocketCli
         // Parse the cluster configuration
         jsonClusters = nlohmann::json::parse(sClusters);
 
-        websocketClient->on_message = [&]([[maybe_unused]] auto connection, auto in_message) {
+        websocketClient->on_message = [&]([[maybe_unused]] const auto& connection, const auto& in_message) {
             onWebsocketMessage(in_message);
         };
 
@@ -45,25 +43,24 @@ struct FileDownloadTestDataFixture : public DatabaseFixture, public WebSocketCli
         // Wait for the client to connect
         while (!bReady)
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        fileDownload = clusterManager->createFileDownload(
+        fileDownload = std::static_pointer_cast<FileDownload>(clusterManager->createFileDownload(
             std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->back(),
-            uuid);
+            uuid));
 
         fileDownload->stop();
     }
 
-    void onWebsocketMessage(auto in_message)
+    void onWebsocketMessage(const auto& in_message)
     {
         auto data = in_message->string();
 
         // Don't parse the message if the ws connection is ready
         if (!bReady)
         {
-            Message msg(std::vector<uint8_t>(data.begin(), data.end()));
+            const Message msg(std::vector<uint8_t>(data.begin(), data.end()));
             if (msg.getId() == SERVER_READY)
             {
                 bReady = true;
@@ -85,10 +82,8 @@ BOOST_AUTO_TEST_CASE(test_constructor)
         *fileDownload->getpClusterDetails(),
         std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->back()->getClusterDetails());
 
-    // Check that the right number of queue levels are created (+1 because 0 is a priority level itself)
-    BOOST_CHECK_EQUAL(fileDownload->getqueue()->size(),
-                      static_cast<uint32_t>(Message::Priority::Lowest) -
-                          static_cast<uint32_t>(Message::Priority::Highest) + 1);
+    // Check that all priority levels are initialized (3 defined priority levels)
+    BOOST_CHECK_EQUAL(fileDownload->getqueue()->size(), 3);
 
     // Check that the uuid is correctly set
     BOOST_CHECK_EQUAL(fileDownload->getUuid(), uuid);
@@ -146,16 +141,21 @@ BOOST_AUTO_TEST_CASE(test_handleFileChunk)
 
     // Check that a pause file chunk stream message was sent
     BOOST_CHECK_EQUAL((*fileDownload->getqueue())[Message::Priority::Highest].size(), 1);
-    auto ptr = *(*fileDownload->getqueue())[Message::Priority::Highest].find(uuid)->second->try_dequeue();
-    msg      = Message(*ptr);
+    auto queue_result = (*fileDownload->getqueue())[Message::Priority::Highest].find(uuid)->second->try_dequeue();
+    BOOST_REQUIRE(queue_result.has_value());
+
+    const auto& ptr = *queue_result;
+    msg             = Message(*ptr);
     BOOST_CHECK_EQUAL(msg.getId(), PAUSE_FILE_CHUNK_STREAM);
 
     // Verify that the chunks were correctly queued
     bool different = false;
     for (const auto& chunk : chunks)
     {
-        auto queueChunk = (*fileDownload->fileDownloadQueue.try_dequeue());
-        different       = different || !std::equal((*queueChunk).begin(), (*queueChunk).end(), (*chunk).begin());
+        auto queueChunk = fileDownload->fileDownloadQueue.try_dequeue();
+        BOOST_REQUIRE(queueChunk.has_value());
+
+        different = different || !std::equal((*queueChunk)->begin(), (*queueChunk)->end(), chunk->begin());
     }
 
     BOOST_CHECK_EQUAL(different, false);
@@ -193,5 +193,3 @@ BOOST_AUTO_TEST_CASE(test_handleFileDetails)
     BOOST_CHECK_EQUAL(fileDownload->fileDownloadClientPaused, false);
 }
 BOOST_AUTO_TEST_SUITE_END()
-
-// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)

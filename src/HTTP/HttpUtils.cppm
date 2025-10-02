@@ -3,16 +3,46 @@
 //
 
 module;
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include <boost/algorithm/string/classification.hpp>
-#include <boost/algorithm/string/split.hpp>
 #include <jwt/jwt.hpp>
 #include <server_http.hpp>
 
 export module HttpUtils;
+
+// Generic string splitting utility to replace boost::split
+export auto splitString(const std::string& str, const std::string& delimiters) -> std::vector<std::string>
+{
+    std::vector<std::string> result;
+    std::string::size_type start = 0;
+    std::string::size_type end   = 0;
+
+    while (end != std::string::npos)
+    {
+        end                     = str.find_first_of(delimiters, start);
+        const std::string token = str.substr(start, (end == std::string::npos) ? std::string::npos : end - start);
+
+        // Skip empty tokens and whitespace-only tokens
+        if (!token.empty() && token.find_first_not_of(" \t") != std::string::npos)
+        {
+            // Trim whitespace
+            auto first = token.find_first_not_of(" \t");
+            auto last  = token.find_last_not_of(" \t");
+            if (first != std::string::npos && last != std::string::npos)
+            {
+                const std::string trimmed = token.substr(first, last - first + 1);
+                result.push_back(trimmed);
+            }
+        }
+
+        start = (end > (std::string::npos - 1)) ? std::string::npos : end + 1;
+    }
+
+    return result;
+}
 
 export auto getHeader(SimpleWeb::CaseInsensitiveMultimap& headers, const std::string& header) -> std::string
 {
@@ -40,12 +70,10 @@ export auto getQueryParamAsVectorInt(SimpleWeb::CaseInsensitiveMultimap& query_f
     std::vector<uint64_t> intArray;
     if (arrayPtr != query_fields.end())
     {
-        std::vector<std::string> sIntArray;
-        boost::split(sIntArray, arrayPtr->second, boost::is_any_of(", "), boost::token_compress_on);
-
-        for (const auto& item : sIntArray)
+        const auto tokens = splitString(arrayPtr->second, ", ");
+        for (const auto& token : tokens)
         {
-            intArray.push_back(stoi(item));
+            intArray.push_back(std::stoull(token));
         }
     }
     return intArray;
@@ -57,6 +85,7 @@ export auto getQueryParamAsInt(SimpleWeb::CaseInsensitiveMultimap& query_fields,
 {
     auto ptr        = query_fields.find(what);
     uint64_t result = 0;
+    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
     if (ptr != query_fields.end())
     {
         result = std::stoll(ptr->second);
@@ -69,6 +98,7 @@ export auto getQueryParamAsString(SimpleWeb::CaseInsensitiveMultimap& query_fiel
 {
     auto ptr = query_fields.find(what);
     std::string result;
+    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
     if (ptr != query_fields.end())
     {
         result = ptr->second;
@@ -79,5 +109,6 @@ export auto getQueryParamAsString(SimpleWeb::CaseInsensitiveMultimap& query_fiel
 export auto hasQueryParam(SimpleWeb::CaseInsensitiveMultimap& query_fields, const std::string& what) -> bool
 {
     auto ptr = query_fields.find(what);
+    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
     return ptr != query_fields.end();
 }

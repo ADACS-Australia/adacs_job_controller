@@ -23,8 +23,6 @@ import Message;
 import Cluster;
 import ClusterManager;
 
-// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-
 struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClientFixture
 {
     std::vector<std::shared_ptr<Message>> receivedMessages;
@@ -35,7 +33,7 @@ struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClient
     ClusterDBTestDataFixture()
         : onlineCluster(std::static_pointer_cast<ClusterManager>(clusterManager)->getvClusters()->front())
     {
-        websocketClient->on_message = [&]([[maybe_unused]] auto connection, auto in_message) {
+        websocketClient->on_message = [&]([[maybe_unused]] const auto& connection, const auto& in_message) {
             onWebsocketMessage(in_message);
         };
 
@@ -44,12 +42,11 @@ struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClient
         // Wait for the client to connect
         while (!bReady)
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
-    void onWebsocketMessage(auto in_message)
+    void onWebsocketMessage(const auto& in_message)
     {
         auto data = in_message->string();
         auto msg  = std::make_shared<Message>(std::vector<uint8_t>(data.begin(), data.end()));
@@ -71,14 +68,18 @@ struct ClusterDBTestDataFixture : public DatabaseFixture, public WebSocketClient
             promMessageReceived.set_value();
         }
         catch (std::future_error&)
-        {}
+        {
+            // Ignore future errors during shutdown - this is expected during test teardown
+            // Empty catch block is intentional for test cleanup
+        }
     }
 
     auto runCluster() -> std::shared_ptr<Message>
     {
         promMessageReceived.get_future().wait();
         promMessageReceived = std::promise<void>();
-        auto result         = receivedMessages[0];
+
+        auto result = receivedMessages[0];
         receivedMessages.clear();
 
         return result;
@@ -113,7 +114,7 @@ BOOST_AUTO_TEST_CASE(test_db_job_get_by_job_id_success_job_exists)
 BOOST_AUTO_TEST_CASE(test_db_job_get_by_job_id_success_job_not_exist)
 {
     // Create a Cluster Job record, but don't save it
-    sClusterJob job;
+    const sClusterJob job;
 
     // Try to fetch it
     Message msg(DB_JOB_GET_BY_JOB_ID);
@@ -159,7 +160,7 @@ BOOST_AUTO_TEST_CASE(test_db_job_get_by_id_success_job_exists)
 BOOST_AUTO_TEST_CASE(test_db_job_get_by_id_success_job_not_exist)
 {
     // Create a Cluster Job record, but don't save it
-    sClusterJob job;
+    const sClusterJob job;
 
     // Try to fetch it
     Message msg(DB_JOB_GET_BY_ID);
@@ -182,7 +183,7 @@ BOOST_AUTO_TEST_CASE(test_db_job_get_by_id_success_job_not_exist)
 BOOST_AUTO_TEST_CASE(test_db_job_get_running_cluster_jobs_none)
 {
     // Create a Cluster Job record, but don't save it
-    sClusterJob job;
+    const sClusterJob job;
 
     // Try to fetch it
     Message msg(DB_JOB_GET_RUNNING_JOBS);
@@ -256,7 +257,7 @@ BOOST_AUTO_TEST_CASE(test_db_job_delete_job)
 
     // Job 1 should not exist
     auto resultJob = sClusterJob::getById(job1.id, onlineCluster->getName());
-    sClusterJob emptyJob;
+    const sClusterJob emptyJob;
     BOOST_CHECK_EQUAL(resultJob.equals(emptyJob), true);
 
     // Job 2 should remain
@@ -319,18 +320,26 @@ BOOST_AUTO_TEST_CASE(test_db_job_status_get_by_job_id_and_what_success)
     sClusterJob job2{.jobId = 43210, .bundleHash = "test_hash", .workingDirectory = "/test/working/directory/"};
     job2.save(onlineCluster->getName());
 
-    sClusterJobStatus status1{.jobId = job.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status1{.jobId = job.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status1.save(onlineCluster->getName());
 
-    sClusterJobStatus status2{.jobId = job.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status2{.jobId = job.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status2.save(onlineCluster->getName());
 
     // Different job id should be excluded
-    sClusterJobStatus status3{.jobId = job2.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status3{.jobId = job2.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status3.save(onlineCluster->getName());
 
     // Different what should be excluded
-    sClusterJobStatus status4{.jobId = job.id, .what = "test_what_different", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status4{.jobId = job.id,
+                              .what  = "test_what_different",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status4.save(onlineCluster->getName());
 
     // Try to fetch it
@@ -383,18 +392,26 @@ BOOST_AUTO_TEST_CASE(test_db_job_status_get_by_job_id_success)
     sClusterJob job2{.jobId = 43210, .bundleHash = "test_hash", .workingDirectory = "/test/working/directory/"};
     job2.save(onlineCluster->getName());
 
-    sClusterJobStatus status1{.jobId = job.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status1{.jobId = job.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status1.save(onlineCluster->getName());
 
-    sClusterJobStatus status2{.jobId = job.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status2{.jobId = job.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status2.save(onlineCluster->getName());
 
     // Different job id should be excluded
-    sClusterJobStatus status3{.jobId = job2.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status3{.jobId = job2.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status3.save(onlineCluster->getName());
 
     // Different what should be excluded
-    sClusterJobStatus status4{.jobId = job.id, .what = "test_what_different", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status4{.jobId = job.id,
+                              .what  = "test_what_different",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status4.save(onlineCluster->getName());
 
     // Try to fetch it
@@ -448,18 +465,26 @@ BOOST_AUTO_TEST_CASE(test_db_job_status_delete_by_id_list)
     sClusterJob job2{.jobId = 43210, .bundleHash = "test_hash", .workingDirectory = "/test/working/directory/"};
     job2.save(onlineCluster->getName());
 
-    sClusterJobStatus status1{.jobId = job.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status1{.jobId = job.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status1.save(onlineCluster->getName());
 
-    sClusterJobStatus status2{.jobId = job.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status2{.jobId = job.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status2.save(onlineCluster->getName());
 
     // Different job id should be excluded
-    sClusterJobStatus status3{.jobId = job2.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status3{.jobId = job2.id,
+                              .what  = "test_what",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status3.save(onlineCluster->getName());
 
     // Different what should be excluded
-    sClusterJobStatus status4{.jobId = job.id, .what = "test_what_different", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status4{.jobId = job.id,
+                              .what  = "test_what_different",
+                              .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
     status4.save(onlineCluster->getName());
 
     // Try to fetch it
@@ -479,7 +504,8 @@ BOOST_AUTO_TEST_CASE(test_db_job_status_delete_by_id_list)
     // We deleted status1 and status2, status4 should be the only remaining status record for job
     auto resultStatus = sClusterJobStatus::getJobStatusByJobId(job.id, onlineCluster->getName());
     BOOST_CHECK_EQUAL(resultStatus.size(), 1);
-    BOOST_CHECK_EQUAL(resultStatus[0].equals(status4), true);
+
+    BOOST_CHECK_EQUAL(resultStatus.at(0).equals(status4), true);
 }
 
 BOOST_AUTO_TEST_CASE(test_db_job_status_save_success)
@@ -488,7 +514,9 @@ BOOST_AUTO_TEST_CASE(test_db_job_status_save_success)
     sClusterJob job{.jobId = 4321, .bundleHash = "test_hash", .workingDirectory = "/test/working/directory/"};
     job.save(onlineCluster->getName());
 
-    sClusterJobStatus status{.jobId = job.id, .what = "test_what", .state = JobStatus::COMPLETED};
+    sClusterJobStatus status{.jobId = job.id,
+                             .what  = "test_what",
+                             .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
 
     // Try to save it
     Message msg(DB_JOBSTATUS_SAVE);
@@ -506,10 +534,11 @@ BOOST_AUTO_TEST_CASE(test_db_job_status_save_success)
     status.id = result->pop_ulong();
 
     auto resultStatus = sClusterJobStatus::getJobStatusByJobId(job.id, onlineCluster->getName());
-    BOOST_CHECK_EQUAL(resultStatus[0].equals(status), true);
+
+    BOOST_CHECK_EQUAL(resultStatus.at(0).equals(status), true);
 
     // Save again, status should be updated but ID should not change
-    status.state = JobStatus::QUEUED;
+    status.state = static_cast<uint32_t>(JobStatus::QUEUED);
     msg          = Message(DB_JOBSTATUS_SAVE);
     msg.push_ulong(12345);  // db request id
     status.toMessage(msg);
@@ -524,7 +553,8 @@ BOOST_AUTO_TEST_CASE(test_db_job_status_save_success)
     BOOST_CHECK_EQUAL(status.id, result->pop_ulong());
 
     resultStatus = sClusterJobStatus::getJobStatusByJobId(job.id, onlineCluster->getName());
-    BOOST_CHECK_EQUAL(resultStatus[0].equals(status), true);
+
+    BOOST_CHECK_EQUAL(resultStatus.at(0).equals(status), true);
 }
 
 BOOST_AUTO_TEST_CASE(test_db_job_status_save_invalid_job)
@@ -533,7 +563,9 @@ BOOST_AUTO_TEST_CASE(test_db_job_status_save_invalid_job)
     sClusterJob job{.jobId = 4321, .bundleHash = "test_hash", .workingDirectory = "/test/working/directory/"};
     job.save(onlineCluster->getName());
 
-    sClusterJobStatus status{.jobId = job.id + 10, .what = "test_what", .state = JobStatus::COMPLETED};
+    const sClusterJobStatus status{.jobId = job.id + 10,
+                                   .what  = "test_what",
+                                   .state = static_cast<uint32_t>(JobStatus::COMPLETED)};
 
     // Try to save it
     Message msg(DB_JOBSTATUS_SAVE);
@@ -665,7 +697,7 @@ BOOST_AUTO_TEST_CASE(test_db_bundle_job_get_by_id_error_job_not_exist)
     auto bundleHash = generateUUID();
 
     // Create a Cluster Job record, but don't save it
-    sBundleJob job;
+    const sBundleJob job;
 
     // Try to fetch it
     Message msg(DB_BUNDLE_GET_JOB_BY_ID);
@@ -728,5 +760,3 @@ BOOST_AUTO_TEST_CASE(test_db_bundle_job_delete_error)
     BOOST_CHECK_EQUAL(result->pop_bool(), false);  // success?
 }
 BOOST_AUTO_TEST_SUITE_END()
-
-// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)

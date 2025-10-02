@@ -1,6 +1,8 @@
 //
 // Created by lewis on 22/10/20.
 //
+
+
 import job_status;
 import settings;
 #include <boost/test/unit_test.hpp>
@@ -129,7 +131,7 @@ BOOST_AUTO_TEST_CASE(create_download_job1_success)
 
     result->content >> jsonResult;
 
-    BOOST_CHECK_MESSAGE(jsonResult.find("fileId") != jsonResult.end(),
+    BOOST_CHECK_MESSAGE(jsonResult.contains("fileId"),
                         "result.find(\"fileId\") != result.end() was not the expected value");
 }
 
@@ -205,7 +207,7 @@ BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_success)
 
     result->content >> jsonResult;
 
-    BOOST_CHECK_MESSAGE(jsonResult.find("fileId") != jsonResult.end(),
+    BOOST_CHECK_MESSAGE(jsonResult.contains("fileId"),
                         "result.find(\"fileId\") != result.end() was not the expected value");
 
     // jobId key with value 0
@@ -227,7 +229,7 @@ BOOST_AUTO_TEST_CASE(create_download_job1_no_jobid_success)
 
     result->content >> jsonResult;
 
-    BOOST_CHECK_MESSAGE(jsonResult.find("fileId") != jsonResult.end(),
+    BOOST_CHECK_MESSAGE(jsonResult.contains("fileId"),
                         "result.find(\"fileId\") != result.end() was not the expected value");
 }
 
@@ -298,7 +300,7 @@ BOOST_AUTO_TEST_CASE(create_download_app2_can_access_app1)
 
     result->content >> jsonResult;
 
-    BOOST_CHECK_MESSAGE(jsonResult.find("fileId") != jsonResult.end(),
+    BOOST_CHECK_MESSAGE(jsonResult.contains("fileId"),
                         "result.find(\"fileId\") != result.end() was not the expected value");
 }
 
@@ -348,7 +350,7 @@ BOOST_AUTO_TEST_CASE(create_download_multiple)
 
     result->content >> jsonResult;
 
-    BOOST_CHECK_MESSAGE(jsonResult.find("fileIds") != jsonResult.end(),
+    BOOST_CHECK_MESSAGE(jsonResult.contains("fileIds"),
                         "result.find(\"fileIds\") != result.end() was not the expected value");
 
     BOOST_CHECK_MESSAGE(jsonResult["fileIds"].size() == 5,
@@ -376,7 +378,7 @@ BOOST_AUTO_TEST_CASE(create_download_empty_path_list_no_exception)
 
     result->content >> jsonResult;
 
-    BOOST_CHECK_MESSAGE(jsonResult.find("fileIds") != jsonResult.end(),
+    BOOST_CHECK_MESSAGE(jsonResult.contains("fileIds"),
                         "result.find(\"fileIds\") != result.end() was not the expected value");
 
     BOOST_CHECK_MESSAGE(jsonResult["fileIds"].empty(), "result[\"fileIds\"].size() == 5 was not the expected value");

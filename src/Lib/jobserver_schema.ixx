@@ -1,4 +1,5 @@
 module;
+// NOLINTBEGIN - Auto-generated database schema code
 #include <sqlpp11/char_sequence.h>
 #include <sqlpp11/data_types.h>
 #include <sqlpp11/table.h>
@@ -1764,3 +1765,5 @@ struct JobserverJobhistory : sqlpp::table_t<JobserverJobhistory,
     };
 };
 }  // namespace schema
+
+// NOLINTEND

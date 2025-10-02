@@ -2,6 +2,7 @@
 // Created by lewis on 10/6/21.
 //
 
+
 import settings;
 import job_status;
 #include <boost/test/unit_test.hpp>
@@ -30,16 +31,34 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
 
     // Create a file list
     const std::vector<sFile> fileListData = {
-        // NOLINT(cert-err58-cpp)
-        {"/", 0, 0, true},
-        {"/test", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
-        {"/testdir", 0, 0, true},
-        {"/testdir/file", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
-        {"/testdir/file2", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
-        {"/testdir/file3", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
-        {"/testdir/testdir1", 0, 0, true},
-        {"/testdir/testdir1/file", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
-        {"/test2", randomInt(0, static_cast<uint64_t>(-1)), 0, false},
+
+        {.fileName = "/", .fileSize = 0, .permissions = 0, .isDirectory = true},
+        {.fileName    = "/test",
+         .fileSize    = randomInt(0, static_cast<uint64_t>(-1)),
+         .permissions = 0,
+         .isDirectory = false},
+        {.fileName = "/testdir", .fileSize = 0, .permissions = 0, .isDirectory = true},
+        {.fileName    = "/testdir/file",
+         .fileSize    = randomInt(0, static_cast<uint64_t>(-1)),
+         .permissions = 0,
+         .isDirectory = false},
+        {.fileName    = "/testdir/file2",
+         .fileSize    = randomInt(0, static_cast<uint64_t>(-1)),
+         .permissions = 0,
+         .isDirectory = false},
+        {.fileName    = "/testdir/file3",
+         .fileSize    = randomInt(0, static_cast<uint64_t>(-1)),
+         .permissions = 0,
+         .isDirectory = false},
+        {.fileName = "/testdir/testdir1", .fileSize = 0, .permissions = 0, .isDirectory = true},
+        {.fileName    = "/testdir/testdir1/file",
+         .fileSize    = randomInt(0, static_cast<uint64_t>(-1)),
+         .permissions = 0,
+         .isDirectory = false},
+        {.fileName    = "/test2",
+         .fileSize    = randomInt(0, static_cast<uint64_t>(-1)),
+         .permissions = 0,
+         .isDirectory = false},
     };
 
     FileListTestDataFixture()
@@ -53,7 +72,7 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
             jobTable.bundle  = "my_test_bundle",
             jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()));
 
-        websocketClient->on_message = [&](auto connection, auto in_message) {
+        websocketClient->on_message = [&](const auto& connection, const auto& in_message) {
             onWebsocketMessage(connection, in_message);
         };
 
@@ -62,12 +81,11 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
         // Wait for the client to connect
         while (!bReady)
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
-    void onWebsocketMessage(auto connection, auto in_message)
+    void onWebsocketMessage(const auto& connection, const auto& in_message)
     {
         auto data = in_message->string();
         Message msg(std::vector<uint8_t>(data.begin(), data.end()));
@@ -106,9 +124,9 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
             msg.push_string("test error");
 
             auto outMessage = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
-            std::ostream_iterator<uint8_t> iter(*outMessage);
+            const std::ostream_iterator<uint8_t> iter(*outMessage);
             std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
             connection->send(outMessage, nullptr, 130);
             return;
         }
@@ -130,9 +148,9 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
         }
 
         auto outStream = std::make_shared<TestWsClient::OutMessage>(msg.getdata()->get()->size());
-        std::ostream_iterator<uint8_t> iter(*outStream);
+        const std::ostream_iterator<uint8_t> iter(*outStream);
         std::copy(msg.getdata()->get()->begin(), msg.getdata()->get()->end(), iter);
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         connection->send(outStream, nullptr, 130);
     }
 };
@@ -140,7 +158,7 @@ struct FileListTestDataFixture : public DatabaseFixture, public WebSocketClientF
 BOOST_FIXTURE_TEST_SUITE(file_list_caching_test_suite, FileListTestDataFixture)
 
 BOOST_AUTO_TEST_CASE(test_file_list)
-{  // NOLINT(readability-function-cognitive-complexity)
+{
     setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
     // Create jsonParams
@@ -181,18 +199,18 @@ BOOST_AUTO_TEST_CASE(test_file_list)
     BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(jsonParams["path"]));
     BOOST_CHECK_EQUAL(lastbRecursive.back(), (bool)jsonParams["recursive"]);
 
-    // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     std::vector<sFile> expected = {fileListData[2], fileListData[3], fileListData[4], fileListData[5], fileListData[6]};
-    // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     auto jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -224,10 +242,9 @@ BOOST_AUTO_TEST_CASE(test_file_list)
     // Wait until both websocket calls are made
     int counter = 0;
     // 500 * 10ms = 5 seconds.
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     while ((lastDirPath.size() < 2 || lastbRecursive.size() < 2) && counter < 500)
     {
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         counter++;
     }
@@ -243,13 +260,13 @@ BOOST_AUTO_TEST_CASE(test_file_list)
     BOOST_CHECK_EQUAL(lastbRecursive[1], true);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -259,12 +276,11 @@ BOOST_AUTO_TEST_CASE(test_file_list)
 
     // The file list caching can take a moment to complete in the background
     // Check that the correct file list cache entries were added to the database
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     for (counter = 0; counter < 500; counter++)
     {
-        auto fileListCacheResult = database->run(select(all_of(jobFilelistcache))
-                                                     .from(jobFilelistcache)
-                                                     .where(jobFilelistcache.jobId == static_cast<uint64_t>(jobId)));
+        auto fileListCacheResult = database->run(
+            select(all_of(jobFilelistcache)).from(jobFilelistcache).where(jobFilelistcache.jobId == jobId));
 
         // Has the file list cache finished being populated by the background system thread?
         if (!fileListCacheResult.empty())
@@ -272,24 +288,23 @@ BOOST_AUTO_TEST_CASE(test_file_list)
             break;
         }
 
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // Fail if counter = 500
     BOOST_ASSERT_MSG(counter != 500, "Background file list caching thread failed to run correctly");
 
-    auto fileListCacheResult = database->run(select(all_of(jobFilelistcache))
-                                                 .from(jobFilelistcache)
-                                                 .where(jobFilelistcache.jobId == static_cast<uint64_t>(jobId)));
+    auto fileListCacheResult =
+        database->run(select(all_of(jobFilelistcache)).from(jobFilelistcache).where(jobFilelistcache.jobId == jobId));
 
     std::vector<sFile> files;
     for (const auto& file : fileListCacheResult)
     {
-        files.push_back({file.path,
-                         static_cast<uint64_t>(file.fileSize),
-                         static_cast<uint32_t>(file.permissions),
-                         static_cast<bool>(file.isDir)});
+        files.push_back({.fileName    = file.path,
+                         .fileSize    = static_cast<uint64_t>(file.fileSize),
+                         .permissions = static_cast<uint32_t>(file.permissions),
+                         .isDirectory = static_cast<bool>(file.isDir)});
     }
 
     for (auto i = 0; i < files.size(); i++)
@@ -316,13 +331,13 @@ BOOST_AUTO_TEST_CASE(test_file_list)
     BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -348,7 +363,7 @@ BOOST_AUTO_TEST_CASE(test_file_list)
     BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
@@ -380,17 +395,17 @@ BOOST_AUTO_TEST_CASE(test_file_list)
     BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
-    // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     expected = {fileListData[2], fileListData[3], fileListData[4], fileListData[5], fileListData[6], fileListData[7]};
-    // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -400,7 +415,7 @@ BOOST_AUTO_TEST_CASE(test_file_list)
 }
 
 BOOST_AUTO_TEST_CASE(test_job_finished_update)
-{  // NOLINT(readability-function-cognitive-complexity)
+{
     setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).secret());
 
     // Create jsonParams
@@ -426,18 +441,18 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
     BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(jsonParams["path"]));
     BOOST_CHECK_EQUAL(lastbRecursive.back(), (bool)jsonParams["recursive"]);
 
-    // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     std::vector<sFile> expected = {fileListData[2], fileListData[3], fileListData[4], fileListData[5], fileListData[6]};
-    // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     auto jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -470,13 +485,13 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
     BOOST_CHECK_EQUAL(lastbRecursive.back(), (bool)jsonParams["recursive"]);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -500,10 +515,9 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
     // Wait until the file list websocket call is made (Should be triggered because of the job completion status
     int counter = 0;
     // 500 * 10ms = 5 seconds.
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     while ((lastDirPath.empty() || lastbRecursive.empty()) && counter < 500)
     {
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         counter++;
     }
@@ -516,12 +530,11 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
 
     // The file list caching can take a moment to complete in the background
     // Check that the correct file list cache entries were added to the database
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     for (counter = 0; counter < 500; counter++)
     {
-        auto fileListCacheResult = database->run(select(all_of(jobFilelistcache))
-                                                     .from(jobFilelistcache)
-                                                     .where(jobFilelistcache.jobId == static_cast<uint64_t>(jobId)));
+        auto fileListCacheResult = database->run(
+            select(all_of(jobFilelistcache)).from(jobFilelistcache).where(jobFilelistcache.jobId == jobId));
 
         // Has the file list cache finished being populated by the background system thread?
         if (!fileListCacheResult.empty())
@@ -529,7 +542,7 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
             break;
         }
 
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -552,13 +565,13 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
     BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -567,19 +580,18 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
     }
 
     // Check that the correct file list cache entries were added to the database
-    auto fileListCacheResult = database->run(select(all_of(jobFilelistcache))
-                                                 .from(jobFilelistcache)
-                                                 .where(jobFilelistcache.jobId == static_cast<uint64_t>(jobId)));
+    auto fileListCacheResult =
+        database->run(select(all_of(jobFilelistcache)).from(jobFilelistcache).where(jobFilelistcache.jobId == jobId));
 
     BOOST_CHECK_EQUAL(fileListCacheResult.empty(), false);
 
     std::vector<sFile> files;
     for (const auto& file : fileListCacheResult)
     {
-        files.push_back({file.path,
-                         static_cast<uint64_t>(file.fileSize),
-                         static_cast<uint32_t>(file.permissions),
-                         static_cast<bool>(file.isDir)});
+        files.push_back({.fileName    = file.path,
+                         .fileSize    = static_cast<uint64_t>(file.fileSize),
+                         .permissions = static_cast<uint32_t>(file.permissions),
+                         .isDirectory = static_cast<bool>(file.isDir)});
     }
 
     for (auto i = 0; i < files.size(); i++)
@@ -606,13 +618,13 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
     BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -638,7 +650,7 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
     BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
@@ -670,17 +682,17 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
     BOOST_CHECK_EQUAL(lastDirPath.size(), 0);
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     jsonData = jsonResult["files"];
 
-    // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     expected = {fileListData[2], fileListData[3], fileListData[4], fileListData[5], fileListData[6], fileListData[7]};
-    // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);
@@ -690,7 +702,7 @@ BOOST_AUTO_TEST_CASE(test_job_finished_update)
 }
 
 BOOST_AUTO_TEST_CASE(test_file_list_no_jobid)
-{  // NOLINT(readability-function-cognitive-complexity)
+{
     setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).secret());
 
     // The jobId received by the websocket should always be 0 in this test
@@ -735,18 +747,18 @@ BOOST_AUTO_TEST_CASE(test_file_list_no_jobid)
     BOOST_CHECK_EQUAL(lastDirPath.back(), std::string(jsonParams["path"]));
     BOOST_CHECK_EQUAL(lastbRecursive.back(), (bool)jsonParams["recursive"]);
 
-    // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     std::vector<sFile> expected = {fileListData[2], fileListData[3], fileListData[4], fileListData[5], fileListData[6]};
-    // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
 
     response->content >> jsonResult;
-    BOOST_CHECK(jsonResult.find("files") != jsonResult.end());
+    BOOST_CHECK(jsonResult.contains("files"));
     auto jsonData = jsonResult["files"];
 
     // Check that the file list returned was correct
     for (auto index = 0; index < expected.size(); index++)
     {
-        auto file = expected[index];
+        const auto& file = expected[index];
 
         BOOST_CHECK_EQUAL(jsonData[index]["path"], file.fileName);
         BOOST_CHECK_EQUAL(jsonData[index]["isDir"], file.isDirectory);

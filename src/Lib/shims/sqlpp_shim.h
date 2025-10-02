@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <string_view>
+
 #include <sqlpp11/sqlpp11.h>
 
 namespace sqlpp {
@@ -63,22 +65,24 @@ inline void interpret_tuple_element(const Element& e,
                                     std::size_t index)
 {
     if (index)
+    {
         ctx << sep;
+    }
 
     using ::sqlpp::serialize;  // enable ADL
     serialize(e, ctx);
 }
 
 // 5-arg form when separator is a string literal (e.g. ",")
-template <typename Element, std::size_t N, typename Context, typename UseBraces>
+template <typename Element, typename Context, typename UseBraces>
 inline void interpret_tuple_element(const Element& e,
-                                    const char (&sep)[N],
+                                    const char* sep,
                                     Context& ctx,
                                     UseBraces useBraces,
                                     std::size_t index)
 {
     // forward to the char version with the first character
-    const char c = N ? sep[0] : '\0';
+    const char c = (sep && *sep) ? *sep : '\0';
     interpret_tuple_element(e, c, ctx, useBraces, index);
 }
 

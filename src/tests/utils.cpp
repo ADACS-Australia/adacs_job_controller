@@ -5,13 +5,14 @@
 import jobserver_schema;
 import MySqlConnector;
 
-std::shared_ptr<std::default_random_engine> rng =
-    nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+namespace {
+std::shared_ptr<std::default_random_engine> rng = nullptr;
+}  // namespace
 
 auto getLastToken() -> std::string
 {
     auto database = MySqlConnector();
-    schema::JobserverClusteruuid clusterUuidTable;
+    const schema::JobserverClusteruuid clusterUuidTable;
 
     // Look up all cluster tokens
     auto uuidResults = database->run(

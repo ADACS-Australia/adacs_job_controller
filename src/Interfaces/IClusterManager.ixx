@@ -16,9 +16,6 @@ export module IClusterManager;
 
 import ICluster;
 
-// Forward declarations to avoid circular dependencies
-class FileDownload;
-
 // Define the WsServer alias
 using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 
@@ -28,13 +25,17 @@ export class IClusterManager
 public:
     virtual ~IClusterManager() = default;
 
+    // Prevent copying and moving
+    IClusterManager(const IClusterManager&)            = delete;
+    IClusterManager& operator=(const IClusterManager&) = delete;
+    IClusterManager(IClusterManager&&)                 = delete;
+    IClusterManager& operator=(IClusterManager&&)      = delete;
+
     // Cluster lifecycle
-    virtual void start()                                                                   = 0;
+    virtual void start()                                                                                          = 0;
     virtual auto handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection,
-                                     const std::string& uuid) -> std::shared_ptr<ICluster> = 0;
-    virtual void removeConnection(const std::shared_ptr<WsServer::Connection>& connection,
-                                  bool close = true,
-                                  bool lock  = true)                                        = 0;
+                                     const std::string& uuid) -> std::shared_ptr<ICluster>                        = 0;
+    virtual void removeConnection(const std::shared_ptr<WsServer::Connection>& connection, bool close, bool lock) = 0;
 
     // Cluster queries
     virtual auto getCluster(const std::shared_ptr<WsServer::Connection>& connection) -> std::shared_ptr<ICluster> = 0;
@@ -47,8 +48,11 @@ public:
 
     // File download management
     virtual auto createFileDownload(const std::shared_ptr<ICluster>& cluster,
-                                    const std::string& uuid) -> std::shared_ptr<FileDownload> = 0;
+                                    const std::string& uuid) -> std::shared_ptr<ICluster> = 0;
 
     // Connection management
     virtual void handlePong(const std::shared_ptr<WsServer::Connection>& connection) = 0;
+
+protected:
+    IClusterManager() = default;
 };

@@ -11,12 +11,18 @@ export inline auto GET_ENV(const std::string& variable, const std::string& _defa
     return std::getenv(variable.c_str()) != nullptr ? std::string(std::getenv(variable.c_str())) : _default;
 }
 
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const std::string DATABASE_USER     = GET_ENV("DATABASE_USER", "jobserver");
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const std::string DATABASE_PASSWORD = GET_ENV("DATABASE_PASSWORD", "jobserver");
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const std::string DATABASE_SCHEMA   = GET_ENV("DATABASE_SCHEMA", "jobserver");
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const std::string DATABASE_HOST     = GET_ENV("DATABASE_HOST", "localhost");
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const int DATABASE_PORT             = std::stoi(GET_ENV("DATABASE_PORT", "3306"));
 
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const int FILE_DOWNLOAD_EXPIRY_TIME =
     std::stoi(GET_ENV("FILE_DOWNLOAD_EXPIRY_TIME", std::to_string(60 * 60 * 24)));
 
@@ -27,7 +33,9 @@ export constexpr const char* ACCESS_SECRET_ENV_VARIABLE  = "ACCESS_SECRET_CONFIG
 export constexpr const char* BUNDLE_HTTP_PORT  = ":80";
 export constexpr const char* BUNDLE_HTTPS_PORT = ":443";
 
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const int MAX_FILE_BUFFER_SIZE = std::stoi(GET_ENV("MAX_FILE_BUFFER_SIZE", std::to_string(1024 * 1024 * 50)));
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const int MIN_FILE_BUFFER_SIZE = std::stoi(GET_ENV("MIN_FILE_BUFFER_SIZE", std::to_string(1024 * 1024 * 10)));
 
 export constexpr const uint32_t QUEUE_SOURCE_PRUNE_MILLISECONDS        = 60000;

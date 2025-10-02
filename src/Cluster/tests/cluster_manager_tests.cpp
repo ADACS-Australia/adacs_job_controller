@@ -2,6 +2,8 @@
 // Created by lewis on 2/10/20.
 //
 
+#include <limits>
+
 import settings;
 
 import jobserver_schema;
@@ -20,8 +22,6 @@ import Application;
 import IApplication;
 
 using WsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
-
-// NOLINTBEGIN(concurrency-mt-unsafe)
 
 struct ClusterManagerTestDataFixture : public DatabaseFixture, public HttpServerFixture
 {
@@ -133,21 +133,21 @@ BOOST_AUTO_TEST_CASE(test_removeConnection)
     auto con = *mgr->getvClusters()->at(1)->getpConnection();
 
     // Remove the second cluster connection
-    mgr->removeConnection(con, false);
+    mgr->removeConnection(con, false, true);
 
     // Check removing an invalid connection
     {
         auto ptr = std::make_shared<WsServer::Connection>(nullptr);
-        mgr->removeConnection(ptr, false);
+        mgr->removeConnection(ptr, false, true);
     }
-    mgr->removeConnection(nullptr, false);
+    mgr->removeConnection(nullptr, false, true);
 
     // Check that the connection has been removed correctly
     // Connection in second cluster should now be null
     BOOST_CHECK_EQUAL(*mgr->getvClusters()->at(1)->getpConnection(), nullptr);
 
     // Check that the connection no longer exists in the connected clusters
-    BOOST_CHECK_MESSAGE(mgr->getmConnectedClusters()->find(con) == mgr->getmConnectedClusters()->end(),
+    BOOST_CHECK_MESSAGE(!mgr->getmConnectedClusters()->contains(con),
                         "mgr->getmConnectedClusters().find(con) == mgr->getmConnectedClusters().end()");
 
     // Check that the cluster is no longer connected
@@ -160,8 +160,7 @@ BOOST_AUTO_TEST_CASE(test_removeConnection)
     // Check that the mClusterPing map is correct
     BOOST_CHECK_EQUAL(mgr->getmClusterPings()->find(*mgr->getvClusters()->at(0)->getpConnection())->first,
                       *mgr->getvClusters()->at(0)->getpConnection());
-    BOOST_CHECK_MESSAGE(mgr->getmClusterPings()->find(*mgr->getvClusters()->at(1)->getpConnection()) ==
-                            mgr->getmClusterPings()->end(),
+    BOOST_CHECK_MESSAGE(!mgr->getmClusterPings()->contains(*mgr->getvClusters()->at(1)->getpConnection()),
                         "mClusterPings was not consistent");
     BOOST_CHECK_EQUAL(mgr->getmClusterPings()->find(*mgr->getvClusters()->at(2)->getpConnection())->first,
                       *mgr->getvClusters()->at(2)->getpConnection());
@@ -178,7 +177,9 @@ BOOST_AUTO_TEST_CASE(test_reconnectClusters)
     BOOST_CHECK_EQUAL(uuidResultsCount, 3);
 
     // Mark a cluster as connected, and try again, there should be only 2 uuids
+
     database->run(remove_from(jobClusteruuid).unconditionally());
+
 
     auto con = std::make_shared<WsServer::Connection>(nullptr);
     mgr->getmConnectedClusters()->emplace(con, mgr->getvClusters()->at(1));
@@ -197,11 +198,13 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_expire_uuids)
     // database already expired. When we try to insert the same UUID again afterwards, the database will raise an
     // exception if the functionality does not work as expected. There is also an additional separate check to
     // confirm that the number of UUID's in the database is 0 after the handleNewConnection call.
+
     database->run(insert_into(jobClusteruuid)
                       .set(jobClusteruuid.cluster   = mgr->getvClusters()->at(0)->getClusterDetails()->getName(),
                            jobClusteruuid.uuid      = "uuid_doesn't_matter_here",
                            jobClusteruuid.timestamp = std::chrono::system_clock::now() -
                                                       std::chrono::seconds(CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS)));
+
 
     {
         auto ptr = std::make_shared<WsServer::Connection>(nullptr);
@@ -214,11 +217,13 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_expire_uuids)
     BOOST_CHECK_EQUAL(uuidResultsCount, 0);
 
     // Make sure that old expired uuids are deleted
+
     database->run(insert_into(jobClusteruuid)
                       .set(jobClusteruuid.cluster   = mgr->getvClusters()->at(0)->getClusterDetails()->getName(),
                            jobClusteruuid.uuid      = "uuid_doesn't_matter_here",
                            jobClusteruuid.timestamp = std::chrono::system_clock::now() -
                                                       std::chrono::seconds(CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS - 1)));
+
 
     {
         auto ptr = std::make_shared<WsServer::Connection>(nullptr);
@@ -233,15 +238,18 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_expire_uuids)
 BOOST_AUTO_TEST_CASE(test_handleNewConnection_valid_uuid)
 {
     // Insert 5 uuids for a fake cluster
+    constexpr int test_uuid_count = 5;
     std::string last_uuid;
-    for (auto i = 0; i < 5; i++)
-    {  // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
+    for (auto i = 0; i < test_uuid_count; i++)
+    {
         last_uuid = generateUUID();
         database->run(insert_into(jobClusteruuid)
                           .set(jobClusteruuid.cluster   = "not_real_cluster",
                                jobClusteruuid.uuid      = last_uuid,
                                jobClusteruuid.timestamp = std::chrono::system_clock::now()));
     }
+
 
     // Make sure all clusters are currently unconnected
     for (const auto& cluster : *mgr->getvClusters())
@@ -263,14 +271,16 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_valid_uuid)
     }
 
     // Insert 5 uuids for a real cluster
-    for (auto i = 0; i < 5; i++)
-    {  // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
+    for (auto i = 0; i < test_uuid_count; i++)
+    {
         last_uuid = generateUUID();
         database->run(insert_into(jobClusteruuid)
                           .set(jobClusteruuid.cluster   = mgr->getvClusters()->at(1)->getName(),
                                jobClusteruuid.uuid      = last_uuid,
                                jobClusteruuid.timestamp = std::chrono::system_clock::now()));
     }
+
 
     // Make sure all clusters are currently unconnected
     for (const auto& cluster : *mgr->getvClusters())
@@ -290,7 +300,7 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_valid_uuid)
     BOOST_CHECK_EQUAL(mgr->isClusterOnline(mgr->getvClusters()->at(1)), true);
 
     BOOST_CHECK_EQUAL(mgr->getmClusterPings()->begin()->first, *mgr->getvClusters()->at(1)->getpConnection());
-    std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
+    const std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
     BOOST_CHECK_MESSAGE(mgr->getmClusterPings()->begin()->second.pingTimestamp == zeroTime,
                         "pingTimestamp was not zero when it should have been");
     BOOST_CHECK_MESSAGE(mgr->getmClusterPings()->begin()->second.pongTimestamp == zeroTime,
@@ -299,11 +309,13 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_valid_uuid)
 
     // Next check that a cluster can not be connected again if it's already connected
     // Insert another UUID for the same cluster
+
     last_uuid = generateUUID();
     database->run(insert_into(jobClusteruuid)
                       .set(jobClusteruuid.cluster   = mgr->getvClusters()->at(1)->getName(),
                            jobClusteruuid.uuid      = last_uuid,
                            jobClusteruuid.timestamp = std::chrono::system_clock::now()));
+
 
     con = std::make_shared<WsServer::Connection>(nullptr);
     BOOST_ASSERT_MSG(mgr->handleNewConnection(con, last_uuid) == nullptr,
@@ -317,10 +329,8 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_valid_uuid)
     BOOST_CHECK_EQUAL(*mgr->getvClusters()->at(1)->getpConnection(), clusterConnection);
 
     // No cluster ping entry should exist for this connection
-    BOOST_ASSERT_MSG(mgr->getmClusterPings()->find(con) == mgr->getmClusterPings()->end(),
+    BOOST_ASSERT_MSG(!mgr->getmClusterPings()->contains(con),
                      "mClusterPings was updated with the invalid connection when it should not have been");
 }
 
 BOOST_AUTO_TEST_SUITE_END()
-
-// NOLINTEND(concurrency-mt-unsafe)

@@ -3,6 +3,8 @@
 //
 
 module;
+#include <iostream>
+
 #include <sqlpp11/mysql/mysql.h>
 #include <sqlpp11/sqlpp11.h>
 
@@ -13,8 +15,6 @@ export module sBundleJob;
 import Message;
 import MySqlConnector;
 import jobserver_schema;
-
-using namespace sqlpp;
 
 export struct sBundleJob
 {
@@ -44,10 +44,10 @@ export struct sBundleJob
     static auto getById(uint64_t jobId, const std::string& cluster, const std::string& bundleHash) -> sBundleJob
     {
         auto _database = MySqlConnector();
-        schema::JobserverBundlejob _bundleJobTable;
+        const schema::JobserverBundlejob _bundleJobTable;
 
         auto jobResults =
-            _database->operator()(select(all_of(_bundleJobTable))
+            _database->operator()(sqlpp::select(sqlpp::all_of(_bundleJobTable))
                                       .from(_bundleJobTable)
                                       .where(_bundleJobTable.id == jobId and _bundleJobTable.cluster == cluster and
                                              _bundleJobTable.bundleHash == bundleHash));
@@ -65,21 +65,26 @@ export struct sBundleJob
     void _delete(const std::string& cluster, const std::string& bundleHash) const
     {
         auto _database = MySqlConnector();
-        schema::JobserverBundlejob _bundleJobTable;
+        const schema::JobserverBundlejob _bundleJobTable;
 
         // Check that a Bundle Job with the provided ID really exists for the provided cluster and bundleHash
         // This function will raise if a job is not found
         sBundleJob::getById(id, cluster, bundleHash);
 
-        _database->run(remove_from(_bundleJobTable)
-                           .where(_bundleJobTable.id == static_cast<uint64_t>(id) and
-                                  _bundleJobTable.cluster == cluster and _bundleJobTable.bundleHash == bundleHash));
+        auto result = _database->run(sqlpp::remove_from(_bundleJobTable)
+                                         .where(_bundleJobTable.id == id and _bundleJobTable.cluster == cluster and
+                                                _bundleJobTable.bundleHash == bundleHash));
+        if (result != 1)
+        {
+            std::cerr << "DB: Failed to delete bundle job with id " << id << " for cluster " << cluster
+                      << " and bundleHash " << bundleHash << ". Expected 1 row affected, got " << result << ".\n";
+        }
     }
 
     void save(const std::string& cluster, const std::string& bundleHash)
     {
         auto _database = MySqlConnector();
-        schema::JobserverBundlejob _bundleJobTable;
+        const schema::JobserverBundlejob _bundleJobTable;
 
         if (id != 0)
         {
@@ -88,15 +93,20 @@ export struct sBundleJob
             sBundleJob::getById(id, cluster, bundleHash);
 
             // Update the record
-            _database->run(update(_bundleJobTable)
-                               .set(_bundleJobTable.content = content)
-                               .where(_bundleJobTable.id == static_cast<uint64_t>(id) and
-                                      _bundleJobTable.cluster == cluster and _bundleJobTable.bundleHash == bundleHash));
+            auto result = _database->run(sqlpp::update(_bundleJobTable)
+                                             .set(_bundleJobTable.content = content)
+                                             .where(_bundleJobTable.id == id and _bundleJobTable.cluster == cluster and
+                                                    _bundleJobTable.bundleHash == bundleHash));
+            if (result != 1)
+            {
+                std::cerr << "DB: Failed to update bundle job with id " << id << " for cluster " << cluster
+                          << " and bundleHash " << bundleHash << ". Expected 1 row affected, got " << result << ".\n";
+            }
         }
         else
         {
             // Create the record
-            id = _database->run(insert_into(_bundleJobTable)
+            id = _database->run(sqlpp::insert_into(_bundleJobTable)
                                     .set(_bundleJobTable.content    = content,
                                          _bundleJobTable.cluster    = cluster,
                                          _bundleJobTable.bundleHash = bundleHash));

@@ -9,6 +9,7 @@ module;
 #endif
 #include <iostream>
 #include <memory>
+#include <thread>
 #include <utility>
 
 #include <server_ws.hpp>
@@ -90,7 +91,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::m
         {
             // Everything is fine
             std::cout << "WS: Opened connection from " << cluster->getName() << " as role " << cluster->getRoleString()
-                      << std::endl;
+                      << '\n';
 
             // Tell the client that we are ready
             Message msg(SERVER_READY, Message::Priority::Highest, SYSTEM_SOURCE);
@@ -99,7 +100,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::m
         else
         {
             // Invalid Token
-            std::cout << "WS: Invalid token used - " << (*queryParams.begin()).second << std::endl;
+            std::cout << "WS: Invalid token used - " << (*queryParams.begin()).second << '\n';
             connection->close();
         }
     };
@@ -112,12 +113,10 @@ WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::m
             // Remove the cluster from the connected list
             if (cluster)
             {
-                this->app->getClusterManager()->removeConnection(connection);
-            }
-
-            // Log this
+                this->app->getClusterManager()->removeConnection(connection, true, true);
+            }  // Log this
             std::cout << "WS: Closed connection with " << std::string(cluster ? cluster->getName() : "unknown?")
-                      << " with status code " << status << std::endl;
+                      << " with status code " << status << '\n';
         };
 
     wsEp.on_error = [this](const std::shared_ptr<WsServer::Connection>& connection,
@@ -128,7 +127,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::m
         // Remove the cluster from the connected list
         if (cluster)
         {
-            this->app->getClusterManager()->removeConnection(connection);
+            this->app->getClusterManager()->removeConnection(connection, true, true);
         }
 
         this->app->getClusterManager()->reportWebsocketError(cluster, errorCode);
