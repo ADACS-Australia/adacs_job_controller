@@ -22,8 +22,6 @@ import Cluster;
 import FileUpload;
 import Message;
 
-// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
-
 struct FileUploadTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture
 {
     std::vector<std::vector<uint8_t>> receivedMessages;
@@ -46,7 +44,6 @@ struct FileUploadTestDataFixture : public DatabaseFixture, public WebSocketClien
         // Wait for the client to connect
         while (!bReady)
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -157,5 +154,3 @@ BOOST_AUTO_TEST_CASE(test_invalid_message)
 
 
 BOOST_AUTO_TEST_SUITE_END()
-
-// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
