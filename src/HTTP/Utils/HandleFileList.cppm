@@ -36,7 +36,7 @@ import GeneralUtils;
 // Re-export sFile from FileTypes.h
 export using sFile = ::sFile;
 
-export void handleFileList(std::shared_ptr<IApplication> app,
+export void handleFileList(const std::shared_ptr<IApplication>& app,
                            const std::shared_ptr<IClusterManager>& clusterManager,
                            uint64_t jobId,
                            bool bRecursive,
@@ -45,7 +45,7 @@ export void handleFileList(std::shared_ptr<IApplication> app,
                            const std::vector<std::string>& applications,
                            const std::shared_ptr<HttpServerImpl::Response>& response);
 
-export void handleFileList(std::shared_ptr<IApplication> app,
+export void handleFileList(const std::shared_ptr<IApplication>& app,
                            const std::shared_ptr<ICluster>& cluster,
                            const std::string& sBundle,
                            uint64_t jobId,
@@ -93,7 +93,7 @@ auto filterFiles(const std::vector<sFile>& files, const std::string& filePath, b
             }
 
             // If the path starts with absoluteFilePath then the file matches. Any files falling under this path match.
-            if (path.string() == absoluteFilePath || parentPath.rfind(absoluteFilePath, 0) == 0 ||
+            if (path.string() == absoluteFilePath || parentPath.starts_with(absoluteFilePath) ||
                 (path.string() == absoluteFilePathNoTrailingSlash && file.isDirectory))
             {
                 matchedFiles.push_back(file);
@@ -114,8 +114,8 @@ auto filterFiles(const std::vector<sFile>& files, const std::string& filePath, b
     return matchedFiles;
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity,misc-no-recursion)
-void handleFileList(std::shared_ptr<IApplication> app,
+// NOLINTNEXTLINE(misc-no-recursion)
+void handleFileList(const std::shared_ptr<IApplication>& app,
                     const std::shared_ptr<ICluster>& cluster,
                     const std::string& sBundle,
                     uint64_t jobId,
@@ -127,9 +127,9 @@ void handleFileList(std::shared_ptr<IApplication> app,
     auto database = MySqlConnector();
 
     // Get the tables
-    schema::JobserverJob jobTable;
-    schema::JobserverJobhistory jobHistoryTable;
-    schema::JobserverFilelistcache fileListCacheTable;
+    const schema::JobserverJob jobTable;
+    const schema::JobserverJobhistory jobHistoryTable;
+    const schema::JobserverFilelistcache fileListCacheTable;
 
     // Create a new file list object
     auto flObj = std::make_shared<sFileList>();
@@ -177,10 +177,10 @@ void handleFileList(std::shared_ptr<IApplication> app,
                     std::vector<sFile> files;
                     for (const auto& cacheResult : fileListCacheResult)
                     {
-                        files.push_back({cacheResult.path,
-                                         static_cast<uint64_t>(cacheResult.fileSize),
-                                         static_cast<uint32_t>(cacheResult.permissions),
-                                         static_cast<bool>(cacheResult.isDir)});
+                        files.push_back({.fileName    = cacheResult.path,
+                                         .fileSize    = static_cast<uint64_t>(cacheResult.fileSize),
+                                         .permissions = static_cast<uint32_t>(cacheResult.permissions),
+                                         .isDirectory = static_cast<bool>(cacheResult.isDir)});
                     }
 
                     // Filter the files
@@ -188,6 +188,7 @@ void handleFileList(std::shared_ptr<IApplication> app,
 
                     // Iterate over the files and generate the result
                     nlohmann::json result;
+                    // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     result["files"] = nlohmann::json::array();
                     for (const auto& file : filteredFiles)
                     {
@@ -199,6 +200,7 @@ void handleFileList(std::shared_ptr<IApplication> app,
 
                         result["files"].push_back(jFile);
                     }
+                    // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
                     // Return the result
                     SimpleWeb::CaseInsensitiveMultimap headers;
@@ -248,7 +250,7 @@ void handleFileList(std::shared_ptr<IApplication> app,
         {
             {
                 // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-                std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
+                const std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
                 // Remove the file list object
                 if (fileListMap->find(uuid) != fileListMap->end())
@@ -274,6 +276,7 @@ void handleFileList(std::shared_ptr<IApplication> app,
 
         // Iterate over the files and generate the result
         nlohmann::json result;
+        // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         result["files"] = nlohmann::json::array();
         for (const auto& file : flObj->files)
         {
@@ -284,6 +287,7 @@ void handleFileList(std::shared_ptr<IApplication> app,
             jFile["permissions"] = file.permissions;
 
             result["files"].push_back(jFile);
+            // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
             // Check if the job is complete
             if (jobComplete)
@@ -313,7 +317,13 @@ void handleFileList(std::shared_ptr<IApplication> app,
                 database->start_transaction();
 
                 // Insert the records
-                database->run(insert_query);
+                const auto insertCount = database->run(insert_query);
+
+                if (insertCount != flObj->files.size())
+                {
+                    std::cerr << "WARNING: DB - File list cache insert mismatch for job " << jobId << ", expected "
+                              << flObj->files.size() << " rows but got " << insertCount << '\n';
+                }
 
                 // Commit the changes in the database
                 database->commit_transaction();
@@ -344,7 +354,7 @@ void handleFileList(std::shared_ptr<IApplication> app,
 
         {
             // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-            std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
+            const std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
             // Remove the file list object
             if (fileListMap->find(uuid) != fileListMap->end())
@@ -368,7 +378,7 @@ void handleFileList(std::shared_ptr<IApplication> app,
 
         {
             // Make sure we lock before removing an entry from the file list map in case Cluster() is using it
-            std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
+            const std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
             // Remove the file list object
             auto fileListMap = app->getFileListMap();
@@ -388,7 +398,7 @@ void handleFileList(std::shared_ptr<IApplication> app,
 
 void handleFileList(
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-    std::shared_ptr<IApplication> app,
+    const std::shared_ptr<IApplication>& app,
     const std::shared_ptr<IClusterManager>& clusterManager,
     uint64_t jobId,
     bool bRecursive,
@@ -401,8 +411,8 @@ void handleFileList(
     auto database = MySqlConnector();
 
     // Get the tables
-    schema::JobserverJob jobTable;
-    schema::JobserverJobhistory jobHistoryTable;
+    const schema::JobserverJob jobTable;
+    const schema::JobserverJobhistory jobHistoryTable;
 
     try
     {

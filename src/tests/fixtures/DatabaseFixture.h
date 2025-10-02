@@ -29,7 +29,6 @@ struct DatabaseFixture
         cleanDatabase();
     }
 
-    // NOLINTNEXTLINE(bugprone-exception-escape)
     ~DatabaseFixture()
     {
         cleanDatabase();

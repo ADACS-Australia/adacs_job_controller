@@ -2,6 +2,7 @@
 // Created by lewis on 22/10/20.
 //
 
+
 import settings;
 
 #include <string>
@@ -68,17 +69,20 @@ struct JobTestDataFixture : public DatabaseFixture, public HttpServerFixture, pu
         jobId = database->run(insert_into(jobTable).set(
             jobTable.user       = 1,
             jobTable.parameters = "params1",
+
             jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).clusters()[0],
             jobTable.bundle  = "whatever",
             jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(1).name()));
 
         // Create the first state object
+
         database->run(insert_into(jobHistoryTable)
                           .set(jobHistoryTable.jobId     = jobId,
                                jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                                jobHistoryTable.what      = SYSTEM_SOURCE,
                                jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::PENDING),
                                jobHistoryTable.details   = "Job submitting"));
+
 
         // Clusters should be stopped
         cluster->stop();
@@ -178,14 +182,18 @@ BOOST_AUTO_TEST_CASE(test_POST_new_job)
     nlohmann::json result;
     response->content >> result;
 
+
     uint64_t jobId  = result["jobId"];
     auto jobResults = database->run(select(all_of(jobTable)).from(jobTable).where(jobTable.id == jobId));
 
     const auto* dbJob = &jobResults.front();
     BOOST_CHECK_EQUAL(dbJob->application,
                       std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name());
+
     BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
+
     BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
+
     BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
     BOOST_CHECK_EQUAL((uint64_t)dbJob->user, (uint64_t)5);
 
@@ -214,17 +222,22 @@ BOOST_AUTO_TEST_CASE(test_POST_new_job)
 
     response->content >> result;
 
+
     jobId = result["jobId"];
+
 
     auto source = std::to_string(jobId) + "_" + std::string{params["cluster"]};
     BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
+
 
     auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
     auto msg = Message(*ptr);
 
     BOOST_CHECK_EQUAL(msg.getId(), SUBMIT_JOB);
     BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
+
     BOOST_CHECK_EQUAL(msg.pop_string(), std::string(params["bundle"]));
+
     BOOST_CHECK_EQUAL(msg.pop_string(), std::string(params["parameters"]));
 
     // Check that the job that was created is correct
@@ -233,8 +246,11 @@ BOOST_AUTO_TEST_CASE(test_POST_new_job)
     dbJob = &jobResults.front();
     BOOST_CHECK_EQUAL(dbJob->application,
                       std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name());
+
     BOOST_CHECK_EQUAL(dbJob->cluster, std::string(params["cluster"]));
+
     BOOST_CHECK_EQUAL(dbJob->bundle, std::string(params["bundle"]));
+
     BOOST_CHECK_EQUAL(dbJob->parameters, std::string(params["parameters"]));
     BOOST_CHECK_EQUAL(static_cast<uint64_t>(dbJob->user), static_cast<uint64_t>(5));
 
@@ -316,7 +332,6 @@ BOOST_AUTO_TEST_CASE(test_GET_get_jobs)
     // TODO(lewis): Test job filtering
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job)
 {
     // Test unauthorized user
@@ -360,12 +375,14 @@ BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job)
         jobTable.bundle      = "whatever",
         jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()));
 
+
     database->run(insert_into(jobHistoryTable)
                       .set(jobHistoryTable.jobId     = jobId,
                            jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                            jobHistoryTable.what      = SYSTEM_SOURCE,
                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::PENDING),
                            jobHistoryTable.details   = "Job submitting"));
+
 
     params = {
         {"jobId", jobId}
@@ -388,12 +405,14 @@ BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job)
         jobTable.bundle      = "whatever",
         jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()));
 
+
     database->run(insert_into(jobHistoryTable)
                       .set(jobHistoryTable.jobId     = jobId,
                            jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                            jobHistoryTable.what      = SYSTEM_SOURCE,
                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::PENDING),
                            jobHistoryTable.details   = "Job submitting"));
+
 
     params = {
         {"jobId", jobId}
@@ -409,12 +428,14 @@ BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job)
                       static_cast<int>(SimpleWeb::StatusCode::client_error_bad_request));
 
     // Test cancelling a pending job
-    jobId       = database->run(insert_into(jobTable).set(
-        jobTable.user        = 1,
-        jobTable.parameters  = "params1",
+    jobId = database->run(insert_into(jobTable).set(
+        jobTable.user       = 1,
+        jobTable.parameters = "params1",
+
         jobTable.cluster     = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0],
         jobTable.bundle      = "whatever",
         jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()));
+
     auto source = std::to_string(jobId) + "_" +
                   std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).clusters()[0];
 
@@ -444,6 +465,7 @@ BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job)
 
     nlohmann::json result;
     response->content >> result;
+
     BOOST_CHECK_EQUAL(result["cancelled"], jobId);
 
     // Verify that the job is now in cancelled state. A job which is pending (meaning it's not yet submitted to a
@@ -499,6 +521,7 @@ BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job)
         BOOST_CHECK_EQUAL(response->header.find("Content-Type")->second, "application/json");
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
+
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         auto msg = Message(*ptr);
 
@@ -506,6 +529,7 @@ BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job)
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
 
         response->content >> result;
+
         BOOST_CHECK_EQUAL(result["cancelled"], jobId);
 
         // The job status should now be CANCELLING
@@ -565,7 +589,6 @@ BOOST_AUTO_TEST_CASE(test_PATCH_cancel_job)
     }
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 BOOST_AUTO_TEST_CASE(test_DELETE_delete_job)
 {
     // Test unauthorized user
@@ -611,12 +634,14 @@ BOOST_AUTO_TEST_CASE(test_DELETE_delete_job)
         jobTable.bundle      = "whatever",
         jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()));
 
+
     database->run(insert_into(jobHistoryTable)
                       .set(jobHistoryTable.jobId     = jobId,
                            jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                            jobHistoryTable.what      = SYSTEM_SOURCE,
                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::PENDING),
                            jobHistoryTable.details   = "Job submitting"));
+
 
     params = {
         {"jobId", jobId}
@@ -639,12 +664,14 @@ BOOST_AUTO_TEST_CASE(test_DELETE_delete_job)
         jobTable.bundle      = "whatever",
         jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()));
 
+
     database->run(insert_into(jobHistoryTable)
                       .set(jobHistoryTable.jobId     = jobId,
                            jobHistoryTable.timestamp = std::chrono::system_clock::now(),
                            jobHistoryTable.what      = SYSTEM_SOURCE,
                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::PENDING),
                            jobHistoryTable.details   = "Job submitting"));
+
 
     params = {
         {"jobId", jobId}
@@ -695,6 +722,7 @@ BOOST_AUTO_TEST_CASE(test_DELETE_delete_job)
 
     nlohmann::json result;
     response->content >> result;
+
     BOOST_CHECK_EQUAL(result["deleted"], jobId);
 
     // Verify that the job is now in deleted state. A job which is pending (meaning it's not yet submitted to a
@@ -753,6 +781,7 @@ BOOST_AUTO_TEST_CASE(test_DELETE_delete_job)
         BOOST_CHECK_EQUAL(response->header.find("Content-Type")->second, "application/json");
         BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
+
         auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
         auto msg = Message(*ptr);
 
@@ -760,6 +789,7 @@ BOOST_AUTO_TEST_CASE(test_DELETE_delete_job)
         BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
 
         response->content >> result;
+
         BOOST_CHECK_EQUAL(result["deleted"], jobId);
 
         // The job status should now be DELETING

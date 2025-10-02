@@ -18,10 +18,10 @@ import ClusterManager;
 struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientFixture
 {
     uint64_t jobId;
-    bool bReady                                                 = false;
-    bool bReceivedPing                                          = false;
-    bool bClosed                                                = false;
-    std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
+    bool bReady        = false;
+    bool bReceivedPing = false;
+    bool bClosed       = false;
+    std::chrono::time_point<std::chrono::system_clock> zeroTime;
 
     PingPongTestDataFixture()
     {
@@ -30,23 +30,24 @@ struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientF
         jobId = database->run(insert_into(jobTable).set(
             jobTable.user       = 1,
             jobTable.parameters = "params1",
-            jobTable.cluster = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(2).clusters()[0],
-            jobTable.bundle  = "my_test_bundle",
+            jobTable.cluster =
+                std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(2).clusters().at(0),
+            jobTable.bundle      = "my_test_bundle",
             jobTable.application = std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->at(0).name()));
 
-        websocketClient->on_message = [&](auto connection, auto in_message) {
+        websocketClient->on_message = [&](const auto& connection, const auto& in_message) {
             onWebsocketMessage(connection, in_message);
         };
 
-        websocketClient->on_ping = [&](auto) {
+        websocketClient->on_ping = [&](const auto&) {
             bReceivedPing = true;
         };
 
-        websocketClient->on_close = [&](auto, auto, auto) {
+        websocketClient->on_close = [&](const auto&, auto, const auto&) {
             bClosed = true;
         };
 
-        websocketClient->on_error = [&](auto, auto) {
+        websocketClient->on_error = [&](const auto&, auto) {
             bClosed = true;
         };
 
@@ -55,15 +56,14 @@ struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientF
         // Wait for the client to connect
         while (!bReady)
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
-    void onWebsocketMessage([[maybe_unused]] auto connection, auto in_message)
+    void onWebsocketMessage([[maybe_unused]] const auto& connection, const auto& in_message)
     {
         auto data = in_message->string();
-        Message msg(std::vector<uint8_t>(data.begin(), data.end()));
+        const Message msg(std::vector<uint8_t>(data.begin(), data.end()));
 
         // Ignore the ready message
         if (msg.getId() == SERVER_READY)
@@ -81,12 +81,11 @@ struct PingPongTestDataFixture : public DatabaseFixture, public WebSocketClientF
 
         while (!bReceivedPing && !bClosed)
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
         // Wait a moment for the pong to be processed
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 };
@@ -169,7 +168,6 @@ BOOST_AUTO_TEST_CASE(test_checkPings_handle_zero_time)
     // Wait for the websocket to be closed
     while (!bClosed)
     {
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 

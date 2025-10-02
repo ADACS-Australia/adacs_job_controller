@@ -3,6 +3,8 @@
 //
 
 module;
+#include <iostream>
+
 #include <sqlpp11/mysql/mysql.h>
 #include <sqlpp11/sqlpp11.h>
 import jobserver_schema;
@@ -12,11 +14,9 @@ export module sClusterJob;
 import Message;
 import MySqlConnector;
 
-using namespace sqlpp;
-
 export struct sClusterJob
 {
-    auto equals(sClusterJob& other) const -> bool
+    [[nodiscard]] auto equals(const sClusterJob& other) const -> bool
     {
         return id == other.id and jobId == other.jobId and schedulerId == other.schedulerId and
                submitting == other.submitting and submittingCount == other.submittingCount and
@@ -70,12 +70,11 @@ export struct sClusterJob
     static auto getOrCreateByJobId(uint64_t jobId, const std::string& cluster) -> sClusterJob
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjob _jobTable;
+        const schema::JobserverClusterjob _jobTable;
 
-        auto jobResults = _database->run(
-            select(all_of(_jobTable))
-                .from(_jobTable)
-                .where(_jobTable.jobId == static_cast<uint64_t>(jobId) and _jobTable.cluster == cluster));
+        auto jobResults = _database->run(sqlpp::select(sqlpp::all_of(_jobTable))
+                                             .from(_jobTable)
+                                             .where(_jobTable.jobId == jobId and _jobTable.cluster == cluster));
 
         if (!jobResults.empty())
         {
@@ -88,9 +87,9 @@ export struct sClusterJob
     static auto getRunningJobs(const std::string& cluster) -> std::vector<sClusterJob>
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjob _jobTable;
+        const schema::JobserverClusterjob _jobTable;
 
-        auto jobResults = _database->run(select(all_of(_jobTable))
+        auto jobResults = _database->run(sqlpp::select(sqlpp::all_of(_jobTable))
                                              .from(_jobTable)
                                              .where(_jobTable.running == 1 and _jobTable.jobId != 0 and
                                                     _jobTable.submitting == 0 and _jobTable.cluster == cluster));
@@ -107,57 +106,66 @@ export struct sClusterJob
     void _delete(const std::string& cluster) const
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjob _jobTable;
+        const schema::JobserverClusterjob _jobTable;
 
-        _database->run(
-            remove_from(_jobTable).where(_jobTable.id == static_cast<uint64_t>(id) and _jobTable.cluster == cluster));
+        auto result =
+            _database->run(sqlpp::remove_from(_jobTable).where(_jobTable.id == id and _jobTable.cluster == cluster));
+        if (result != 1)
+        {
+            std::cerr << "WARNING: DB - Failed to delete cluster job with id " << id << " for cluster " << cluster
+                      << ", expected 1 row but got " << result << '\n';
+        }
     }
 
     void save(const std::string& cluster)
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjob _jobTable;
+        const schema::JobserverClusterjob _jobTable;
 
         if (id != 0)
         {
             // Update the record
-            _database->run(update(_jobTable)
-                               .set(_jobTable.jobId            = jobId,
-                                    _jobTable.schedulerId      = schedulerId,
-                                    _jobTable.submitting       = submitting ? 1 : 0,
-                                    _jobTable.submittingCount  = submittingCount,
-                                    _jobTable.bundleHash       = bundleHash,
-                                    _jobTable.workingDirectory = workingDirectory,
-                                    _jobTable.running          = running ? 1 : 0,
-                                    _jobTable.deleting         = deleting ? 1 : 0,
-                                    _jobTable.deleted          = deleted ? 1 : 0)
-                               .where(_jobTable.id == static_cast<uint64_t>(id) and _jobTable.cluster == cluster));
+            auto result = _database->run(sqlpp::update(_jobTable)
+                                             .set(_jobTable.jobId            = jobId,
+                                                  _jobTable.schedulerId      = schedulerId,
+                                                  _jobTable.submitting       = submitting ? 1 : 0,
+                                                  _jobTable.submittingCount  = submittingCount,
+                                                  _jobTable.bundleHash       = bundleHash,
+                                                  _jobTable.workingDirectory = workingDirectory,
+                                                  _jobTable.running          = running ? 1 : 0,
+                                                  _jobTable.deleting         = deleting ? 1 : 0,
+                                                  _jobTable.deleted          = deleted ? 1 : 0)
+                                             .where(_jobTable.id == id and _jobTable.cluster == cluster));
+            if (result != 1)
+            {
+                std::cerr << "WARNING: DB - Failed to update cluster job with id " << id << " for cluster " << cluster
+                          << ", expected 1 row but got " << result << '\n';
+            }
         }
         else
         {
             // Create the record
-            id = _database->run(insert_into(_jobTable).set(_jobTable.jobId            = jobId,
-                                                           _jobTable.schedulerId      = schedulerId,
-                                                           _jobTable.submitting       = submitting ? 1 : 0,
-                                                           _jobTable.submittingCount  = submittingCount,
-                                                           _jobTable.bundleHash       = bundleHash,
-                                                           _jobTable.workingDirectory = workingDirectory,
-                                                           _jobTable.running          = running ? 1 : 0,
-                                                           _jobTable.deleting         = deleting ? 1 : 0,
-                                                           _jobTable.deleted          = deleted ? 1 : 0,
-                                                           _jobTable.cluster          = cluster));
+            id = _database->run(sqlpp::insert_into(_jobTable).set(_jobTable.jobId            = jobId,
+                                                                  _jobTable.schedulerId      = schedulerId,
+                                                                  _jobTable.submitting       = submitting ? 1 : 0,
+                                                                  _jobTable.submittingCount  = submittingCount,
+                                                                  _jobTable.bundleHash       = bundleHash,
+                                                                  _jobTable.workingDirectory = workingDirectory,
+                                                                  _jobTable.running          = running ? 1 : 0,
+                                                                  _jobTable.deleting         = deleting ? 1 : 0,
+                                                                  _jobTable.deleted          = deleted ? 1 : 0,
+                                                                  _jobTable.cluster          = cluster));
         }
     }
 
     static auto getById(uint64_t identifier, const std::string& cluster) -> sClusterJob
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjob _jobTable;
+        const schema::JobserverClusterjob _jobTable;
 
-        auto jobResults = _database->run(
-            select(all_of(_jobTable))
-                .from(_jobTable)
-                .where(_jobTable.id == static_cast<uint64_t>(identifier) and _jobTable.cluster == cluster));
+        auto jobResults = _database->run(sqlpp::select(sqlpp::all_of(_jobTable))
+                                             .from(_jobTable)
+                                             .where(_jobTable.id == identifier and _jobTable.cluster == cluster));
 
         if (!jobResults.empty())
         {

@@ -12,7 +12,7 @@ import Application;
 import GeneralUtils;
 import IHttpServer;
 
-// NOLINTBEGIN(concurrency-mt-unsafe)
+
 BOOST_AUTO_TEST_SUITE(HttpServer_test_suite)
 /*
  * This test suite is responsible for testing the HttpServer class
@@ -64,7 +64,6 @@ BOOST_AUTO_TEST_CASE(test_constructor)
     }
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 BOOST_AUTO_TEST_CASE(test_isAuthorized)
 {
     /*
@@ -94,7 +93,7 @@ BOOST_AUTO_TEST_CASE(test_isAuthorized)
         jwt::params::secret("notarealsecret")
     };
 
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     auto now = std::chrono::system_clock::now() + std::chrono::minutes{10};
     jwtToken.add_claim("exp", now);
 
@@ -144,4 +143,3 @@ BOOST_AUTO_TEST_CASE(test_isAuthorized)
     BOOST_CHECK_THROW(concreteHttpServer->isAuthorized(headers), eNotAuthorized);
 }
 BOOST_AUTO_TEST_SUITE_END()
-// NOLINTEND(concurrency-mt-unsafe)

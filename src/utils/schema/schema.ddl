@@ -47,7 +47,7 @@ CREATE TABLE `jobserver_bundlejob` (
   PRIMARY KEY (`id`),
   KEY `jobserver_bundlejob_cluster_5281feda` (`cluster`),
   KEY `jobserver_bundlejob_bundle_hash_e0a2273a` (`bundle_hash`)
-) ENGINE=InnoDB AUTO_INCREMENT=41 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=161 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -73,7 +73,7 @@ CREATE TABLE `jobserver_clusterjob` (
   KEY `jobserver_clusterjob_cluster_58bbe756` (`cluster`),
   KEY `jobserver_clusterjob_job_id_1288b3ad` (`job_id`),
   KEY `jobserver_clusterjob_scheduler_id_d9aeaa21` (`scheduler_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=153 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=609 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -92,7 +92,7 @@ CREATE TABLE `jobserver_clusterjobstatus` (
   KEY `jobserver_clusterjob_job_id_017cf8a8_fk_jobserver` (`job_id`),
   KEY `jobserver_clusterjobstatus_state_99744516` (`state`),
   CONSTRAINT `jobserver_clusterjob_job_id_017cf8a8_fk_jobserver` FOREIGN KEY (`job_id`) REFERENCES `jobserver_clusterjob` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=105 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=417 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -110,7 +110,7 @@ CREATE TABLE `jobserver_clusteruuid` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uuid` (`uuid`),
   KEY `jobserver_clusteruuid_timestamp_8f6c293c` (`timestamp`)
-) ENGINE=InnoDB AUTO_INCREMENT=3190 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=14247 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -132,7 +132,7 @@ CREATE TABLE `jobserver_filedownload` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `jobserver_filedownload_uuid_20de5691_uniq` (`uuid`),
   KEY `jobserver_filedownload_timestamp_f4d33e0e` (`timestamp`)
-) ENGINE=InnoDB AUTO_INCREMENT=137 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=579 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -155,7 +155,7 @@ CREATE TABLE `jobserver_filelistcache` (
   KEY `jobserver_filelistcache_timestamp_c08291f7` (`timestamp`),
   KEY `jobserver_filelistcache_path_92e327d3` (`path`),
   CONSTRAINT `jobserver_filelistcache_job_id_04ab005b_fk` FOREIGN KEY (`job_id`) REFERENCES `jobserver_job` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=145 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=506 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -173,7 +173,7 @@ CREATE TABLE `jobserver_job` (
   `cluster` varchar(200) NOT NULL,
   `application` varchar(32) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1105 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5571 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -196,7 +196,7 @@ CREATE TABLE `jobserver_jobhistory` (
   KEY `jobserver_jobhistory_what_911845fe` (`what`),
   KEY `jobserver_jobhistory_job_id_01bbd7b0_fk` (`job_id`),
   CONSTRAINT `jobserver_jobhistory_job_id_01bbd7b0_fk` FOREIGN KEY (`job_id`) REFERENCES `jobserver_job` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1401 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7089 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -208,4 +208,4 @@ CREATE TABLE `jobserver_jobhistory` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-09-13  8:44:52
+-- Dump completed on 2025-09-30 10:18:23

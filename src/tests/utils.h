@@ -2,6 +2,7 @@
 #define GWCLOUD_JOB_SERVER_UTILS_H
 
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include <client_http.hpp>

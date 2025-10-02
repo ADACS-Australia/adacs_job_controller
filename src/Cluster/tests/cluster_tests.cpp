@@ -2,6 +2,7 @@
 // Created by lewis on 2/10/20.
 //
 
+
 import job_status;
 import settings;
 #include <random>
@@ -26,7 +27,6 @@ import Message;
 import IApplication;
 import ClusterManager;
 
-// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture
 {
     std::vector<std::vector<uint8_t>> receivedMessages;
@@ -63,7 +63,7 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
                                                                    jobTable.bundle      = "whatever",
                                                                    jobTable.application = "test"));
 
-        websocketClient->on_message = [&]([[maybe_unused]] auto connection, auto in_message) {
+        websocketClient->on_message = [&]([[maybe_unused]] const auto& connection, const auto& in_message) {
             onWebsocketMessage(in_message);
         };
 
@@ -72,7 +72,6 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
         // Wait for the client to connect
         while (!bReady)
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -81,20 +80,19 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
         onlineCluster->stop();
     }
 
-    void onWebsocketMessage(auto in_message)
+    void onWebsocketMessage(const auto& in_message)
     {
         auto data = in_message->string();
-        std::cout << "DEBUG: Received WebSocket message, size: " << data.size() << std::endl;
+        std::cout << "DEBUG: Received WebSocket message, size: " << data.size() << '\n';
 
         // Don't parse the message if the ws connection is ready
         if (!bReady)
         {
-            Message msg(std::vector<uint8_t>(data.begin(), data.end()));
-            std::cout << "DEBUG: Parsed message, ID: " << msg.getId() << ", SERVER_READY: " << SERVER_READY
-                      << std::endl;
+            const Message msg(std::vector<uint8_t>(data.begin(), data.end()));
+            std::cout << "DEBUG: Parsed message, ID: " << msg.getId() << ", SERVER_READY: " << SERVER_READY << '\n';
             if (msg.getId() == SERVER_READY)
             {
-                std::cout << "DEBUG: Received SERVER_READY message, setting bReady = true" << std::endl;
+                std::cout << "DEBUG: Received SERVER_READY message, setting bReady = true" << '\n';
                 bReady = true;
                 return;
             }
@@ -112,10 +110,8 @@ BOOST_AUTO_TEST_CASE(test_constructor)
     // Check that the cluster details and the manager are set correctly
     BOOST_CHECK_EQUAL(*cluster->getpClusterDetails(), details);
 
-    // Check that the right number of queue levels are created (+1 because 0 is a priority level itself)
-    BOOST_CHECK_EQUAL(cluster->getqueue()->size(),
-                      static_cast<uint32_t>(Message::Priority::Lowest) -
-                          static_cast<uint32_t>(Message::Priority::Highest) + 1);
+    // Check that all priority levels are initialized (3 defined priority levels)
+    BOOST_CHECK_EQUAL(cluster->getqueue()->size(), 3);
 }
 
 BOOST_AUTO_TEST_CASE(test_getName)
@@ -455,7 +451,6 @@ BOOST_AUTO_TEST_CASE(test_run)
     // Wait for the messages to be sent
     while (receivedMessages.size() < 14)
     {
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -497,53 +492,64 @@ BOOST_AUTO_TEST_CASE(test_run)
 BOOST_AUTO_TEST_CASE(test_doesHigherPriorityDataExist)
 {
     // There should be no higher priority data if there is no data
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Highest), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Lowest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Highest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Lowest), false);
 
     // Insert some data
     auto s4_d1 = generateRandomData(randomInt(0, 255));
     cluster->queueMessage("s4", s4_d1, Message::Priority::Lowest);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Highest), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Medium), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Lowest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Highest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Medium), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Lowest), false);
 
     auto s3_d1 = generateRandomData(randomInt(0, 255));
     cluster->queueMessage("s3", s3_d1, Message::Priority::Medium);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Highest), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Medium), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Lowest), true);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Highest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Medium), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Lowest), true);
 
     auto s2_d1 = generateRandomData(randomInt(0, 255));
     cluster->queueMessage("s2", s2_d1, Message::Priority::Highest);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Highest), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Medium), true);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Lowest), true);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Highest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Medium), true);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Lowest), true);
 
     auto s1_d1 = generateRandomData(randomInt(0, 255));
     cluster->queueMessage("s1", s1_d1, Message::Priority::Highest);
     auto s0_d1 = generateRandomData(randomInt(0, 255));
     cluster->queueMessage("s0", s0_d1, Message::Priority::Highest);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Highest), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Medium), true);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Lowest), true);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Highest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Medium), true);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Lowest), true);
 
     // Clear all data from s2, s1 and s0
+
+
     *(*cluster->getqueue())[Message::Priority::Highest].find("s2")->second->try_dequeue();
+
     *(*cluster->getqueue())[Message::Priority::Highest].find("s1")->second->try_dequeue();
+
     *(*cluster->getqueue())[Message::Priority::Highest].find("s0")->second->try_dequeue();
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Highest), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Medium), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Lowest), true);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Highest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Medium), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Lowest), true);
 
     // Clear data from s3 and s4
+
     *(*cluster->getqueue())[Message::Priority::Medium].find("s3")->second->try_dequeue();
+
     *(*cluster->getqueue())[Message::Priority::Lowest].find("s4")->second->try_dequeue();
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Highest), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Medium), false);
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Lowest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Highest), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Medium), false);
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(Message::Priority::Lowest), false);
 
     // Testing a non-standard priority that has a value greater than Lowest should now result in false
-    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist((uint64_t)Message::Priority::Lowest + 1), false);
+    // Cast Lowest to its underlying integer value, add one, then compare by casting back to Priority
+
+
+    BOOST_CHECK_EQUAL(cluster->calldoesHigherPriorityDataExist(
+                          static_cast<Message::Priority>(static_cast<int>(Message::Priority::Lowest) + 1)),
+                      false);
 }
 
 BOOST_AUTO_TEST_CASE(test_updateJob)
@@ -659,6 +665,7 @@ BOOST_AUTO_TEST_CASE(test_checkUnsubmittedJobs)
     auto source = std::to_string(jobId) + "_" + cluster->getName();
     BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
+
     auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
     auto msg = Message(*ptr);
 
@@ -688,6 +695,7 @@ BOOST_AUTO_TEST_CASE(test_checkUnsubmittedJobs)
 
     BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
+
     ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
     msg = Message(*ptr);
 
@@ -708,6 +716,7 @@ BOOST_AUTO_TEST_CASE(test_checkUnsubmittedJobs)
     // There is one job in submitting state older than 1 minute
     cluster->callcheckUnsubmittedJobs();
     BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
+
     *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
 
     // Check that the job transitioned to submitting state from pending state
@@ -722,17 +731,17 @@ BOOST_AUTO_TEST_CASE(test_checkUnsubmittedJobs)
     BOOST_CHECK_EQUAL((uint32_t)dbHistory->state, (uint32_t)JobStatus::SUBMITTING);
 
     // Test all other job statuses to make sure nothing is incorrectly returned
-    std::vector<JobStatus> noop_statuses = {JobStatus::SUBMITTED,
-                                            JobStatus::QUEUED,
-                                            JobStatus::RUNNING,
-                                            JobStatus::CANCELLING,
-                                            JobStatus::CANCELLED,
-                                            JobStatus::DELETING,
-                                            JobStatus::DELETED,
-                                            JobStatus::ERROR,
-                                            JobStatus::WALL_TIME_EXCEEDED,
-                                            JobStatus::OUT_OF_MEMORY,
-                                            JobStatus::COMPLETED};
+    const std::vector<JobStatus> noop_statuses = {JobStatus::SUBMITTED,
+                                                  JobStatus::QUEUED,
+                                                  JobStatus::RUNNING,
+                                                  JobStatus::CANCELLING,
+                                                  JobStatus::CANCELLED,
+                                                  JobStatus::DELETING,
+                                                  JobStatus::DELETED,
+                                                  JobStatus::ERROR,
+                                                  JobStatus::WALL_TIME_EXCEEDED,
+                                                  JobStatus::OUT_OF_MEMORY,
+                                                  JobStatus::COMPLETED};
 
     for (auto status : noop_statuses)
     {
@@ -811,6 +820,7 @@ BOOST_AUTO_TEST_CASE(test_checkCancellingJobs)
     auto source = std::to_string(jobId) + "_" + cluster->getName();
     BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
+
     auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
     auto msg = Message(*ptr);
 
@@ -827,6 +837,7 @@ BOOST_AUTO_TEST_CASE(test_checkCancellingJobs)
 
     BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
+
     ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
     msg = Message(*ptr);
 
@@ -834,18 +845,18 @@ BOOST_AUTO_TEST_CASE(test_checkCancellingJobs)
     BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
 
     // Test all other job statuses to make sure nothing is incorrectly returned
-    std::vector<JobStatus> noop_statuses = {JobStatus::PENDING,
-                                            JobStatus::SUBMITTING,
-                                            JobStatus::SUBMITTED,
-                                            JobStatus::QUEUED,
-                                            JobStatus::RUNNING,
-                                            JobStatus::CANCELLED,
-                                            JobStatus::DELETING,
-                                            JobStatus::DELETED,
-                                            JobStatus::ERROR,
-                                            JobStatus::WALL_TIME_EXCEEDED,
-                                            JobStatus::OUT_OF_MEMORY,
-                                            JobStatus::COMPLETED};
+    const std::vector<JobStatus> noop_statuses = {JobStatus::PENDING,
+                                                  JobStatus::SUBMITTING,
+                                                  JobStatus::SUBMITTED,
+                                                  JobStatus::QUEUED,
+                                                  JobStatus::RUNNING,
+                                                  JobStatus::CANCELLED,
+                                                  JobStatus::DELETING,
+                                                  JobStatus::DELETED,
+                                                  JobStatus::ERROR,
+                                                  JobStatus::WALL_TIME_EXCEEDED,
+                                                  JobStatus::OUT_OF_MEMORY,
+                                                  JobStatus::COMPLETED};
 
     for (auto status : noop_statuses)
     {
@@ -924,6 +935,7 @@ BOOST_AUTO_TEST_CASE(test_checkDeletingJobs)
     auto source = std::to_string(jobId) + "_" + cluster->getName();
     BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
+
     auto ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
     auto msg = Message(*ptr);
 
@@ -940,6 +952,7 @@ BOOST_AUTO_TEST_CASE(test_checkDeletingJobs)
 
     BOOST_CHECK_EQUAL((*cluster->getqueue())[Message::Priority::Medium].find(source)->second->size(), 1);
 
+
     ptr = *(*cluster->getqueue())[Message::Priority::Medium].find(source)->second->try_dequeue();
     msg = Message(*ptr);
 
@@ -947,18 +960,18 @@ BOOST_AUTO_TEST_CASE(test_checkDeletingJobs)
     BOOST_CHECK_EQUAL(msg.pop_uint(), jobId);
 
     // Test all other job statuses to make sure nothing is incorrectly returned
-    std::vector<JobStatus> noop_statuses = {JobStatus::PENDING,
-                                            JobStatus::SUBMITTING,
-                                            JobStatus::SUBMITTED,
-                                            JobStatus::QUEUED,
-                                            JobStatus::RUNNING,
-                                            JobStatus::CANCELLING,
-                                            JobStatus::CANCELLED,
-                                            JobStatus::DELETED,
-                                            JobStatus::ERROR,
-                                            JobStatus::WALL_TIME_EXCEEDED,
-                                            JobStatus::OUT_OF_MEMORY,
-                                            JobStatus::COMPLETED};
+    const std::vector<JobStatus> noop_statuses = {JobStatus::PENDING,
+                                                  JobStatus::SUBMITTING,
+                                                  JobStatus::SUBMITTED,
+                                                  JobStatus::QUEUED,
+                                                  JobStatus::RUNNING,
+                                                  JobStatus::CANCELLING,
+                                                  JobStatus::CANCELLED,
+                                                  JobStatus::DELETED,
+                                                  JobStatus::ERROR,
+                                                  JobStatus::WALL_TIME_EXCEEDED,
+                                                  JobStatus::OUT_OF_MEMORY,
+                                                  JobStatus::COMPLETED};
 
     for (auto status : noop_statuses)
     {
@@ -1084,5 +1097,3 @@ BOOST_AUTO_TEST_CASE(test_handleFileListError)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
-
-// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)

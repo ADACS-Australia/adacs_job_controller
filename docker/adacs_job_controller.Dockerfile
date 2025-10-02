@@ -6,7 +6,14 @@ ENV DEBIAN_FRONTEND="noninteractive"
 # Switch mirror to Australia (Ubuntu Noble uses .sources format)
 RUN find /etc/apt/sources.list.d -name "*.sources" -exec sed --in-place --regexp-extended "s/(\/\/)(archive\.ubuntu)/\1au.\2/" {} \;
 
-RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install clang python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev libfast-float-dev clang-tidy ninja-build libcpp-jwt-dev libhowardhinnant-date-dev nlohmann-json3-dev 
+# Install wget and basic tools needed for LLVM script
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install wget lsb-release software-properties-common gnupg
+
+# Install Clang 22 from official LLVM repository
+RUN wget https://apt.llvm.org/llvm.sh && bash ./llvm.sh 22 all
+
+# Install remaining build dependencies
+RUN apt-get -y install python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev libfast-float-dev ninja-build libcpp-jwt-dev libhowardhinnant-date-dev nlohmann-json3-dev 
 
 # Copy in the source directory
 ADD src /src

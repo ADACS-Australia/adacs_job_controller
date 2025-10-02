@@ -39,56 +39,50 @@ export class Cluster : public std::enable_shared_from_this<Cluster>, public IClu
 {
 public:
     explicit Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IApplication> app);
-    virtual ~Cluster();
+    ~Cluster() override;
     Cluster(Cluster const&)                    = delete;
     auto operator=(Cluster const&) -> Cluster& = delete;
     Cluster(Cluster&&)                         = delete;
     auto operator=(Cluster&&) -> Cluster&      = delete;
 
-    void stop();
+    void stop() override;
 
     // ICluster interface implementation
-    auto getName() const -> std::string override
+    [[nodiscard]] auto getName() const -> std::string override
     {
         return pClusterDetails->getName();
     }
 
-    auto getClusterDetails() const -> std::shared_ptr<sClusterDetails> override
+    [[nodiscard]] auto getClusterDetails() const -> std::shared_ptr<sClusterDetails> override
     {
         return pClusterDetails;
     }
 
     void setConnection(const std::shared_ptr<void>& connection) override;
 
-    virtual void handleMessage(Message& message) override;
+    void handleMessage(Message& message) override;
 
-    virtual void sendMessage(Message& message) override;
+    void sendMessage(Message& message) override;
 
     auto isOnline() const -> bool override;
 
     // virtual here so that we can override this function for testing
-    virtual void queueMessage(const std::string& source,
-                              const std::shared_ptr<std::vector<uint8_t>>& data,
-                              uint32_t priority) override;
-
-    enum eRole
-    {
-        master,
-        fileDownload
-    };
+    void queueMessage(const std::string& source,
+                      const std::shared_ptr<std::vector<uint8_t>>& data,
+                      Message::Priority priority) override;
 
     // ICluster interface implementation
-    auto getRoleString() const -> std::string override
+    [[nodiscard]] auto getRoleString() const -> std::string override
     {
         return roleString;
     }
 
-    auto getRole() const -> int override
+    auto getRole() const -> eRole override
     {
-        return static_cast<int>(role);
+        return role;
     }
 
-    void close(bool bForce = false);
+    void close(bool bForce) override;
 
     // ICluster interface implementation
     void setClusterManager(const std::shared_ptr<void>& clusterManager) override;
@@ -96,11 +90,12 @@ public:
 protected:
     eRole role             = eRole::master;
     std::string roleString = "master";
-
-protected:
     std::shared_ptr<IApplication> app;
 
 private:
+    // Non-virtual cleanup method to avoid virtual dispatch during destruction
+    void cleanup();
+
     std::shared_ptr<sClusterDetails> pClusterDetails  = nullptr;
     std::shared_ptr<WsServer::Connection> pConnection = nullptr;
     std::shared_ptr<void> pClusterManager             = nullptr;  // void* to avoid circular dependency
@@ -110,9 +105,10 @@ private:
     mutable std::mutex dataCVMutex;
     bool dataReady{};
     std::condition_variable dataCV;
-    std::vector<
-        folly::ConcurrentHashMap<std::string,
-                                 std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>>
+    // Use std::map for priority queue
+    std::map<Message::Priority,
+             folly::ConcurrentHashMap<std::string,
+                                      std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>>
         queue;
 
     bool bRunning = true;
@@ -128,7 +124,7 @@ private:
     void pruneSources();
     void resendMessages();
 
-    auto doesHigherPriorityDataExist(uint64_t maxPriority) -> bool;
+    auto doesHigherPriorityDataExist(Message::Priority maxPriority) -> bool;
 
     void updateJob(Message& message);
 
@@ -155,10 +151,8 @@ private:
     EXPOSE_FUNCTION_FOR_TESTING(checkDeletingJobs);
 
     EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(handleMessage, Message&);
-    EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(doesHigherPriorityDataExist, uint64_t);
+    EXPOSE_FUNCTION_FOR_TESTING_ONE_PARAM(doesHigherPriorityDataExist, Message::Priority);
 };
-
-using namespace sqlpp;
 
 // Packet Queue is a:
 //  list of priorities - doesn't need any sync because it never changes
@@ -176,14 +170,12 @@ using namespace sqlpp;
 Cluster::Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IApplication> app)
     : pClusterDetails(std::move(details)), app(std::move(app))
 {
-    std::cout << "Cluster startup for role " << getRoleString() << std::endl;
-    // Create the list of priorities in order
-    for (auto i = static_cast<uint32_t>(Message::Priority::Highest);
-         i <= static_cast<uint32_t>(Message::Priority::Lowest);
-         i++)
-    {
-        queue.emplace_back();
-    }
+    std::cout << "Cluster startup for role " << roleString << '\n';
+
+    // Initialize queue for all priorities
+    queue[Message::Priority::Highest];
+    queue[Message::Priority::Medium];
+    queue[Message::Priority::Lowest];
 
     // Start the scheduler thread
     schedulerThread = std::jthread([this] {
@@ -192,11 +184,13 @@ Cluster::Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IAppl
 
     // Start the prune thread
     pruneThread = std::jthread([this] {
+        // NOLINTBEGIN(clang-analyzer-security.ArrayBound)
         this->pruneSources();
+        // NOLINTEND(clang-analyzer-security.ArrayBound)
     });
 
     // Start the resend thread if this is a master cluster
-    if (getRole() == eRole::master)
+    if (role == eRole::master)
     {
         resendThread = std::jthread([this] {
             this->resendMessages();
@@ -206,10 +200,16 @@ Cluster::Cluster(std::shared_ptr<sClusterDetails> details, std::shared_ptr<IAppl
 
 Cluster::~Cluster()
 {
-    stop();
+    // Call the non-virtual cleanup method directly to avoid virtual dispatch during destruction
+    cleanup();
 }
 
 void Cluster::stop()
+{
+    cleanup();
+}
+
+void Cluster::cleanup()
 {
     bRunning = false;
     interruptablePruneTimer.stop();
@@ -228,7 +228,7 @@ void Cluster::stop()
         pruneThread.join();
     }
 
-    if (getRole() == eRole::master && resendThread.joinable())
+    if (role == eRole::master && resendThread.joinable())
     {
         resendThread.join();
     }
@@ -256,14 +256,14 @@ void Cluster::handleMessage(Message& message)
             handleFileListError(message);
             break;
         default:
-            std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << std::endl;
+            std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << '\n';
     }
 }
 
 void Cluster::sendMessage(Message& message)
 {
     // Cluster is responsible for sending messages
-    queueMessage(message.getSource(), message.getData(), static_cast<uint32_t>(message.getPriority()));
+    queueMessage(message.getSource(), message.getData(), message.getPriority());
 }
 
 void Cluster::setClusterManager(const std::shared_ptr<void>& clusterManager)
@@ -278,7 +278,7 @@ void Cluster::setConnection(const std::shared_ptr<void>& connection)
 
     // Protect this block against race conditions. It's possible for pConnection to be
     // set to null in multiple threads.
-    std::unique_lock<std::mutex> closeLock(connectionMutex);
+    const std::unique_lock<std::mutex> closeLock(connectionMutex);
 
     this->pConnection = pCon;
 
@@ -297,14 +297,14 @@ void Cluster::setConnection(const std::shared_ptr<void>& connection)
 
 void Cluster::queueMessage(const std::string& source,
                            const std::shared_ptr<std::vector<uint8_t>>& pData,
-                           uint32_t priority)
+                           Message::Priority priority)
 {
-    // Get a pointer to the relevant map
+    // Get a pointer to the relevant map using priority mapping
     auto* pMap = &queue[priority];
 
     // Lock the access mutex to check if the source exists in the map
     {
-        std::shared_lock<std::shared_mutex> lock(mutex);
+        const std::shared_lock<std::shared_mutex> lock(mutex);
 
         // Make sure that this source exists in the map
         auto sQueue = std::make_shared<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>();
@@ -313,6 +313,7 @@ void Cluster::queueMessage(const std::string& source,
         pMap->try_emplace(source, sQueue);
 
         // Write the data in the queue
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         (*pMap)[source]->enqueue(pData);
 
         // Trigger the new data event to start sending
@@ -330,7 +331,7 @@ void Cluster::close(bool bForce)
 {
     // Protect this block against race conditions. It's possible for this function to be called from multiple threads
     // which can lead to segfaults without synchronising.
-    std::unique_lock<std::mutex> closeLock(connectionMutex);
+    const std::unique_lock<std::mutex> closeLock(connectionMutex);
 
     // Terminate the websocket connection
     if (pConnection)
@@ -347,7 +348,7 @@ void Cluster::close(bool bForce)
                 pConnection->send_close(1000, "Closing connection.");
             }
         }
-        catch (...)
+        catch (...)  // NOLINT(bugprone-empty-catch)
         {
             // It's possible that we try to ask the connection to close when it's already internally been closed. This
             // can lead to cases where std::runtime_error or other exceptions can be thrown. It's safe to ignore this
@@ -358,7 +359,7 @@ void Cluster::close(bool bForce)
 }
 
 void Cluster::run()
-{  // NOLINT(readability-function-cognitive-complexity)
+{
     // Iterate while running
     while (bRunning)
     {
@@ -376,24 +377,18 @@ void Cluster::run()
 
     reset:
 
-        // Iterate over the priorities
-        for (auto priority = queue.begin(); priority != queue.end(); priority++)
+        // Iterate over the priorities in order
+        for (const auto& [priority, pMap] : queue)
         {
-            // Get a pointer to the relevant map
-            auto* pMap = &(*priority);
-
-            // Get the current priority
-            auto currentPriority = priority - queue.begin();
-
             // While there is still data for this priority, send it
             bool hadData = false;
-            do
+            do  // NOLINT(cppcoreguidelines-avoid-do-while)
             {
                 hadData = false;
 
-                std::shared_lock<std::shared_mutex> lock(mutex);
+                const std::shared_lock<std::shared_mutex> lock(mutex);
                 // Iterate over the map
-                for (auto iter = pMap->begin(); iter != pMap->end(); ++iter)
+                for (auto iter = pMap.begin(); iter != pMap.end(); ++iter)
                 {
                     // Check if the vector for this source is empty
                     if (!(*iter).second->empty())
@@ -414,7 +409,7 @@ void Cluster::run()
 
                                 // Protect this block against race conditions. It's possible for pConnection to be
                                 // set to null in multiple threads.
-                                std::unique_lock<std::mutex> closeLock(connectionMutex);
+                                const std::unique_lock<std::mutex> closeLock(connectionMutex);
 
                                 // Send the message on the websocket
                                 if (pConnection != nullptr)
@@ -451,7 +446,7 @@ void Cluster::run()
                                 }
                                 else
                                 {
-                                    std::cout << "SCHED: Discarding packet because connection is closed" << std::endl;
+                                    std::cout << "SCHED: Discarding packet because connection is closed" << '\n';
                                 }
                             }
                         }
@@ -469,7 +464,7 @@ void Cluster::run()
                 }
 
                 // Check if there is higher priority data to send
-                if (doesHigherPriorityDataExist(currentPriority))
+                if (doesHigherPriorityDataExist(priority))
                 {
                     // Yes, so start the entire send process again
                     goto reset;  // NOLINT(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
@@ -485,31 +480,30 @@ void Cluster::run()
 void Cluster::pruneSources()
 {
     // Iterate every QUEUE_SOURCE_PRUNE_SECONDS seconds until the timer is cancelled or until we stop running
-    do
+    do  // NOLINT(cppcoreguidelines-avoid-do-while)
     {
         // Acquire the exclusive lock to prevent more data being pushed on while we are pruning
         {
-            std::unique_lock<std::shared_mutex> lock(mutex);
+            const std::unique_lock<std::shared_mutex> lock(mutex);
 
             // Iterate over the priorities
-            for (auto& priority : queue)
+            for (auto& [priority, pMap] : queue)
             {
-                // Get a pointer to the relevant map
-                auto* pMap = &priority;
-
                 // Iterate over the map
-                for (auto iter = pMap->begin(); iter != pMap->end();)
+                // NOLINTBEGIN(clang-analyzer-security.ArrayBound)
+                for (auto iter = pMap.begin(); iter != pMap.end();)
                 {
                     // Check if the vector for this source is empty
                     if ((*iter).second->empty())
                     {
                         // Remove this source from the map and continue
-                        iter = pMap->erase(iter);
+                        iter = pMap.erase(iter);
                         continue;
                     }
                     // Manually increment the iterator
                     ++iter;
                 }
+                // NOLINTEND(clang-analyzer-security.ArrayBound)
             }
         }
     }
@@ -534,27 +528,23 @@ void Cluster::resendMessages()
     }
 }
 
-auto Cluster::doesHigherPriorityDataExist(uint64_t maxPriority) -> bool
+auto Cluster::doesHigherPriorityDataExist(Message::Priority maxPriority) -> bool
 {
-    for (auto priority = queue.begin(); priority != queue.end(); priority++)
+    for (const auto& [priority, pMap] : queue)
     {
-        // Get a pointer to the relevant map
-        auto* pMap = &(*priority);
-
-        // Check if the current priority is greater or equal to max priority and return false if not.
-        auto currentPriority = priority - queue.begin();
-        if (currentPriority >= maxPriority)
+        // Only check priorities higher than maxPriority
+        if (static_cast<int>(priority) >= static_cast<int>(maxPriority))
         {
             return false;
         }
 
         // Iterate over the map
-        for (auto iter = pMap->begin(); iter != pMap->end();)
+        for (auto iter = pMap.begin(); iter != pMap.end();)
         {
             // Check if the vector for this source is empty
             if (!(*iter).second->empty())
             {
-                // It'iter not empty so data does exist
+                // Data exists
                 return true;
             }
 
@@ -578,18 +568,28 @@ void Cluster::updateJob(Message& message)
     auto database = MySqlConnector();
 
     // Get the tables
-    schema::JobserverJob jobTable;
-    schema::JobserverJobhistory jobHistoryTable;
+    const schema::JobserverJob jobTable;
+    const schema::JobserverJobhistory jobHistoryTable;
 
     // Todo: Verify the job id belongs to this cluster, and that the status is valid
 
     // Add the new job history record
-    database->run(insert_into(jobHistoryTable)
-                      .set(jobHistoryTable.jobId     = jobId,
-                           jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                           jobHistoryTable.what      = what,
-                           jobHistoryTable.state     = status,
-                           jobHistoryTable.details   = details));
+    try
+    {
+        [[maybe_unused]] auto result =
+            database->run(insert_into(jobHistoryTable)
+                              .set(jobHistoryTable.jobId     = jobId,
+                                   jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                   jobHistoryTable.what      = what,
+                                   jobHistoryTable.state     = status,
+                                   jobHistoryTable.details   = details));
+        // For insert operations, if we get here without exception, it succeeded
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "WARNING: DB - Failed to insert job history record for job " << jobId << " with status " << status
+                  << ": " << e.what() << '\n';
+    }
 
     // Check if this status update was the final job complete status, then try to cache the file list by listing the
     // files for the job. If for some reason this call fails internally (Maybe cluster is under load, or network issues)
@@ -617,6 +617,7 @@ void Cluster::updateJob(Message& message)
     }
 }
 
+namespace {
 auto getJobsByMostRecentStatus(const std::vector<uint32_t>& states, const std::string& cluster)
 {
     /*
@@ -628,8 +629,8 @@ auto getJobsByMostRecentStatus(const std::vector<uint32_t>& states, const std::s
     auto database = MySqlConnector();
 
     // Get the tables
-    schema::JobserverJob jobTable;
-    schema::JobserverJobhistory jobHistoryTable;
+    const schema::JobserverJob jobTable;
+    const schema::JobserverJobhistory jobHistoryTable;
 
     // Find any jobs with a state in states older than 60 seconds
     auto jobResults = database->run(
@@ -652,6 +653,7 @@ auto getJobsByMostRecentStatus(const std::vector<uint32_t>& states, const std::s
 
     return jobResults;
 }
+}  // namespace
 
 void Cluster::checkUnsubmittedJobs()
 {
@@ -663,17 +665,18 @@ void Cluster::checkUnsubmittedJobs()
 
     // Get all jobs where the most recent job history is
     // pending or submitting and is more than a minute old
-    auto states = std::vector<uint32_t>({static_cast<uint32_t>(PENDING), static_cast<uint32_t>(SUBMITTING)});
+    auto states = std::vector<uint32_t>(
+        {static_cast<uint32_t>(JobStatus::PENDING), static_cast<uint32_t>(JobStatus::SUBMITTING)});
 
     auto jobs = getJobsByMostRecentStatus(states, this->getName());
 
     auto database = MySqlConnector();
-    schema::JobserverJobhistory jobHistoryTable;
+    const schema::JobserverJobhistory jobHistoryTable;
 
     // Resubmit any jobs that matched
     for (const auto& job : jobs)
     {
-        std::cout << "Resubmitting: " << job.id << std::endl;
+        std::cout << "Resubmitting: " << job.id << '\n';
 
         // Submit the job to the cluster
         auto msg =
@@ -694,12 +697,22 @@ void Cluster::checkUnsubmittedJobs()
         if (static_cast<uint32_t>(dbHistory->state) == static_cast<uint32_t>(JobStatus::PENDING))
         {
             // The current state is pending for this job, so update the status to submitting
-            database->run(insert_into(jobHistoryTable)
-                              .set(jobHistoryTable.jobId     = job.id,
-                                   jobHistoryTable.timestamp = std::chrono::system_clock::now(),
-                                   jobHistoryTable.what      = SYSTEM_SOURCE,
-                                   jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::SUBMITTING),
-                                   jobHistoryTable.details   = "Job submitting"));
+            try
+            {
+                [[maybe_unused]] auto result =
+                    database->run(insert_into(jobHistoryTable)
+                                      .set(jobHistoryTable.jobId     = job.id,
+                                           jobHistoryTable.timestamp = std::chrono::system_clock::now(),
+                                           jobHistoryTable.what      = SYSTEM_SOURCE,
+                                           jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::SUBMITTING),
+                                           jobHistoryTable.details   = "Job submitting"));
+                // Insert succeeded if we get here without exception
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << "WARNING: DB - Failed to update job " << job.id
+                          << " status from PENDING to SUBMITTING: " << e.what() << '\n';
+            }
         }
     }
 }
@@ -714,14 +727,14 @@ void Cluster::checkCancellingJobs()
 
     // Get all jobs where the most recent job history is
     // deleting and is more than a minute old
-    auto states = std::vector<uint32_t>({static_cast<uint32_t>(CANCELLING)});
+    auto states = std::vector<uint32_t>({static_cast<uint32_t>(JobStatus::CANCELLING)});
 
     auto jobs = getJobsByMostRecentStatus(states, this->getName());
 
     // Resubmit any jobs that matched
     for (const auto& job : jobs)
     {
-        std::cout << "Recancelling: " << job.id << std::endl;
+        std::cout << "Recancelling: " << job.id << '\n';
 
         // Ask the cluster to cancel the job
         auto msg =
@@ -741,14 +754,14 @@ void Cluster::checkDeletingJobs()
 
     // Get all jobs where the most recent job history is
     // deleting and is more than a minute old
-    auto states = std::vector<uint32_t>({static_cast<uint32_t>(DELETING)});
+    auto states = std::vector<uint32_t>({static_cast<uint32_t>(JobStatus::DELETING)});
 
     auto jobs = getJobsByMostRecentStatus(states, this->getName());
 
     // Resubmit any jobs that matched
     for (const auto& job : jobs)
     {
-        std::cout << "Redeleting: " << job.id << std::endl;
+        std::cout << "Redeleting: " << job.id << '\n';
 
         // Ask the cluster to delete the job
         auto msg =
@@ -764,7 +777,7 @@ void Cluster::handleFileListError(Message& message)
     auto detail = message.pop_string();
 
     // Acquire the lock
-    std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
+    const std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
     // Check that the uuid is valid
     auto fileListMap = app->getFileListMap();
@@ -789,7 +802,7 @@ void Cluster::handleFileList(Message& message)
     auto uuid = message.pop_string();
 
     // Acquire the lock
-    std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
+    const std::unique_lock<std::mutex> fileListMapDeletionLock(app->getFileListMapDeletionLockMutex());
 
     // Check that the uuid is valid
     auto fileListMap = app->getFileListMap();
@@ -804,7 +817,7 @@ void Cluster::handleFileList(Message& message)
     auto numFiles = message.pop_uint();
 
     // Iterate over the files and add them to the file list map
-    for (auto i = 0; i < numFiles; i++)
+    for (auto i = 0U; i < numFiles; i++)
     {
         sFile file;
         // todo: Need to get file permissions

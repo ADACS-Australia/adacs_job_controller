@@ -7,6 +7,7 @@ module;
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -58,12 +59,30 @@ export constexpr uint32_t DB_BUNDLE_DELETE_JOB           = 8002;
 export class Message
 {
 public:
-    enum Priority
+    enum class Priority : std::uint8_t
     {
         Lowest  = 19,
         Medium  = 10,
         Highest = 0
     };
+
+    // Printable representation so Boost.Test can output Priority values
+    friend std::ostream& operator<<(std::ostream& os, const Priority& p)
+    {
+        switch (p)
+        {
+            case Priority::Highest:
+                os << "Highest";
+                break;
+            case Priority::Medium:
+                os << "Medium";
+                break;
+            case Priority::Lowest:
+                os << "Lowest";
+                break;
+        }
+        return os;
+    }
 
 #ifdef BUILD_TESTS
     explicit Message(uint32_t msgId) : index(0), id(msgId)
@@ -95,7 +114,7 @@ public:
         push_ubyte(value ? 1 : 0);
     }
 
-    auto pop_bool() -> bool
+    [[nodiscard]] auto pop_bool() -> bool
     {
         auto result = pop_ubyte();
         return result == 1;
@@ -106,9 +125,9 @@ public:
         data->push_back(value);
     }
 
-    auto pop_ubyte() -> uint8_t
+    [[nodiscard]] auto pop_ubyte() -> uint8_t
     {
-        auto result = (*data)[index++];
+        auto result = data->at(index++);
         return result;
     }
 
@@ -117,7 +136,7 @@ public:
         push_ubyte(static_cast<uint8_t>(value));
     }
 
-    auto pop_byte() -> int8_t
+    [[nodiscard]] auto pop_byte() -> int8_t
     {
         return static_cast<int8_t>(pop_ubyte());
     }
@@ -126,20 +145,20 @@ public:
     {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array)
+        for (const unsigned char nextbyte : data_array)
         {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_ushort() -> uint16_t
+    [[nodiscard]] auto pop_ushort() -> uint16_t
     {
         std::array<uint8_t, sizeof(uint16_t)> data_array{};
         for (auto i = 0; i < sizeof(uint16_t); i++)
         {
             data_array.at(i) = pop_ubyte();
         }
-        uint16_t result;
+        uint16_t result = 0;
         memcpy(&result, data_array.data(), sizeof(result));
         return result;
     }
@@ -148,20 +167,20 @@ public:
     {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array)
+        for (const unsigned char nextbyte : data_array)
         {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_short() -> int16_t
+    [[nodiscard]] auto pop_short() -> int16_t
     {
         std::array<uint8_t, sizeof(int16_t)> data_array{};
         for (auto i = 0; i < sizeof(int16_t); i++)
         {
             data_array.at(i) = pop_ubyte();
         }
-        int16_t result;
+        int16_t result = 0;
         memcpy(&result, data_array.data(), sizeof(result));
         return result;
     }
@@ -170,20 +189,20 @@ public:
     {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array)
+        for (const unsigned char nextbyte : data_array)
         {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_uint() -> uint32_t
+    [[nodiscard]] auto pop_uint() -> uint32_t
     {
         std::array<uint8_t, sizeof(uint32_t)> data_array{};
         for (auto i = 0; i < sizeof(uint32_t); i++)
         {
             data_array.at(i) = pop_ubyte();
         }
-        uint32_t result;
+        uint32_t result = 0;
         memcpy(&result, data_array.data(), sizeof(result));
         return result;
     }
@@ -192,20 +211,20 @@ public:
     {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array)
+        for (const unsigned char nextbyte : data_array)
         {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_int() -> int32_t
+    [[nodiscard]] auto pop_int() -> int32_t
     {
         std::array<uint8_t, sizeof(int32_t)> data_array{};
         for (auto i = 0; i < sizeof(int32_t); i++)
         {
             data_array.at(i) = pop_ubyte();
         }
-        int32_t result;
+        int32_t result = 0;
         memcpy(&result, data_array.data(), sizeof(result));
         return result;
     }
@@ -214,20 +233,20 @@ public:
     {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array)
+        for (const unsigned char nextbyte : data_array)
         {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_ulong() -> uint64_t
+    [[nodiscard]] auto pop_ulong() -> uint64_t
     {
         std::array<uint8_t, sizeof(uint64_t)> data_array{};
         for (auto i = 0; i < sizeof(uint64_t); i++)
         {
             data_array.at(i) = pop_ubyte();
         }
-        uint64_t result;
+        uint64_t result = 0;
         memcpy(&result, data_array.data(), sizeof(result));
         return result;
     }
@@ -236,20 +255,20 @@ public:
     {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array)
+        for (const unsigned char nextbyte : data_array)
         {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_long() -> int64_t
+    [[nodiscard]] auto pop_long() -> int64_t
     {
         std::array<uint8_t, sizeof(int64_t)> data_array{};
         for (auto i = 0; i < sizeof(int64_t); i++)
         {
             data_array.at(i) = pop_ubyte();
         }
-        int64_t result;
+        int64_t result = 0;
         memcpy(&result, data_array.data(), sizeof(result));
         return result;
     }
@@ -258,20 +277,20 @@ public:
     {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array)
+        for (const unsigned char nextbyte : data_array)
         {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_float() -> float
+    [[nodiscard]] auto pop_float() -> float
     {
         std::array<uint8_t, sizeof(float)> data_array{};
         for (auto i = 0; i < sizeof(float); i++)
         {
             data_array.at(i) = pop_ubyte();
         }
-        float result;
+        float result = 0.0F;
         memcpy(&result, data_array.data(), sizeof(result));
         return result;
     }
@@ -280,20 +299,20 @@ public:
     {
         std::array<uint8_t, sizeof(value)> data_array{};
         memcpy(data_array.data(), &value, sizeof(value));
-        for (unsigned char nextbyte : data_array)
+        for (const unsigned char nextbyte : data_array)
         {
             push_ubyte(nextbyte);
         }
     }
 
-    auto pop_double() -> double
+    [[nodiscard]] auto pop_double() -> double
     {
         std::array<uint8_t, sizeof(double)> data_array{};
         for (auto i = 0; i < sizeof(double); i++)
         {
             data_array.at(i) = pop_ubyte();
         }
-        double result;
+        double result = 0.0;
         memcpy(&result, data_array.data(), sizeof(result));
         return result;
     }
@@ -304,7 +323,7 @@ public:
         data->insert(data->end(), value.begin(), value.end());
     }
 
-    auto pop_string() -> std::string
+    [[nodiscard]] auto pop_string() -> std::string
     {
         auto result = pop_bytes();
         return {result.begin(), result.end()};
@@ -316,7 +335,7 @@ public:
         data->insert(data->end(), value.begin(), value.end());
     }
 
-    auto pop_bytes() -> std::vector<uint8_t>
+    [[nodiscard]] auto pop_bytes() -> std::vector<uint8_t>
     {
         auto len     = pop_ulong();
         auto result  = std::vector<uint8_t>(data->begin() + static_cast<int64_t>(index),

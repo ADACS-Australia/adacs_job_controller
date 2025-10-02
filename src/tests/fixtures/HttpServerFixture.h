@@ -97,7 +97,6 @@ struct HttpServerFixture
 
     HttpServerFixture()
     {
-        // NOLINTBEGIN(concurrency-mt-unsafe)
         // Set up the test server
         setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
         setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
@@ -105,7 +104,6 @@ struct HttpServerFixture
         application    = createApplication();
         clusterManager = application->getClusterManager();
         httpServer     = application->getHttpServer();
-        // NOLINTEND(concurrency-mt-unsafe)
 
         // Start the http server
         httpServer->start();
@@ -125,9 +123,8 @@ struct HttpServerFixture
     HttpServerFixture(HttpServerFixture&&)                         = delete;
     auto operator=(HttpServerFixture&&) -> HttpServerFixture&      = delete;
 
-    void setJwtSecret(auto secret)
+    void setJwtSecret(const auto& secret)
     {
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         auto timeNow = std::chrono::system_clock::now() + std::chrono::minutes{10};
         jwtToken     = {
             jwt::params::algorithm("HS256"),
@@ -139,7 +136,6 @@ struct HttpServerFixture
 
         // Since payload above only accepts string values, we need to set up any non-string values
         // separately
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         jwtToken.payload().add_claim("userId", 5);
     }
 };

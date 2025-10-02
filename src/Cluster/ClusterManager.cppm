@@ -29,9 +29,11 @@ import WebSocketServer;
 import Cluster;
 import GeneralUtils;
 
+namespace {
 // Define a mutex that can be used for safely removing entries from the mClusterPings map
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::mutex mClusterPingsDeletionLockMutex;
+}  // namespace
 
 export class ClusterManager : public IClusterManager
 {
@@ -42,9 +44,7 @@ public:
     void start() override;
     auto handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection,
                              const std::string& uuid) -> std::shared_ptr<ICluster> override;
-    void removeConnection(const std::shared_ptr<WsServer::Connection>& connection,
-                          bool close = true,
-                          bool lock  = true) override;
+    void removeConnection(const std::shared_ptr<WsServer::Connection>& connection, bool close, bool lock) override;
     void handlePong(const std::shared_ptr<WsServer::Connection>& connection) override;
     auto getCluster(const std::shared_ptr<WsServer::Connection>& connection) -> std::shared_ptr<ICluster> override;
     auto getCluster(const std::string& cluster) -> std::shared_ptr<ICluster> override;
@@ -52,7 +52,7 @@ public:
     void reportWebsocketError(const std::shared_ptr<ICluster>& cluster,
                               const boost::system::error_code& errorCode) override;
     auto createFileDownload(const std::shared_ptr<ICluster>& cluster,
-                            const std::string& uuid) -> std::shared_ptr<FileDownload> override;
+                            const std::string& uuid) -> std::shared_ptr<ICluster> override;
 
     struct sPingPongTimes
     {
@@ -144,7 +144,7 @@ void ClusterManager::reconnectClusters()
             auto database = MySqlConnector();
 
             // Get the tables
-            schema::JobserverClusteruuid clusterUuidTable;
+            const schema::JobserverClusteruuid clusterUuidTable;
 
             // todo: Delete any existing uuids for this cluster
 
@@ -155,10 +155,16 @@ void ClusterManager::reconnectClusters()
                 auto uuid = generateUUID();
 
                 // Insert the UUID in the database
-                database->run(insert_into(clusterUuidTable)
-                                  .set(clusterUuidTable.cluster   = cluster->getName(),
-                                       clusterUuidTable.uuid      = uuid,
-                                       clusterUuidTable.timestamp = std::chrono::system_clock::now()));
+                auto result = database->run(insert_into(clusterUuidTable)
+                                                .set(clusterUuidTable.cluster   = cluster->getName(),
+                                                     clusterUuidTable.uuid      = uuid,
+                                                     clusterUuidTable.timestamp = std::chrono::system_clock::now()));
+                if (result == 0)
+                {
+                    std::cerr << "WARNING: DB - Failed to insert cluster UUID for cluster " << cluster->getName()
+                              << '\n';
+                    continue;  // Skip this cluster and try the next one
+                }
 
                 // The insert was successful
 
@@ -204,18 +210,19 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
     }
 
     // Get the tables
-    schema::JobserverClusteruuid clusterUuidTable;
+    const schema::JobserverClusteruuid clusterUuidTable;
 
     // Create a database connection
     auto database = MySqlConnector();
 
     // First find any tokens older than CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS and delete them
-    database->run(
+    auto cleanupResult = database->run(
         remove_from(clusterUuidTable)
             .where(clusterUuidTable.timestamp <=
-                   std::chrono::system_clock::now() - std::chrono::seconds(CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS))
-
-    );
+                   std::chrono::system_clock::now() - std::chrono::seconds(CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS)));
+    // Note: For cleanup operations, we don't require a specific number of rows to be deleted
+    // as there might be zero or more expired tokens
+    (void)cleanupResult;  // Suppress unused variable warning
 
     // Now try to find the cluster for the connecting uuid
     auto uuidResults =
@@ -228,12 +235,14 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
     }
 
     // Get the cluster from the uuid
-    std::string sCluster = uuidResults.front().cluster;
+    const std::string sCluster = uuidResults.front().cluster;
 
     // Delete all records from the database for the provided cluster
-    database->run(remove_from(clusterUuidTable).where(clusterUuidTable.cluster == sCluster)
-
-    );
+    auto deleteResult = database->run(remove_from(clusterUuidTable).where(clusterUuidTable.cluster == sCluster));
+    if (deleteResult == 0)
+    {
+        std::cerr << "DB: Warning - No cluster UUID records found for cluster " << sCluster << " to delete.\n";
+    }
 
     // Get the cluster object from the string
     auto cluster = getCluster(sCluster);
@@ -256,7 +265,7 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
     auto concreteCluster           = std::static_pointer_cast<Cluster>(cluster);
     mConnectedClusters[connection] = concreteCluster;
     {
-        std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+        const std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
         mClusterPings[connection] = {};
     }
 
@@ -277,7 +286,7 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
     {
         pCluster->setConnection(nullptr);
 
-        if (pCluster->getRole() == Cluster::eRole::fileDownload)
+        if (pCluster->getRole() == eRole::fileDownload)
         {
             // Remove the specified connection from the connected file downloads
             mConnectedFileDownloads.erase(connection);
@@ -294,7 +303,7 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
     mConnectedClusters.erase(connection);
     if (lock)
     {
-        std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+        const std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
         mClusterPings.erase(connection);
     }
     else
@@ -315,9 +324,9 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
 void ClusterManager::handlePong(const std::shared_ptr<WsServer::Connection>& connection)
 {
     // Update the ping timer for this connection
-    std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+    const std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
 
-    if (mClusterPings.find(connection) != mClusterPings.end())
+    if (mClusterPings.contains(connection))
     {
         mClusterPings[connection].pongTimestamp = std::chrono::system_clock::now();
 
@@ -326,32 +335,28 @@ void ClusterManager::handlePong(const std::shared_ptr<WsServer::Connection>& con
         auto cluster = getCluster(connection);
 
         std::cout << "WS: Cluster " << std::string(cluster ? cluster->getName() : "unknown?") << " had "
-                  << std::chrono::duration_cast<std::chrono::milliseconds>(latency).count() << "ms latency."
-                  << std::endl;
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(latency).count() << "ms latency." << '\n';
     }
 }
 
 void ClusterManager::checkPings()
 {
-    std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+    const std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
 
     // Check for any websocket pings that didn't pong within CLUSTER_MANAGER_PING_INTERVAL_SECONDS, and kick the
     // connection if so
     typeof(mClusterPings) deadConnections;
-    std::copy_if(mClusterPings.begin(),
-                 mClusterPings.end(),
-                 std::inserter(deadConnections, deadConnections.end()),
-                 [](auto& item) {
-                     std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
-                     return (item.second.pingTimestamp != zeroTime && item.second.pongTimestamp == zeroTime);
-                 });
+    std::ranges::copy_if(mClusterPings, std::inserter(deadConnections, deadConnections.end()), [](const auto& item) {
+        const std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
+        return (item.second.pingTimestamp != zeroTime && item.second.pongTimestamp == zeroTime);
+    });
 
     // Close and remove any dead connections
     for (auto& deadConnection : deadConnections)
     {
         auto cluster = getCluster(deadConnection.first);
         std::cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "
-                  << "Error: Websocket timed out waiting for ping." << std::endl;
+                  << "Error: Websocket timed out waiting for ping." << '\n';
 
         removeConnection(deadConnection.first, true, false);
     }
@@ -387,13 +392,13 @@ void ClusterManager::reportWebsocketError(const std::shared_ptr<ICluster>& clust
 {
     // Log this
     std::cout << "WS: Error in connection with " << std::string(cluster ? cluster->getName() : "unknown?") << ". "
-              << "Error: " << errorCode << ", error message: " << errorCode.message() << std::endl;
+              << "Error: " << errorCode << ", error message: " << errorCode.message() << '\n';
 }
 
 auto ClusterManager::isClusterOnline(const std::shared_ptr<ICluster>& cluster) -> bool
 {
     // Check if any connected clusters matches the provided cluster
-    return std::any_of(mConnectedClusters.begin(), mConnectedClusters.end(), [cluster](auto other) {
+    return std::ranges::any_of(mConnectedClusters, [cluster](const auto& other) {
         return std::static_pointer_cast<ICluster>(other.second) == cluster;
     });
 }
@@ -433,19 +438,21 @@ auto ClusterManager::getCluster(const std::string& cluster) -> std::shared_ptr<I
 
 void ClusterManager::connectCluster(const std::shared_ptr<Cluster>& cluster, const std::string& token)
 {
-    std::cout << "Attempting to connect cluster " << cluster->getName() << " with token " << token << std::endl;
+    std::cout << "Attempting to connect cluster " << cluster->getName() << " with token " << token << '\n';
 #ifndef BUILD_TESTS
+    // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     boost::process::system("./utils/keyserver/venv/bin/python ./utils/keyserver/keyserver.py",
                            boost::process::env["SSH_HOST"]     = cluster->getClusterDetails()->getSshHost(),
                            boost::process::env["SSH_USERNAME"] = cluster->getClusterDetails()->getSshUsername(),
                            boost::process::env["SSH_KEY"]      = cluster->getClusterDetails()->getSshKey(),
                            boost::process::env["SSH_PATH"]     = cluster->getClusterDetails()->getSshPath(),
                            boost::process::env["SSH_TOKEN"]    = token);
+    // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 #endif
 }
 
 auto ClusterManager::createFileDownload(const std::shared_ptr<ICluster>& cluster,
-                                        const std::string& uuid) -> std::shared_ptr<FileDownload>
+                                        const std::string& uuid) -> std::shared_ptr<ICluster>
 {
     auto fileDownload = std::make_shared<FileDownload>(cluster->getClusterDetails(), uuid, this->app);
 

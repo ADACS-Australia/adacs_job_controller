@@ -65,7 +65,7 @@ printf "\n\n"
 gcovr \
   -r . \
   --object-directory build \
-  --gcov-executable "llvm-cov-18 gcov" \
+  --gcov-executable "llvm-cov-22 gcov" \
   --xml-pretty -o /test_report/coverage_docker.xml \
   -e "third_party/" \
   -e ".*/tests/.*" \
@@ -75,7 +75,7 @@ gcovr \
 gcovr \
   -r . \
   --object-directory build \
-  --gcov-executable "llvm-cov-18 gcov" \
+  --gcov-executable "llvm-cov-22 gcov" \
   --print-summary \
   -e "third_party/" \
   -e ".*/tests/.*" \

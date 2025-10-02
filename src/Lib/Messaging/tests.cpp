@@ -8,7 +8,7 @@
 
 import Message;
 import ICluster;
-// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
 
 BOOST_AUTO_TEST_SUITE(Message_test_suite)
 
@@ -16,19 +16,19 @@ BOOST_AUTO_TEST_SUITE(Message_test_suite)
 class TestCluster : public ICluster
 {
 public:
-    TestCluster() {}
+    TestCluster() = default;
 
     std::shared_ptr<std::vector<uint8_t>> vData;
     std::string sSource;
-    uint32_t ePriority = static_cast<uint32_t>(Message::Priority::Lowest);
+    Message::Priority priority = Message::Priority::Lowest;
 
     // ICluster interface implementation
-    auto getName() const -> std::string override
+    [[nodiscard]] auto getName() const -> std::string override
     {
         return "TestCluster";
     }
 
-    auto getClusterDetails() const -> std::shared_ptr<sClusterDetails> override
+    [[nodiscard]] auto getClusterDetails() const -> std::shared_ptr<sClusterDetails> override
     {
         return nullptr;
     }
@@ -39,41 +39,41 @@ public:
 
     void sendMessage(Message& message) override
     {
-        queueMessage(message.getSource(), message.getData(), static_cast<uint32_t>(message.getPriority()));
+        queueMessage(message.getSource(), message.getData(), message.getPriority());
     }
 
-    auto isOnline() const -> bool override
+    [[nodiscard]] auto isOnline() const -> bool override
     {
         return true;
     }
 
     void queueMessage(const std::string& source,
                       const std::shared_ptr<std::vector<uint8_t>>& data,
-                      uint32_t priority) override
+                      Message::Priority priority) override
     {
-        vData     = data;
-        sSource   = source;
-        ePriority = priority;
+        vData          = data;
+        sSource        = source;
+        this->priority = priority;
     }
 
     void stop() override {}
 
-    auto getRoleString() const -> std::string override
+    [[nodiscard]] auto getRoleString() const -> std::string override
     {
         return "test";
     }
 
-    auto getRole() const -> int override
+    [[nodiscard]] auto getRole() const -> eRole override
     {
-        return 0;
+        return eRole::master;
     }
 
-    void close(bool force = false) override {}
+    void close(bool force) override {}
 
     void setClusterManager(const std::shared_ptr<void>& clusterManager) override {}
 };
 
-const auto testCluster = std::make_shared<TestCluster>();  // NOLINT(cert-err58-cpp)
+const auto testCluster = std::make_shared<TestCluster>();
 
 BOOST_AUTO_TEST_CASE(test_message_attributes)
 {
@@ -84,7 +84,7 @@ BOOST_AUTO_TEST_CASE(test_message_attributes)
     msg = Message(*testCluster->vData);
 
     BOOST_CHECK_EQUAL(msg.getId(), 0);
-    BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Highest);
+    BOOST_CHECK_EQUAL(testCluster->priority, Message::Priority::Highest);
     BOOST_CHECK_EQUAL(testCluster->sSource, "test");
 
     msg = Message(101, Message::Priority::Highest, "test");
@@ -94,7 +94,7 @@ BOOST_AUTO_TEST_CASE(test_message_attributes)
     msg = Message(*testCluster->vData);
 
     BOOST_CHECK_EQUAL(msg.getId(), 101);
-    BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Highest);
+    BOOST_CHECK_EQUAL(testCluster->priority, Message::Priority::Highest);
     BOOST_CHECK_EQUAL(testCluster->sSource, "test");
 
     msg = Message(0, Message::Priority::Medium, "test");
@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(test_message_attributes)
     msg = Message(*testCluster->vData);
 
     BOOST_CHECK_EQUAL(msg.getId(), 0);
-    BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Medium);
+    BOOST_CHECK_EQUAL(testCluster->priority, Message::Priority::Medium);
     BOOST_CHECK_EQUAL(testCluster->sSource, "test");
 
     msg = Message(0, Message::Priority::Highest, "test_again");
@@ -114,7 +114,7 @@ BOOST_AUTO_TEST_CASE(test_message_attributes)
     msg = Message(*testCluster->vData);
 
     BOOST_CHECK_EQUAL(msg.getId(), 0);
-    BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Highest);
+    BOOST_CHECK_EQUAL(testCluster->priority, Message::Priority::Highest);
     BOOST_CHECK_EQUAL(testCluster->sSource, "test_again");
 
     msg = Message(123, Message::Priority::Lowest, "test_1");
@@ -124,7 +124,7 @@ BOOST_AUTO_TEST_CASE(test_message_attributes)
     msg = Message(*testCluster->vData);
 
     BOOST_CHECK_EQUAL(msg.getId(), 123);
-    BOOST_CHECK_EQUAL(testCluster->ePriority, Message::Priority::Lowest);
+    BOOST_CHECK_EQUAL(testCluster->priority, Message::Priority::Lowest);
     BOOST_CHECK_EQUAL(testCluster->sSource, "test_1");
 }
 
@@ -359,10 +359,12 @@ BOOST_AUTO_TEST_CASE(test_primitive_bytes)
     BOOST_CHECK_EQUAL_COLLECTIONS(data.begin(), data.end(), result.begin(), result.end());
 }
 
+namespace {
 auto get_millis() -> std::chrono::milliseconds
 {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
 }
+}  // namespace
 
 BOOST_AUTO_TEST_CASE(test_primitive_bytes_rate)
 {
@@ -407,7 +409,7 @@ BOOST_AUTO_TEST_CASE(test_primitive_bytes_rate)
     }
 
     std::cout << "Message raw bytes throughput 512b chunks Mb/s: " << static_cast<float>(counter) / 1024.F / 1024.F / 5
-              << std::endl;
+              << '\n';
 
     // Now try 1Mb chunks
     time_now  = get_millis();
@@ -434,9 +436,7 @@ BOOST_AUTO_TEST_CASE(test_primitive_bytes_rate)
     }
 
     std::cout << "Message raw bytes throughput 1Mb chunks Mb/s: " << static_cast<float>(counter) / 1024.F / 1024.F / 5
-              << std::endl;
+              << '\n';
 }
 
 BOOST_AUTO_TEST_SUITE_END()
-
-// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)

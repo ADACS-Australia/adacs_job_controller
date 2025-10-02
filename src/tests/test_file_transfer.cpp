@@ -20,25 +20,41 @@ import Message;
 import HttpServer;
 
 // TODO(lewis): parseLine and getCurrentMemoryUsage functions require a refactor
+namespace {
 auto parseLine(char* line) -> size_t
 {
     // This assumes that a digit will be found and the line ends in " Kb".
-    size_t lineLen  = strlen(line);
-    const char* ptr = line;
-    while (*ptr < '0' || *ptr > '9')
+    const std::string str(line);
+
+    // Find the first digit
+    auto firstDigit = str.find_first_of("0123456789");
+    if (firstDigit == std::string::npos)
     {
-        ptr++;
-    }  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    line[lineLen - 3] = '\0';            // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    lineLen           = std::atol(ptr);  // NOLINT(cert-err34-c)
-    return lineLen;
+        return 0;
+    }
+
+    // Extract substring from first digit, remove " Kb" suffix
+    auto numberStr = str.substr(firstDigit);
+    if (numberStr.size() >= 3)
+    {
+        numberStr = numberStr.substr(0, numberStr.size() - 3);
+    }
+
+    // Use strtoul for safer conversion
+    const char* endPtr = nullptr;
+    auto result        = std::strtoul(numberStr.c_str(), const_cast<char**>(&endPtr), 10);
+    return (endPtr != nullptr && *endPtr == '\0') ? result : 0;
 }
 
-// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 auto getCurrentMemoryUsage() -> size_t
 {
-    FILE* file    = fopen("/proc/self/status", "r");  // NOLINT(cppcoreguidelines-owning-memory)
-    size_t result = -1;
+    FILE* file = fopen("/proc/self/status", "r");
+    if (file == nullptr)
+    {
+        return 0;
+    }
+
+    size_t result = 0;
     std::array<char, 128> line{};
 
     while (fgets(line.data(), 128, file) != nullptr)
@@ -49,12 +65,10 @@ auto getCurrentMemoryUsage() -> size_t
             break;
         }
     }
-    fclose(file);  // NOLINT(cppcoreguidelines-owning-memory,cert-err33-c)
+    fclose(file);
     return result;
 }
-
-// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-
+}  // namespace
 
 struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture
 {
@@ -143,7 +157,7 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
         setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->back().secret());
 
         // Create params
-        nlohmann::json params = {
+        const nlohmann::json params = {
             {"jobId",              jobId},
             { "path", "/data/myfile.png"}
         };
@@ -158,15 +172,15 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
         nlohmann::json result;
         response->content >> result;
 
-        return {result["fileId"]};
+        return {result.at("fileId")};
     }
 
     static void sendMessage(Message* msg, const std::shared_ptr<TestWsClient::Connection>& connection)
     {
         auto message = std::make_shared<TestWsClient::OutMessage>(msg->getdata()->get()->size());
-        std::ostream_iterator<uint8_t> iter(*message);
+        const std::ostream_iterator<uint8_t> iter(*message);
         std::copy(msg->getdata()->get()->begin(), msg->getdata()->get()->end(), iter);
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         connection->send(message, nullptr, 130);
     }
 };
@@ -197,7 +211,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer)
             return;
         }
 
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         auto fileSize = randomInt(0, 1024ULL * 1024ULL);
         fileData.reserve(fileSize);
 
@@ -209,7 +223,6 @@ BOOST_AUTO_TEST_CASE(test_file_transfer)
 
         // Now send the file content in to chunks and send it to the client
         sendDataThread = std::jthread([this, connection, fileSize]() {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             auto CHUNK_SIZE = 1024 * 64;
 
             uint64_t bytesSent = 0;
@@ -243,7 +256,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer)
     // Create a file download ID
     auto fileId = requestFileDownloadId();
 
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     for (int i = 0; i < 5; i++)
     {
         // Try to download the file
@@ -264,7 +277,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer)
 }
 
 BOOST_AUTO_TEST_CASE(test_large_file_transfers)
-{  // NOLINT(readability-function-cognitive-complexity)
+{
     int pauseCount       = 0;
     int resumeCount      = 0;
     uint64_t fileSize    = 0;
@@ -293,7 +306,7 @@ BOOST_AUTO_TEST_CASE(test_large_file_transfers)
         }
 
         // Generate a file size between 512 and 1024Mb
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         fileSize = randomInt(1024ULL * 1024ULL * 512ULL, 1024ULL * 1024ULL * 1024ULL);
 
         // Send the file size to the server
@@ -308,7 +321,6 @@ BOOST_AUTO_TEST_CASE(test_large_file_transfers)
 
         // Now send the file content in to chunks and send it to the client
         sendDataThread = std::jthread([this, connection, fileSize]() {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             auto CHUNK_SIZE = 1024 * 64;
 
             auto data = std::vector<uint8_t>();
@@ -346,10 +358,10 @@ BOOST_AUTO_TEST_CASE(test_large_file_transfers)
     auto fileId = requestFileDownloadId();
 
     // Try to download the file
-    auto baselineMemUsage                         = static_cast<int64_t>(getCurrentMemoryUsage());
-    uint64_t totalBytesReceived                   = 0;
-    bool end                                      = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+    auto baselineMemUsage       = static_cast<int64_t>(getCurrentMemoryUsage());
+    uint64_t totalBytesReceived = 0;
+    bool end                    = false;
+
     httpClient.config.max_response_streambuf_size = static_cast<std::size_t>(1024 * 1024);
     httpClient.request("GET",
                        "/job/apiv1/file/?fileId=" + fileId,
@@ -364,7 +376,7 @@ BOOST_AUTO_TEST_CASE(test_large_file_transfers)
     while (!end)
     {
         auto memUsage = static_cast<int64_t>(getCurrentMemoryUsage());
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         if (memUsage - baselineMemUsage > static_cast<int64_t>(1024 * 200))
         {
             BOOST_ASSERT_MSG(false, "Maximum tolerable memory usage was exceeded");
@@ -377,7 +389,7 @@ BOOST_AUTO_TEST_CASE(test_large_file_transfers)
     BOOST_CHECK_EQUAL(fileSize, totalBytesReceived);
 
     std::cout << "Large file test complete. File size was " << fileSize << ". Pauses: " << pauseCount
-              << ", resumes: " << resumeCount << std::endl;
+              << ", resumes: " << resumeCount << '\n';
     BOOST_CHECK_EQUAL(pauseCount > 0, true);
     BOOST_CHECK_EQUAL(pauseCount, resumeCount);
 }
@@ -447,7 +459,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_data_timeout)
 {
     fileDownloadCallback = [&](const Message& /*msg*/, const std::shared_ptr<TestWsClient::Connection>& connection) {
         auto result = Message(FILE_DETAILS, Message::Priority::Lowest, "");
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         result.push_ulong(12345);
 
         sendMessage(&result, connection);
@@ -467,7 +479,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_websocket_connection_broken)
     fileDownloadCallback = [&](const Message& /*msg*/, const std::shared_ptr<TestWsClient::Connection>& connection) {
         {
             auto result = Message(FILE_DETAILS, Message::Priority::Lowest, "");
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
             result.push_ulong(12345);
 
             sendMessage(&result, connection);
@@ -479,7 +491,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_websocket_connection_broken)
             sendMessage(&result, connection);
         }
 
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         connection->close();
     };
@@ -494,7 +506,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_websocket_connection_broken)
 }
 
 BOOST_AUTO_TEST_CASE(test_file_transfer_http_connection_broken)
-{  // NOLINT(readability-function-cognitive-complexity)
+{
     bool bRunning        = true;
     fileDownloadCallback = [&, this](const Message& msg, const std::shared_ptr<TestWsClient::Connection>& connection) {
         // Check if this is a pause transfer message
@@ -516,7 +528,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_http_connection_broken)
             return;
         }
 
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
         auto fileSize = 1024ULL * 1024ULL * 1024ULL;
 
         // Send the file size to the server
@@ -531,7 +543,6 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_http_connection_broken)
 
         // Now send the file content in to chunks and send it to the client
         sendDataThread = std::jthread([this, connection, &bRunning]() {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             auto CHUNK_SIZE = 1024 * 64;
 
             auto data = std::vector<uint8_t>();
@@ -565,9 +576,9 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_http_connection_broken)
     auto fileId = requestFileDownloadId();
 
     // Try to download the file
-    uint64_t totalBytesReceived                   = 0;
-    bool end                                      = false;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+    uint64_t totalBytesReceived = 0;
+    bool end                    = false;
+
     httpClient.config.max_response_streambuf_size = static_cast<std::size_t>(1024 * 1024);
     httpClient.request("GET",
                        "/job/apiv1/file/?fileId=" + fileId,
@@ -575,7 +586,7 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_http_connection_broken)
                            totalBytesReceived += response->content.size();
                            end                 = response->content.end;
 
-                           // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
                            if (totalBytesReceived > 1024ULL * 1024ULL * 128ULL)
                            {
                                response->close();
@@ -596,16 +607,14 @@ BOOST_AUTO_TEST_CASE(test_file_transfer_http_connection_broken)
 
     // Wait until the connected clusters becomes empty again (Connection closed)
     int count = 0;
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
     for (;
          count < 10 && !std::static_pointer_cast<ClusterManager>(clusterManager)->getmConnectedFileDownloads()->empty();
          count++)
     {
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+
     if (count == 10)
     {
         BOOST_FAIL("Websocket connection didn't close when it should have.");

@@ -32,14 +32,18 @@ export struct sJwtSecret
 public:
     explicit sJwtSecret(nlohmann::json jToken)
     {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         nameValue   = jToken["name"];
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         secretValue = jToken["secret"];
 
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (const auto& application : jToken["applications"])
         {
             applicationsValue.push_back(application);
         }
 
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         for (const auto& cluster : jToken["clusters"])
         {
             clustersValue.push_back(cluster);
@@ -47,25 +51,25 @@ public:
     }
 
     // The name of this application
-    auto name() const -> const auto&
+    [[nodiscard]] auto name() const -> const auto&
     {
         return nameValue;
     }
 
     // The secret (JWT Secret) for this application
-    auto secret() const -> const auto&
+    [[nodiscard]] auto secret() const -> const auto&
     {
         return secretValue;
     }
 
     // The list of other applications that this application has access to (Jobs from these applications)
-    auto applications() const -> const auto&
+    [[nodiscard]] auto applications() const -> const auto&
     {
         return applicationsValue;
     }
 
     // The list of clusters this application can submit to
-    auto clusters() const -> const auto&
+    [[nodiscard]] auto clusters() const -> const auto&
     {
         return clustersValue;
     }
@@ -97,7 +101,9 @@ public:
     }
 
 private:
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     const nlohmann::json payloadValue;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
     const sJwtSecret& secretValue;
 };
 
@@ -109,7 +115,7 @@ public:
     void start() override;
     void stop() override;
     void join() override;
-    bool is_running() const override;
+    [[nodiscard]] bool is_running() const override;
 
     // No interface methods needed - endpoints are registered directly in Application
 
@@ -207,7 +213,7 @@ auto HttpServer::isAuthorized(SimpleWeb::CaseInsensitiveMultimap& headers) -> st
 
 // Interface method implementations
 
-bool HttpServer::is_running() const
+[[nodiscard]] bool HttpServer::is_running() const
 {
     return server_thread.joinable();
 }

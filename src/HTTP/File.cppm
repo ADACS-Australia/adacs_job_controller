@@ -34,8 +34,9 @@ import GeneralUtils;
 
 export module File;
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
-export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server, std::shared_ptr<IApplication> app)
+export void FileApi(const std::string& path,
+                    const std::shared_ptr<HttpServer>& server,
+                    const std::shared_ptr<IApplication>& app)
 {
     // Get      -> Download file (file uuid)
     // Post     -> Create new file download
@@ -77,8 +78,8 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                       std::back_inserter(applications));
 
             // Get the tables
-            schema::JobserverJob jobTable;
-            schema::JobserverFiledownload fileDownloadTable;
+            const schema::JobserverJob jobTable;
+            const schema::JobserverFiledownload fileDownloadTable;
 
             try
             {
@@ -86,6 +87,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                 nlohmann::json post_data;
                 request->content >> post_data;
 
+                // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 // Get the job to fetch files for if one was provided
                 auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data["jobId"]) : 0;
 
@@ -101,12 +103,14 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                 {
                     filePaths.push_back(std::string{post_data["path"]});
                 }
+                // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
                 // Check that there were actually file paths provided
                 if (filePaths.empty())
                 {
                     // Return an empty result, this is only possible when using "paths"
                     nlohmann::json result;
+                    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     result["fileIds"] = std::vector<std::string>();
 
                     SimpleWeb::CaseInsensitiveMultimap headers;
@@ -123,11 +127,10 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                 if (jobId != 0)
                 {
                     // Look up the job
-                    auto jobResults =
-                        database->run(select(all_of(jobTable))
-                                          .from(jobTable)
-                                          .where(jobTable.id == static_cast<uint64_t>(jobId) and
-                                                 jobTable.application.in(sqlpp::value_list(applications))));
+                    auto jobResults = database->run(
+                        select(all_of(jobTable))
+                            .from(jobTable)
+                            .where(jobTable.id == jobId and jobTable.application.in(sqlpp::value_list(applications))));
 
                     // Check that a job was actually found
                     if (jobResults.empty())
@@ -151,12 +154,14 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                             "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'");
                     }
 
+                    // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     sCluster = std::string{post_data["cluster"]};
                     sBundle  = std::string{post_data["bundle"]};
+                    // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
                     // Confirm that the current JWT secret can access the provided cluster
                     const auto& clusters = authResult->secret().clusters();
-                    if (std::find(clusters.begin(), clusters.end(), sCluster) == clusters.end())
+                    if (std::ranges::find(clusters, sCluster) == clusters.end())
                     {
                         throw std::runtime_error("Application " + authResult->secret().name() +
                                                  " does not have access to cluster " + sCluster);
@@ -184,6 +189,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                     uuids.push_back(uuid);
 
                     // Add the record to be inserted
+                    // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     insert_query.values.add(
                         fileDownloadTable.user    = static_cast<int>(authResult->payload()["userId"]),
                         fileDownloadTable.job     = static_cast<int>(jobId),
@@ -193,12 +199,18 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                         fileDownloadTable.path    = std::string(path),
                         fileDownloadTable.timestamp =
                             std::chrono::time_point_cast<std::chrono::microseconds>(std::chrono::system_clock::now()));
+                    // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 }
 
                 // Try inserting the values in the database
                 try
                 {
-                    database->run(insert_query);
+                    auto insertResult = database->run(insert_query);
+                    if (insertResult != filePaths.size())
+                    {
+                        std::cerr << "WARNING: DB - File download record insert mismatch, expected " << filePaths.size()
+                                  << " rows but got " << insertResult << '\n';
+                    }
 
                     // Commit the changes in the database
                     database->commit_transaction();
@@ -219,6 +231,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
 
                 // Report success
                 nlohmann::json result;
+                // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 if (hasPaths)
                 {
                     result["fileIds"] = uuids;
@@ -227,6 +240,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                 {
                     result["fileId"] = uuids[0];
                 }
+                // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
                 SimpleWeb::CaseInsensitiveMultimap headers;
                 headers.emplace("Content-Type", "application/json");
@@ -246,7 +260,6 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
         };
 
     // Download file
-    // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     server->getServer()
         .resource["^" + path + "$"]["GET"] = [clusterManager,
                                               app](const std::shared_ptr<HttpServerImpl::Response>& response,
@@ -255,8 +268,8 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
         auto database = MySqlConnector();
 
         // Get the tables
-        schema::JobserverJob jobTable;
-        schema::JobserverFiledownload fileDownloadTable;
+        const schema::JobserverJob jobTable;
+        const schema::JobserverFiledownload fileDownloadTable;
 
         // Create a new file download object
         std::string uuid;
@@ -289,11 +302,11 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
             }
 
             // Expire any old file downloads
-            database->run(remove_from(fileDownloadTable)
-                              .where(fileDownloadTable.timestamp <=
-                                     std::chrono::system_clock::now() - std::chrono::seconds(FILE_DOWNLOAD_EXPIRY_TIME))
-
-            );
+            // NOLINTNEXTLINE(bugprone-unused-return-value)
+            database->run(
+                remove_from(fileDownloadTable)
+                    .where(fileDownloadTable.timestamp <=
+                           std::chrono::system_clock::now() - std::chrono::seconds(FILE_DOWNLOAD_EXPIRY_TIME)));
 
             // Look up the file download
             auto dlResults = database->run(
@@ -336,7 +349,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
             uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
 
             // Create the file download object
-            fdObj = clusterManager->createFileDownload(cluster, uuid);
+            fdObj = std::static_pointer_cast<FileDownload>(clusterManager->createFileDownload(cluster, uuid));
 
             // Send a message to the client to initiate the file download
             auto msg = Message(DOWNLOAD_FILE, Message::Priority::Highest, uuid);
@@ -377,13 +390,14 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
 
             // Send the file size back to the client
             nlohmann::json result;
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
             result["fileId"] = uuid;
 
             SimpleWeb::CaseInsensitiveMultimap headers;
             headers.emplace("Content-Type", "application/octet-stream");
 
             // Get the filename from the download
-            boost::filesystem::path filePath(sFilePath);
+            const boost::filesystem::path filePath(sFilePath);
 
             // Check if we need to tell the browser to force the download
             if (forceDownload)
@@ -462,7 +476,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
 
                         {
                             // The Pause/Resume messages must be synchronized to avoid a deadlock
-                            std::unique_lock<std::mutex> fileDownloadPauseResumeLock(
+                            const std::unique_lock<std::mutex> fileDownloadPauseResumeLock(
                                 app->getFileDownloadPauseResumeLockMutex());
 
                             // Check if we need to resume the client file transfer
@@ -485,7 +499,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                 }
             }
 
-            fdObj->close();
+            fdObj->close(false);
         }
         catch (std::exception& e)
         {
@@ -505,8 +519,11 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                 response->close_connection_after_response = true;
                 response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
             }
-            catch (std::exception&)
-            {}
+            catch (std::exception& e)
+            {
+                // Ignore exceptions during connection cleanup
+                (void)e;
+            }
         }
     };
 
@@ -543,6 +560,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                 request->content >> post_data;
 
                 // Get the job to fetch files for if one was provided
+                // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                 auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data["jobId"]) : 0;
 
                 // Get the job to fetch files for
@@ -550,6 +568,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
 
                 // Get the path to the file to fetch (relative to the project)
                 auto filePath = std::string{post_data["path"]};
+                // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
                 if (jobId != 0)
                 {
@@ -573,8 +592,10 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
                             "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'");
                     }
 
+                    // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
                     auto sCluster = std::string{post_data["cluster"]};
                     auto sBundle  = std::string{post_data["bundle"]};
+                    // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
                     // Get the cluster to submit to
                     auto cluster = clusterManager->getCluster(sCluster);
@@ -586,7 +607,7 @@ export void FileApi(const std::string& path, std::shared_ptr<HttpServer> server,
 
                     // Confirm that the current JWT secret can access the provided cluster
                     const auto& clusters = authResult->secret().clusters();
-                    if (std::find(clusters.begin(), clusters.end(), sCluster) == clusters.end())
+                    if (std::ranges::find(clusters, sCluster) == clusters.end())
                     {
                         throw std::runtime_error("Application " + authResult->secret().name() +
                                                  " does not have access to cluster " + sCluster);

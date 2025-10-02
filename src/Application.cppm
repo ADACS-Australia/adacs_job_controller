@@ -31,7 +31,7 @@ private:
     std::shared_ptr<FileListMap> fileListMap;
     std::mutex fileDownloadPauseResumeLockMutex;
     std::mutex fileListMapDeletionLockMutex;
-    bool running;
+    bool running{false};
 
     // Server components
     std::shared_ptr<ClusterManager> clusterManager;
@@ -39,10 +39,16 @@ private:
     std::shared_ptr<IWebSocketServer> websocketServer;
 
 public:
-    Application() : running(false)
+    Application()
     {
         fileListMap = std::make_shared<FileListMap>();
     }
+
+    // Explicitly disable copy/move to follow rule of five
+    Application(const Application&)            = delete;
+    Application& operator=(const Application&) = delete;
+    Application(Application&&)                 = delete;
+    Application& operator=(Application&&)      = delete;
 
     void initializeComponents()
     {
@@ -79,13 +85,13 @@ public:
 
     void initialize() override
     {
-        std::cout << "Application initializing..." << std::endl;
+        std::cout << "Application initializing..." << '\n';
         running = true;
     }
 
     void shutdown() override
     {
-        std::cout << "Application shutting down..." << std::endl;
+        std::cout << "Application shutting down..." << '\n';
         running = false;
     }
 
@@ -111,7 +117,7 @@ public:
     }
 
     // Main application run method
-    void run()
+    void run() override
     {
         initialize();
 

@@ -3,6 +3,8 @@
 //
 
 module;
+#include <iostream>
+
 #include <sqlpp11/mysql/mysql.h>
 #include <sqlpp11/sqlpp11.h>
 
@@ -14,8 +16,6 @@ export module sClusterJobStatus;
 import Message;
 import sClusterJob;
 import MySqlConnector;
-
-using namespace sqlpp;
 
 export struct sClusterJobStatus
 {
@@ -55,7 +55,7 @@ export struct sClusterJobStatus
                                            const std::string& cluster) -> std::vector<sClusterJobStatus>
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjobstatus _jobStatusTable;
+        const schema::JobserverClusterjobstatus _jobStatusTable;
 
         // Check that a Cluster Job record really exists with the provided job id and cluster
         auto job = sClusterJob::getById(jobId, cluster);
@@ -82,7 +82,7 @@ export struct sClusterJobStatus
     static auto getJobStatusByJobId(uint64_t jobId, const std::string& cluster) -> std::vector<sClusterJobStatus>
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjobstatus _jobStatusTable;
+        const schema::JobserverClusterjobstatus _jobStatusTable;
 
         // Check that a Cluster Job record really exists with the provided job id and cluster
         auto job = sClusterJob::getById(jobId, cluster);
@@ -107,21 +107,26 @@ export struct sClusterJobStatus
     static void deleteByIdList(const std::vector<uint64_t>& ids, const std::string& cluster)
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjobstatus _jobStatusTable;
-        schema::JobserverClusterjob _jobTable;
+        const schema::JobserverClusterjobstatus _jobStatusTable;
+        const schema::JobserverClusterjob _jobTable;
 
         // Remove any records where the id is in "ids", and the job id is in any jobs which have the same cluster
-        _database->run(
+        auto result = _database->run(
             sqlpp::remove_from(_jobStatusTable)
                 .where(_jobStatusTable.id.in(sqlpp::value_list(ids)) and
                        _jobStatusTable.jobId.in(
                            sqlpp::select(_jobTable.id).from(_jobTable).where(_jobTable.cluster == cluster))));
+        if (result != ids.size())
+        {
+            std::cerr << "WARNING: DB - Failed to delete cluster job status records for cluster " << cluster
+                      << ", expected " << ids.size() << " rows but got " << result << '\n';
+        }
     }
 
     void save(const std::string& cluster)
     {
         auto _database = MySqlConnector();
-        schema::JobserverClusterjobstatus _jobStatusTable;
+        const schema::JobserverClusterjobstatus _jobStatusTable;
 
         // Check that a Cluster Job record really exists with the provided job id and cluster
         auto job = sClusterJob::getById(jobId, cluster);
@@ -133,10 +138,15 @@ export struct sClusterJobStatus
         if (id != 0)
         {
             // Update the record
-            _database->run(
+            auto result = _database->run(
                 sqlpp::update(_jobStatusTable)
                     .set(_jobStatusTable.jobId = jobId, _jobStatusTable.what = what, _jobStatusTable.state = state)
-                    .where(_jobStatusTable.id == static_cast<uint64_t>(id)));
+                    .where(_jobStatusTable.id == id));
+            if (result != 1)
+            {
+                std::cerr << "WARNING: DB - Failed to update cluster job status with id " << id
+                          << ", expected 1 row but got " << result << '\n';
+            }
         }
         else
         {

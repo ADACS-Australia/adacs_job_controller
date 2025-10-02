@@ -13,7 +13,7 @@
 
 struct sFile
 {
-    std::string fileName{};
+    std::string fileName;
     uint64_t fileSize    = 0;
     uint32_t permissions = 0;
     bool isDirectory     = false;

@@ -13,9 +13,6 @@ export module IHttpServer;
 
 import IServer;
 
-// Forward declarations
-class IApplication;
-
 export using HttpServerImpl = SimpleWeb::Server<SimpleWeb::HTTP>;
 
 export class IHttpServer : public IServer

@@ -24,8 +24,6 @@ import Cluster;
 import Message;
 import ClusterManager;
 
-// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
-
 struct BackgroundThreadsTestDataFixture : public DatabaseFixture, public WebSocketClientFixture
 {
     std::vector<std::vector<uint8_t>> receivedMessages;
@@ -44,7 +42,7 @@ struct BackgroundThreadsTestDataFixture : public DatabaseFixture, public WebSock
         // Parse the cluster configuration
         jsonClusters = nlohmann::json::parse(sClusters);
 
-        websocketClient->on_message = [&]([[maybe_unused]] auto connection, auto in_message) {
+        websocketClient->on_message = [&]([[maybe_unused]] const auto& connection, const auto& in_message) {
             onWebsocketMessage(in_message);
         };
 
@@ -60,19 +58,18 @@ struct BackgroundThreadsTestDataFixture : public DatabaseFixture, public WebSock
         // Wait for the client to connect
         while (!bReady)
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
-    void onWebsocketMessage(auto in_message)
+    void onWebsocketMessage(const auto& in_message)
     {
         auto data = in_message->string();
 
         // Don't parse the message if the ws connection is ready
         if (!bReady)
         {
-            Message msg(std::vector<uint8_t>(data.begin(), data.end()));
+            const Message msg(std::vector<uint8_t>(data.begin(), data.end()));
             if (msg.getId() == SERVER_READY)
             {
                 bReady = true;
@@ -94,6 +91,7 @@ BOOST_AUTO_TEST_CASE(test_UnsubmittedJobs_pending)
 
     // Test PENDING works as expected
 
+
     database->run(insert_into(jobHistoryTable)
                       .set(jobHistoryTable.jobId     = jobId,
                            jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
@@ -101,12 +99,12 @@ BOOST_AUTO_TEST_CASE(test_UnsubmittedJobs_pending)
                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::PENDING),
                            jobHistoryTable.details   = "Job pending"));
 
+
     for (auto i = 0; i < 5; i++)
     {
         // Wait until a websocket message is received
         while (receivedMessages.empty())
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -129,6 +127,7 @@ BOOST_AUTO_TEST_CASE(test_UnsubmittedJobs_submitting)
 
     // Test SUBMITTING works as expected
 
+
     database->run(insert_into(jobHistoryTable)
                       .set(jobHistoryTable.jobId     = jobId,
                            jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
@@ -136,12 +135,12 @@ BOOST_AUTO_TEST_CASE(test_UnsubmittedJobs_submitting)
                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::SUBMITTING),
                            jobHistoryTable.details   = "Job pending"));
 
+
     for (auto i = 0; i < 5; i++)
     {
         // Wait until a websocket message is received
         while (receivedMessages.empty())
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -164,6 +163,7 @@ BOOST_AUTO_TEST_CASE(test_CancellingJobs)
 
     // Test CANCELLING works as expected
 
+
     database->run(insert_into(jobHistoryTable)
                       .set(jobHistoryTable.jobId     = jobId,
                            jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
@@ -171,12 +171,12 @@ BOOST_AUTO_TEST_CASE(test_CancellingJobs)
                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::CANCELLING),
                            jobHistoryTable.details   = "Job cancelling"));
 
+
     for (auto i = 0; i < 5; i++)
     {
         // Wait until a websocket message is received
         while (receivedMessages.empty())
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -197,6 +197,7 @@ BOOST_AUTO_TEST_CASE(test_DeletingJobs)
 
     // Test DELETING works as expected
 
+
     database->run(insert_into(jobHistoryTable)
                       .set(jobHistoryTable.jobId     = jobId,
                            jobHistoryTable.timestamp = std::chrono::system_clock::now() - std::chrono::seconds{60},
@@ -204,12 +205,12 @@ BOOST_AUTO_TEST_CASE(test_DeletingJobs)
                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::DELETING),
                            jobHistoryTable.details   = "Job cancelling"));
 
+
     for (auto i = 0; i < 5; i++)
     {
         // Wait until a websocket message is received
         while (receivedMessages.empty())
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -234,7 +235,6 @@ BOOST_AUTO_TEST_CASE(test_PruneSources)
         while ((*onlineCluster->getqueue())[Message::Priority::Highest].find("tmp_data") !=
                (*onlineCluster->getqueue())[Message::Priority::Highest].end())
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
@@ -280,5 +280,3 @@ BOOST_AUTO_TEST_CASE(test_PruneSources)
     BOOST_CHECK_EQUAL(receivedMessages.size(), 5 * 4);
 }
 BOOST_AUTO_TEST_SUITE_END()
-
-// NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
