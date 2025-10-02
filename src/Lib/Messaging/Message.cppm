@@ -39,10 +39,9 @@ export constexpr uint32_t FILE_LIST_ERROR          = 4007;
 
 // File Upload messages
 export constexpr uint32_t UPLOAD_FILE = 4500;
-export constexpr uint32_t FILE_UPLOAD_DETAILS = 4501;
-export constexpr uint32_t FILE_UPLOAD_CHUNK = 4502;
-export constexpr uint32_t FILE_UPLOAD_ERROR = 4503;
-export constexpr uint32_t FILE_UPLOAD_COMPLETE = 4504;
+export constexpr uint32_t FILE_UPLOAD_CHUNK = 4501;
+export constexpr uint32_t FILE_UPLOAD_ERROR = 4502;
+export constexpr uint32_t FILE_UPLOAD_COMPLETE = 4503;
 
 // ClusterJob DB messages
 export constexpr uint32_t DB_JOB_GET_BY_JOB_ID    = 5000;

@@ -28,13 +28,11 @@ public:
     }
 
     void handleMessage(Message &message) override;
-    void handleFileUploadChunk(Message &message);
     void handleFileUploadError(Message &message);
     void handleFileUploadComplete(Message &message);
 
     // Upload state management
     uint64_t fileUploadFileSize = 0;
-    uint64_t fileUploadSentBytes = 0;  // Bytes sent to remote cluster
     bool fileUploadError = false;
     std::string fileUploadErrorDetails;
     bool fileUploadComplete = false;
@@ -52,16 +50,6 @@ private:
 FileUpload::FileUpload(const std::shared_ptr<sClusterDetails>& details, std::string uuid, std::shared_ptr<IApplication> app) : Cluster(details, std::move(app)), uuid(std::move(uuid)) {
     role = eRole::fileUpload;
     roleString = "file upload " + this->uuid;
-}
-
-void FileUpload::handleFileUploadChunk(Message &message) {
-    auto chunk = message.pop_bytes();
-
-    fileUploadSentBytes += chunk.size();
-
-    // Trigger the file transfer event
-    fileUploadDataReady = true;
-    fileUploadDataCV.notify_one();
 }
 
 void FileUpload::handleFileUploadError(Message &message) {
@@ -88,8 +76,10 @@ void FileUpload::handleMessage(Message &message) {
     auto msgId = message.getId();
 
     switch (msgId) {
-        case FILE_UPLOAD_CHUNK:
-            handleFileUploadChunk(message);
+        case SERVER_READY:
+            // Connection is established and ready to receive file data
+            fileUploadDataReady = true;
+            fileUploadDataCV.notify_one();
             break;
         case FILE_UPLOAD_ERROR:
             handleFileUploadError(message);
@@ -98,6 +88,7 @@ void FileUpload::handleMessage(Message &message) {
             handleFileUploadComplete(message);
             break;
         default:
-            std::cout << "Got invalid message ID " << msgId << " from " << this->getName() << '\n';
+            // Invalid message ID - ignore
+            break;
     }
 }

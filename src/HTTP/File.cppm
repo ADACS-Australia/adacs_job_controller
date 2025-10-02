@@ -207,12 +207,7 @@ export void FileApi(const std::string& path,
                 // Try inserting the values in the database
                 try
                 {
-                    auto insertResult = database->run(insert_query);
-                    if (insertResult != filePaths.size())
-                    {
-                        std::cerr << "WARNING: DB - File download record insert mismatch, expected " << filePaths.size()
-                                  << " rows but got " << insertResult << '\n';
-                    }
+                    [[maybe_unused]] auto insertResult = database->run(insert_query);
 
                     // Commit the changes in the database
                     database->commit_transaction();
@@ -534,6 +529,15 @@ export void FileApi(const std::string& path,
             const std::shared_ptr<HttpServerImpl::Response> &response,
             const std::shared_ptr<HttpServerImpl::Request> &request) {
 
+        // Helper lambda to send error responses consistently
+        auto sendError = [&response](SimpleWeb::StatusCode status, const std::string& errorMessage) {
+            nlohmann::json error_result;
+            error_result.emplace("error", errorMessage);
+            SimpleWeb::CaseInsensitiveMultimap headers;
+            headers.emplace("Content-Type", "application/json");
+            response->write(status, error_result.dump(), headers);
+        };
+
         // Verify that the user is authorized
         std::unique_ptr<sAuthorizationResult> authResult;
         try {
@@ -547,20 +551,28 @@ export void FileApi(const std::string& path,
         }
 
         try {
-            // Read the json from the post body
-            nlohmann::json post_data;
-            request->content >> post_data;
+            // Parse query parameters for job ID and target path
+            auto query_fields = request->parse_query_string();
 
             // Get the job to upload files for if one was provided
-            auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data.at("jobId")) : 0;
+            auto jobId = uint64_t{0};
+            auto jobIdPtr = query_fields.find("jobId");
+            if (jobIdPtr != query_fields.end()) {
+                jobId = std::stoull(jobIdPtr->second);
+            }
 
             // Get the target path for the file upload
-            auto targetPath = std::string{post_data.at("targetPath")};
+            auto targetPathPtr = query_fields.find("targetPath");
+            if (targetPathPtr == query_fields.end()) {
+                sendError(SimpleWeb::StatusCode::client_error_bad_request, "targetPath parameter is required");
+                return;
+            }
+            auto targetPath = std::string{targetPathPtr->second};
 
             // Get file size from Content-Length header
             auto contentLength = request->header.find("Content-Length");
             if (contentLength == request->header.end()) {
-                response->write(SimpleWeb::StatusCode::client_error_bad_request, "Content-Length required");
+                sendError(SimpleWeb::StatusCode::client_error_bad_request, "Content-Length header is required");
                 return;
             }
             const uint64_t fileSize = std::stoull(contentLength->second);
@@ -603,16 +615,18 @@ export void FileApi(const std::string& path,
                 sCluster = std::string{job->cluster};
                 sBundle = std::string{job->bundle};
             } else {
-                // A job ID was not provided, we need to use the cluster and bundle details from the json request
-                // Check that the bundle and cluster were provided in the POST json
-                if (!post_data.contains("cluster") || !post_data.contains("bundle")) {
+                // A job ID was not provided, we need to use the cluster and bundle details from query parameters
+                // Check that the bundle and cluster were provided in query parameters
+                auto clusterPtr = query_fields.find("cluster");
+                auto bundlePtr = query_fields.find("bundle");
+                if (clusterPtr == query_fields.end() || bundlePtr == query_fields.end()) {
                     throw std::runtime_error(
                             "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
                     );
                 }
 
-                sCluster = std::string{post_data.at("cluster")};
-                sBundle = std::string{post_data.at("bundle")};
+                sCluster = std::string{clusterPtr->second};
+                sBundle = std::string{bundlePtr->second};
 
                 // Confirm that the current JWT secret can access the provided cluster
                 const auto& clusters = authResult->secret().clusters();
@@ -630,7 +644,7 @@ export void FileApi(const std::string& path,
             }
 
             if (!cluster->isOnline()) {
-                response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
+                sendError(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote cluster is offline");
                 return;
             }
 
@@ -660,7 +674,7 @@ export void FileApi(const std::string& path,
 
             // Check if the remote cluster received an error about the upload
             if (fileUpload->fileUploadError) {
-                response->write(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
+                sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
                 return;
             }
 
@@ -670,15 +684,29 @@ export void FileApi(const std::string& path,
             uint64_t totalRead = 0;
 
             while (totalRead < fileSize) {
-                // Check if we should pause the source (HTTP reading)
-                {
-                    std::unique_lock<std::mutex> lock(fileUpload->fileUploadDataCVMutex);
-                    if ((fileUpload->fileUploadSentBytes + CHUNK_SIZE) - totalRead > MAX_FILE_BUFFER_SIZE) {
-                        // Wait for buffer to have space
-                        fileUpload->fileUploadDataCV.wait(lock, [&] {
-                            return (fileUpload->fileUploadSentBytes + CHUNK_SIZE) - totalRead <= MIN_FILE_BUFFER_SIZE;
-                        });
+                // Backpressure: wait if queue is getting too large
+                // Once we hit MAX threshold, wait until it drops below MIN threshold
+                if (fileUpload->getQueuedMessageSize() > static_cast<std::size_t>(MAX_FILE_BUFFER_SIZE)) {
+                    while (fileUpload->getQueuedMessageSize() > static_cast<std::size_t>(MIN_FILE_BUFFER_SIZE)) {
+                        // Check for client errors while waiting
+                        if (fileUpload->fileUploadError) {
+                            sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
+                            return;
+                        }
+                        
+                        // Wait for queue to drain below threshold
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     }
+                }
+                
+                // Check for client errors before sending more chunks
+                if (fileUpload->fileUploadError) {
+                    nlohmann::json error_result;
+                    error_result.emplace("error", fileUpload->fileUploadErrorDetails);
+                    SimpleWeb::CaseInsensitiveMultimap headers;
+                    headers.emplace("Content-Type", "application/json");
+                    response->write(SimpleWeb::StatusCode::client_error_bad_request, error_result.dump(), headers);
+                    return;
                 }
 
                 // Read chunk from HTTP request stream
@@ -693,24 +721,49 @@ export void FileApi(const std::string& path,
                 auto chunkData = std::vector<uint8_t>(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(chunkSize));
                 auto chunkMsg = Message(FILE_UPLOAD_CHUNK, Message::Priority::Lowest, uuid);
                 chunkMsg.push_bytes(chunkData);
-                cluster->sendMessage(chunkMsg);
+                fileUpload->sendMessage(chunkMsg);
 
                 totalRead += chunkSize;
-                fileUpload->fileUploadSentBytes += chunkSize;
+
+                // Check if client reported an error (e.g., disk full, permission denied)
+                if (fileUpload->fileUploadError) {
+                    sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
+                    return;
+                }
+            }
+
+            // Wait for the message queue to be completely empty before sending completion message
+            // This prevents the high-priority FILE_UPLOAD_COMPLETE from jumping ahead
+            // of the low-priority FILE_UPLOAD_CHUNK messages in the queue
+            while (fileUpload->getQueuedMessageSize() > 0) {
+                // Check if client reported an error while waiting
+                if (fileUpload->fileUploadError) {
+                    sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
+                    return;
+                }
+                
+                // Small sleep to avoid busy-waiting
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
 
             // Send completion message
             auto completeMsg = Message(FILE_UPLOAD_COMPLETE, Message::Priority::Highest, uuid);
-            cluster->sendMessage(completeMsg);
+            fileUpload->sendMessage(completeMsg);
 
             // Wait for completion confirmation
             {
                 std::unique_lock<std::mutex> lock(fileUpload->fileUploadDataCVMutex);
 
-                // Wait for completion
-                if (!fileUpload->fileUploadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fileUpload] { return fileUpload->fileUploadComplete; })) {
+                // Wait for completion or error
+                if (!fileUpload->fileUploadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fileUpload] { return fileUpload->fileUploadComplete || fileUpload->fileUploadError; })) {
                     throw std::runtime_error("Upload completion confirmation timeout");
                 }
+            }
+
+            // Check if there was an error after completion
+            if (fileUpload->fileUploadError) {
+                sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
+                return;
             }
 
             // Report success
@@ -725,9 +778,7 @@ export void FileApi(const std::string& path,
 
         } catch (std::exception& e) {
             dumpExceptions(e);
-
-            // Report bad request
-            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
+            sendError(SimpleWeb::StatusCode::client_error_bad_request, std::string("Bad request: ") + e.what());
         }
     };
 

@@ -67,8 +67,9 @@ gcovr \
   --object-directory build \
   --gcov-executable "llvm-cov-22 gcov" \
   --xml-pretty -o /test_report/coverage_docker.xml \
-  -e "third_party/" \
+  -e ".*/third_party/.*" \
   -e ".*/tests/.*" \
+  -e ".*/fixtures/.*" \
   -e ".*_tests\.cpp$" \
   -e ".*test_.*\.cpp$"
 
@@ -77,8 +78,9 @@ gcovr \
   --object-directory build \
   --gcov-executable "llvm-cov-22 gcov" \
   --print-summary \
-  -e "third_party/" \
+  -e ".*/third_party/.*" \
   -e ".*/tests/.*" \
+  -e ".*/fixtures/.*" \
   -e ".*_tests\.cpp$" \
   -e ".*test_.*\.cpp$"
 

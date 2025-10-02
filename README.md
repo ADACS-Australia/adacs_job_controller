@@ -76,6 +76,13 @@ You can run the generated `Boost_Tests_run` target which will execute the full t
 ./Boost_Tests_run
 ```
 
+For local development with test coverage reporting, use the `test-coverage.sh` script from the `src/build/` directory:
+
+```bash
+cd src/build
+../../scripts/test-coverage.sh
+```
+
 A comprehensive test suite (used by the CI) can be run by running `bash scripts/test.sh` from the repository root. This will report any test failures, and will also generate a code coverage report. To run valgrind on the project, another script exists `bash scripts/valgrind.sh` - you can expect this to take some time to run.
 
 Finally, to build the production docker asset, run `bash scripts/build.sh`, then push the docker image.

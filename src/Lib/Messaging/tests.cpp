@@ -55,6 +55,11 @@ public:
         sSource        = source;
         this->priority = priority;
     }
+    
+    [[nodiscard]] auto getQueuedMessageSize() const -> std::size_t override
+    {
+        return 0; // Mock implementation for tests
+    }
 
     void stop() override {}
 

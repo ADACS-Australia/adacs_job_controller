@@ -70,6 +70,8 @@ public:
     void queueMessage(const std::string& source,
                       const std::shared_ptr<std::vector<uint8_t>>& data,
                       Message::Priority priority) override;
+    
+    [[nodiscard]] auto getQueuedMessageSize() const -> std::size_t override;
 
     // ICluster interface implementation
     [[nodiscard]] auto getRoleString() const -> std::string override
@@ -110,6 +112,9 @@ private:
              folly::ConcurrentHashMap<std::string,
                                       std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>>
         queue;
+    
+    // Track total queued message size for backpressure management
+    mutable std::atomic<std::size_t> queuedMessageSize{0};
 
     bool bRunning = true;
     InterruptableTimer interruptableResendTimer;
@@ -315,11 +320,19 @@ void Cluster::queueMessage(const std::string& source,
         // Write the data in the queue
         // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         (*pMap)[source]->enqueue(pData);
+        
+        // Update queued message size counter
+        queuedMessageSize.fetch_add(pData->size(), std::memory_order_relaxed);
 
         // Trigger the new data event to start sending
         this->dataReady = true;
         dataCV.notify_one();
     }
+}
+
+auto Cluster::getQueuedMessageSize() const -> std::size_t
+{
+    return queuedMessageSize.load(std::memory_order_relaxed);
 }
 
 auto Cluster::isOnline() const -> bool
@@ -401,6 +414,9 @@ void Cluster::run()
                             // data should never be null as we're checking for empty
                             if (data)
                             {
+                                // Decrement queued message size counter
+                                queuedMessageSize.fetch_sub((*data)->size(), std::memory_order_relaxed);
+                                
                                 // Convert the message
                                 auto outMessage = std::make_shared<WsServer::OutMessage>((*data)->size());
                                 std::copy((*data)->begin(),

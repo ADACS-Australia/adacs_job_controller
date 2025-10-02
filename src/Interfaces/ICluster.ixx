@@ -98,6 +98,7 @@ public:
     virtual void queueMessage(const std::string& source,
                               const std::shared_ptr<std::vector<uint8_t>>& data,
                               Message::Priority priority) = 0;
+    [[nodiscard]] virtual auto getQueuedMessageSize() const -> std::size_t = 0;
 
     // Connection management
     virtual void setConnection(const std::shared_ptr<void>& connection) = 0;  // void* to avoid WebSocket dependency

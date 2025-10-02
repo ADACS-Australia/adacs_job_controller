@@ -24,11 +24,8 @@ public:
         config->port     = DATABASE_PORT;
 
         // Note: auto_reconnect was removed in SQLPP11 0.65+ as MySQL 8.0.34 deprecated MYSQL_OPT_RECONNECT
-#ifdef NDEBUG
+        // Disable MySQL debug logging for cleaner test output
         config->debug = false;
-#else
-        config->debug = true;
-#endif
         database = std::make_shared<mysql::connection>(config);
     }
 
