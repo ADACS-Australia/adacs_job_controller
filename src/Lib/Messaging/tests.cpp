@@ -56,9 +56,9 @@ public:
         this->priority = priority;
     }
     
-    [[nodiscard]] auto getQueuedMessageSize() const -> std::size_t override
+    auto waitForQueueDrain(bool waitForEmpty = false) -> bool override
     {
-        return 0; // Mock implementation for tests
+        return true; // Mock implementation for tests - always succeeds
     }
 
     void stop() override {}

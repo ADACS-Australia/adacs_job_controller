@@ -316,6 +316,18 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
 
             return;
         }
+        
+        if (pCluster->getRole() == eRole::fileUpload)
+        {
+            // Remove the specified connection from the connected file uploads
+            mConnectedFileUploads.erase(connection);
+
+            auto pFileUpload = std::static_pointer_cast<FileUpload>(pCluster);
+
+            fileUploadMap.erase(pFileUpload->getUuid());
+
+            return;
+        }
     }
 
     // Remove the specified connection from the connected clusters and clear the ping timer

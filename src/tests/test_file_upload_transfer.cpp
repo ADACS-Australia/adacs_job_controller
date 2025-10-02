@@ -487,4 +487,54 @@ BOOST_FIXTURE_TEST_SUITE(file_upload_transfer_test_suite, FileUploadTransferTest
         BOOST_CHECK_EQUAL(fileData.size(), 512); // Should have truncated data (less than the expected 1024 bytes)
     }
 
+    BOOST_AUTO_TEST_CASE(test_zero_byte_file_upload) {
+        fileUploadCallback = [&](Message& msg, const std::shared_ptr<TestWsClient::Connection>& connection) {
+            if (msg.getId() == SERVER_READY) {
+                sendMessage(&msg, connection);
+                return;
+            }
+            
+            if (msg.getId() == FILE_UPLOAD_COMPLETE) {
+                // For zero-byte file, we should get completion immediately without any chunks
+                handleFileUploadComplete(msg, connection);
+                return;
+            }
+            
+            // Should never receive FILE_UPLOAD_CHUNK for a zero-byte file
+            if (msg.getId() == FILE_UPLOAD_CHUNK) {
+                BOOST_FAIL("Received FILE_UPLOAD_CHUNK for zero-byte file");
+                return;
+            }
+            
+            BOOST_FAIL("Zero-byte upload client got unexpected message id " + std::to_string(msg.getId()));
+        };
+
+        this->startWebSocketClient();
+        readyPromise.get_future().wait();
+
+        // Set JWT secret for authentication
+        setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->back().secret());
+
+        // Upload a zero-byte file
+        std::string uploadUrl = "/job/apiv1/file/upload/?jobId=" + std::to_string(jobId) + "&targetPath=/data/empty.txt";
+        std::string emptyData = ""; // Zero bytes
+        auto response = httpClient.request("PUT", uploadUrl, emptyData,
+            {{"Authorization", jwtToken.signature()}, 
+             {"Content-Type", "application/octet-stream"}, 
+             {"Content-Length", "0"}});
+
+        // Check that the upload was successful
+        BOOST_CHECK_EQUAL(std::stoi(response->status_code), 200);
+        
+        auto result = nlohmann::json::parse(response->content.string());
+        BOOST_CHECK(result.contains("uploadId"));
+        BOOST_CHECK_EQUAL(result["status"], "completed");
+
+        // Verify no data was received (zero-byte file)
+        BOOST_CHECK_EQUAL(fileData.size(), 0);
+        
+        websocketFileUploadClient->stop();
+        fileUploadThread->join();
+    }
+
 BOOST_AUTO_TEST_SUITE_END()

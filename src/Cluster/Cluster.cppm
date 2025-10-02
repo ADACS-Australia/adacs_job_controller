@@ -71,7 +71,7 @@ public:
                       const std::shared_ptr<std::vector<uint8_t>>& data,
                       Message::Priority priority) override;
     
-    [[nodiscard]] auto getQueuedMessageSize() const -> std::size_t override;
+    auto waitForQueueDrain(bool waitForEmpty = false) -> bool override;
 
     // ICluster interface implementation
     [[nodiscard]] auto getRoleString() const -> std::string override
@@ -115,6 +115,8 @@ private:
     
     // Track total queued message size for backpressure management
     mutable std::atomic<std::size_t> queuedMessageSize{0};
+    mutable std::mutex queueSizeCVMutex;
+    std::condition_variable queueSizeCV;
 
     bool bRunning = true;
     InterruptableTimer interruptableResendTimer;
@@ -330,9 +332,36 @@ void Cluster::queueMessage(const std::string& source,
     }
 }
 
-auto Cluster::getQueuedMessageSize() const -> std::size_t
+auto Cluster::waitForQueueDrain(bool waitForEmpty) -> bool
 {
-    return queuedMessageSize.load(std::memory_order_relaxed);
+    auto currentSize = queuedMessageSize.load(std::memory_order_relaxed);
+    
+    if (waitForEmpty) {
+        // Wait until queue is completely empty (for message ordering)
+        if (currentSize == 0) {
+            return true; // Already empty
+        }
+        
+        std::unique_lock<std::mutex> lock(queueSizeCVMutex);
+        return queueSizeCV.wait_for(
+            lock,
+            std::chrono::seconds(CLIENT_TIMEOUT_SECONDS),
+            [this] { return queuedMessageSize.load(std::memory_order_relaxed) == 0; }
+        );
+    }
+    
+    // Backpressure management: Only wait if queue exceeds MAX threshold
+    if (currentSize <= static_cast<std::size_t>(MAX_FILE_BUFFER_SIZE)) {
+        return true; // Queue is fine, no need to wait
+    }
+    
+    // Queue is too large, wait for it to drain below MIN threshold
+    std::unique_lock<std::mutex> lock(queueSizeCVMutex);
+    return queueSizeCV.wait_for(
+        lock,
+        std::chrono::seconds(CLIENT_TIMEOUT_SECONDS),
+        [this] { return queuedMessageSize.load(std::memory_order_relaxed) <= static_cast<std::size_t>(MIN_FILE_BUFFER_SIZE); }
+    );
 }
 
 auto Cluster::isOnline() const -> bool
@@ -416,6 +445,9 @@ void Cluster::run()
                             {
                                 // Decrement queued message size counter
                                 queuedMessageSize.fetch_sub((*data)->size(), std::memory_order_relaxed);
+                                
+                                // Notify anyone waiting on queue size changes (for backpressure)
+                                queueSizeCV.notify_all();
                                 
                                 // Convert the message
                                 auto outMessage = std::make_shared<WsServer::OutMessage>((*data)->size());

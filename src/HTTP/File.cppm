@@ -685,27 +685,17 @@ export void FileApi(const std::string& path,
 
             while (totalRead < fileSize) {
                 // Backpressure: wait if queue is getting too large
-                // Once we hit MAX threshold, wait until it drops below MIN threshold
-                if (fileUpload->getQueuedMessageSize() > static_cast<std::size_t>(MAX_FILE_BUFFER_SIZE)) {
-                    while (fileUpload->getQueuedMessageSize() > static_cast<std::size_t>(MIN_FILE_BUFFER_SIZE)) {
-                        // Check for client errors while waiting
-                        if (fileUpload->fileUploadError) {
-                            sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
-                            return;
-                        }
-                        
-                        // Wait for queue to drain below threshold
-                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                    }
+                // This will wait if queue exceeds MAX threshold until it drops below MIN threshold
+                if (!fileUpload->waitForQueueDrain()) {
+                    throw std::runtime_error("Timeout waiting for queue to drain during upload");
                 }
                 
-                // Check for client errors before sending more chunks
+                // Best-effort check for client errors before sending more chunks
+                // Note: This is not synchronized - it's just an optimization to avoid sending
+                // more chunks if we already know there's an error. A few extra chunks may be
+                // sent, which is fine as the remote WebSocket will drop them anyway.
                 if (fileUpload->fileUploadError) {
-                    nlohmann::json error_result;
-                    error_result.emplace("error", fileUpload->fileUploadErrorDetails);
-                    SimpleWeb::CaseInsensitiveMultimap headers;
-                    headers.emplace("Content-Type", "application/json");
-                    response->write(SimpleWeb::StatusCode::client_error_bad_request, error_result.dump(), headers);
+                    sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
                     return;
                 }
 
@@ -724,26 +714,19 @@ export void FileApi(const std::string& path,
                 fileUpload->sendMessage(chunkMsg);
 
                 totalRead += chunkSize;
-
-                // Check if client reported an error (e.g., disk full, permission denied)
-                if (fileUpload->fileUploadError) {
-                    sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
-                    return;
-                }
             }
 
             // Wait for the message queue to be completely empty before sending completion message
             // This prevents the high-priority FILE_UPLOAD_COMPLETE from jumping ahead
             // of the low-priority FILE_UPLOAD_CHUNK messages in the queue
-            while (fileUpload->getQueuedMessageSize() > 0) {
-                // Check if client reported an error while waiting
-                if (fileUpload->fileUploadError) {
-                    sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
-                    return;
-                }
-                
-                // Small sleep to avoid busy-waiting
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (!fileUpload->waitForQueueDrain(true)) {
+                throw std::runtime_error("Timeout waiting for queue to empty before sending completion");
+            }
+            
+            // Final best-effort error check before sending completion
+            if (fileUpload->fileUploadError) {
+                sendError(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
+                return;
             }
 
             // Send completion message
