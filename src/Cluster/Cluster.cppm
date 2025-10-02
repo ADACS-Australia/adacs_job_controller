@@ -587,8 +587,8 @@ void Cluster::updateJob(Message& message)
     }
     catch (const std::exception& e)
     {
-        std::cerr << "Failed to insert job history record for job " << jobId << " with status " << status << ": "
-                  << e.what() << '\n';
+        std::cerr << "WARNING: DB - Failed to insert job history record for job " << jobId << " with status " << status
+                  << ": " << e.what() << '\n';
     }
 
     // Check if this status update was the final job complete status, then try to cache the file list by listing the
@@ -710,8 +710,8 @@ void Cluster::checkUnsubmittedJobs()
             }
             catch (const std::exception& e)
             {
-                std::cerr << "Failed to update job " << job.id << " status from PENDING to SUBMITTING: " << e.what()
-                          << '\n';
+                std::cerr << "WARNING: DB - Failed to update job " << job.id
+                          << " status from PENDING to SUBMITTING: " << e.what() << '\n';
             }
         }
     }

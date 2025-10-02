@@ -208,8 +208,8 @@ export void FileApi(const std::string& path,
                     auto insertResult = database->run(insert_query);
                     if (insertResult != filePaths.size())
                     {
-                        std::cerr << "DB: File download record insert mismatch. Expected " << filePaths.size()
-                                  << " rows affected, got " << insertResult << ".\n";
+                        std::cerr << "WARNING: DB - File download record insert mismatch, expected " << filePaths.size()
+                                  << " rows but got " << insertResult << '\n';
                     }
 
                     // Commit the changes in the database

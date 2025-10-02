@@ -161,8 +161,8 @@ void ClusterManager::reconnectClusters()
                                                      clusterUuidTable.timestamp = std::chrono::system_clock::now()));
                 if (result == 0)
                 {
-                    std::cerr << "Warning: Failed to insert cluster UUID for cluster " << cluster->getName()
-                              << " - got ID " << result << '\n';
+                    std::cerr << "WARNING: DB - Failed to insert cluster UUID for cluster " << cluster->getName()
+                              << '\n';
                     continue;  // Skip this cluster and try the next one
                 }
 

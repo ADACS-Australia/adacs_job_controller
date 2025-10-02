@@ -163,8 +163,7 @@ export void JobApi(const std::string& path,
                                            jobHistoryTable.details   = "Job pending"));
                 if (pendingResult == 0)
                 {
-                    std::cerr << "Warning: Failed to insert job history record (PENDING) - got ID "
-                              << pendingResult << '\n';
+                    std::cerr << "WARNING: DB - Failed to insert job history record (PENDING)\n";
                 }
 
                 // Tell the client to submit the job if it's online
@@ -190,8 +189,7 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.details   = "Job submitting"));
                     if (submittingResult == 0)
                     {
-                        std::cerr << "Warning: Failed to insert job history record (SUBMITTING) - got ID "
-                                  << submittingResult << '\n';
+                        std::cerr << "WARNING: DB - Failed to insert job history record (SUBMITTING)\n";
                     }
                 }
 
@@ -432,8 +430,7 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.details   = "Job cancelled"));
                     if (cancelledResult == 0)
                     {
-                        std::cerr << "Warning: Failed to insert job history record (CANCELLED) - got ID "
-                                  << cancelledResult << '\n';
+                        std::cerr << "WARNING: DB - Failed to insert job history record (CANCELLED)\n";
                     }
                 }
                 else
@@ -448,8 +445,7 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.details   = "Job cancelling"));
                     if (cancellingResult == 0)
                     {
-                        std::cerr << "Warning: Failed to insert job history record (CANCELLING) - got ID "
-                                  << cancellingResult << '\n';
+                        std::cerr << "WARNING: DB - Failed to insert job history record (CANCELLING)\n";
                     }
 
                     // Tell the client to cancel the job if it's online
@@ -605,8 +601,7 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.details   = "Job deleted"));
                     if (deletedResult == 0)
                     {
-                        std::cerr << "Warning: Failed to insert job history record (DELETED) - got ID "
-                                  << deletedResult << '\n';
+                        std::cerr << "WARNING: DB - Failed to insert job history record (DELETED)\n";
                     }
                 }
                 else
@@ -621,8 +616,7 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.details   = "Job deleting"));
                     if (deletingResult == 0)
                     {
-                        std::cerr << "Warning: Failed to insert job history record (DELETING) - got ID "
-                                  << deletingResult << '\n';
+                        std::cerr << "WARNING: DB - Failed to insert job history record (DELETING)\n";
                     }
 
                     // Tell the client to delete the job if it's online

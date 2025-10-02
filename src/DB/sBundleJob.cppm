@@ -76,8 +76,8 @@ export struct sBundleJob
                                                 _bundleJobTable.bundleHash == bundleHash));
         if (result != 1)
         {
-            std::cerr << "DB: Failed to delete bundle job with id " << id << " for cluster " << cluster
-                      << " and bundleHash " << bundleHash << ". Expected 1 row affected, got " << result << ".\n";
+            std::cerr << "WARNING: DB - Failed to delete bundle job with id " << id << " for cluster " << cluster
+                      << " and bundleHash " << bundleHash << ", expected 1 row but got " << result << '\n';
         }
     }
 
@@ -99,8 +99,8 @@ export struct sBundleJob
                                                     _bundleJobTable.bundleHash == bundleHash));
             if (result != 1)
             {
-                std::cerr << "DB: Failed to update bundle job with id " << id << " for cluster " << cluster
-                          << " and bundleHash " << bundleHash << ". Expected 1 row affected, got " << result << ".\n";
+                std::cerr << "WARNING: DB - Failed to update bundle job with id " << id << " for cluster " << cluster
+                          << " and bundleHash " << bundleHash << ", expected 1 row but got " << result << '\n';
             }
         }
         else

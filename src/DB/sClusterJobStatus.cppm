@@ -118,8 +118,8 @@ export struct sClusterJobStatus
                            sqlpp::select(_jobTable.id).from(_jobTable).where(_jobTable.cluster == cluster))));
         if (result != ids.size())
         {
-            std::cerr << "DB: Failed to delete cluster job status records for cluster " << cluster << ". Expected "
-                      << ids.size() << " rows affected, got " << result << ".\n";
+            std::cerr << "WARNING: DB - Failed to delete cluster job status records for cluster " << cluster
+                      << ", expected " << ids.size() << " rows but got " << result << '\n';
         }
     }
 
@@ -144,8 +144,8 @@ export struct sClusterJobStatus
                     .where(_jobStatusTable.id == id));
             if (result != 1)
             {
-                std::cerr << "DB: Failed to update cluster job status with id " << id
-                          << ". Expected 1 row affected, got " << result << ".\n";
+                std::cerr << "WARNING: DB - Failed to update cluster job status with id " << id
+                          << ", expected 1 row but got " << result << '\n';
             }
         }
         else
