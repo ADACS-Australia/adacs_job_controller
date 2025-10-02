@@ -6,6 +6,7 @@ module;
 #include <iostream>
 #include <shared_mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <boost/concept_check.hpp>
@@ -70,8 +71,8 @@ public:
     void queueMessage(const std::string& source,
                       const std::shared_ptr<std::vector<uint8_t>>& data,
                       Message::Priority priority) override;
-    
-    auto waitForQueueDrain(bool waitForEmpty = false) -> bool override;
+
+    auto waitForQueueDrain(bool waitForEmpty) -> bool override;
 
     // ICluster interface implementation
     [[nodiscard]] auto getRoleString() const -> std::string override
@@ -112,7 +113,7 @@ private:
              folly::ConcurrentHashMap<std::string,
                                       std::shared_ptr<folly::UMPSCQueue<std::shared_ptr<std::vector<uint8_t>>, false>>>>
         queue;
-    
+
     // Track total queued message size for backpressure management
     mutable std::atomic<std::size_t> queuedMessageSize{0};
     mutable std::mutex queueSizeCVMutex;
@@ -322,7 +323,7 @@ void Cluster::queueMessage(const std::string& source,
         // Write the data in the queue
         // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
         (*pMap)[source]->enqueue(pData);
-        
+
         // Update queued message size counter
         queuedMessageSize.fetch_add(pData->size(), std::memory_order_relaxed);
 
@@ -335,33 +336,32 @@ void Cluster::queueMessage(const std::string& source,
 auto Cluster::waitForQueueDrain(bool waitForEmpty) -> bool
 {
     auto currentSize = queuedMessageSize.load(std::memory_order_relaxed);
-    
-    if (waitForEmpty) {
+
+    if (waitForEmpty)
+    {
         // Wait until queue is completely empty (for message ordering)
-        if (currentSize == 0) {
-            return true; // Already empty
+        if (currentSize == 0)
+        {
+            return true;  // Already empty
         }
-        
+
         std::unique_lock<std::mutex> lock(queueSizeCVMutex);
-        return queueSizeCV.wait_for(
-            lock,
-            std::chrono::seconds(CLIENT_TIMEOUT_SECONDS),
-            [this] { return queuedMessageSize.load(std::memory_order_relaxed) == 0; }
-        );
+        return queueSizeCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [this] {
+            return queuedMessageSize.load(std::memory_order_relaxed) == 0;
+        });
     }
-    
+
     // Backpressure management: Only wait if queue exceeds MAX threshold
-    if (currentSize <= static_cast<std::size_t>(MAX_FILE_BUFFER_SIZE)) {
-        return true; // Queue is fine, no need to wait
+    if (std::cmp_less_equal(currentSize, MAX_FILE_BUFFER_SIZE))
+    {
+        return true;  // Queue is fine, no need to wait
     }
-    
+
     // Queue is too large, wait for it to drain below MIN threshold
     std::unique_lock<std::mutex> lock(queueSizeCVMutex);
-    return queueSizeCV.wait_for(
-        lock,
-        std::chrono::seconds(CLIENT_TIMEOUT_SECONDS),
-        [this] { return queuedMessageSize.load(std::memory_order_relaxed) <= static_cast<std::size_t>(MIN_FILE_BUFFER_SIZE); }
-    );
+    return queueSizeCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [this] {
+        return std::cmp_less_equal(queuedMessageSize.load(std::memory_order_relaxed), MIN_FILE_BUFFER_SIZE);
+    });
 }
 
 auto Cluster::isOnline() const -> bool
@@ -445,10 +445,10 @@ void Cluster::run()
                             {
                                 // Decrement queued message size counter
                                 queuedMessageSize.fetch_sub((*data)->size(), std::memory_order_relaxed);
-                                
+
                                 // Notify anyone waiting on queue size changes (for backpressure)
                                 queueSizeCV.notify_all();
-                                
+
                                 // Convert the message
                                 auto outMessage = std::make_shared<WsServer::OutMessage>((*data)->size());
                                 std::copy((*data)->begin(),

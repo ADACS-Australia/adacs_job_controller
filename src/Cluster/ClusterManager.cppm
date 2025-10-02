@@ -54,7 +54,8 @@ public:
                               const boost::system::error_code& errorCode) override;
     auto createFileDownload(const std::shared_ptr<ICluster>& cluster,
                             const std::string& uuid) -> std::shared_ptr<ICluster> override;
-    auto createFileUpload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid) -> std::shared_ptr<ICluster> override;
+    auto createFileUpload(const std::shared_ptr<ICluster>& cluster,
+                          const std::string& uuid) -> std::shared_ptr<ICluster> override;
 
     struct sPingPongTimes
     {
@@ -217,8 +218,9 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
 
     // Check if this uuid is an expected file upload uuid
     auto fuIter = fileUploadMap.find(uuid);
-    if (fuIter != fileUploadMap.end()) {
-        auto cluster = fuIter->second;
+    if (fuIter != fileUploadMap.end())
+    {
+        auto cluster                      = fuIter->second;
         // This connection is for a file upload
         mConnectedFileUploads[connection] = cluster;
 
@@ -316,7 +318,7 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
 
             return;
         }
-        
+
         if (pCluster->getRole() == eRole::fileUpload)
         {
             // Remove the specified connection from the connected file uploads
@@ -449,7 +451,8 @@ auto ClusterManager::getCluster(const std::shared_ptr<WsServer::Connection>& con
     auto resultFileUpload = mConnectedFileUploads.find(connection);
 
     // Return the file upload if the connection was found
-    if (resultFileUpload != mConnectedFileUploads.end()) {
+    if (resultFileUpload != mConnectedFileUploads.end())
+    {
         return resultFileUpload->second;
     }
 
@@ -501,7 +504,9 @@ auto ClusterManager::createFileDownload(const std::shared_ptr<ICluster>& cluster
     return fileDownload;
 }
 
-auto ClusterManager::createFileUpload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid) -> std::shared_ptr<ICluster> {
+auto ClusterManager::createFileUpload(const std::shared_ptr<ICluster>& cluster,
+                                      const std::string& uuid) -> std::shared_ptr<ICluster>
+{
     auto fileUpload = std::make_shared<FileUpload>(cluster->getClusterDetails(), uuid, this->app);
 
     // Add the file upload to the file upload map

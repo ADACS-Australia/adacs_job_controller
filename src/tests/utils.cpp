@@ -53,29 +53,37 @@ auto generateRandomData(uint32_t count) -> std::shared_ptr<std::vector<uint8_t>>
 }
 
 // TODO(lewis): parseLine and getCurrentMemoryUsage functions require a refactor
-auto parseLine(char* line) -> size_t{
+auto parseLine(char* line) -> size_t
+{
     // This assumes that a digit will be found and the line ends in " Kb".
-    size_t lineLen = strlen(line);
+    size_t lineLen  = strlen(line);
     const char* ptr = line;
-    while (*ptr < '0' || *ptr > '9') { ptr++; } // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    line[lineLen - 3] = '\0'; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    lineLen = std::atol(ptr); // NOLINT(cert-err34-c)
+    while (*ptr < '0' || *ptr > '9')
+    {
+        ptr++;
+    }  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+    line[lineLen - 3] = '\0';            // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+    lineLen           = std::atol(ptr);  // NOLINT(cert-err34-c)
     return lineLen;
 }
 
 // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-auto getCurrentMemoryUsage() -> size_t {
-    FILE* file = fopen("/proc/self/status", "r"); // NOLINT(cppcoreguidelines-owning-memory)
+auto getCurrentMemoryUsage() -> size_t
+{
+    FILE* file    = fopen("/proc/self/status", "r");  // NOLINT(cppcoreguidelines-owning-memory)
     size_t result = -1;
     std::array<char, 128> line{};
 
-    while (fgets(line.data(), 128, file) != nullptr){
-        if (strncmp(line.data(), "VmRSS:", 6) == 0){
+    while (fgets(line.data(), 128, file) != nullptr)
+    {
+        if (strncmp(line.data(), "VmRSS:", 6) == 0)
+        {
             result = parseLine(line.data());
             break;
         }
     }
-    fclose(file); // NOLINT(cppcoreguidelines-owning-memory,cert-err33-c)
+    fclose(file);  // NOLINT(cppcoreguidelines-owning-memory,cert-err33-c)
     return result;
 }
+
 // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)

@@ -127,9 +127,10 @@ struct HttpServerFixture
     void setJwtSecret(const auto& secret)
     {
         auto timeNow = std::chrono::system_clock::now() + std::chrono::minutes{10};
-        jwtToken = {
+        jwtToken     = {
             jwt::params::algorithm("HS256"),
-            jwt::params::payload({{"userName", "User"}}),
+            jwt::params::payload({{"userName", "User"}}
+            ),
             jwt::params::secret(secret)
         };
         jwtToken.add_claim("exp", timeNow);

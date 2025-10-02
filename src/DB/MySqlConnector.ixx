@@ -26,7 +26,7 @@ public:
         // Note: auto_reconnect was removed in SQLPP11 0.65+ as MySQL 8.0.34 deprecated MYSQL_OPT_RECONNECT
         // Disable MySQL debug logging for cleaner test output
         config->debug = false;
-        database = std::make_shared<mysql::connection>(config);
+        database      = std::make_shared<mysql::connection>(config);
     }
 
     virtual ~MySqlConnector()                                = default;

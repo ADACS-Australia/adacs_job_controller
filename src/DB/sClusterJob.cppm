@@ -120,17 +120,18 @@ export struct sClusterJob
         if (id != 0)
         {
             // Update the record
-            [[maybe_unused]] auto result = _database->run(sqlpp::update(_jobTable)
-                                             .set(_jobTable.jobId            = jobId,
-                                                  _jobTable.schedulerId      = schedulerId,
-                                                  _jobTable.submitting       = submitting ? 1 : 0,
-                                                  _jobTable.submittingCount  = submittingCount,
-                                                  _jobTable.bundleHash       = bundleHash,
-                                                  _jobTable.workingDirectory = workingDirectory,
-                                                  _jobTable.running          = running ? 1 : 0,
-                                                  _jobTable.deleting         = deleting ? 1 : 0,
-                                                  _jobTable.deleted          = deleted ? 1 : 0)
-                                             .where(_jobTable.id == id and _jobTable.cluster == cluster));
+            [[maybe_unused]] auto result =
+                _database->run(sqlpp::update(_jobTable)
+                                   .set(_jobTable.jobId            = jobId,
+                                        _jobTable.schedulerId      = schedulerId,
+                                        _jobTable.submitting       = submitting ? 1 : 0,
+                                        _jobTable.submittingCount  = submittingCount,
+                                        _jobTable.bundleHash       = bundleHash,
+                                        _jobTable.workingDirectory = workingDirectory,
+                                        _jobTable.running          = running ? 1 : 0,
+                                        _jobTable.deleting         = deleting ? 1 : 0,
+                                        _jobTable.deleted          = deleted ? 1 : 0)
+                                   .where(_jobTable.id == id and _jobTable.cluster == cluster));
         }
         else
         {

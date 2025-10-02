@@ -71,9 +71,10 @@ export struct sBundleJob
         // This function will raise if a job is not found
         sBundleJob::getById(id, cluster, bundleHash);
 
-        [[maybe_unused]] auto result = _database->run(sqlpp::remove_from(_bundleJobTable)
-                                         .where(_bundleJobTable.id == id and _bundleJobTable.cluster == cluster and
-                                                _bundleJobTable.bundleHash == bundleHash));
+        [[maybe_unused]] auto result =
+            _database->run(sqlpp::remove_from(_bundleJobTable)
+                               .where(_bundleJobTable.id == id and _bundleJobTable.cluster == cluster and
+                                      _bundleJobTable.bundleHash == bundleHash));
     }
 
     void save(const std::string& cluster, const std::string& bundleHash)
@@ -88,10 +89,11 @@ export struct sBundleJob
             sBundleJob::getById(id, cluster, bundleHash);
 
             // Update the record
-            [[maybe_unused]] auto result = _database->run(sqlpp::update(_bundleJobTable)
-                                             .set(_bundleJobTable.content = content)
-                                             .where(_bundleJobTable.id == id and _bundleJobTable.cluster == cluster and
-                                                    _bundleJobTable.bundleHash == bundleHash));
+            [[maybe_unused]] auto result =
+                _database->run(sqlpp::update(_bundleJobTable)
+                                   .set(_bundleJobTable.content = content)
+                                   .where(_bundleJobTable.id == id and _bundleJobTable.cluster == cluster and
+                                          _bundleJobTable.bundleHash == bundleHash));
         }
         else
         {
