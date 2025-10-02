@@ -161,9 +161,9 @@ export void JobApi(const std::string& path,
                                            jobHistoryTable.what      = SYSTEM_SOURCE,
                                            jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::PENDING),
                                            jobHistoryTable.details   = "Job pending"));
-                if (pendingResult != 1)
+                if (pendingResult == 0)
                 {
-                    std::cerr << "Warning: Expected to insert 1 job history record (PENDING), but inserted "
+                    std::cerr << "Warning: Failed to insert job history record (PENDING) - got ID "
                               << pendingResult << '\n';
                 }
 
@@ -188,9 +188,9 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.what      = SYSTEM_SOURCE,
                                                jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::SUBMITTING),
                                                jobHistoryTable.details   = "Job submitting"));
-                    if (submittingResult != 1)
+                    if (submittingResult == 0)
                     {
-                        std::cerr << "Warning: Expected to insert 1 job history record (SUBMITTING), but inserted "
+                        std::cerr << "Warning: Failed to insert job history record (SUBMITTING) - got ID "
                                   << submittingResult << '\n';
                     }
                 }
@@ -430,9 +430,9 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.what      = SYSTEM_SOURCE,
                                                jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::CANCELLED),
                                                jobHistoryTable.details   = "Job cancelled"));
-                    if (cancelledResult != 1)
+                    if (cancelledResult == 0)
                     {
-                        std::cerr << "Warning: Expected to insert 1 job history record (CANCELLED), but inserted "
+                        std::cerr << "Warning: Failed to insert job history record (CANCELLED) - got ID "
                                   << cancelledResult << '\n';
                     }
                 }
@@ -446,9 +446,9 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.what      = SYSTEM_SOURCE,
                                                jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::CANCELLING),
                                                jobHistoryTable.details   = "Job cancelling"));
-                    if (cancellingResult != 1)
+                    if (cancellingResult == 0)
                     {
-                        std::cerr << "Warning: Expected to insert 1 job history record (CANCELLING), but inserted "
+                        std::cerr << "Warning: Failed to insert job history record (CANCELLING) - got ID "
                                   << cancellingResult << '\n';
                     }
 
@@ -603,9 +603,9 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.what      = SYSTEM_SOURCE,
                                                jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::DELETED),
                                                jobHistoryTable.details   = "Job deleted"));
-                    if (deletedResult != 1)
+                    if (deletedResult == 0)
                     {
-                        std::cerr << "Warning: Expected to insert 1 job history record (DELETED), but inserted "
+                        std::cerr << "Warning: Failed to insert job history record (DELETED) - got ID "
                                   << deletedResult << '\n';
                     }
                 }
@@ -619,9 +619,9 @@ export void JobApi(const std::string& path,
                                                jobHistoryTable.what      = SYSTEM_SOURCE,
                                                jobHistoryTable.state     = static_cast<uint32_t>(JobStatus::DELETING),
                                                jobHistoryTable.details   = "Job deleting"));
-                    if (deletingResult != 1)
+                    if (deletingResult == 0)
                     {
-                        std::cerr << "Warning: Expected to insert 1 job history record (DELETING), but inserted "
+                        std::cerr << "Warning: Failed to insert job history record (DELETING) - got ID "
                                   << deletingResult << '\n';
                     }
 

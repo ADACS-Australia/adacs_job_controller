@@ -316,11 +316,20 @@ void handleFileList(const std::shared_ptr<IApplication>& app,
                 // or API at the same time)
                 database->start_transaction();
 
-                // Insert the records
+                // Insert the records  
                 const auto insertCount = database->run(insert_query);
-                if (insertCount == 0)
+                // Count how many files should have been cached (only complete jobs)
+                size_t expectedInserts = 0;
+                for (const auto& file : flObj->files)
                 {
-                    std::cout << "Warning: File list cache insert query affected 0 rows for job " << jobId << '\n';
+                    if (jobComplete)
+                        expectedInserts++;
+                }
+                
+                if (insertCount != expectedInserts)
+                {
+                    std::cout << "Warning: File list cache insert mismatch for job " << jobId 
+                              << ". Expected " << expectedInserts << " rows, got " << insertCount << '\n';
                 }
 
                 // Commit the changes in the database
