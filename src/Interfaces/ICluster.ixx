@@ -66,7 +66,8 @@ private:
 export enum class eRole : std::uint8_t
 {
     master,
-    fileDownload
+    fileDownload,
+    fileUpload
 };
 
 // Interface for cluster operations

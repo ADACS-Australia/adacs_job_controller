@@ -37,6 +37,8 @@ export constexpr const char* BUNDLE_HTTPS_PORT = ":443";
 export const int MAX_FILE_BUFFER_SIZE = std::stoi(GET_ENV("MAX_FILE_BUFFER_SIZE", std::to_string(1024 * 1024 * 50)));
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const int MIN_FILE_BUFFER_SIZE = std::stoi(GET_ENV("MIN_FILE_BUFFER_SIZE", std::to_string(1024 * 1024 * 10)));
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
+export const int FILE_CHUNK_SIZE = std::stoi(GET_ENV("FILE_CHUNK_SIZE", std::to_string(1024 * 64)));
 
 export constexpr const uint32_t QUEUE_SOURCE_PRUNE_MILLISECONDS        = 60000;
 export constexpr uint32_t CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS = 60000;
@@ -48,6 +50,7 @@ export constexpr const char* BUNDLE_HTTPS_PORT = ":23457";
 // Override buffer sizes for tests
 export const int MAX_FILE_BUFFER_SIZE = 1024 * 1024 * 4;
 export const int MIN_FILE_BUFFER_SIZE = 1024 * 1024 * 1;
+export const int FILE_CHUNK_SIZE = 1024 * 64;
 
 export constexpr uint32_t QUEUE_SOURCE_PRUNE_MILLISECONDS              = 500;
 export constexpr uint32_t CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS = 500;

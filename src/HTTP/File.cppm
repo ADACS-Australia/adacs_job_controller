@@ -3,6 +3,7 @@
 //
 
 module;
+#include <algorithm>
 #include <chrono>
 #include <future>
 #include <iomanip>
@@ -24,6 +25,7 @@ import MySqlConnector;
 import IClusterManager;
 import ICluster;
 import FileDownload;
+import FileUpload;
 import jobserver_schema;
 import Message;
 import settings;
@@ -524,6 +526,208 @@ export void FileApi(const std::string& path,
                 // Ignore exceptions during connection cleanup
                 (void)e;
             }
+        }
+    };
+
+    // File Upload endpoint
+    server->getServer().resource["^" + path + "upload/$"]["PUT"] = [server, clusterManager](
+            const std::shared_ptr<HttpServerImpl::Response> &response,
+            const std::shared_ptr<HttpServerImpl::Request> &request) {
+
+        // Verify that the user is authorized
+        std::unique_ptr<sAuthorizationResult> authResult;
+        try {
+            authResult = server->isAuthorized(request->header);
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
+            // Invalid request
+            response->write(SimpleWeb::StatusCode::client_error_forbidden, "Not authorized");
+            return;
+        }
+
+        try {
+            // Read the json from the post body
+            nlohmann::json post_data;
+            request->content >> post_data;
+
+            // Get the job to upload files for if one was provided
+            auto jobId = post_data.contains("jobId") ? static_cast<uint64_t>(post_data.at("jobId")) : 0;
+
+            // Get the target path for the file upload
+            auto targetPath = std::string{post_data.at("targetPath")};
+
+            // Get file size from Content-Length header
+            auto contentLength = request->header.find("Content-Length");
+            if (contentLength == request->header.end()) {
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, "Content-Length required");
+                return;
+            }
+            const uint64_t fileSize = std::stoull(contentLength->second);
+
+            auto sCluster = std::string{};
+            auto sBundle = std::string{};
+
+            // If a job ID was provided, fetch the cluster and bundle details from that job
+            if (jobId != 0) {
+                // Create a database connection
+                auto database = MySqlConnector();
+
+                // Get the tables
+                const schema::JobserverJob jobTable;
+
+                // Look up the job
+                auto applications = std::vector<std::string>({authResult->secret().name()});
+                std::copy(authResult->secret().applications().begin(), authResult->secret().applications().end(),
+                          std::back_inserter(applications));
+
+                auto jobResults =
+                        database->run(
+                                select(all_of(jobTable))
+                                        .from(jobTable)
+                                        .where(
+                                                jobTable.id == jobId
+                                                and jobTable.application.in(sqlpp::value_list(applications))
+                                        )
+                        );
+
+                // Check that a job was actually found
+                if (jobResults.empty()) {
+                    throw std::runtime_error(
+                            "Unable to find job with ID " + std::to_string(jobId) + " for application " +
+                            authResult->secret().name());
+                }
+
+                // Get the cluster and bundle from the job
+                const auto *job = &jobResults.front();
+                sCluster = std::string{job->cluster};
+                sBundle = std::string{job->bundle};
+            } else {
+                // A job ID was not provided, we need to use the cluster and bundle details from the json request
+                // Check that the bundle and cluster were provided in the POST json
+                if (!post_data.contains("cluster") || !post_data.contains("bundle")) {
+                    throw std::runtime_error(
+                            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
+                    );
+                }
+
+                sCluster = std::string{post_data.at("cluster")};
+                sBundle = std::string{post_data.at("bundle")};
+
+                // Confirm that the current JWT secret can access the provided cluster
+                const auto& clusters = authResult->secret().clusters();
+                if (std::ranges::find(clusters, sCluster) == clusters.end()) {
+                    throw std::runtime_error(
+                            "Application " + authResult->secret().name() + " does not have access to cluster " + sCluster
+                    );
+                }
+            }
+
+            // Check that the cluster is online
+            auto cluster = clusterManager->getCluster(sCluster);
+            if (!cluster) {
+                throw std::runtime_error("Invalid cluster");
+            }
+
+            if (!cluster->isOnline()) {
+                response->write(SimpleWeb::StatusCode::server_error_service_unavailable, "Remote Cluster Offline");
+                return;
+            }
+
+            // Generate a UUID for the upload
+            auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+
+            // Create the file upload object
+            auto fileUpload = std::static_pointer_cast<FileUpload>(clusterManager->createFileUpload(cluster, uuid));
+
+            // Send a message to the remote cluster to initiate the file upload
+            auto msg = Message(UPLOAD_FILE, Message::Priority::Highest, uuid);
+            msg.push_string(targetPath);
+            msg.push_ulong(fileSize);
+            cluster->sendMessage(msg);
+
+            // Wait for the remote cluster to acknowledge the upload request
+            {
+                std::unique_lock<std::mutex> lock(fileUpload->fileUploadDataCVMutex);
+
+                // Wait for data to be ready to send
+                if (!fileUpload->fileUploadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fileUpload] { return fileUpload->fileUploadDataReady; })) {
+                    // Timeout reached, set the error
+                    fileUpload->fileUploadError = true;
+                    fileUpload->fileUploadErrorDetails = "Remote cluster took too long to respond.";
+                }
+            }
+
+            // Check if the remote cluster received an error about the upload
+            if (fileUpload->fileUploadError) {
+                response->write(SimpleWeb::StatusCode::client_error_bad_request, fileUpload->fileUploadErrorDetails);
+                return;
+            }
+
+            // Stream data with source-side pause/resume
+            const size_t CHUNK_SIZE = FILE_CHUNK_SIZE;
+            std::vector<char> buffer(CHUNK_SIZE);
+            uint64_t totalRead = 0;
+
+            while (totalRead < fileSize) {
+                // Check if we should pause the source (HTTP reading)
+                {
+                    std::unique_lock<std::mutex> lock(fileUpload->fileUploadDataCVMutex);
+                    if ((fileUpload->fileUploadSentBytes + CHUNK_SIZE) - totalRead > MAX_FILE_BUFFER_SIZE) {
+                        // Wait for buffer to have space
+                        fileUpload->fileUploadDataCV.wait(lock, [&] {
+                            return (fileUpload->fileUploadSentBytes + CHUNK_SIZE) - totalRead <= MIN_FILE_BUFFER_SIZE;
+                        });
+                    }
+                }
+
+                // Read chunk from HTTP request stream
+                auto chunkSize = std::min(CHUNK_SIZE, static_cast<size_t>(fileSize - totalRead));
+                request->content.read(buffer.data(), static_cast<std::streamsize>(chunkSize));
+
+                if (request->content.gcount() != static_cast<std::streamsize>(chunkSize)) {
+                    throw std::runtime_error("Unexpected end of file data");
+                }
+
+                // Send chunk via WebSocket
+                auto chunkData = std::vector<uint8_t>(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(chunkSize));
+                auto chunkMsg = Message(FILE_UPLOAD_CHUNK, Message::Priority::Lowest, uuid);
+                chunkMsg.push_bytes(chunkData);
+                cluster->sendMessage(chunkMsg);
+
+                totalRead += chunkSize;
+                fileUpload->fileUploadSentBytes += chunkSize;
+            }
+
+            // Send completion message
+            auto completeMsg = Message(FILE_UPLOAD_COMPLETE, Message::Priority::Highest, uuid);
+            cluster->sendMessage(completeMsg);
+
+            // Wait for completion confirmation
+            {
+                std::unique_lock<std::mutex> lock(fileUpload->fileUploadDataCVMutex);
+
+                // Wait for completion
+                if (!fileUpload->fileUploadDataCV.wait_for(lock, std::chrono::seconds(CLIENT_TIMEOUT_SECONDS), [&fileUpload] { return fileUpload->fileUploadComplete; })) {
+                    throw std::runtime_error("Upload completion confirmation timeout");
+                }
+            }
+
+            // Report success
+            nlohmann::json result;
+            result.emplace("uploadId", uuid);
+            result.emplace("status", "completed");
+
+            SimpleWeb::CaseInsensitiveMultimap headers;
+            headers.emplace("Content-Type", "application/json");
+
+            response->write(SimpleWeb::StatusCode::success_ok, result.dump(), headers);
+
+        } catch (std::exception& e) {
+            dumpExceptions(e);
+
+            // Report bad request
+            response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad request");
         }
     };
 

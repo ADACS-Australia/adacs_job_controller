@@ -6,6 +6,7 @@
 #define GWCLOUD_JOB_SERVER_HTTPSERVERFIXTURE_H
 
 #include <boost/test/unit_test.hpp>
+#include <jwt/jwt.hpp>
 
 #include "../utils.h"
 
@@ -126,10 +127,9 @@ struct HttpServerFixture
     void setJwtSecret(const auto& secret)
     {
         auto timeNow = std::chrono::system_clock::now() + std::chrono::minutes{10};
-        jwtToken     = {
+        jwtToken = {
             jwt::params::algorithm("HS256"),
-            jwt::params::payload({{"userName", "User"}}
-            ),
+            jwt::params::payload({{"userName", "User"}}),
             jwt::params::secret(secret)
         };
         jwtToken.add_claim("exp", timeNow);

@@ -46,28 +46,6 @@ auto parseLine(char* line) -> size_t
     return (endPtr != nullptr && *endPtr == '\0') ? result : 0;
 }
 
-auto getCurrentMemoryUsage() -> size_t
-{
-    FILE* file = fopen("/proc/self/status", "r");
-    if (file == nullptr)
-    {
-        return 0;
-    }
-
-    size_t result = 0;
-    std::array<char, 128> line{};
-
-    while (fgets(line.data(), 128, file) != nullptr)
-    {
-        if (strncmp(line.data(), "VmRSS:", 6) == 0)
-        {
-            result = parseLine(line.data());
-            break;
-        }
-    }
-    fclose(file);
-    return result;
-}
 }  // namespace
 
 struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketClientFixture, public HttpClientFixture
