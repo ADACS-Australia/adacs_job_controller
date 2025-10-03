@@ -717,8 +717,8 @@ export void FileApi(const std::string& path,
 
                 // Send UPLOAD_FILE message to remote cluster via existing WebSocket connection
                 // This tells the remote: "Expect a file upload session with this UUID, jobId, bundle, path, and size"
-                // The remote will validate the path and working directory, then send back either SERVER_READY or FILE_UPLOAD_ERROR
-                // Message format follows DOWNLOAD_FILE pattern for consistency
+                // The remote will validate the path and working directory, then send back either SERVER_READY or
+                // FILE_UPLOAD_ERROR Message format follows DOWNLOAD_FILE pattern for consistency
                 auto msg = Message(UPLOAD_FILE, Message::Priority::Highest, uuid);
                 msg.push_uint(jobId);         // Job ID (0 if no job, use bundle)
                 msg.push_string(sBundle);     // Bundle hash for working directory resolution
