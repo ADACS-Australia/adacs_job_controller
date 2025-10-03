@@ -30,6 +30,9 @@ struct FileUploadTransferTestDataFixture : public DatabaseFixture,
     std::shared_ptr<std::jthread> fileUploadThread;
     std::vector<uint8_t> fileData;
     uint64_t expectedFileSize = 0;
+    uint64_t receivedJobId = UINT64_MAX;     // Will be set from UPLOAD_FILE message
+    std::string receivedBundleHash;          // Will be set from UPLOAD_FILE message
+    std::string receivedTargetPath;          // Will be set from UPLOAD_FILE message
     bool bPaused              = false;
 
     void handleFileUploadComplete(Message& msg, const std::shared_ptr<TestWsClient::Connection>& connection)
@@ -94,8 +97,10 @@ struct FileUploadTransferTestDataFixture : public DatabaseFixture,
 
         if (msg.getId() == UPLOAD_FILE)
         {
-            msg.pop_string();  // targetPath
-            expectedFileSize = msg.pop_ulong();
+            receivedJobId = msg.pop_uint();        // Job ID (0 if no job, use bundle) 
+            receivedBundleHash = msg.pop_string();  // Bundle hash for working directory resolution
+            receivedTargetPath = msg.pop_string();  // Target file path
+            expectedFileSize = msg.pop_ulong();     // Expected file size
 
             websocketFileUploadClient =
                 std::make_shared<TestWsClient>("localhost:8001/job/ws/?token=" + msg.getSource());
@@ -218,6 +223,12 @@ BOOST_AUTO_TEST_CASE(test_file_upload_transfer)
                                            {  "Content-Type",   "application/octet-stream"},
                                            {"Content-Length", std::to_string(testFileSize)}
     });
+
+    // Validate that the UPLOAD_FILE message contained the expected values
+    BOOST_CHECK_EQUAL(receivedJobId, jobId);  // Should match the jobId from URL parameter
+    BOOST_CHECK_EQUAL(receivedTargetPath, "/data/myfile.png");  // Should match the targetPath from URL parameter
+    BOOST_CHECK(!receivedBundleHash.empty());  // Should have received a bundle hash from the job lookup
+    BOOST_CHECK_EQUAL(expectedFileSize, testFileSize);  // Should match the Content-Length
 
     // Check that the upload was successful
     auto responseContent = response->content.string();
@@ -616,6 +627,226 @@ BOOST_AUTO_TEST_CASE(test_zero_byte_file_upload)
 
     // Verify no data was received (zero-byte file)
     BOOST_CHECK_EQUAL(fileData.size(), 0);
+
+    websocketFileUploadClient->stop();
+    fileUploadThread->join();
+}
+
+BOOST_AUTO_TEST_CASE(test_file_upload_with_cluster_bundle_parameters)
+{
+    fileUploadCallback = [&](Message& msg, const std::shared_ptr<TestWsClient::Connection>& connection) {
+        if (msg.getId() == SERVER_READY)
+        {
+            // Connection is ready - send SERVER_READY response back to indicate we're ready
+            sendMessage(&msg, connection);
+            return;
+        }
+
+        if (msg.getId() == FILE_UPLOAD_CHUNK)
+        {
+            // Receive file chunk from server
+            auto chunkData = msg.pop_bytes();
+            fileData.insert(fileData.end(), chunkData.begin(), chunkData.end());
+            return;
+        }
+
+        if (msg.getId() == FILE_UPLOAD_COMPLETE)
+        {
+            // Server finished sending file - validate size and respond appropriately
+            handleFileUploadComplete(msg, connection);
+            return;
+        }
+
+        BOOST_FAIL("File Upload client got unexpected message id " + std::to_string(msg.getId()));
+    };
+
+    this->startWebSocketClient();
+    readyPromise.get_future().wait();
+
+    // Generate random test file data to upload
+    const uint64_t testFileSize = randomInt(512, 1024);  // Smaller size for faster test
+    auto originalFileData       = generateRandomData(testFileSize);
+
+    // Set JWT secret for authentication
+    setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->back().secret());
+
+    // Create request body with the file data
+    std::string requestBody = std::string(originalFileData->begin(), originalFileData->end());
+
+    // Create URL with cluster and bundle parameters (no jobId)
+    // This tests the bundle-based upload path where jobId=0
+    std::string uploadUrl = "/job/apiv1/file/upload/?cluster=" + cluster->getName() + "&bundle=test_bundle&targetPath=/data/cluster_upload.bin";
+    auto response         = httpClient.request("PUT",
+                                       uploadUrl,
+                                       requestBody,
+                                       {
+                                           { "Authorization",         jwtToken.signature()},
+                                           {  "Content-Type",   "application/octet-stream"},
+                                           {"Content-Length", std::to_string(testFileSize)}
+    });
+
+    // Wait for upload to complete with reasonable timeout
+    auto start_time = std::chrono::steady_clock::now();
+    while (fileData.size() < testFileSize)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        auto current_time = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count() > 10)
+        {
+            BOOST_FAIL("Upload timeout - expected " + std::to_string(testFileSize) + " bytes, got " +
+                       std::to_string(fileData.size()));
+        }
+    }
+
+    // Validate that the UPLOAD_FILE message contained the expected values for cluster/bundle upload
+    BOOST_CHECK_EQUAL(receivedJobId, 0);  // Should be 0 since no jobId was provided
+    BOOST_CHECK_EQUAL(receivedTargetPath, "/data/cluster_upload.bin");  // Should match the targetPath from URL parameter
+    BOOST_CHECK_EQUAL(receivedBundleHash, "test_bundle");  // Should match the bundle from URL parameter
+    BOOST_CHECK_EQUAL(expectedFileSize, testFileSize);  // Should match the Content-Length
+
+    // Verify upload was successful
+    BOOST_CHECK_EQUAL(std::stoi(response->status_code), 200);
+    BOOST_CHECK_EQUAL(fileData.size(), testFileSize);
+    BOOST_CHECK(*originalFileData == fileData);
+
+    websocketFileUploadClient->stop();
+    fileUploadThread->join();
+}
+
+BOOST_AUTO_TEST_CASE(test_upload_message_format_validation)
+{
+    // This test validates that the UPLOAD_FILE message contains the correct format:
+    // jobId, bundleHash, targetPath, fileSize (following FILE_DOWNLOAD pattern)
+    
+    bool testComplete = false;
+
+    fileUploadCallback = [&](Message& msg, const std::shared_ptr<TestWsClient::Connection>& connection) {
+        if (msg.getId() == SERVER_READY)
+        {
+            sendMessage(&msg, connection);
+            return;
+        }
+
+        if (msg.getId() == FILE_UPLOAD_CHUNK)
+        {
+            // Just acknowledge chunks without processing
+            return;
+        }
+
+        if (msg.getId() == FILE_UPLOAD_COMPLETE)
+        {
+            // Send completion response and mark test complete
+            sendMessage(&msg, connection);
+            testComplete = true;
+            return;
+        }
+    };
+
+    this->startWebSocketClient();
+    readyPromise.get_future().wait();
+
+    setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->back().secret());
+
+    // Test 1: Job-based upload (jobId != 0)
+    const uint64_t testFileSize = 100;
+    std::string requestBody(testFileSize, 'A');
+    std::string uploadUrl = "/job/apiv1/file/upload/?jobId=" + std::to_string(jobId) + "&targetPath=/data/job_test.bin";
+    
+    auto response = httpClient.request("PUT",
+                                       uploadUrl,
+                                       requestBody,
+                                       {
+                                           { "Authorization",         jwtToken.signature()},
+                                           {  "Content-Type",   "application/octet-stream"},
+                                           {"Content-Length", std::to_string(testFileSize)}
+    });
+
+    // Wait for upload to complete
+    auto start_time = std::chrono::steady_clock::now();
+    while (!testComplete)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        auto current_time = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count() > 5)
+        {
+            BOOST_FAIL("Timeout waiting for upload to complete");
+        }
+    }
+
+    // Validate job-based upload message format (captured during UPLOAD_FILE parsing)
+    BOOST_CHECK_EQUAL(receivedJobId, jobId);  // Should have the actual job ID
+    BOOST_CHECK_EQUAL(receivedBundleHash, "whatever");  // Bundle from job record
+    BOOST_CHECK_EQUAL(receivedTargetPath, "/data/job_test.bin");
+    BOOST_CHECK_EQUAL(expectedFileSize, testFileSize);
+
+    websocketFileUploadClient->stop();
+    fileUploadThread->join();
+}
+
+BOOST_AUTO_TEST_CASE(test_upload_message_format_validation_bundle_based)
+{
+    // This test validates that bundle-based uploads (jobId=0) contain the correct message format
+    
+    bool testComplete = false;
+
+    fileUploadCallback = [&](Message& msg, const std::shared_ptr<TestWsClient::Connection>& connection) {
+        if (msg.getId() == SERVER_READY)
+        {
+            sendMessage(&msg, connection);
+            return;
+        }
+
+        if (msg.getId() == FILE_UPLOAD_CHUNK)
+        {
+            // Just acknowledge chunks without processing
+            return;
+        }
+
+        if (msg.getId() == FILE_UPLOAD_COMPLETE)
+        {
+            // Send completion response and mark test complete
+            sendMessage(&msg, connection);
+            testComplete = true;
+            return;
+        }
+    };
+
+    this->startWebSocketClient();
+    readyPromise.get_future().wait();
+
+    setJwtSecret(std::static_pointer_cast<HttpServer>(httpServer)->getvJwtSecrets()->back().secret());
+
+    // Test bundle-based upload (jobId = 0)
+    const uint64_t testFileSize = 100;
+    std::string requestBody(testFileSize, 'B');
+    std::string uploadUrl = "/job/apiv1/file/upload/?cluster=" + cluster->getName() + "&bundle=direct_bundle&targetPath=/data/bundle_test.bin";
+    
+    auto response = httpClient.request("PUT",
+                                       uploadUrl,
+                                       requestBody,
+                                       {
+                                           { "Authorization",         jwtToken.signature()},
+                                           {  "Content-Type",   "application/octet-stream"},
+                                           {"Content-Length", std::to_string(testFileSize)}
+    });
+
+    // Wait for upload to complete
+    auto start_time = std::chrono::steady_clock::now();
+    while (!testComplete)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        auto current_time = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count() > 5)
+        {
+            BOOST_FAIL("Timeout waiting for upload to complete");
+        }
+    }
+
+    // Validate bundle-based upload message format (captured during UPLOAD_FILE parsing)
+    BOOST_CHECK_EQUAL(receivedJobId, 0);  // Should be 0 for bundle-only uploads
+    BOOST_CHECK_EQUAL(receivedBundleHash, "direct_bundle");  // Bundle from query parameters
+    BOOST_CHECK_EQUAL(receivedTargetPath, "/data/bundle_test.bin");
+    BOOST_CHECK_EQUAL(expectedFileSize, testFileSize);
 
     websocketFileUploadClient->stop();
     fileUploadThread->join();
