@@ -40,7 +40,20 @@ FROM ubuntu:noble AS production
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
-RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.83.0 libdouble-conversion3 libgflags2.2 libgoogle-glog0v6t64 libmysqlclient21 libfmt9 build-essential libpython3-dev libffi-dev libhowardhinnant-date-dev
+# Boost libraries required by folly (context, filesystem, program_options, regex, system, thread)
+# and Simple-WebSocket-Server (system, thread, coroutine, context)
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install \
+    python3 python3-venv tzdata \
+    libdw1 libunwind8 \
+    libboost-filesystem1.83.0 libboost-system1.83.0 libboost-thread1.83.0 \
+    libboost-coroutine1.83.0 libboost-context1.83.0 libboost-program-options1.83.0 \
+    libboost-regex1.83.0 \
+    libdouble-conversion3 libgflags2.2 libgoogle-glog0v6t64 \
+    libmysqlclient21 libfmt9 \
+    build-essential libpython3-dev libffi-dev \
+    libhowardhinnant-date-dev \
+    libssl3t64 libcurl4 libevent-2.1-7t64 \
+    libjemalloc2 libzstd1 liblz4-1 libsnappy1v5 libbz2-1.0
 
 # Set the timezone
 ENV TZ=Australia/Melbourne
