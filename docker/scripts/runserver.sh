@@ -14,5 +14,5 @@ echo "MySQL is up - continuing"
 # Migrate the database
 utils/schema/venv/bin/python utils/schema/manage.py migrate;
 
-# Run the jobserver
-./adacs_job_controller 2>&1 | tee ./logs/logfile
+# Run the jobserver with unbuffered output
+stdbuf -oL -eL ./adacs_job_controller 2>&1 | tee ./logs/logfile

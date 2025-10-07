@@ -12,5 +12,6 @@ src/build/
 src/.cache/
 .env
 docker/db/
+docker/logs/
 config/clusters.json
 config/access_secrets.json
