@@ -12,8 +12,8 @@ fi
 
 export DOCKER_BUILDKIT=1
 
-# Run docker-compose in detached mode
-docker-compose -f docker/docker-compose.yaml up -d
+# Run docker-compose in detached mode (rebuild if needed)
+docker-compose -f docker/docker-compose.yaml up -d --build
 
 echo ""
 echo "Job Controller is starting..."
