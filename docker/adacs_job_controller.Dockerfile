@@ -44,7 +44,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # and Simple-WebSocket-Server (system, thread, coroutine, context)
 RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install \
     python3 python3-venv tzdata netcat-openbsd \
-    libdw1 libunwind8 libdwarf1t64 \
+    libdw1 libunwind8 libdwarf1 \
     libboost-filesystem1.83.0 libboost-system1.83.0 libboost-thread1.83.0 \
     libboost-coroutine1.83.0 libboost-context1.83.0 libboost-program-options1.83.0 \
     libboost-regex1.83.0 libboost-atomic1.83.0 \
