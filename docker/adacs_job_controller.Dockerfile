@@ -101,9 +101,8 @@ RUN chmod +x adacs_job_controller
 ADD ./docker/scripts/runserver.sh /runserver.sh
 RUN chmod +x /runserver.sh
 
-USER jobserver
-
 # Expose the ports and set the entrypoint
+# Run as root to handle permissions for mounted volumes
 EXPOSE 8000 8001
 CMD /runserver.sh
 
