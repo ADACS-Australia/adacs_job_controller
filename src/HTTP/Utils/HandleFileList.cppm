@@ -317,13 +317,7 @@ void handleFileList(const std::shared_ptr<IApplication>& app,
                 database->start_transaction();
 
                 // Insert the records
-                const auto insertCount = database->run(insert_query);
-
-                if (insertCount != flObj->files.size())
-                {
-                    std::cerr << "WARNING: DB - File list cache insert mismatch for job " << jobId << ", expected "
-                              << flObj->files.size() << " rows but got " << insertCount << '\n';
-                }
+                [[maybe_unused]] auto insertResult = database->run(insert_query);
 
                 // Commit the changes in the database
                 database->commit_transaction();

@@ -72,9 +72,7 @@ set(COMMON_COMPILE_FEATURES cxx_std_20)
 # Define the source files
 set(
         SOURCE_FILES
-        Lib/segvcatch.h
         Lib/segvcatch.cpp
-        Lib/x86_64-signal.h
         Lib/shims/sqlpp_shim.h
         Lib/shims/date_shim.h
         Lib/TestingMacros.h
@@ -102,6 +100,7 @@ add_executable(
         HTTP/tests/job_tests.cpp
         HTTP/tests/file_tests.cpp
         tests/test_file_transfer.cpp
+        tests/test_file_upload_transfer.cpp
         tests/test_file_list_caching.cpp
         HTTP/tests/file_filter_files.cpp
         tests/fixtures/DatabaseFixture.h
@@ -112,6 +111,7 @@ add_executable(
         Cluster/tests/ping_pong_tests.cpp
         Cluster/tests/cluster_db_tests.cpp
         Cluster/tests/file_download_tests.cpp
+        Cluster/tests/file_upload_tests.cpp
         Cluster/tests/background_threads_tests.cpp
 )
 target_compile_features(Boost_Tests_run PUBLIC ${COMMON_COMPILE_FEATURES})
@@ -157,6 +157,7 @@ set(PROJECT_MODULE_SOURCES
   Cluster/Cluster.cppm
   Cluster/ClusterManager.cppm
   Cluster/FileDownload.cppm
+  Cluster/FileUpload.cppm
   Interfaces/ICluster.ixx
   Interfaces/IClusterManager.ixx
   HTTP/Utils/HandleFileList.cppm

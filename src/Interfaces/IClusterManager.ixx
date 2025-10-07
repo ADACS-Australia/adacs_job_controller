@@ -50,6 +50,10 @@ public:
     virtual auto createFileDownload(const std::shared_ptr<ICluster>& cluster,
                                     const std::string& uuid) -> std::shared_ptr<ICluster> = 0;
 
+    // File upload management
+    virtual auto createFileUpload(const std::shared_ptr<ICluster>& cluster,
+                                  const std::string& uuid) -> std::shared_ptr<ICluster> = 0;
+
     // Connection management
     virtual void handlePong(const std::shared_ptr<WsServer::Connection>& connection) = 0;
 

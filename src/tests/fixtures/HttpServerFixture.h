@@ -6,6 +6,7 @@
 #define GWCLOUD_JOB_SERVER_HTTPSERVERFIXTURE_H
 
 #include <boost/test/unit_test.hpp>
+#include <jwt/jwt.hpp>
 
 #include "../utils.h"
 

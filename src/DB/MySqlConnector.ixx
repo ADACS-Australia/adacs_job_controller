@@ -23,12 +23,10 @@ public:
         config->host     = DATABASE_HOST;
         config->port     = DATABASE_PORT;
 
-#ifdef NDEBUG
-        config->debug = false;
-#else
-        config->debug = true;
-#endif
-        database = std::make_shared<mysql::connection>(config);
+        // Note: auto_reconnect was removed in SQLPP11 0.65+ as MySQL 8.0.34 deprecated MYSQL_OPT_RECONNECT
+        // MySQL debug logging controlled by DATABASE_DEBUG environment variable (defaults to false)
+        config->debug = DATABASE_DEBUG;
+        database      = std::make_shared<mysql::connection>(config);
     }
 
     virtual ~MySqlConnector()                                = default;

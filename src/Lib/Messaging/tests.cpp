@@ -56,6 +56,11 @@ public:
         this->priority = priority;
     }
 
+    auto waitForQueueDrain(bool waitForEmpty = false) -> bool override
+    {
+        return true;  // Mock implementation for tests - always succeeds
+    }
+
     void stop() override {}
 
     [[nodiscard]] auto getRoleString() const -> std::string override

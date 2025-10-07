@@ -66,7 +66,8 @@ private:
 export enum class eRole : std::uint8_t
 {
     master,
-    fileDownload
+    fileDownload,
+    fileUpload
 };
 
 // Interface for cluster operations
@@ -97,6 +98,11 @@ public:
     virtual void queueMessage(const std::string& source,
                               const std::shared_ptr<std::vector<uint8_t>>& data,
                               Message::Priority priority) = 0;
+
+    // Wait for queue to drain using backpressure thresholds (returns false on timeout)
+    // If waitForEmpty=false: Waits only if queue exceeds MAX_FILE_BUFFER_SIZE until it drops below MIN_FILE_BUFFER_SIZE
+    // If waitForEmpty=true: Waits until queue is completely empty (used to ensure message ordering)
+    virtual auto waitForQueueDrain(bool waitForEmpty) -> bool = 0;
 
     // Connection management
     virtual void setConnection(const std::shared_ptr<void>& connection) = 0;  // void* to avoid WebSocket dependency

@@ -69,6 +69,7 @@ gcovr \
   --xml-pretty -o /test_report/coverage_docker.xml \
   -e "third_party/" \
   -e ".*/tests/.*" \
+  -e ".*/fixtures/.*" \
   -e ".*_tests\.cpp$" \
   -e ".*test_.*\.cpp$"
 
@@ -79,6 +80,7 @@ gcovr \
   --print-summary \
   -e "third_party/" \
   -e ".*/tests/.*" \
+  -e ".*/fixtures/.*" \
   -e ".*_tests\.cpp$" \
   -e ".*test_.*\.cpp$"
 

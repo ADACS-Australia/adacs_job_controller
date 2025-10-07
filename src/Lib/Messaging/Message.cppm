@@ -8,6 +8,7 @@ module;
 #include <cstring>
 #include <memory>
 #include <ostream>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,12 @@ export constexpr uint32_t RESUME_FILE_CHUNK_STREAM = 4005;
 export constexpr uint32_t FILE_LIST                = 4006;
 export constexpr uint32_t FILE_LIST_ERROR          = 4007;
 
+// File Upload messages
+export constexpr uint32_t UPLOAD_FILE          = 4500;
+export constexpr uint32_t FILE_UPLOAD_CHUNK    = 4501;
+export constexpr uint32_t FILE_UPLOAD_ERROR    = 4502;
+export constexpr uint32_t FILE_UPLOAD_COMPLETE = 4503;
+
 // ClusterJob DB messages
 export constexpr uint32_t DB_JOB_GET_BY_JOB_ID    = 5000;
 export constexpr uint32_t DB_JOB_GET_BY_ID        = 5001;
@@ -55,6 +62,11 @@ export constexpr uint32_t DB_RESPONSE = 7000;
 export constexpr uint32_t DB_BUNDLE_CREATE_OR_UPDATE_JOB = 8000;
 export constexpr uint32_t DB_BUNDLE_GET_JOB_BY_ID        = 8001;
 export constexpr uint32_t DB_BUNDLE_DELETE_JOB           = 8002;
+
+// NOTE: Message IDs in the range TEST_MESSAGE_ID_MIN to TEST_MESSAGE_ID_MAX are reserved for testing and should never
+// be used in production code.
+export constexpr uint32_t TEST_MESSAGE_ID_MIN = 1000000;
+export constexpr uint32_t TEST_MESSAGE_ID_MAX = 1001000;
 
 export class Message
 {
@@ -330,6 +342,12 @@ public:
     }
 
     void push_bytes(const std::vector<uint8_t>& value)
+    {
+        push_ulong(value.size());
+        data->insert(data->end(), value.begin(), value.end());
+    }
+
+    void push_bytes(std::span<const uint8_t> value)
     {
         push_ulong(value.size());
         data->insert(data->end(), value.begin(), value.end());

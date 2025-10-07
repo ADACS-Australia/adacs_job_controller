@@ -111,16 +111,11 @@ export struct sClusterJobStatus
         const schema::JobserverClusterjob _jobTable;
 
         // Remove any records where the id is in "ids", and the job id is in any jobs which have the same cluster
-        auto result = _database->run(
+        [[maybe_unused]] auto result = _database->run(
             sqlpp::remove_from(_jobStatusTable)
                 .where(_jobStatusTable.id.in(sqlpp::value_list(ids)) and
                        _jobStatusTable.jobId.in(
                            sqlpp::select(_jobTable.id).from(_jobTable).where(_jobTable.cluster == cluster))));
-        if (result != ids.size())
-        {
-            std::cerr << "WARNING: DB - Failed to delete cluster job status records for cluster " << cluster
-                      << ", expected " << ids.size() << " rows but got " << result << '\n';
-        }
     }
 
     void save(const std::string& cluster)
@@ -138,15 +133,10 @@ export struct sClusterJobStatus
         if (id != 0)
         {
             // Update the record
-            auto result = _database->run(
+            [[maybe_unused]] auto result = _database->run(
                 sqlpp::update(_jobStatusTable)
                     .set(_jobStatusTable.jobId = jobId, _jobStatusTable.what = what, _jobStatusTable.state = state)
                     .where(_jobStatusTable.id == id));
-            if (result != 1)
-            {
-                std::cerr << "WARNING: DB - Failed to update cluster job status with id " << id
-                          << ", expected 1 row but got " << result << '\n';
-            }
         }
         else
         {

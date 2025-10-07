@@ -108,13 +108,8 @@ export struct sClusterJob
         auto _database = MySqlConnector();
         const schema::JobserverClusterjob _jobTable;
 
-        auto result =
+        [[maybe_unused]] auto result =
             _database->run(sqlpp::remove_from(_jobTable).where(_jobTable.id == id and _jobTable.cluster == cluster));
-        if (result != 1)
-        {
-            std::cerr << "WARNING: DB - Failed to delete cluster job with id " << id << " for cluster " << cluster
-                      << ", expected 1 row but got " << result << '\n';
-        }
     }
 
     void save(const std::string& cluster)
@@ -125,22 +120,18 @@ export struct sClusterJob
         if (id != 0)
         {
             // Update the record
-            auto result = _database->run(sqlpp::update(_jobTable)
-                                             .set(_jobTable.jobId            = jobId,
-                                                  _jobTable.schedulerId      = schedulerId,
-                                                  _jobTable.submitting       = submitting ? 1 : 0,
-                                                  _jobTable.submittingCount  = submittingCount,
-                                                  _jobTable.bundleHash       = bundleHash,
-                                                  _jobTable.workingDirectory = workingDirectory,
-                                                  _jobTable.running          = running ? 1 : 0,
-                                                  _jobTable.deleting         = deleting ? 1 : 0,
-                                                  _jobTable.deleted          = deleted ? 1 : 0)
-                                             .where(_jobTable.id == id and _jobTable.cluster == cluster));
-            if (result != 1)
-            {
-                std::cerr << "WARNING: DB - Failed to update cluster job with id " << id << " for cluster " << cluster
-                          << ", expected 1 row but got " << result << '\n';
-            }
+            [[maybe_unused]] auto result =
+                _database->run(sqlpp::update(_jobTable)
+                                   .set(_jobTable.jobId            = jobId,
+                                        _jobTable.schedulerId      = schedulerId,
+                                        _jobTable.submitting       = submitting ? 1 : 0,
+                                        _jobTable.submittingCount  = submittingCount,
+                                        _jobTable.bundleHash       = bundleHash,
+                                        _jobTable.workingDirectory = workingDirectory,
+                                        _jobTable.running          = running ? 1 : 0,
+                                        _jobTable.deleting         = deleting ? 1 : 0,
+                                        _jobTable.deleted          = deleted ? 1 : 0)
+                                   .where(_jobTable.id == id and _jobTable.cluster == cluster));
         }
         else
         {

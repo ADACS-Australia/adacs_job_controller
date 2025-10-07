@@ -24,6 +24,7 @@ import jobserver_schema;
 import ICluster;
 import IClusterManager;
 import FileDownload;
+import FileUpload;
 import IApplication;
 import WebSocketServer;
 import Cluster;
@@ -53,6 +54,8 @@ public:
                               const boost::system::error_code& errorCode) override;
     auto createFileDownload(const std::shared_ptr<ICluster>& cluster,
                             const std::string& uuid) -> std::shared_ptr<ICluster> override;
+    auto createFileUpload(const std::shared_ptr<ICluster>& cluster,
+                          const std::string& uuid) -> std::shared_ptr<ICluster> override;
 
     struct sPingPongTimes
     {
@@ -68,6 +71,7 @@ private:
     std::vector<std::shared_ptr<Cluster>> vClusters;
     std::map<std::shared_ptr<WsServer::Connection>, std::shared_ptr<Cluster>> mConnectedClusters;
     std::map<std::shared_ptr<WsServer::Connection>, std::shared_ptr<FileDownload>> mConnectedFileDownloads;
+    std::map<std::shared_ptr<WsServer::Connection>, std::shared_ptr<FileUpload>> mConnectedFileUploads;
 
     std::map<std::shared_ptr<WsServer::Connection>, sPingPongTimes> mClusterPings;
 
@@ -76,13 +80,16 @@ private:
     void checkPings();
 
     folly::ConcurrentHashMap<std::string, std::shared_ptr<FileDownload>> fileDownloadMap;
+    folly::ConcurrentHashMap<std::string, std::shared_ptr<FileUpload>> fileUploadMap;
 
     // Testing
     EXPOSE_PROPERTY_FOR_TESTING(vClusters);
     EXPOSE_PROPERTY_FOR_TESTING(mConnectedClusters);
     EXPOSE_PROPERTY_FOR_TESTING(mConnectedFileDownloads);
+    EXPOSE_PROPERTY_FOR_TESTING(mConnectedFileUploads);
     EXPOSE_PROPERTY_FOR_TESTING(mClusterPings);
     EXPOSE_PROPERTY_FOR_TESTING_READONLY(fileDownloadMap);
+    EXPOSE_PROPERTY_FOR_TESTING_READONLY(fileUploadMap);
     EXPOSE_FUNCTION_FOR_TESTING(reconnectClusters);
     EXPOSE_FUNCTION_FOR_TESTING(checkPings);
 };
@@ -209,6 +216,20 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
         return cluster;
     }
 
+    // Check if this uuid is an expected file upload uuid
+    auto fuIter = fileUploadMap.find(uuid);
+    if (fuIter != fileUploadMap.end())
+    {
+        auto cluster                      = fuIter->second;
+        // This connection is for a file upload
+        mConnectedFileUploads[connection] = cluster;
+
+        // Configure the cluster
+        cluster->setConnection(connection);
+
+        return cluster;
+    }
+
     // Get the tables
     const schema::JobserverClusteruuid clusterUuidTable;
 
@@ -294,6 +315,18 @@ void ClusterManager::removeConnection(const std::shared_ptr<WsServer::Connection
             auto pFileDownload = std::static_pointer_cast<FileDownload>(pCluster);
 
             fileDownloadMap.erase(pFileDownload->getUuid());
+
+            return;
+        }
+
+        if (pCluster->getRole() == eRole::fileUpload)
+        {
+            // Remove the specified connection from the connected file uploads
+            mConnectedFileUploads.erase(connection);
+
+            auto pFileUpload = std::static_pointer_cast<FileUpload>(pCluster);
+
+            fileUploadMap.erase(pFileUpload->getUuid());
 
             return;
         }
@@ -414,6 +447,15 @@ auto ClusterManager::getCluster(const std::shared_ptr<WsServer::Connection>& con
         return resultFileDownload->second;
     }
 
+    // Try to find the connection in the file uploads
+    auto resultFileUpload = mConnectedFileUploads.find(connection);
+
+    // Return the file upload if the connection was found
+    if (resultFileUpload != mConnectedFileUploads.end())
+    {
+        return resultFileUpload->second;
+    }
+
     // Try to find the connection
     auto resultCluster = mConnectedClusters.find(connection);
 
@@ -460,4 +502,15 @@ auto ClusterManager::createFileDownload(const std::shared_ptr<ICluster>& cluster
     fileDownloadMap.emplace(uuid, fileDownload);
 
     return fileDownload;
+}
+
+auto ClusterManager::createFileUpload(const std::shared_ptr<ICluster>& cluster,
+                                      const std::string& uuid) -> std::shared_ptr<ICluster>
+{
+    auto fileUpload = std::make_shared<FileUpload>(cluster->getClusterDetails(), uuid, this->app);
+
+    // Add the file upload to the file upload map
+    fileUploadMap.emplace(uuid, fileUpload);
+
+    return fileUpload;
 }
