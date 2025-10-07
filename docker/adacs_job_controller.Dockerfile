@@ -47,7 +47,7 @@ RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install \
     libdw1 libunwind8 libdwarf1 \
     libboost-filesystem1.83.0 libboost-system1.83.0 libboost-thread1.83.0 \
     libboost-coroutine1.83.0 libboost-context1.83.0 libboost-program-options1.83.0 \
-    libboost-regex1.83.0 libboost-atomic1.83.0 \
+    libboost-regex1.83.0 libboost-atomic1.83.0 libboost-test1.83.0 \
     libdouble-conversion3 libgflags2.2 libgoogle-glog0v6t64 \
     libmysqlclient21 libfmt9 \
     build-essential libpython3-dev libffi-dev \
