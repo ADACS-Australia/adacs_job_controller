@@ -32,7 +32,6 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREAD ON)
 find_package(Boost 1.67 REQUIRED COMPONENTS unit_test_framework)
-link_libraries(${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 
 # Make sure we find mysql
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -185,7 +184,7 @@ target_compile_options(project_modules_test PUBLIC --coverage -fPIC)
 
 # Link other libraries
 target_link_libraries(adacs_job_controller PRIVATE ${LINK_LIBRARIES} project_modules)
-target_link_libraries(Boost_Tests_run PRIVATE ${LINK_LIBRARIES} project_modules_test)
+target_link_libraries(Boost_Tests_run PRIVATE ${LINK_LIBRARIES} project_modules_test ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 target_compile_options(Boost_Tests_run PUBLIC --coverage -fPIC)
 
 target_link_options(Boost_Tests_run PRIVATE --coverage)
