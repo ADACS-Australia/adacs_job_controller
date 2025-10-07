@@ -49,7 +49,7 @@ RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install \
     libboost-coroutine1.83.0 libboost-context1.83.0 libboost-program-options1.83.0 \
     libboost-regex1.83.0 \
     libdouble-conversion3 libgflags2.2 libgoogle-glog0v6t64 \
-    libmysqlclient21 libfmt9 \
+    libmysqlclient21 libfmt9 mariadb-client \
     build-essential libpython3-dev libffi-dev \
     libhowardhinnant-date-dev \
     libssl3t64 libcurl4 libevent-2.1-7t64 \
