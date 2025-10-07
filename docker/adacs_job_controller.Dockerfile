@@ -40,7 +40,7 @@ FROM ubuntu:noble AS production
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
-RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.83.0 libdouble-conversion3 libgflags2.2 libgoogle-glog0v6t64 libmysqlclient21 libfmt9 build-essential libpython3-dev libffi-dev
+RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install python3 python3-venv tzdata libdw1 libboost-filesystem1.83.0 libdouble-conversion3 libgflags2.2 libgoogle-glog0v6t64 libmysqlclient21 libfmt9 build-essential libpython3-dev libffi-dev libhowardhinnant-date-dev
 
 # Set the timezone
 ENV TZ=Australia/Melbourne
