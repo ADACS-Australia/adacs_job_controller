@@ -1,4 +1,4 @@
-version: '3.4'
+version: '3'
 
 services:
   web:
@@ -6,8 +6,8 @@ services:
       dockerfile: ./docker/adacs_job_controller.Dockerfile
       context: ..
       target: test
-    image: adacs_job_controller_test 
     container_name: adacs_job_controller_test
+    env_file: ../.env
     volumes:
       - ../test_report:/test_report
     depends_on:
@@ -16,6 +16,7 @@ services:
   db:
     image: mysql:5.7
     container_name: adacs_job_controller_mysql_test
+    env_file: ../.env
     volumes: 
       - var_lib_mysql_adacs_job_controller_test:/var/lib/mysql
 

@@ -1,4 +1,4 @@
-version: '3.4'
+version: '3'
 
 services:
   web:
@@ -6,30 +6,21 @@ services:
       dockerfile: ./docker/adacs_job_controller.Dockerfile
       context: ..
       target: production
-    image: nexus.gwdc.org.au/docker/adacs_job_controller:0.55
     container_name: adacs_job_controller
-    environment:
-      DATABASE_SCHEMA: jobcontroller
-      DATABASE_USER: jobcontroller
-      DATABASE_PASSWORD: 76vcqmGKP19Z1AEx
-      DATABASE_HOST: db
+    env_file: ../.env
     ports:
       - "8000:8000"
       - "8001:8001"
+    volumes:
+      - ../config:/app/config:ro
     depends_on:
       - db
+    restart: unless-stopped
 
   db:
     image: mysql:5.7
     container_name: adacs_job_controller_mysql
-    environment:
-      MYSQL_ROOT_HOST: "0.0.0.0"
-      MYSQL_ROOT_PASSWORD: 76vcqmGKP19Z1AEx
-      MYSQL_DATABASE: jobcontroller
-      MYSQL_USER: jobcontroller
-      MYSQL_PASSWORD: 76vcqmGKP19Z1AEx
+    env_file: ../.env
     volumes:
-      - var_lib_mysql_adacs_job_controller:/var/lib/mysql
-
-volumes:
-  var_lib_mysql_adacs_job_controller:
+      - ./db:/var/lib/mysql
+    restart: unless-stopped

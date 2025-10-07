@@ -6,6 +6,8 @@
 #include <jwt/jwt.hpp>
 #include <server_http.hpp>
 
+#include "../../tests/utils.h"
+
 import settings;
 import HttpServer;
 import Application;
@@ -43,24 +45,30 @@ BOOST_AUTO_TEST_CASE(test_constructor)
      */
     {
         // First check that instantiating Application with no access config works as expected
-        unsetenv(ACCESS_SECRET_ENV_VARIABLE);
+        TempClusterConfig clusterConfig("[]");  // Application needs cluster config too
+        TempAccessSecretConfig emptyConfig("[]");
         auto app                = createApplication();
         auto httpServer         = app->getHttpServer();
         auto concreteHttpServer = std::static_pointer_cast<HttpServer>(httpServer);
         BOOST_CHECK_EQUAL(concreteHttpServer->getvJwtSecrets()->size(), 0);
     }
 
-    setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
-    auto app                = createApplication();
-    auto httpServer         = app->getHttpServer();
-    auto concreteHttpServer = std::static_pointer_cast<HttpServer>(httpServer);
-
-    // Double check that the secrets json was correctly parsed
-    BOOST_CHECK_EQUAL(concreteHttpServer->getvJwtSecrets()->size(), 3);
-    for (auto i = 1; i <= 3; i++)
+    // Test with actual access secrets configuration
     {
-        BOOST_CHECK_EQUAL(concreteHttpServer->getvJwtSecrets()->at(i - 1).name(), "app" + std::to_string(i));
-        BOOST_CHECK_EQUAL(concreteHttpServer->getvJwtSecrets()->at(i - 1).secret(), "super_secret" + std::to_string(i));
+        TempClusterConfig clusterConfig("[]");  // Application needs cluster config too
+        TempAccessSecretConfig accessConfig(sAccess);
+        auto app                = createApplication();
+        auto httpServer         = app->getHttpServer();
+        auto concreteHttpServer = std::static_pointer_cast<HttpServer>(httpServer);
+
+        // Double check that the secrets json was correctly parsed
+        BOOST_CHECK_EQUAL(concreteHttpServer->getvJwtSecrets()->size(), 3);
+        for (auto i = 1; i <= 3; i++)
+        {
+            BOOST_CHECK_EQUAL(concreteHttpServer->getvJwtSecrets()->at(i - 1).name(), "app" + std::to_string(i));
+            BOOST_CHECK_EQUAL(concreteHttpServer->getvJwtSecrets()->at(i - 1).secret(),
+                              "super_secret" + std::to_string(i));
+        }
     }
 }
 
@@ -71,7 +79,8 @@ BOOST_AUTO_TEST_CASE(test_isAuthorized)
      */
     {
         // Check that authorization without any config denies access without crashing
-        unsetenv(ACCESS_SECRET_ENV_VARIABLE);
+        TempClusterConfig clusterConfig("[]");  // Application needs cluster config too
+        TempAccessSecretConfig emptyConfig("[]");
         auto app                = createApplication();
         auto httpServer         = app->getHttpServer();
         auto concreteHttpServer = std::static_pointer_cast<HttpServer>(httpServer);
@@ -81,7 +90,9 @@ BOOST_AUTO_TEST_CASE(test_isAuthorized)
         BOOST_CHECK_THROW(concreteHttpServer->isAuthorized(headers), eNotAuthorized);
     }
 
-    setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
+    // Test with actual access secrets configuration
+    TempClusterConfig clusterConfig("[]");  // Application needs cluster config too
+    TempAccessSecretConfig accessConfig(sAccess);
     auto app                = createApplication();
     auto httpServer         = app->getHttpServer();
     auto concreteHttpServer = std::static_pointer_cast<HttpServer>(httpServer);

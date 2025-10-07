@@ -54,10 +54,10 @@ WSGI_APPLICATION = 'schema.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/3.0/ref/settings/#databases
 
-MYSQL_DATABASE = os.getenv('DATABASE_SCHEMA') or "jobserver"
+MYSQL_DATABASE = os.getenv('MYSQL_DATABASE') or "jobserver"
 MYSQL_HOST = os.getenv('DATABASE_HOST') or "localhost"
-MYSQL_USER = os.getenv('DATABASE_USER') or "jobserver"
-MYSQL_PASSWORD = os.getenv('DATABASE_PASSWORD') or "jobserver"
+MYSQL_USER = os.getenv('MYSQL_USER') or "jobserver"
+MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD') or "jobserver"
 
 DATABASES = {
     'default': {

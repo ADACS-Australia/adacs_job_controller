@@ -3,6 +3,7 @@
 //
 
 module;
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <utility>
@@ -146,8 +147,26 @@ HttpServer::HttpServer(std::shared_ptr<IApplication> app) : app(std::move(app))
     server.config.thread_pool_size = HTTP_WORKER_POOL_SIZE;
     server.config.timeout_content  = HTTP_CONTENT_TIMEOUT_SECONDS;
 
-    // Ready the JWT token config from the environment
-    auto jTokenConfig = nlohmann::json::parse(base64Decode(GET_ENV(ACCESS_SECRET_ENV_VARIABLE, base64Encode("{}"))));
+    // Read the access secret configuration from file
+    auto accessSecretConfigPath = GET_ENV(ACCESS_SECRET_CONFIG_FILE_ENV_VARIABLE, "config/access_secrets.json");
+    std::ifstream accessSecretConfigFile(accessSecretConfigPath);
+
+    if (!accessSecretConfigFile.is_open())
+    {
+        throw std::runtime_error("Failed to open access secret configuration file: " +
+                                 std::string(accessSecretConfigPath));
+    }
+
+    nlohmann::json jTokenConfig;
+    try
+    {
+        jTokenConfig = nlohmann::json::parse(accessSecretConfigFile);
+    }
+    catch (const nlohmann::json::parse_error& e)
+    {
+        throw std::runtime_error("Failed to parse access secret configuration file: " +
+                                 std::string(accessSecretConfigPath) + " - " + std::string(e.what()));
+    }
 
     // Load the JWT secrets
     for (const auto& jToken : jTokenConfig)

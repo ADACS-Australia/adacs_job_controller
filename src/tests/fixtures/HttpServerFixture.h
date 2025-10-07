@@ -96,12 +96,13 @@ struct HttpServerFixture
 
     jwt::jwt_object jwtToken;
 
-    HttpServerFixture()
-    {
-        // Set up the test server
-        setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-        setenv(ACCESS_SECRET_ENV_VARIABLE, base64Encode(sAccess).c_str(), 1);
+    // RAII temporary config files - automatically cleaned up on destruction
+    TempClusterConfig clusterConfig;
+    TempAccessSecretConfig accessConfig;
 
+    HttpServerFixture() : clusterConfig(sClusters), accessConfig(sAccess)
+    {
+        // Temp files are already created and env vars set by RAII helpers
         application    = createApplication();
         clusterManager = application->getClusterManager();
         httpServer     = application->getHttpServer();

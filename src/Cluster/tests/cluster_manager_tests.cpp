@@ -39,33 +39,38 @@ BOOST_FIXTURE_TEST_SUITE(ClusterManager_test_suite, ClusterManagerTestDataFixtur
 BOOST_AUTO_TEST_CASE(test_constructor)
 {
     // First check that instantiating ClusterManager with no cluster config works as expected
-    unsetenv(CLUSTER_CONFIG_ENV_VARIABLE);
-    auto testApp = createApplication();
-    auto mgr     = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
-    BOOST_CHECK_EQUAL(mgr->getvClusters()->size(), 0);
-
-    setenv(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode(sClusters).c_str(), 1);
-    testApp = createApplication();
-    mgr     = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
-
-    // Double check that the cluster json was correctly parsed
-    BOOST_CHECK_EQUAL(mgr->getvClusters()->size(), 3);
-    for (auto i = 1; i <= mgr->getvClusters()->size(); i++)
     {
-        BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getName(),
-                          "cluster" + std::to_string(i));
-        BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshHost(),
-                          "cluster" + std::to_string(i) + ".com");
-        BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshUsername(),
-                          "user" + std::to_string(i));
-        BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshPath(),
-                          "/cluster" + std::to_string(i) + "/");
-        BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshKey(),
-                          "cluster" + std::to_string(i) + "_key");
+        TempClusterConfig emptyConfig("[]");
+        auto testApp = createApplication();
+        auto mgr     = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+        BOOST_CHECK_EQUAL(mgr->getvClusters()->size(), 0);
     }
 
-    // There should be no connected clusters
-    BOOST_CHECK_EQUAL(mgr->getmConnectedClusters()->size(), 0);
+    // Test with actual cluster configuration
+    {
+        TempClusterConfig clusterConfig(sClusters);
+        auto testApp = createApplication();
+        auto mgr     = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+        // Double check that the cluster json was correctly parsed
+        BOOST_CHECK_EQUAL(mgr->getvClusters()->size(), 3);
+        for (auto i = 1; i <= mgr->getvClusters()->size(); i++)
+        {
+            BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getName(),
+                              "cluster" + std::to_string(i));
+            BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshHost(),
+                              "cluster" + std::to_string(i) + ".com");
+            BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshUsername(),
+                              "user" + std::to_string(i));
+            BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshPath(),
+                              "/cluster" + std::to_string(i) + "/");
+            BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshKey(),
+                              "cluster" + std::to_string(i) + "_key");
+        }
+
+        // There should be no connected clusters
+        BOOST_CHECK_EQUAL(mgr->getmConnectedClusters()->size(), 0);
+    }
 }
 
 BOOST_AUTO_TEST_CASE(test_getCluster)
