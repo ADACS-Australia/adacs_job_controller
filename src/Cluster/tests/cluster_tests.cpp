@@ -75,7 +75,13 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        // Clusters should be stopped
+        // Stop the offline cluster by default (onlineCluster remains running for tests that need it)
+        cluster->stop();
+    }
+
+    ~ClusterTestDataFixture()
+    {
+        // Ensure both clusters are stopped during cleanup to prevent race conditions in subsequent tests
         cluster->stop();
         onlineCluster->stop();
     }
@@ -83,16 +89,13 @@ struct ClusterTestDataFixture : public DatabaseFixture, public WebSocketClientFi
     void onWebsocketMessage(const auto& in_message)
     {
         auto data = in_message->string();
-        std::cout << "DEBUG: Received WebSocket message, size: " << data.size() << '\n';
 
         // Don't parse the message if the ws connection is ready
         if (!bReady)
         {
             const Message msg(std::vector<uint8_t>(data.begin(), data.end()));
-            std::cout << "DEBUG: Parsed message, ID: " << msg.getId() << ", SERVER_READY: " << SERVER_READY << '\n';
             if (msg.getId() == SERVER_READY)
             {
-                std::cout << "DEBUG: Received SERVER_READY message, setting bReady = true" << '\n';
                 bReady = true;
                 return;
             }
@@ -1094,6 +1097,194 @@ BOOST_AUTO_TEST_CASE(test_handleFileListError)
     BOOST_CHECK_EQUAL((*fileListMap2)[uuid]->dataReady, true);
 
     fileListMap2->erase(uuid);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_empty_queue)
+{
+    // Test with waitForEmpty=false on an empty queue
+    // Should return immediately (true) since queue is not "too large"
+    BOOST_CHECK_EQUAL(cluster->waitForQueueDrain(false), true);
+
+    // Test with waitForEmpty=true on an empty queue
+    // Should return immediately (true) since queue is already empty
+    BOOST_CHECK_EQUAL(cluster->waitForQueueDrain(true), true);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_queue_below_threshold)
+{
+    cluster->stop();
+
+    // Queue a small message (well below MAX_FILE_BUFFER_SIZE)
+    auto smallData = generateRandomData(1024);  // 1KB
+    cluster->queueMessage("test_source", smallData, Message::Priority::Medium);
+
+    // Test with waitForEmpty=false
+    // Should return immediately (true) since queue is below MAX_FILE_BUFFER_SIZE
+    BOOST_CHECK_EQUAL(cluster->waitForQueueDrain(false), true);
+
+    // Test with waitForEmpty=true
+    // Should wait for queue to drain completely
+    // Since we stopped the cluster, it won't drain, so this should timeout
+    BOOST_CHECK_EQUAL(cluster->waitForQueueDrain(true), false);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_queue_at_threshold)
+{
+    cluster->stop();
+
+    // Queue enough data to exactly reach MAX_FILE_BUFFER_SIZE
+    const int messageSize = 1024 * 100;  // 100KB per message
+    const int numMessages = MAX_FILE_BUFFER_SIZE / messageSize;
+
+    for (int i = 0; i < numMessages; i++)
+    {
+        auto data = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i));
+        cluster->queueMessage("test_source", data, Message::Priority::Medium);
+    }
+
+    // At exactly MAX_FILE_BUFFER_SIZE, should still return true (not "too large" yet)
+    BOOST_CHECK_EQUAL(cluster->waitForQueueDrain(false), true);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_queue_above_threshold)
+{
+    cluster->stop();
+
+    // Queue enough data to exceed MAX_FILE_BUFFER_SIZE
+    const int messageSize = 1024 * 100;                                 // 100KB per message
+    const int numMessages = (MAX_FILE_BUFFER_SIZE / messageSize) + 10;  // Exceed threshold
+
+    for (int i = 0; i < numMessages; i++)
+    {
+        auto data = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i));
+        cluster->queueMessage("test_source", data, Message::Priority::Medium);
+    }
+
+    // Queue is now "too large" - should wait for drain but timeout since cluster is stopped
+    BOOST_CHECK_EQUAL(cluster->waitForQueueDrain(false), false);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_queue_drains_to_min_threshold_success)
+{
+    // Queue enough data to exceed MAX_FILE_BUFFER_SIZE but not by too much
+    // The cluster is running and connected, so it will naturally drain messages
+    const int messageSize = 1024 * 10;  // 10KB per message (smaller for faster draining)
+    const int numMessages = (MAX_FILE_BUFFER_SIZE / messageSize) + 10;
+
+    for (int i = 0; i < numMessages; i++)
+    {
+        auto data = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i));
+        onlineCluster->queueMessage("test_source", data, Message::Priority::Medium);
+    }
+
+    // Wait should succeed once queue naturally drains below MIN_FILE_BUFFER_SIZE
+    // The onlineCluster is connected and running, so messages will be sent via WebSocket
+    auto result = onlineCluster->waitForQueueDrain(false);
+
+    // Should succeed because cluster connection drains the queue
+    BOOST_CHECK_EQUAL(result, true);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_queue_drains_timeout)
+{
+    cluster->stop();
+
+    // Queue enough data to exceed MAX_FILE_BUFFER_SIZE significantly
+    const int messageSize = 1024 * 10;  // 10KB per message
+    const int numMessages = (MAX_FILE_BUFFER_SIZE / messageSize) + 200;
+
+    for (int i = 0; i < numMessages; i++)
+    {
+        auto data = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i));
+        cluster->queueMessage("test_source", data, Message::Priority::Medium);
+    }
+
+    // Don't start any draining thread - queue will remain above threshold
+    // Wait should timeout because queue never drains below MIN_FILE_BUFFER_SIZE
+    auto result = cluster->waitForQueueDrain(false);
+
+    // Should timeout (return false)
+    BOOST_CHECK_EQUAL(result, false);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_waitForEmpty_success)
+{
+    // Queue some messages
+    const int numMessages = 5;
+    for (int i = 0; i < numMessages; i++)
+    {
+        auto data = generateRandomData(1024);
+        onlineCluster->queueMessage("test_source", data, Message::Priority::Medium);
+    }
+
+    // waitForEmpty=true should wait until queue is completely empty
+    // The onlineCluster is connected and running, so it will naturally drain all messages
+    auto result = onlineCluster->waitForQueueDrain(true);
+
+    // Should succeed because cluster connection drains all messages
+    BOOST_CHECK_EQUAL(result, true);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_waitForEmpty_timeout)
+{
+    cluster->stop();
+
+    // Queue some messages
+    const int numMessages = 10;
+    for (int i = 0; i < numMessages; i++)
+    {
+        auto data = generateRandomData(1024);
+        cluster->queueMessage("test_source", data, Message::Priority::Medium);
+    }
+
+    // Don't start any draining thread - queue will remain non-empty
+    // waitForEmpty=true should timeout because queue never empties
+    auto result = cluster->waitForQueueDrain(true);
+
+    // Should timeout (return false)
+    BOOST_CHECK_EQUAL(result, false);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_multiple_sources_above_threshold)
+{
+    // Queue data from multiple sources to exceed MAX_FILE_BUFFER_SIZE
+    const int messageSize       = 1024 * 10;  // 10KB per message
+    const int messagesPerSource = (MAX_FILE_BUFFER_SIZE / messageSize / 3) + 10;
+
+    for (int i = 0; i < messagesPerSource; i++)
+    {
+        auto data1 = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i));
+        auto data2 = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i + 1));
+        auto data3 = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i + 2));
+
+        onlineCluster->queueMessage("source1", data1, Message::Priority::Medium);
+        onlineCluster->queueMessage("source2", data2, Message::Priority::Medium);
+        onlineCluster->queueMessage("source3", data3, Message::Priority::Medium);
+    }
+
+    // Cluster is connected and will naturally drain messages below threshold
+    BOOST_CHECK_EQUAL(onlineCluster->waitForQueueDrain(false), true);
+}
+
+BOOST_AUTO_TEST_CASE(test_waitForQueueDrain_mixed_priorities_above_threshold)
+{
+    // Queue data across different priorities to exceed MAX_FILE_BUFFER_SIZE
+    const int messageSize = 1024 * 10;  // 10KB per message
+    const int numMessages = (MAX_FILE_BUFFER_SIZE / messageSize / 3) + 10;
+
+    for (int i = 0; i < numMessages; i++)
+    {
+        auto dataHigh = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i));
+        auto dataMed  = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i + 1));
+        auto dataLow  = std::make_shared<std::vector<uint8_t>>(messageSize, static_cast<uint8_t>(i + 2));
+
+        onlineCluster->queueMessage("test_source", dataHigh, Message::Priority::Highest);
+        onlineCluster->queueMessage("test_source", dataMed, Message::Priority::Medium);
+        onlineCluster->queueMessage("test_source", dataLow, Message::Priority::Lowest);
+    }
+
+    // Cluster is connected and will naturally drain messages below threshold
+    BOOST_CHECK_EQUAL(onlineCluster->waitForQueueDrain(false), true);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

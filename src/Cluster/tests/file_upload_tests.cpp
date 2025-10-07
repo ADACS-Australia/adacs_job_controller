@@ -142,8 +142,12 @@ BOOST_AUTO_TEST_CASE(test_handleServerReady)
 
 BOOST_AUTO_TEST_CASE(test_invalid_message)
 {
-    // Test with an invalid message ID
-    auto msg = Message(9999);
+    // Test with a random invalid message ID (reserved testing range: TEST_MESSAGE_ID_MIN to TEST_MESSAGE_ID_MAX)
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(TEST_MESSAGE_ID_MIN, TEST_MESSAGE_ID_MAX);
+    int invalidId = dis(gen);
+    auto msg      = Message(invalidId);
     fileUpload->handleMessage(msg);
 
     // State should remain unchanged

@@ -63,6 +63,11 @@ export constexpr uint32_t DB_BUNDLE_CREATE_OR_UPDATE_JOB = 8000;
 export constexpr uint32_t DB_BUNDLE_GET_JOB_BY_ID        = 8001;
 export constexpr uint32_t DB_BUNDLE_DELETE_JOB           = 8002;
 
+// NOTE: Message IDs in the range TEST_MESSAGE_ID_MIN to TEST_MESSAGE_ID_MAX are reserved for testing and should never
+// be used in production code.
+export constexpr uint32_t TEST_MESSAGE_ID_MIN = 1000000;
+export constexpr uint32_t TEST_MESSAGE_ID_MAX = 1001000;
+
 export class Message
 {
 public:

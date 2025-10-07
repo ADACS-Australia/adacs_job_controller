@@ -21,6 +21,8 @@ export const std::string DATABASE_SCHEMA   = GET_ENV("DATABASE_SCHEMA", "jobserv
 export const std::string DATABASE_HOST     = GET_ENV("DATABASE_HOST", "localhost");
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const int DATABASE_PORT             = std::stoi(GET_ENV("DATABASE_PORT", "3306"));
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
+export const bool DATABASE_DEBUG           = GET_ENV("DATABASE_DEBUG", "false") == "true";
 
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const int FILE_DOWNLOAD_EXPIRY_TIME =
