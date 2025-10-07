@@ -43,13 +43,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Boost libraries required by folly (context, filesystem, program_options, regex, system, thread)
 # and Simple-WebSocket-Server (system, thread, coroutine, context)
 RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install \
-    python3 python3-venv tzdata \
+    python3 python3-venv tzdata netcat-openbsd \
     libdw1 libunwind8 \
     libboost-filesystem1.83.0 libboost-system1.83.0 libboost-thread1.83.0 \
     libboost-coroutine1.83.0 libboost-context1.83.0 libboost-program-options1.83.0 \
     libboost-regex1.83.0 \
     libdouble-conversion3 libgflags2.2 libgoogle-glog0v6t64 \
-    libmysqlclient21 libfmt9 mariadb-client \
+    libmysqlclient21 libfmt9 \
     build-essential libpython3-dev libffi-dev \
     libhowardhinnant-date-dev \
     libssl3t64 libcurl4 libevent-2.1-7t64 \
