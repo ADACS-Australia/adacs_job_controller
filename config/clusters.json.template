@@ -1,0 +1,10 @@
+[
+  {
+    "name": "example_cluster",
+    "host": "cluster.example.com",
+    "username": "jobclient",
+    "path": "/path/to/gwcloud_job_client/",
+    "key": "-----BEGIN RSA PRIVATE KEY-----\n__CHANGEME__\n-----END RSA PRIVATE KEY-----"
+  }
+]
+

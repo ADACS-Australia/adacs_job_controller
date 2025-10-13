@@ -12,11 +12,11 @@ export inline auto GET_ENV(const std::string& variable, const std::string& _defa
 }
 
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
-export const std::string DATABASE_USER     = GET_ENV("DATABASE_USER", "jobserver");
+export const std::string DATABASE_USER     = GET_ENV("MYSQL_USER", "jobserver");
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
-export const std::string DATABASE_PASSWORD = GET_ENV("DATABASE_PASSWORD", "jobserver");
+export const std::string DATABASE_PASSWORD = GET_ENV("MYSQL_PASSWORD", "jobserver");
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
-export const std::string DATABASE_SCHEMA   = GET_ENV("DATABASE_SCHEMA", "jobserver");
+export const std::string DATABASE_SCHEMA   = GET_ENV("MYSQL_DATABASE", "jobserver");
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
 export const std::string DATABASE_HOST     = GET_ENV("DATABASE_HOST", "localhost");
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization,cert-err58-cpp)
@@ -28,8 +28,8 @@ export const bool DATABASE_DEBUG           = GET_ENV("DATABASE_DEBUG", "false") 
 export const int FILE_DOWNLOAD_EXPIRY_TIME =
     std::stoi(GET_ENV("FILE_DOWNLOAD_EXPIRY_TIME", std::to_string(60 * 60 * 24)));
 
-export constexpr const char* CLUSTER_CONFIG_ENV_VARIABLE = "CLUSTER_CONFIG";
-export constexpr const char* ACCESS_SECRET_ENV_VARIABLE  = "ACCESS_SECRET_CONFIG";
+export constexpr const char* CLUSTER_CONFIG_FILE_ENV_VARIABLE       = "CLUSTER_CONFIG_FILE";
+export constexpr const char* ACCESS_SECRET_CONFIG_FILE_ENV_VARIABLE = "ACCESS_SECRET_CONFIG_FILE";
 
 #ifndef BUILD_TESTS
 export constexpr const char* BUNDLE_HTTP_PORT  = ":80";

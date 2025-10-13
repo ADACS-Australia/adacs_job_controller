@@ -4,6 +4,7 @@
 
 module;
 #include <algorithm>
+#include <fstream>
 #include <iostream>
 #include <thread>
 
@@ -96,8 +97,25 @@ private:
 
 ClusterManager::ClusterManager(std::shared_ptr<IApplication> app) : app(std::move(app))
 {
-    // Read the cluster configuration from the environment
-    auto jsonClusters = nlohmann::json::parse(base64Decode(GET_ENV(CLUSTER_CONFIG_ENV_VARIABLE, base64Encode("{}"))));
+    // Read the cluster configuration from file
+    auto clusterConfigPath = GET_ENV(CLUSTER_CONFIG_FILE_ENV_VARIABLE, "config/clusters.json");
+    std::ifstream clusterConfigFile(clusterConfigPath);
+
+    if (!clusterConfigFile.is_open())
+    {
+        throw std::runtime_error("Failed to open cluster configuration file: " + std::string(clusterConfigPath));
+    }
+
+    nlohmann::json jsonClusters;
+    try
+    {
+        jsonClusters = nlohmann::json::parse(clusterConfigFile);
+    }
+    catch (const nlohmann::json::parse_error& e)
+    {
+        throw std::runtime_error("Failed to parse cluster configuration file: " + std::string(clusterConfigPath) +
+                                 " - " + std::string(e.what()));
+    }
 
     // Create the cluster instances from the config
     for (const auto& jsonCluster : jsonClusters)

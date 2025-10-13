@@ -91,23 +91,36 @@ Finally, to build the production docker asset, run `bash scripts/build.sh`, then
 
 ## Deployment Configuration
 
-The Job Controller has two main configuration environment variables that are read at startup. These are `CLUSTER_CONFIG` and `ACCESS_SECRET_CONFIG`. Both of these environment variable are **base64** encoded JSON objects.
+The Job Controller requires two JSON configuration files to be provided at startup:
 
+1. **Cluster Configuration** (`clusters.json`) - Configures the remote clients and their SSH connection details
+2. **Access Secret Configuration** (`access_secrets.json`) - Configures HTTP access and restricts applications to specific cluster(s)
 
+The paths to these files are specified via environment variables:
+- `CLUSTER_CONFIG_FILE` - Path to the clusters configuration file (default: `config/clusters.json`)
+- `ACCESS_SECRET_CONFIG_FILE` - Path to the access secrets configuration file (default: `config/access_secrets.json`)
 
-The `CLUSTER_CONFIG` configures the remote clients and their SSH connection details, while `ACCESS_SECRET_CONFIG` configures the HTTP access and restricts applications to specific cluster(s). In this context an application is a JWT token with associated access to specific clusters.
+### Configuration File Setup
 
+Template files are provided in the `config/` directory:
+- `config/clusters.json.template`
+- `config/access_secrets.json.template`
 
+To set up your configuration:
 
-In kubernetes where the job controller is deployed, we use a vault service to store these environment variables as secrets. They can be seen here: https://vault.gwdc.org.au/ui/vault/secrets/gwcloud%2Fkv/show/job-server
+1. Copy the template files:
+   ```bash
+   cp config/clusters.json.template config/clusters.json
+   cp config/access_secrets.json.template config/access_secrets.json
+   ```
 
+2. Edit the files with your actual configuration values
 
+3. The actual config files (`clusters.json` and `access_secrets.json`) are git-ignored and should never be committed
 
-The typical process to update these environment variables is to copy the existing value from vault, decode it with https://www.base64decode.org/, copy the decoded JSON object in to https://jsoneditoronline.org/, make the required changes to the JSON, copy the new JSON in to https://www.base64encode.org/ and copy the base64 encoded value back to vault and create a new secrets version.
+### Cluster Configuration Format
 
-
-
-The format for `CLUSTER_CONFIG` is:
+The `clusters.json` file has the following format:
 
 ```
 [
@@ -124,7 +137,9 @@ The format for `CLUSTER_CONFIG` is:
 
 
 
-The format for `ACCESS_SECRET_CONFIG` is:
+### Access Secret Configuration Format
+
+The `access_secrets.json` file has the following format:
 
 ```
 [
@@ -145,15 +160,38 @@ The format for `ACCESS_SECRET_CONFIG` is:
 
 
 
+### Adding a New Cluster/Application
+
 The typical process to add a new application would look something like the following:
 
 1. Create or gain access to the remote SSH user who will be running the job controller client. Typically this user should be a system user.
 2. Install and configure the job controller client on that remote machine. (Refer to https://github.com/gravitationalwavedc/gwcloud_job_client)
 3. Create a new **RSA** ssh key pair and add the public key to the remote SSH user (Note: OPENSSH keys won't work) (Add option `-m PEM` into your ssh-keygen command. For example, you can run `ssh-keygen -m PEM -t rsa -b 4096 -C "your_email@example.com"` to force ssh-keygen to export as PEM format.)
-4. Create a new entry in the `CLUSTER_CONFIG` config with the cluster name and SSH details
-5. Create a new entry in the `ACCESS_SECRET_CONFIG` config with the application name, JWT secret, and the cluster name from step 4 in the `clusters` list.
-6. Update the vault secret
-7. Restart the job controller deployment in Argo CD https://cd.gwdc.org.au/applications/gwcloud-job-server to apply the new secrets.
+4. Edit `config/clusters.json` and add a new entry with the cluster name and SSH details
+5. Edit `config/access_secrets.json` and add a new entry with the application name, JWT secret, and the cluster name from step 4 in the `clusters` list.
+6. Restart the job controller to apply the new configuration:
+   ```bash
+   docker-compose -f docker/docker-compose.yaml restart web
+   ```
+
+### Production Deployment
+
+For production deployment using docker-compose:
+
+1. Set up the `.env` file:
+   ```bash
+   cp .env.template .env
+   # Edit .env with your database passwords and configuration
+   ```
+
+2. Set up the configuration files as described above
+
+3. Start the services:
+   ```bash
+   bash scripts/run.sh
+   ```
+
+The configuration files are mounted as read-only volumes in the container at `/app/config/`.
 
 
 

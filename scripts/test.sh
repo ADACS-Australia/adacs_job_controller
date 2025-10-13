@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Create .env from template if it doesn't exist
+if [ ! -f .env ]; then
+    cp .env.template .env
+fi
+
 # Reset the test_report directory
 rm -Rf ./test_report
 mkdir ./test_report

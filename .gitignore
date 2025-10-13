@@ -7,5 +7,11 @@ venv
 config/keys/*
 CMakeFiles
 test_report/
+build/
 src/build/
 src/.cache/
+.env
+docker/db/
+docker/logs/
+config/clusters.json
+config/access_secrets.json

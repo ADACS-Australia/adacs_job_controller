@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Create .env from template if it doesn't exist
+if [ ! -f .env ]; then
+    cp .env.template .env
+fi
+
 export DOCKER_BUILDKIT=1
 
 # Test build using docker-compose override file
