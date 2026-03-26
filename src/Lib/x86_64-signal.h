@@ -129,7 +129,10 @@ struct kernel_sigaction
 
 /* The return code for realtime-signals.  */
 RESTORE(restore_rt, __NR_rt_sigreturn)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundefined-internal"
 void restore_rt(void) asm("__restore_rt") __attribute__((visibility("hidden")));
+#pragma clang diagnostic pop
 
 #define INIT_SEGV                                                  \
     do                                                             \

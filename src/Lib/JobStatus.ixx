@@ -39,5 +39,5 @@ export enum class JobStatus : std::uint16_t
     // A job that crashed because it ran out of memory
     OUT_OF_MEMORY      = 402,
     // A job is completed if it is finished running on the cluster without error
-    COMPLETED          = 500
+    COMPLETED          = 500,
 };

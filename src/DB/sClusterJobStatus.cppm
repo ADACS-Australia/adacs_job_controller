@@ -50,9 +50,8 @@ export struct sClusterJobStatus
 
     // Database methods
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-    static auto getJobStatusByJobIdAndWhat(uint64_t jobId,
-                                           const std::string& what,
-                                           const std::string& cluster) -> std::vector<sClusterJobStatus>
+    static auto getJobStatusByJobIdAndWhat(uint64_t jobId, const std::string& what, const std::string& cluster)
+        -> std::vector<sClusterJobStatus>
     {
         auto _database = MySqlConnector();
         const schema::JobserverClusterjobstatus _jobStatusTable;

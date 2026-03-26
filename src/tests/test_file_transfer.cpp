@@ -104,10 +104,10 @@ struct FileTransferTestDataFixture : public DatabaseFixture, public WebSocketCli
 
         if (msg.getId() == DOWNLOAD_FILE)
         {
-            msg.pop_uint();
+            (void)msg.pop_uint();
             auto uuid = msg.pop_string();
-            msg.pop_string();
-            msg.pop_string();
+            (void)msg.pop_string();
+            (void)msg.pop_string();
 
             websocketFileDownloadClient = std::make_shared<TestWsClient>("localhost:8001/job/ws/?token=" + uuid);
             websocketFileDownloadClient->on_message =

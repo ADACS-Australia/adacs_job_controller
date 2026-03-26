@@ -433,10 +433,10 @@ void Cluster::run()
                 for (auto iter = pMap.begin(); iter != pMap.end(); ++iter)
                 {
                     // Check if the vector for this source is empty
-                    if (!(*iter).second->empty())
+                    if (!iter->second->empty())
                     {
                         // Pop the next item from the queue
-                        auto data = (*iter).second->try_dequeue();
+                        auto data = iter->second->try_dequeue();
 
                         try
                         {
@@ -444,15 +444,18 @@ void Cluster::run()
                             if (data)
                             {
                                 // Decrement queued message size counter
-                                queuedMessageSize.fetch_sub((*data)->size(), std::memory_order_relaxed);
+                                queuedMessageSize.fetch_sub(
+                                    (*data)->size(),
+                                    std::memory_order_relaxed);  // NOLINT(readability-redundant-parentheses)
 
                                 // Notify anyone waiting on queue size changes (for backpressure)
                                 queueSizeCV.notify_all();
 
                                 // Convert the message
-                                auto outMessage = std::make_shared<WsServer::OutMessage>((*data)->size());
-                                std::copy((*data)->begin(),
-                                          (*data)->end(),
+                                auto outMessage = std::make_shared<WsServer::OutMessage>(
+                                    (*data)->size());        // NOLINT(readability-redundant-parentheses)
+                                std::copy((*data)->begin(),  // NOLINT(readability-redundant-parentheses)
+                                          (*data)->end(),    // NOLINT(readability-redundant-parentheses)
                                           std::ostream_iterator<uint8_t>(*outMessage));
 
                                 // Protect this block against race conditions. It's possible for pConnection to be
@@ -542,7 +545,7 @@ void Cluster::pruneSources()
                 for (auto iter = pMap.begin(); iter != pMap.end();)
                 {
                     // Check if the vector for this source is empty
-                    if ((*iter).second->empty())
+                    if (iter->second->empty())
                     {
                         // Remove this source from the map and continue
                         iter = pMap.erase(iter);
@@ -590,7 +593,7 @@ auto Cluster::doesHigherPriorityDataExist(Message::Priority maxPriority) -> bool
         for (auto iter = pMap.begin(); iter != pMap.end();)
         {
             // Check if the vector for this source is empty
-            if (!(*iter).second->empty())
+            if (!iter->second->empty())
             {
                 // Data exists
                 return true;

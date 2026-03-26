@@ -44,8 +44,8 @@ public:
 
     // IClusterManager interface implementation
     void start() override;
-    auto handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection,
-                             const std::string& uuid) -> std::shared_ptr<ICluster> override;
+    auto handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection, const std::string& uuid)
+        -> std::shared_ptr<ICluster> override;
     void removeConnection(const std::shared_ptr<WsServer::Connection>& connection, bool close, bool lock) override;
     void handlePong(const std::shared_ptr<WsServer::Connection>& connection) override;
     auto getCluster(const std::shared_ptr<WsServer::Connection>& connection) -> std::shared_ptr<ICluster> override;
@@ -53,10 +53,10 @@ public:
     auto isClusterOnline(const std::shared_ptr<ICluster>& cluster) -> bool override;
     void reportWebsocketError(const std::shared_ptr<ICluster>& cluster,
                               const boost::system::error_code& errorCode) override;
-    auto createFileDownload(const std::shared_ptr<ICluster>& cluster,
-                            const std::string& uuid) -> std::shared_ptr<ICluster> override;
-    auto createFileUpload(const std::shared_ptr<ICluster>& cluster,
-                          const std::string& uuid) -> std::shared_ptr<ICluster> override;
+    auto createFileDownload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid)
+        -> std::shared_ptr<ICluster> override;
+    auto createFileUpload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid)
+        -> std::shared_ptr<ICluster> override;
 
     struct sPingPongTimes
     {
@@ -511,8 +511,8 @@ void ClusterManager::connectCluster(const std::shared_ptr<Cluster>& cluster, con
 #endif
 }
 
-auto ClusterManager::createFileDownload(const std::shared_ptr<ICluster>& cluster,
-                                        const std::string& uuid) -> std::shared_ptr<ICluster>
+auto ClusterManager::createFileDownload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid)
+    -> std::shared_ptr<ICluster>
 {
     auto fileDownload = std::make_shared<FileDownload>(cluster->getClusterDetails(), uuid, this->app);
 
@@ -522,8 +522,8 @@ auto ClusterManager::createFileDownload(const std::shared_ptr<ICluster>& cluster
     return fileDownload;
 }
 
-auto ClusterManager::createFileUpload(const std::shared_ptr<ICluster>& cluster,
-                                      const std::string& uuid) -> std::shared_ptr<ICluster>
+auto ClusterManager::createFileUpload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid)
+    -> std::shared_ptr<ICluster>
 {
     auto fileUpload = std::make_shared<FileUpload>(cluster->getClusterDetails(), uuid, this->app);
 

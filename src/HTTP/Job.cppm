@@ -401,14 +401,16 @@ export void JobApi(const std::string& path,
                 const auto* const latestStatus = &jobHistoryResults.front();
 
                 // Check invalid states (States where the job has finished)
-                auto invalidStates = std::vector<uint32_t>{static_cast<uint32_t>(JobStatus::CANCELLING),
-                                                           static_cast<uint32_t>(JobStatus::CANCELLED),
-                                                           static_cast<uint32_t>(JobStatus::DELETING),
-                                                           static_cast<uint32_t>(JobStatus::DELETED),
-                                                           static_cast<uint32_t>(JobStatus::ERROR),
-                                                           static_cast<uint32_t>(JobStatus::WALL_TIME_EXCEEDED),
-                                                           static_cast<uint32_t>(JobStatus::OUT_OF_MEMORY),
-                                                           static_cast<uint32_t>(JobStatus::COMPLETED)};
+                auto invalidStates = std::vector<uint32_t>{
+                    static_cast<uint32_t>(JobStatus::CANCELLING),
+                    static_cast<uint32_t>(JobStatus::CANCELLED),
+                    static_cast<uint32_t>(JobStatus::DELETING),
+                    static_cast<uint32_t>(JobStatus::DELETED),
+                    static_cast<uint32_t>(JobStatus::ERROR),
+                    static_cast<uint32_t>(JobStatus::WALL_TIME_EXCEEDED),
+                    static_cast<uint32_t>(JobStatus::OUT_OF_MEMORY),
+                    static_cast<uint32_t>(JobStatus::COMPLETED),
+                };
 
                 // NOLINTNEXTLINE(modernize-use-ranges,boost-use-ranges,llvm-use-ranges)
                 if (std::any_of(invalidStates.begin(), invalidStates.end(), [latestStatus](uint32_t state) {
@@ -573,13 +575,15 @@ export void JobApi(const std::string& path,
                 const auto* const latestStatus = &jobHistoryResults.front();
 
                 // Check invalid states (States where the job is running)
-                auto invalidStates = std::vector<uint32_t>{static_cast<uint32_t>(JobStatus::SUBMITTING),
-                                                           static_cast<uint32_t>(JobStatus::SUBMITTED),
-                                                           static_cast<uint32_t>(JobStatus::QUEUED),
-                                                           static_cast<uint32_t>(JobStatus::RUNNING),
-                                                           static_cast<uint32_t>(JobStatus::CANCELLING),
-                                                           static_cast<uint32_t>(JobStatus::DELETING),
-                                                           static_cast<uint32_t>(JobStatus::DELETED)};
+                auto invalidStates = std::vector<uint32_t>{
+                    static_cast<uint32_t>(JobStatus::SUBMITTING),
+                    static_cast<uint32_t>(JobStatus::SUBMITTED),
+                    static_cast<uint32_t>(JobStatus::QUEUED),
+                    static_cast<uint32_t>(JobStatus::RUNNING),
+                    static_cast<uint32_t>(JobStatus::CANCELLING),
+                    static_cast<uint32_t>(JobStatus::DELETING),
+                    static_cast<uint32_t>(JobStatus::DELETED),
+                };
 
                 // NOLINTNEXTLINE(modernize-use-ranges,boost-use-ranges,llvm-use-ranges)
                 if (std::any_of(invalidStates.begin(), invalidStates.end(), [latestStatus](uint32_t state) {

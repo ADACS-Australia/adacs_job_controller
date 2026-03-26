@@ -20,7 +20,7 @@ import IHttpServer;
 import IWebSocketServer;
 
 // Re-export the FileListMap type
-export using FileListMap = ::FileListMap;
+export using ::FileListMap;
 
 export class IApplication
 {

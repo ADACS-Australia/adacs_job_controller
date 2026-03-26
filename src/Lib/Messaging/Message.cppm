@@ -357,7 +357,7 @@ public:
     {
         auto len     = pop_ulong();
         auto result  = std::vector<uint8_t>(data->begin() + static_cast<int64_t>(index),
-                                           data->begin() + static_cast<int64_t>(index) + static_cast<int64_t>(len));
+                                            data->begin() + static_cast<int64_t>(index) + static_cast<int64_t>(len));
         index       += len;
         return result;
     }

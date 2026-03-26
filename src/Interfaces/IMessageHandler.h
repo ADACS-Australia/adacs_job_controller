@@ -26,8 +26,8 @@ public:
     virtual void handleMessage(Message& message, const std::shared_ptr<ICluster>& cluster) = 0;
 
     // Message creation helpers
-    virtual auto createResponseMessage(const Message& originalMessage,
-                                       const std::string& source) const -> std::unique_ptr<Message> = 0;
+    virtual auto createResponseMessage(const Message& originalMessage, const std::string& source) const
+        -> std::unique_ptr<Message> = 0;
 };
 
 #endif  // GWCLOUD_JOB_SERVER_I_MESSAGE_HANDLER_H

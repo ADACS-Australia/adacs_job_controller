@@ -79,14 +79,14 @@ WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::m
         }
 
         // Check that the only query string parameter is "token"
-        if ((*queryParams.begin()).first != "token")
+        if (queryParams.begin()->first != "token")
         {
             connection->close();
             return;
         }
 
         // Check that the token is valid
-        auto cluster = this->app->getClusterManager()->handleNewConnection(connection, (*queryParams.begin()).second);
+        auto cluster = this->app->getClusterManager()->handleNewConnection(connection, queryParams.begin()->second);
         if (cluster)
         {
             // Everything is fine
@@ -100,7 +100,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::m
         else
         {
             // Invalid Token
-            std::cout << "WS: Invalid token used - " << (*queryParams.begin()).second << '\n';
+            std::cout << "WS: Invalid token used - " << queryParams.begin()->second << '\n';
             connection->close();
         }
     };

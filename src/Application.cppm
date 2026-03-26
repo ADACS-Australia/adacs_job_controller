@@ -25,6 +25,7 @@ import IClusterManager;
 import Job;
 import File;
 
+// NOLINTNEXTLINE(misc-use-internal-linkage)
 class Application : public IApplication, public std::enable_shared_from_this<Application>
 {
 private:
