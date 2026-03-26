@@ -22,7 +22,8 @@ clang-format-check:
   stage: lint
   image: ubuntu:24.04
   before_script:
-    - apt-get update && apt-get install -y clang-format
+    - apt-get update && apt-get install -y wget lsb-release software-properties-common gnupg
+    - wget https://apt.llvm.org/llvm.sh && bash ./llvm.sh 23 all
   script:
     - ./scripts/check-format.sh
   allow_failure: false
