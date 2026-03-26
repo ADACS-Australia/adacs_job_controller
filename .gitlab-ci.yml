@@ -61,4 +61,14 @@ code-quality:
   artifacts:
     reports:
       codequality: gl-code-quality-report.json
-
+python-tests:
+  stage: test
+  image: ubuntu:24.04
+  before_script:
+    - apt-get update && apt-get install -y python3 python3-pip python3-venv libkrb5-dev
+  script:
+    - cd src/utils/keyserver
+    - python3 -m venv venv
+    - venv/bin/pip install -r requirements.txt
+    - venv/bin/pytest tests/ -v
+  allow_failure: false

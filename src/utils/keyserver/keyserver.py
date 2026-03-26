@@ -12,9 +12,11 @@ ssh_user_name = os.getenv("SSH_USERNAME")
 ssh_path = os.getenv("SSH_PATH")
 ssh_key = os.getenv("SSH_KEY")
 ssh_token = os.getenv("SSH_TOKEN")
+ssh_keytab = os.getenv("SSH_KEYTAB", "")
+ssh_principal = os.getenv("SSH_PRINCIPAL", "")
 
 
-def get_ssh_connection(host_name, user_name, key):
+def get_ssh_connection(host_name, user_name, key, keytab=None, principal=None):
     """
     Returns a Paramiko SSH connection to the cluster
     :return: The SSH instance
@@ -23,11 +25,17 @@ def get_ssh_connection(host_name, user_name, key):
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    # If this fails and raises an exception then the top level exception handler
-    # will be triggered
-    key = io.StringIO(key)
-    key = paramiko.RSAKey.from_private_key(key)
-    ssh.connect(host_name, username=user_name, pkey=key)
+    if keytab and principal:
+        # Obtain a Kerberos TGT from the keytab, then connect using GSSAPI
+        subprocess.check_call(["kinit", "-kt", keytab, principal])
+        ssh.connect(host_name, username=user_name, gss_auth=True, gss_kex=True)
+    else:
+        # If this fails and raises an exception then the top level exception handler
+        # will be triggered
+        key = io.StringIO(key)
+        key = paramiko.RSAKey.from_private_key(key)
+        ssh.connect(host_name, username=user_name, pkey=key)
+
     return ssh, ssh.get_transport().open_channel("session")
 
 
@@ -46,7 +54,8 @@ def try_connect():
         )
     else:
         # Try to create the ssh connection
-        client, ssh = get_ssh_connection(ssh_host_name, ssh_user_name, ssh_key)
+        client, ssh = get_ssh_connection(ssh_host_name, ssh_user_name, ssh_key,
+                                         keytab=ssh_keytab, principal=ssh_principal)
 
         # Construct the command
         command = "cd {}; source env.sh; ./adacs_job_client {} || (source venv/bin/activate && python client.py {})" \
@@ -76,24 +85,29 @@ def try_connect():
         print("Stderr: {}".format(stderr))
 
 
-try:
-    # Attempt to connect to the remote host
-    try_connect()
+def main():
+    try:
+        # Attempt to connect to the remote host
+        try_connect()
 
-    # Exit with success status
-    exit(0)
+        # Exit with success status
+        exit(0)
 
-except Exception as e:
-    # An exception occurred, log the exception to the log
-    print("Error initiating the remote client")
-    print(type(e))
-    print(e.args)
-    print(e)
+    except Exception as e:
+        # An exception occurred, log the exception to the log
+        print("Error initiating the remote client")
+        print(type(e))
+        print(e.args)
+        print(e)
 
-    # Also log the stack trace
-    exc_type, exc_value, exc_traceback = sys.exc_info()
-    lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-    print(''.join('!! ' + line for line in lines))
+        # Also log the stack trace
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+        print(''.join('!! ' + line for line in lines))
 
-    # Exit with failure status
-    exit(1)
+        # Exit with failure status
+        exit(1)
+
+
+if __name__ == "__main__":
+    main()

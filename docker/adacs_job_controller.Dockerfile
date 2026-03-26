@@ -13,7 +13,7 @@ RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install wget lsb-rel
 RUN wget https://apt.llvm.org/llvm.sh && bash ./llvm.sh 23 all
 
 # Install remaining build dependencies
-RUN apt-get -y install python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev libfast-float-dev ninja-build libcpp-jwt-dev libhowardhinnant-date-dev nlohmann-json3-dev 
+RUN apt-get -y install python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev libfast-float-dev ninja-build libcpp-jwt-dev libhowardhinnant-date-dev nlohmann-json3-dev libkrb5-dev 
 
 # Copy in the source directory
 ADD src /src
@@ -53,7 +53,8 @@ RUN apt-get update && apt-get -y dist-upgrade && apt-get -y install \
     build-essential libpython3-dev libffi-dev \
     libhowardhinnant-date-dev \
     libssl3t64 libcurl4 libevent-2.1-7t64 \
-    libjemalloc2 libzstd1 liblz4-1 libsnappy1v5 libbz2-1.0
+    libjemalloc2 libzstd1 liblz4-1 libsnappy1v5 libbz2-1.0 \
+    libkrb5-dev krb5-user
 
 # Set the timezone
 ENV TZ=Australia/Melbourne

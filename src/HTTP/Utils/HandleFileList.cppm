@@ -34,8 +34,7 @@ import ICluster;
 import GeneralUtils;
 
 // Re-export sFile from FileTypes.h
-// NOLINTNEXTLINE(readability-redundant-qualified-alias)
-export using sFile = ::sFile;
+export using ::sFile;
 
 export void handleFileList(const std::shared_ptr<IApplication>& app,
                            const std::shared_ptr<IClusterManager>& clusterManager,

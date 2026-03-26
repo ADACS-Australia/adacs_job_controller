@@ -21,11 +21,14 @@ export struct sClusterDetails
     explicit sClusterDetails(nlohmann::json cluster)
     {
         // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-        name     = cluster["name"];
-        host     = cluster["host"];
-        username = cluster["username"];
-        path     = cluster["path"];
-        key      = cluster["key"];
+        name              = cluster["name"];
+        host              = cluster["host"];
+        username          = cluster["username"];
+        path              = cluster["path"];
+        key               = cluster.value("key", "");
+        connectionType    = cluster.value("connection_type", "ssh");
+        keytab            = cluster.value("keytab", "");
+        kerberosPrincipal = cluster.value("kerberos_principal", "");
         // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
 
@@ -54,12 +57,30 @@ export struct sClusterDetails
         return key;
     }
 
+    auto getConnectionType()
+    {
+        return connectionType;
+    }
+
+    auto getSshKeytab()
+    {
+        return keytab;
+    }
+
+    auto getSshPrincipal()
+    {
+        return kerberosPrincipal;
+    }
+
 private:
     std::string name;
     std::string host;
     std::string username;
     std::string path;
     std::string key;
+    std::string connectionType;
+    std::string keytab;
+    std::string kerberosPrincipal;
 };
 
 // Cluster role enumeration

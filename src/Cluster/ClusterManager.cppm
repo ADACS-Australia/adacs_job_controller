@@ -171,7 +171,9 @@ void ClusterManager::reconnectClusters()
             // Get the tables
             const schema::JobserverClusteruuid clusterUuidTable;
 
-            // todo: Delete any existing uuids for this cluster
+            // Delete any existing uuids for this cluster before inserting a new one
+            // NOLINTNEXTLINE(bugprone-unused-return-value)
+            database->run(remove_from(clusterUuidTable).where(clusterUuidTable.cluster == cluster->getName()));
 
             // Because UUID's very occasionally collide, so try to generate a few UUID's in a row
             try
@@ -254,11 +256,11 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
     // Create a database connection
     auto database = MySqlConnector();
 
-    // First find any tokens older than CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS and delete them
+    // First find any tokens older than CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS and delete them
     auto cleanupResult = database->run(
         remove_from(clusterUuidTable)
             .where(clusterUuidTable.timestamp <=
-                   std::chrono::system_clock::now() - std::chrono::seconds(CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS)));
+                   std::chrono::system_clock::now() - std::chrono::seconds(CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS)));
     // Note: For cleanup operations, we don't require a specific number of rows to be deleted
     // as there might be zero or more expired tokens
     (void)cleanupResult;  // Suppress unused variable warning
@@ -396,10 +398,10 @@ void ClusterManager::checkPings()
 
     // Check for any websocket pings that didn't pong within CLUSTER_MANAGER_PING_INTERVAL_SECONDS, and kick the
     // connection if so
-    typeof mClusterPings deadConnections;
+    typeof(mClusterPings) deadConnections; // NOLINT(readability-redundant-parentheses)
     std::ranges::copy_if(mClusterPings, std::inserter(deadConnections, deadConnections.end()), [](const auto& item) {
         const std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
-        return (item.second.pingTimestamp != zeroTime && item.second.pongTimestamp == zeroTime);
+        return item.second.pingTimestamp != zeroTime && item.second.pongTimestamp == zeroTime;
     });
 
     // Close and remove any dead connections
@@ -500,13 +502,29 @@ void ClusterManager::connectCluster(const std::shared_ptr<Cluster>& cluster, con
 {
     std::cout << "Attempting to connect cluster " << cluster->getName() << " with token " << token << '\n';
 #ifndef BUILD_TESTS
+    // Check if this is a manual connection
+    if (cluster->getClusterDetails()->getConnectionType() == "manual")
+    {
+        // For manual connections, print the command for the user to run and return
+        const std::string command = "cd " + cluster->getClusterDetails()->getSshPath() +
+                                    "; source env.sh; ./adacs_job_client " + token +
+                                    " || (source venv/bin/activate && python client.py " + token + ")";
+
+        std::cout << "MANUAL CLUSTER [" << cluster->getName() << "] - SSH into "
+                  << cluster->getClusterDetails()->getSshHost() << " as "
+                  << cluster->getClusterDetails()->getSshUsername() << " and run:\n  " << command << "\n";
+        return;
+    }
+
     // NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     boost::process::system("./utils/keyserver/venv/bin/python ./utils/keyserver/keyserver.py",
-                           boost::process::env["SSH_HOST"]     = cluster->getClusterDetails()->getSshHost(),
-                           boost::process::env["SSH_USERNAME"] = cluster->getClusterDetails()->getSshUsername(),
-                           boost::process::env["SSH_KEY"]      = cluster->getClusterDetails()->getSshKey(),
-                           boost::process::env["SSH_PATH"]     = cluster->getClusterDetails()->getSshPath(),
-                           boost::process::env["SSH_TOKEN"]    = token);
+                           boost::process::env["SSH_HOST"]      = cluster->getClusterDetails()->getSshHost(),
+                           boost::process::env["SSH_USERNAME"]  = cluster->getClusterDetails()->getSshUsername(),
+                           boost::process::env["SSH_KEY"]       = cluster->getClusterDetails()->getSshKey(),
+                           boost::process::env["SSH_PATH"]      = cluster->getClusterDetails()->getSshPath(),
+                           boost::process::env["SSH_TOKEN"]     = token,
+                           boost::process::env["SSH_KEYTAB"]    = cluster->getClusterDetails()->getSshKeytab(),
+                           boost::process::env["SSH_PRINCIPAL"] = cluster->getClusterDetails()->getSshPrincipal());
     // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 #endif
 }

@@ -66,6 +66,12 @@ BOOST_AUTO_TEST_CASE(test_constructor)
                               "/cluster" + std::to_string(i) + "/");
             BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshKey(),
                               "cluster" + std::to_string(i) + "_key");
+
+            // When no connection_type is specified, it should default to "ssh"
+            BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getConnectionType(), "ssh");
+            // When no keytab/principal is specified, they should default to empty
+            BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshKeytab(), "");
+            BOOST_CHECK_EQUAL(mgr->getvClusters()->at(i - 1)->getClusterDetails()->getSshPrincipal(), "");
         }
 
         // There should be no connected clusters
@@ -208,7 +214,7 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_expire_uuids)
                       .set(jobClusteruuid.cluster   = mgr->getvClusters()->at(0)->getClusterDetails()->getName(),
                            jobClusteruuid.uuid      = "uuid_doesn't_matter_here",
                            jobClusteruuid.timestamp = std::chrono::system_clock::now() -
-                                                      std::chrono::seconds(CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS)));
+                                                      std::chrono::seconds(CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS)));
 
 
     {
@@ -223,11 +229,12 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_expire_uuids)
 
     // Make sure that old expired uuids are deleted
 
-    database->run(insert_into(jobClusteruuid)
-                      .set(jobClusteruuid.cluster   = mgr->getvClusters()->at(0)->getClusterDetails()->getName(),
-                           jobClusteruuid.uuid      = "uuid_doesn't_matter_here",
-                           jobClusteruuid.timestamp = std::chrono::system_clock::now() -
-                                                      std::chrono::seconds(CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS - 1)));
+    database->run(
+        insert_into(jobClusteruuid)
+            .set(jobClusteruuid.cluster   = mgr->getvClusters()->at(0)->getClusterDetails()->getName(),
+                 jobClusteruuid.uuid      = "uuid_doesn't_matter_here",
+                 jobClusteruuid.timestamp = std::chrono::system_clock::now() -
+                                            std::chrono::seconds(CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS - 1)));
 
 
     {
@@ -336,6 +343,97 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_valid_uuid)
     // No cluster ping entry should exist for this connection
     BOOST_ASSERT_MSG(!mgr->getmClusterPings()->contains(con),
                      "mClusterPings was updated with the invalid connection when it should not have been");
+}
+
+BOOST_AUTO_TEST_CASE(test_constructor_connection_types)
+{
+    // Test cluster configuration with all three connection types
+    const std::string sClustersWithTypes = R"(
+    [
+        {
+            "name": "ssh_cluster",
+            "host": "ssh.example.com",
+            "username": "sshuser",
+            "path": "/ssh/path/",
+            "key": "ssh_rsa_key"
+        },
+        {
+            "name": "kerberos_cluster",
+            "host": "krb.example.com",
+            "username": "krbuser",
+            "path": "/krb/path/",
+            "connection_type": "kerberos",
+            "keytab": "/etc/krb5.keytab",
+            "kerberos_principal": "krbuser@EXAMPLE.COM"
+        },
+        {
+            "name": "manual_cluster",
+            "host": "manual.example.com",
+            "username": "manualuser",
+            "path": "/manual/path/",
+            "connection_type": "manual"
+        }
+    ]
+    )";
+
+    TempClusterConfig typesConfig(sClustersWithTypes);
+    auto testApp = createApplication();
+    auto mgr     = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+    BOOST_CHECK_EQUAL(mgr->getvClusters()->size(), 3);
+
+    // SSH cluster - defaults when connection_type is not specified
+    auto sshCluster = mgr->getvClusters()->at(0);
+    BOOST_CHECK_EQUAL(sshCluster->getClusterDetails()->getName(), "ssh_cluster");
+    BOOST_CHECK_EQUAL(sshCluster->getClusterDetails()->getConnectionType(), "ssh");
+    BOOST_CHECK_EQUAL(sshCluster->getClusterDetails()->getSshKey(), "ssh_rsa_key");
+    BOOST_CHECK_EQUAL(sshCluster->getClusterDetails()->getSshKeytab(), "");
+    BOOST_CHECK_EQUAL(sshCluster->getClusterDetails()->getSshPrincipal(), "");
+
+    // Kerberos cluster - explicit connection_type with keytab and principal
+    auto krbCluster = mgr->getvClusters()->at(1);
+    BOOST_CHECK_EQUAL(krbCluster->getClusterDetails()->getName(), "kerberos_cluster");
+    BOOST_CHECK_EQUAL(krbCluster->getClusterDetails()->getConnectionType(), "kerberos");
+    BOOST_CHECK_EQUAL(krbCluster->getClusterDetails()->getSshKeytab(), "/etc/krb5.keytab");
+    BOOST_CHECK_EQUAL(krbCluster->getClusterDetails()->getSshPrincipal(), "krbuser@EXAMPLE.COM");
+    BOOST_CHECK_EQUAL(krbCluster->getClusterDetails()->getSshKey(), "");
+
+    // Manual cluster - explicit connection_type, no key/keytab needed
+    auto manualCluster = mgr->getvClusters()->at(2);
+    BOOST_CHECK_EQUAL(manualCluster->getClusterDetails()->getName(), "manual_cluster");
+    BOOST_CHECK_EQUAL(manualCluster->getClusterDetails()->getConnectionType(), "manual");
+    BOOST_CHECK_EQUAL(manualCluster->getClusterDetails()->getSshHost(), "manual.example.com");
+    BOOST_CHECK_EQUAL(manualCluster->getClusterDetails()->getSshUsername(), "manualuser");
+    BOOST_CHECK_EQUAL(manualCluster->getClusterDetails()->getSshPath(), "/manual/path/");
+    BOOST_CHECK_EQUAL(manualCluster->getClusterDetails()->getSshKey(), "");
+    BOOST_CHECK_EQUAL(manualCluster->getClusterDetails()->getSshKeytab(), "");
+    BOOST_CHECK_EQUAL(manualCluster->getClusterDetails()->getSshPrincipal(), "");
+}
+
+BOOST_AUTO_TEST_CASE(test_reconnectClusters_deletes_stale_uuids)
+{
+    // Verify that reconnectClusters deletes stale UUIDs for a cluster before inserting a new one.
+    // After two calls to reconnectClusters, there should still be only 3 UUIDs (one per cluster),
+    // not 6, because stale UUIDs are cleaned up before each new insert.
+
+    // First call inserts 3 UUIDs (one per cluster)
+    mgr->callreconnectClusters();
+
+    uint64_t uuidResultsCount =
+        database->run(select(sqlpp::count(1)).from(jobClusteruuid).unconditionally()).front().count;
+    BOOST_CHECK_EQUAL(uuidResultsCount, 3);
+
+    // Second call should delete the old UUIDs and insert new ones
+    mgr->callreconnectClusters();
+
+    uuidResultsCount = database->run(select(sqlpp::count(1)).from(jobClusteruuid).unconditionally()).front().count;
+    BOOST_CHECK_EQUAL(uuidResultsCount, 3);
+
+    // Third call to be sure the pattern is stable
+    mgr->callreconnectClusters();
+
+    uuidResultsCount = database->run(select(sqlpp::count(1)).from(jobClusteruuid).unconditionally()).front().count;
+    BOOST_CHECK_EQUAL(uuidResultsCount, 3);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
