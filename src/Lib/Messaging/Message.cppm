@@ -75,7 +75,7 @@ public:
     {
         Lowest  = 19,
         Medium  = 10,
-        Highest = 0
+        Highest = 0,
     };
 
     // Printable representation so Boost.Test can output Priority values

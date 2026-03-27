@@ -34,6 +34,7 @@ import ICluster;
 import GeneralUtils;
 
 // Re-export sFile from FileTypes.h
+// NOLINTNEXTLINE(readability-redundant-qualified-alias)
 export using sFile = ::sFile;
 
 export void handleFileList(const std::shared_ptr<IApplication>& app,
@@ -176,10 +177,12 @@ void handleFileList(const std::shared_ptr<IApplication>& app,
                     std::vector<sFile> files;
                     for (const auto& cacheResult : fileListCacheResult)
                     {
-                        files.push_back({.fileName    = cacheResult.path,
-                                         .fileSize    = static_cast<uint64_t>(cacheResult.fileSize),
-                                         .permissions = static_cast<uint32_t>(cacheResult.permissions),
-                                         .isDirectory = static_cast<bool>(cacheResult.isDir)});
+                        files.push_back({
+                            .fileName    = cacheResult.path,
+                            .fileSize    = static_cast<uint64_t>(cacheResult.fileSize),
+                            .permissions = static_cast<uint32_t>(cacheResult.permissions),
+                            .isDirectory = static_cast<bool>(cacheResult.isDir),
+                        });
                     }
 
                     // Filter the files

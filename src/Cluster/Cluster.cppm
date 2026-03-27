@@ -444,9 +444,8 @@ void Cluster::run()
                             if (data)
                             {
                                 // Decrement queued message size counter
-                                queuedMessageSize.fetch_sub(
-                                    (*data)->size(),
-                                    std::memory_order_relaxed);  // NOLINT(readability-redundant-parentheses)
+                                // NOLINTNEXTLINE(readability-redundant-parentheses)
+                                queuedMessageSize.fetch_sub((*data)->size(), std::memory_order_relaxed);
 
                                 // Notify anyone waiting on queue size changes (for backpressure)
                                 queueSizeCV.notify_all();

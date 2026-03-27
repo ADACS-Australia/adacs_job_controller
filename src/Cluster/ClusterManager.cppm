@@ -396,7 +396,7 @@ void ClusterManager::checkPings()
 
     // Check for any websocket pings that didn't pong within CLUSTER_MANAGER_PING_INTERVAL_SECONDS, and kick the
     // connection if so
-    typeof(mClusterPings) deadConnections;
+    typeof mClusterPings deadConnections;
     std::ranges::copy_if(mClusterPings, std::inserter(deadConnections, deadConnections.end()), [](const auto& item) {
         const std::chrono::time_point<std::chrono::system_clock> zeroTime = {};
         return (item.second.pingTimestamp != zeroTime && item.second.pongTimestamp == zeroTime);
