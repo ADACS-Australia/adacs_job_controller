@@ -26,10 +26,12 @@ export struct sClusterJobStatus
 
     static auto fromDb(auto& record) -> sClusterJobStatus
     {
-        return {.id    = static_cast<uint64_t>(record.id),
-                .jobId = static_cast<uint64_t>(record.jobId),
-                .what  = record.what,
-                .state = static_cast<uint32_t>(record.state)};
+        return {
+            .id    = static_cast<uint64_t>(record.id),
+            .jobId = static_cast<uint64_t>(record.jobId),
+            .what  = record.what,
+            .state = static_cast<uint32_t>(record.state),
+        };
     }
 
     void toMessage(Message& message) const
@@ -42,17 +44,18 @@ export struct sClusterJobStatus
 
     static auto fromMessage(Message& message) -> sClusterJobStatus
     {
-        return {.id    = message.pop_ulong(),
-                .jobId = message.pop_ulong(),
-                .what  = message.pop_string(),
-                .state = message.pop_uint()};
+        return {
+            .id    = message.pop_ulong(),
+            .jobId = message.pop_ulong(),
+            .what  = message.pop_string(),
+            .state = message.pop_uint(),
+        };
     }
 
     // Database methods
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-    static auto getJobStatusByJobIdAndWhat(uint64_t jobId,
-                                           const std::string& what,
-                                           const std::string& cluster) -> std::vector<sClusterJobStatus>
+    static auto getJobStatusByJobIdAndWhat(uint64_t jobId, const std::string& what, const std::string& cluster)
+        -> std::vector<sClusterJobStatus>
     {
         auto _database = MySqlConnector();
         const schema::JobserverClusterjobstatus _jobStatusTable;

@@ -26,16 +26,18 @@ export struct sClusterJob
 
     static auto fromRecord(auto record) -> sClusterJob
     {
-        return {.id               = static_cast<uint64_t>(record->id),
-                .jobId            = static_cast<uint64_t>(record->jobId),
-                .schedulerId      = static_cast<uint64_t>(record->schedulerId),
-                .submitting       = static_cast<uint32_t>(record->submitting) == 1,
-                .submittingCount  = static_cast<uint32_t>(record->submittingCount),
-                .bundleHash       = record->bundleHash,
-                .workingDirectory = record->workingDirectory,
-                .running          = static_cast<uint32_t>(record->running) == 1,
-                .deleting         = static_cast<uint32_t>(record->deleting) == 1,
-                .deleted          = static_cast<uint32_t>(record->deleted) == 1};
+        return {
+            .id               = static_cast<uint64_t>(record->id),
+            .jobId            = static_cast<uint64_t>(record->jobId),
+            .schedulerId      = static_cast<uint64_t>(record->schedulerId),
+            .submitting       = static_cast<uint32_t>(record->submitting) == 1,
+            .submittingCount  = static_cast<uint32_t>(record->submittingCount),
+            .bundleHash       = record->bundleHash,
+            .workingDirectory = record->workingDirectory,
+            .running          = static_cast<uint32_t>(record->running) == 1,
+            .deleting         = static_cast<uint32_t>(record->deleting) == 1,
+            .deleted          = static_cast<uint32_t>(record->deleted) == 1,
+        };
     }
 
     void toMessage(Message& message) const
@@ -54,16 +56,18 @@ export struct sClusterJob
 
     static auto fromMessage(Message& message) -> sClusterJob
     {
-        return {.id               = message.pop_ulong(),
-                .jobId            = message.pop_ulong(),
-                .schedulerId      = message.pop_ulong(),
-                .submitting       = message.pop_bool(),
-                .submittingCount  = message.pop_uint(),
-                .bundleHash       = message.pop_string(),
-                .workingDirectory = message.pop_string(),
-                .running          = message.pop_bool(),
-                .deleting         = message.pop_bool(),
-                .deleted          = message.pop_bool()};
+        return {
+            .id               = message.pop_ulong(),
+            .jobId            = message.pop_ulong(),
+            .schedulerId      = message.pop_ulong(),
+            .submitting       = message.pop_bool(),
+            .submittingCount  = message.pop_uint(),
+            .bundleHash       = message.pop_string(),
+            .workingDirectory = message.pop_string(),
+            .running          = message.pop_bool(),
+            .deleting         = message.pop_bool(),
+            .deleted          = message.pop_bool(),
+        };
     }
 
     // Database methods

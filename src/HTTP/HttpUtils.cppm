@@ -44,7 +44,7 @@ export auto splitString(const std::string& str, const std::string& delimiters) -
     return result;
 }
 
-export auto getHeader(SimpleWeb::CaseInsensitiveMultimap& headers, const std::string& header) -> std::string
+export auto getHeader(const SimpleWeb::CaseInsensitiveMultimap& headers, const std::string& header) -> std::string
 {
     // Iterate over the headers
     for (const auto& headerItem : headers)
@@ -63,8 +63,8 @@ export auto getHeader(SimpleWeb::CaseInsensitiveMultimap& headers, const std::st
 
 // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
 // This lint is for a clang-tidy false positive https://bugs.llvm.org/show_bug.cgi?id=41141
-export auto getQueryParamAsVectorInt(SimpleWeb::CaseInsensitiveMultimap& query_fields,
-                                     const std::string& what) -> std::vector<uint64_t>
+export auto getQueryParamAsVectorInt(SimpleWeb::CaseInsensitiveMultimap& query_fields, const std::string& what)
+    -> std::vector<uint64_t>
 {
     auto arrayPtr = query_fields.find(what);
     std::vector<uint64_t> intArray;
@@ -93,8 +93,8 @@ export auto getQueryParamAsInt(SimpleWeb::CaseInsensitiveMultimap& query_fields,
     return result;
 }
 
-export auto getQueryParamAsString(SimpleWeb::CaseInsensitiveMultimap& query_fields,
-                                  const std::string& what) -> std::string
+export auto getQueryParamAsString(SimpleWeb::CaseInsensitiveMultimap& query_fields, const std::string& what)
+    -> std::string
 {
     auto ptr = query_fields.find(what);
     std::string result;

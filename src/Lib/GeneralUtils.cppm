@@ -36,7 +36,7 @@ export auto base64Encode(std::string input) -> std::string
 {
     // The input must be in multiples of 3, otherwise the transformation
     // may overflow the input buffer, so pad with zero.
-    const uint32_t num_pad_chars((3 - input.size() % 3) % 3);
+    const uint32_t num_pad_chars((3 - (input.size() % 3)) % 3);
     input.append(num_pad_chars, 0);
 
     // Transform to Base64
@@ -52,7 +52,7 @@ export auto base64Encode(std::string input) -> std::string
 }
 
 // Exception dumping functions
-export void dumpExceptions(std::exception& exception)
+export void dumpExceptions(const std::exception& exception)
 {
     std::cerr << "--- Exception: " << exception.what() << '\n';
     auto exceptions = folly::exception_tracer::getCurrentExceptions();
@@ -74,7 +74,7 @@ export auto base64Decode(std::string input) -> std::string
     try
     {
         // If the input isn't a multiple of 4, pad with =
-        const uint32_t num_pad_chars((4 - input.size() % 4) % 4);
+        const uint32_t num_pad_chars((4 - (input.size() % 4)) % 4);
         input.append(num_pad_chars, '=');
 
         const uint32_t pad_chars(std::ranges::count(input, '='));
@@ -167,12 +167,17 @@ extern "C" auto getUncaughtExceptionStackTraceStack() -> const folly::exception_
 namespace {
 // forceExceptionStackTraceRef is intentionally unused and marked volatile so the compiler doesn't optimize away the
 // required functions from folly. This is black magic.
-// NOLINTNEXTLINE(misc-use-internal-linkage,llvm-prefer-static-over-anonymous-namespace)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-volatile"
+
+// NOLINTNEXTLINE(misc-use-internal-linkage,llvm-prefer-static-over-anonymous-namespace,clang-diagnostic-deprecated-volatile)
 volatile void forceExceptionStackTraceRef()
 {
     getCaughtExceptionStackTraceStack();
     getUncaughtExceptionStackTraceStack();
 }
+
+#pragma clang diagnostic pop
 
 // NOLINTNEXTLINE(misc-use-internal-linkage,llvm-prefer-static-over-anonymous-namespace,cppcoreguidelines-avoid-non-const-global-variables)
 void handleSegv()

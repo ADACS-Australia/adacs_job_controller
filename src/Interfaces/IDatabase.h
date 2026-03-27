@@ -33,22 +33,21 @@ public:
     virtual void deleteClusterJob(uint64_t id, const std::string& cluster)                                         = 0;
 
     // Cluster job status operations
-    virtual auto getClusterJobStatusByJobId(uint64_t jobId,
-                                            const std::string& cluster) const -> std::vector<uint8_t>         = 0;
+    virtual auto getClusterJobStatusByJobId(uint64_t jobId, const std::string& cluster) const
+        -> std::vector<uint8_t>                                                                              = 0;
     virtual auto getClusterJobStatusByJobIdAndWhat(uint64_t jobId,
                                                    const std::string& what,
-                                                   const std::string& cluster) const -> std::vector<uint8_t>  = 0;
-    virtual auto saveClusterJobStatus(const std::vector<uint8_t>& statusData,
-                                      const std::string& cluster) const -> uint64_t                           = 0;
+                                                   const std::string& cluster) const -> std::vector<uint8_t> = 0;
+    virtual auto saveClusterJobStatus(const std::vector<uint8_t>& statusData, const std::string& cluster) const
+        -> uint64_t                                                                                           = 0;
     virtual void deleteClusterJobStatusByIdList(const std::vector<uint64_t>& ids, const std::string& cluster) = 0;
 
     // Bundle job operations
     virtual auto createOrUpdateBundleJob(const std::vector<uint8_t>& jobData,
                                          const std::string& cluster,
-                                         const std::string& bundleHash) const -> uint64_t                    = 0;
-    virtual auto getBundleJobById(uint64_t id,
-                                  const std::string& cluster,
-                                  const std::string& bundleHash) const -> std::vector<uint8_t>               = 0;
+                                         const std::string& bundleHash) const -> uint64_t = 0;
+    virtual auto getBundleJobById(uint64_t id, const std::string& cluster, const std::string& bundleHash) const
+        -> std::vector<uint8_t>                                                                              = 0;
     virtual void deleteBundleJobById(uint64_t id, const std::string& cluster, const std::string& bundleHash) = 0;
 };
 

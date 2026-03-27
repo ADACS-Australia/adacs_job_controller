@@ -43,7 +43,7 @@ struct FileUploadTransferTestDataFixture : public DatabaseFixture,
             // Send FILE_UPLOAD_ERROR for truncated data
             std::string errorText = "Data truncated: expected " + std::to_string(expectedFileSize) +
                                     " bytes, received " + std::to_string(fileData.size()) + " bytes";
-            auto errorMsg = Message(FILE_UPLOAD_ERROR, Message::Priority::Highest, "");
+            auto errorMsg         = Message(FILE_UPLOAD_ERROR, Message::Priority::Highest, "");
             errorMsg.push_string(errorText);
             sendMessage(&errorMsg, connection);
         }
@@ -216,12 +216,12 @@ BOOST_AUTO_TEST_CASE(test_file_upload_transfer)
     // Create URL with query parameters for job ID and target path
     std::string uploadUrl = "/job/apiv1/file/upload/?jobId=" + std::to_string(jobId) + "&targetPath=/data/myfile.png";
     auto response         = httpClient.request("PUT",
-                                       uploadUrl,
-                                       requestBody,
+                                               uploadUrl,
+                                               requestBody,
                                                {
-                                           { "Authorization",         jwtToken.signature()},
-                                           {  "Content-Type",   "application/octet-stream"},
-                                           {"Content-Length", std::to_string(testFileSize)}
+                                                   { "Authorization",         jwtToken.signature()},
+                                                   {  "Content-Type",   "application/octet-stream"},
+                                                   {"Content-Length", std::to_string(testFileSize)}
     });
 
     // Validate that the UPLOAD_FILE message contained the expected values
@@ -302,12 +302,12 @@ BOOST_AUTO_TEST_CASE(test_large_file_uploads)
     // Create URL with query parameters for job ID and target path
     std::string uploadUrl = "/job/apiv1/file/upload/?jobId=" + std::to_string(jobId) + "&targetPath=/data/myfile.png";
     auto response         = httpClient.request("PUT",
-                                       uploadUrl,
-                                       requestBody,
+                                               uploadUrl,
+                                               requestBody,
                                                {
-                                           { "Authorization",         jwtToken.signature()},
-                                           {  "Content-Type",   "application/octet-stream"},
-                                           {"Content-Length", std::to_string(testFileSize)}
+                                                   { "Authorization",         jwtToken.signature()},
+                                                   {  "Content-Type",   "application/octet-stream"},
+                                                   {"Content-Length", std::to_string(testFileSize)}
     });
 
     // Check that the upload was successful
@@ -380,12 +380,12 @@ BOOST_AUTO_TEST_CASE(test_continuous_file_uploads)
     // Create URL with query parameters for job ID and target path
     std::string uploadUrl = "/job/apiv1/file/upload/?jobId=" + std::to_string(jobId) + "&targetPath=/data/myfile.png";
     auto response         = httpClient.request("PUT",
-                                       uploadUrl,
-                                       requestBody,
+                                               uploadUrl,
+                                               requestBody,
                                                {
-                                           { "Authorization",         jwtToken.signature()},
-                                           {  "Content-Type",   "application/octet-stream"},
-                                           {"Content-Length", std::to_string(testFileSize)}
+                                                   { "Authorization",         jwtToken.signature()},
+                                                   {  "Content-Type",   "application/octet-stream"},
+                                                   {"Content-Length", std::to_string(testFileSize)}
     });
 
     // Check that the upload was successful
@@ -610,12 +610,12 @@ BOOST_AUTO_TEST_CASE(test_zero_byte_file_upload)
     std::string uploadUrl = "/job/apiv1/file/upload/?jobId=" + std::to_string(jobId) + "&targetPath=/data/empty.txt";
     std::string emptyData = "";  // Zero bytes
     auto response         = httpClient.request("PUT",
-                                       uploadUrl,
-                                       emptyData,
+                                               uploadUrl,
+                                               emptyData,
                                                {
-                                           { "Authorization",       jwtToken.signature()},
-                                           {  "Content-Type", "application/octet-stream"},
-                                           {"Content-Length",                        "0"}
+                                                   { "Authorization",       jwtToken.signature()},
+                                                   {  "Content-Type", "application/octet-stream"},
+                                                   {"Content-Length",                        "0"}
     });
 
     // Check that the upload was successful
@@ -677,13 +677,13 @@ BOOST_AUTO_TEST_CASE(test_file_upload_with_cluster_bundle_parameters)
     // This tests the bundle-based upload path where jobId=0
     std::string uploadUrl = "/job/apiv1/file/upload/?cluster=" + cluster->getName() +
                             "&bundle=test_bundle&targetPath=/data/cluster_upload.bin";
-    auto response = httpClient.request("PUT",
-                                       uploadUrl,
-                                       requestBody,
-                                       {
-                                           { "Authorization",         jwtToken.signature()},
-                                           {  "Content-Type",   "application/octet-stream"},
-                                           {"Content-Length", std::to_string(testFileSize)}
+    auto response         = httpClient.request("PUT",
+                                               uploadUrl,
+                                               requestBody,
+                                               {
+                                                   { "Authorization",         jwtToken.signature()},
+                                                   {  "Content-Type",   "application/octet-stream"},
+                                                   {"Content-Length", std::to_string(testFileSize)}
     });
 
     // Wait for upload to complete with reasonable timeout

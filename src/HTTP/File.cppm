@@ -452,12 +452,13 @@ export void FileApi(const std::string& path,
                     if (data)
                     {
                         // Increment the traffic counter
-                        fdObj->fileDownloadSentBytes += (*data)->size();
+                        fdObj->fileDownloadSentBytes += (*data)->size();  // NOLINT(readability-redundant-parentheses)
 
                         // Send the data
-                        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast,readability-redundant-parentheses)
                         response->write(reinterpret_cast<const char*>((*data)->data()),
-                                        static_cast<std::streamsize>((*data)->size()));
+                                        static_cast<std::streamsize>(
+                                            (*data)->size()));  // NOLINT(readability-redundant-parentheses)
 
                         std::promise<SimpleWeb::error_code> contentPromise;
                         response->send([&contentPromise](const SimpleWeb::error_code& errorCode) {

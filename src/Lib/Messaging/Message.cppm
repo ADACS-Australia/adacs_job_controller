@@ -75,7 +75,7 @@ public:
     {
         Lowest  = 19,
         Medium  = 10,
-        Highest = 0
+        Highest = 0,
     };
 
     // Printable representation so Boost.Test can output Priority values
@@ -357,7 +357,7 @@ public:
     {
         auto len     = pop_ulong();
         auto result  = std::vector<uint8_t>(data->begin() + static_cast<int64_t>(index),
-                                           data->begin() + static_cast<int64_t>(index) + static_cast<int64_t>(len));
+                                            data->begin() + static_cast<int64_t>(index) + static_cast<int64_t>(len));
         index       += len;
         return result;
     }

@@ -32,9 +32,9 @@ public:
     IClusterManager& operator=(IClusterManager&&)      = delete;
 
     // Cluster lifecycle
-    virtual void start()                                                                                          = 0;
-    virtual auto handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection,
-                                     const std::string& uuid) -> std::shared_ptr<ICluster>                        = 0;
+    virtual void start() = 0;
+    virtual auto handleNewConnection(const std::shared_ptr<WsServer::Connection>& connection, const std::string& uuid)
+        -> std::shared_ptr<ICluster>                                                                              = 0;
     virtual void removeConnection(const std::shared_ptr<WsServer::Connection>& connection, bool close, bool lock) = 0;
 
     // Cluster queries
@@ -47,12 +47,12 @@ public:
                                       const boost::system::error_code& errorCode) = 0;
 
     // File download management
-    virtual auto createFileDownload(const std::shared_ptr<ICluster>& cluster,
-                                    const std::string& uuid) -> std::shared_ptr<ICluster> = 0;
+    virtual auto createFileDownload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid)
+        -> std::shared_ptr<ICluster> = 0;
 
     // File upload management
-    virtual auto createFileUpload(const std::shared_ptr<ICluster>& cluster,
-                                  const std::string& uuid) -> std::shared_ptr<ICluster> = 0;
+    virtual auto createFileUpload(const std::shared_ptr<ICluster>& cluster, const std::string& uuid)
+        -> std::shared_ptr<ICluster> = 0;
 
     // Connection management
     virtual void handlePong(const std::shared_ptr<WsServer::Connection>& connection) = 0;

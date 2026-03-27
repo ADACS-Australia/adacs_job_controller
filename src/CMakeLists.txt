@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.28)
 
-# Set Clang 22 compiler for C++20 module support
-set(CMAKE_CXX_COMPILER clang++-22)
-set(CMAKE_C_COMPILER clang-22)
+# Set Clang 23 compiler for C++20 module support
+set(CMAKE_CXX_COMPILER clang++-23)
+set(CMAKE_C_COMPILER clang-23)
 
 project(adacs_job_controller)
 
@@ -21,6 +21,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Generate maximum debug information (Dwarf version 4 for folly backtrace support)
 set(CMAKE_CXX_FLAGS_DEBUG " -g -O0 -gdwarf-4 -fpermissive -w ")
+
+# Build acceleration flags
+# - reduced-bmi: generate lightweight module interfaces to unblock parallel compilation faster
+# - gsplit-dwarf: split debug info into .dwo files to reduce linker I/O on incremental builds
+# - pipe: use pipes between compiler stages instead of temp files
+add_compile_options(-fmodules-reduced-bmi -gsplit-dwarf=split -pipe)
 
 # Suppress nested inexact package name searches
 set(FPHSA_NAME_MISMATCHED 1)
@@ -44,10 +50,32 @@ find_package(cpp-jwt REQUIRED)
 find_package(date REQUIRED)
 
 # Include the nested libraries
+# Suppress all compiler warnings from third-party subdirectories by setting -w while they are processed.
+# The flag is saved and restored so our own project code is compiled with full warnings.
+set(_saved_cxx_flags "${CMAKE_CXX_FLAGS}")
+string(APPEND CMAKE_CXX_FLAGS " -w")
 add_subdirectory(third_party/Simple-Web-Server)
 add_subdirectory(third_party/Simple-WebSocket-Server)
 add_subdirectory(third_party/folly)
 add_subdirectory(third_party/sqlpp11)
+set(CMAKE_CXX_FLAGS "${_saved_cxx_flags}")
+
+# Mark third-party targets as SYSTEM so their interface include directories
+# are treated as system includes (-isystem) by downstream consumers, suppressing
+# header warnings when those headers are included in our project code.
+foreach(_tp_target
+        simple-web-server
+        simple-websocket-server
+        folly
+        folly_exception_tracer_base
+        folly_exception_tracer
+        folly_exception_counter
+        sqlpp11
+)
+    if(TARGET ${_tp_target})
+        set_target_properties(${_tp_target} PROPERTIES SYSTEM TRUE)
+    endif()
+endforeach()
 
 # Define common include directories
 set(COMMON_INCLUDE_DIRS
@@ -62,8 +90,9 @@ set(COMMON_INCLUDE_DIRS
         ${CMAKE_CURRENT_BINARY_DIR}/third_party/folly
 )
 
-# Set up the include directories
-include_directories(${COMMON_INCLUDE_DIRS})
+# Set up the include directories as SYSTEM so warnings from third-party headers
+# are suppressed when those headers are included in our project code.
+include_directories(SYSTEM ${COMMON_INCLUDE_DIRS})
 
 # Define common compile features
 set(COMMON_COMPILE_FEATURES cxx_std_20)
@@ -199,7 +228,7 @@ if(ENABLE_CLANG_TIDY)
     set_target_properties(
             adacs_job_controller 
             PROPERTIES
-            CXX_CLANG_TIDY "clang-tidy-22;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
+            CXX_CLANG_TIDY "clang-tidy-23;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
             CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
     )
 else()
@@ -211,11 +240,11 @@ else()
 endif()
 
 if(ENABLE_CLANG_TIDY)
-    # Enable clang-tidy-22 with experimental module support for project_modules
+    # Enable clang-tidy-23 with experimental module support for project_modules
     set_target_properties(
             project_modules 
             PROPERTIES
-            CXX_CLANG_TIDY "clang-tidy-22;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
+            CXX_CLANG_TIDY "clang-tidy-23;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
             CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
     )
 else()
@@ -227,11 +256,11 @@ else()
 endif()
 
 if(ENABLE_CLANG_TIDY)
-    # Enable clang-tidy-22 with experimental module support for project_modules_test
+    # Enable clang-tidy-23 with experimental module support for project_modules_test
     set_target_properties(
             project_modules_test 
             PROPERTIES
-            CXX_CLANG_TIDY "clang-tidy-22;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
+            CXX_CLANG_TIDY "clang-tidy-23;--extra-arg-before=--driver-mode=g++;--enable-module-headers-parsing"
             CXX_FLAGS_DEBUG " -g -O0 -rdynamic -gdwarf-4 -fpermissive -Wall "
     )
 else()
