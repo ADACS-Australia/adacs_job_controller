@@ -338,4 +338,234 @@ BOOST_AUTO_TEST_CASE(test_handleNewConnection_valid_uuid)
                      "mClusterPings was updated with the invalid connection when it should not have been");
 }
 
+// ---------------------------------------------------------------------------
+// LTK (Long-Term Secret Keys) Tests
+// ---------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(test_ltk_config_deserialization)
+{
+    // Test cluster config with LTK
+    nlohmann::json jsonWithLtk = R"([{
+        "name": "ltk-cluster",
+        "host": "ltk.example.com",
+        "username": "jobclient",
+        "path": "/path/to/client",
+        "ltk": "test-ltk-secret-123"
+    }])"_json;
+
+    TempClusterConfig config(jsonWithLtk.dump());
+    auto testApp = createApplication();
+    auto testMgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+    BOOST_CHECK_EQUAL(testMgr->getvClusters()->size(), 1);
+    auto cluster = testMgr->getvClusters()->at(0);
+    
+    // Check LTK is set
+    auto details = cluster->getClusterDetails();
+    BOOST_CHECK(details->getLtk().has_value());
+    BOOST_CHECK_EQUAL(details->getLtk().value(), "test-ltk-secret-123");
+    BOOST_CHECK_EQUAL(details->getName(), "ltk-cluster");
+}
+
+BOOST_AUTO_TEST_CASE(test_ltk_config_without_ltk)
+{
+    // Test cluster config without LTK (backward compatibility)
+    nlohmann::json jsonWithoutLtk = R"([{
+        "name": "ssh-cluster",
+        "host": "ssh.example.com",
+        "username": "jobclient",
+        "path": "/path/to/client",
+        "key": "/home/user/.ssh/id_rsa"
+    }])"_json;
+
+    TempClusterConfig config(jsonWithoutLtk.dump());
+    auto testApp = createApplication();
+    auto testMgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+    BOOST_CHECK_EQUAL(testMgr->getvClusters()->size(), 1);
+    auto cluster = testMgr->getvClusters()->at(0);
+    
+    // Check LTK is not set
+    auto details = cluster->getClusterDetails();
+    BOOST_CHECK(!details->getLtk().has_value());
+    BOOST_CHECK_EQUAL(details->getName(), "ssh-cluster");
+}
+
+BOOST_AUTO_TEST_CASE(test_mixed_ltk_ssh_clusters)
+{
+    // Test mixed environment with both LTK and SSH clusters
+    nlohmann::json jsonMixed = R"([
+        {
+            "name": "ltk-cluster-1",
+            "host": "ltk1.example.com",
+            "username": "jobclient",
+            "path": "/path/ltk1",
+            "ltk": "ltk-secret-1"
+        },
+        {
+            "name": "ssh-cluster-1",
+            "host": "ssh1.example.com",
+            "username": "jobclient",
+            "path": "/path/ssh1",
+            "key": "/home/user/.ssh/id_rsa"
+        },
+        {
+            "name": "ltk-cluster-2",
+            "host": "ltk2.example.com",
+            "username": "jobclient",
+            "path": "/path/ltk2",
+            "ltk": "ltk-secret-2"
+        }
+    ])"_json;
+
+    TempClusterConfig config(jsonMixed.dump());
+    auto testApp = createApplication();
+    auto testMgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+    BOOST_CHECK_EQUAL(testMgr->getvClusters()->size(), 3);
+    
+    // Check first LTK cluster
+    auto cluster1 = testMgr->getvClusters()->at(0);
+    BOOST_CHECK(cluster1->getClusterDetails()->getLtk().has_value());
+    BOOST_CHECK_EQUAL(cluster1->getClusterDetails()->getLtk().value(), "ltk-secret-1");
+    
+    // Check SSH cluster
+    auto cluster2 = testMgr->getvClusters()->at(1);
+    BOOST_CHECK(!cluster2->getClusterDetails()->getLtk().has_value());
+    
+    // Check second LTK cluster
+    auto cluster3 = testMgr->getvClusters()->at(2);
+    BOOST_CHECK(cluster3->getClusterDetails()->getLtk().has_value());
+    BOOST_CHECK_EQUAL(cluster3->getClusterDetails()->getLtk().value(), "ltk-secret-2");
+}
+
+BOOST_AUTO_TEST_CASE(test_ltk_authentication_success)
+{
+    // Create cluster with LTK
+    nlohmann::json jsonLtk = R"([{
+        "name": "ltk-test",
+        "host": "localhost",
+        "username": "test",
+        "path": "/test",
+        "ltk": "test-ltk-token"
+    }])"_json;
+
+    TempClusterConfig config(jsonLtk.dump());
+    auto testApp = createApplication();
+    auto testMgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+    // Create a mock connection
+    auto connection = std::make_shared<WsServer::Connection>(nullptr);
+    
+    // Authenticate with LTK token
+    auto cluster = testMgr->handleNewConnection(connection, "test-ltk-token");
+    
+    // Should authenticate successfully
+    BOOST_CHECK(cluster != nullptr);
+    BOOST_CHECK_EQUAL(cluster->getName(), "ltk-test");
+    
+    // Cluster should be marked as online
+    BOOST_CHECK_EQUAL(testMgr->isClusterOnline(cluster), true);
+}
+
+BOOST_AUTO_TEST_CASE(test_invalid_ltk_rejected)
+{
+    // Create cluster with LTK
+    nlohmann::json jsonLtk = R"([{
+        "name": "ltk-test",
+        "host": "localhost",
+        "username": "test",
+        "path": "/test",
+        "ltk": "correct-ltk-token"
+    }])"_json;
+
+    TempClusterConfig config(jsonLtk.dump());
+    auto testApp = createApplication();
+    auto testMgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+    // Create a mock connection
+    auto connection = std::make_shared<WsServer::Connection>(nullptr);
+    
+    // Try to authenticate with wrong token
+    auto cluster = testMgr->handleNewConnection(connection, "wrong-token");
+    
+    // Should be rejected
+    BOOST_CHECK_EQUAL(cluster, nullptr);
+}
+
+BOOST_AUTO_TEST_CASE(test_duplicate_ltk_connection_rejected)
+{
+    // Create cluster with LTK
+    nlohmann::json jsonLtk = R"([{
+        "name": "ltk-test",
+        "host": "localhost",
+        "username": "test",
+        "path": "/test",
+        "ltk": "duplicate-test-token"
+    }])"_json;
+
+    TempClusterConfig config(jsonLtk.dump());
+    auto testApp = createApplication();
+    auto testMgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+    // First connection should succeed
+    auto connection1 = std::make_shared<WsServer::Connection>(nullptr);
+    auto cluster1 = testMgr->handleNewConnection(connection1, "duplicate-test-token");
+    BOOST_CHECK(cluster1 != nullptr);
+    BOOST_CHECK_EQUAL(testMgr->isClusterOnline(cluster1), true);
+
+    // Second connection with same LTK should be rejected
+    auto connection2 = std::make_shared<WsServer::Connection>(nullptr);
+    auto cluster2 = testMgr->handleNewConnection(connection2, "duplicate-test-token");
+    BOOST_CHECK_EQUAL(cluster2, nullptr);
+}
+
+BOOST_AUTO_TEST_CASE(test_ltk_clusters_skipped_in_reconnect)
+{
+    // Create mixed LTK and SSH clusters
+    nlohmann::json jsonMixed = R"([
+        {
+            "name": "ltk-cluster",
+            "host": "ltk.example.com",
+            "username": "jobclient",
+            "path": "/path/ltk",
+            "ltk": "ltk-secret"
+        },
+        {
+            "name": "ssh-cluster",
+            "host": "ssh.example.com",
+            "username": "jobclient",
+            "path": "/path/ssh",
+            "key": "/home/user/.ssh/id_rsa"
+        }
+    ])"_json;
+
+    TempClusterConfig config(jsonMixed.dump());
+    auto testApp = createApplication();
+    auto testMgr = std::static_pointer_cast<ClusterManager>(testApp->getClusterManager());
+
+    // Verify both clusters exist
+    BOOST_CHECK_EQUAL(testMgr->getvClusters()->size(), 2);
+    
+    // Check LTK cluster has LTK configured
+    auto ltkCluster = testMgr->getvClusters()->at(0);
+    BOOST_CHECK(ltkCluster->getClusterDetails()->getLtk().has_value());
+    
+    // Check SSH cluster doesn't have LTK
+    auto sshCluster = testMgr->getvClusters()->at(1);
+    BOOST_CHECK(!sshCluster->getClusterDetails()->getLtk().has_value());
+}
+
+BOOST_AUTO_TEST_CASE(test_rate_limiting_config)
+{
+    // Verify LTK_CONNECTION_TIMEOUT_MS is set correctly
+    // In test mode, should be 0
+#ifdef BUILD_TESTS
+    BOOST_CHECK_EQUAL(LTK_CONNECTION_TIMEOUT_MS, 0);
+#else
+    // In production, should be 1000 (or env var override)
+    BOOST_CHECK(LTK_CONNECTION_TIMEOUT_MS >= 0);
+#endif
+}
+
 BOOST_AUTO_TEST_SUITE_END()

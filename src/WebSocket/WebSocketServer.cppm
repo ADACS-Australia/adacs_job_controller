@@ -68,25 +68,29 @@ WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::m
     };
 
     wsEp.on_open = [this](const std::shared_ptr<WsServer::Connection>& connection) {
-        // Parse the query string so we can obtain the token
-        auto queryParams = SimpleWeb::QueryString::parse(connection->query_string);
-
-        // There should only be one query string parameter
-        if (queryParams.size() != 1)
+        // Extract token from Authorization: Bearer header
+        std::string token;
+        auto authHeader = connection->header.find("authorization");
+        if (authHeader != connection->header.end())
         {
-            connection->close();
-            return;
+            const std::string& headerValue = authHeader->second;
+            // Check for "Bearer " prefix
+            if (headerValue.size() > 7 && headerValue.substr(0, 7) == "Bearer ")
+            {
+                token = headerValue.substr(7);
+            }
         }
 
-        // Check that the only query string parameter is "token"
-        if (queryParams.begin()->first != "token")
+        // Token must be provided via Authorization header
+        if (token.empty())
         {
+            std::cerr << "WS: Missing or invalid Authorization header" << '\n';
             connection->close();
             return;
         }
 
         // Check that the token is valid
-        auto cluster = this->app->getClusterManager()->handleNewConnection(connection, queryParams.begin()->second);
+        auto cluster = this->app->getClusterManager()->handleNewConnection(connection, token);
         if (cluster)
         {
             // Everything is fine
@@ -100,7 +104,7 @@ WebSocketServer::WebSocketServer(std::shared_ptr<IApplication> app) : app(std::m
         else
         {
             // Invalid Token
-            std::cout << "WS: Invalid token used - " << queryParams.begin()->second << '\n';
+            std::cout << "WS: Invalid token used" << '\n';
             connection->close();
         }
     };

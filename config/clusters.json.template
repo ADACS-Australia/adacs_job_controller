@@ -1,10 +1,37 @@
 [
   {
-    "name": "example_cluster",
+    "name": "example_ssh_cluster",
     "host": "cluster.example.com",
     "username": "jobclient",
     "path": "/path/to/gwcloud_job_client/",
-    "key": "-----BEGIN RSA PRIVATE KEY-----\n__CHANGEME__\n-----END RSA PRIVATE KEY-----"
+    "key": "-----BEGIN RSA PRIVATE KEY-----\n__CHANGEME__\n-----END RSA PRIVATE KEY-----",
+    "comment": "SSH mode: Server connects via SSH using the provided key. Client receives UUID token."
+  },
+  {
+    "name": "example_kerberos_cluster",
+    "host": "kerberos-cluster.example.com",
+    "username": "jobclient",
+    "path": "/path/to/gwcloud_job_client/",
+    "connection_type": "kerberos",
+    "keytab": "/path/to/jobclient.keytab",
+    "kerberos_principal": "jobclient@YOUR.REALM",
+    "comment": "Kerberos mode: Server connects via Kerberos authentication. Client receives UUID token."
+  },
+  {
+    "name": "example_ltk_cluster",
+    "host": "ltk-cluster.example.com",
+    "username": "jobclient",
+    "path": "/path/to/gwcloud_job_client/",
+    "ltk": "REPLACE_WITH_SECURE_RANDOM_STRING",
+    "comment": "LTK mode: Client connects autonomously using ADACS_LTK environment variable. No SSH required. Generate a secure random string (e.g., openssl rand -hex 32). Server validates LTK from this config."
+  },
+  {
+    "name": "example_manual_cluster",
+    "host": "manual-cluster.example.com",
+    "username": "jobclient",
+    "path": "/path/to/gwcloud_job_client/",
+    "connection_type": "manual",
+    "comment": "Manual mode: Admin manually starts client with UUID token."
   }
 ]
 

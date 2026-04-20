@@ -67,6 +67,15 @@ export const uint32_t CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS = 60;
 export const uint32_t CLUSTER_MANAGER_PING_INTERVAL_SECONDS     = 10;
 export const uint32_t CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS      = 60;
 
+// LTK security settings
+#ifndef BUILD_TESTS
+export const uint32_t LTK_CONNECTION_TIMEOUT_MS =
+    std::stoi(GET_ENV("LTK_CONNECTION_TIMEOUT_MS", "1000"));
+#else
+export const uint32_t LTK_CONNECTION_TIMEOUT_MS =
+    std::stoi(GET_ENV("LTK_CONNECTION_TIMEOUT_MS", "0"));
+#endif
+
 export const uint16_t HTTP_PORT                    = 8000;
 export const uint32_t HTTP_WORKER_POOL_SIZE        = 1024;
 export const uint32_t HTTP_CONTENT_TIMEOUT_SECONDS = (60ULL * 60ULL * 24ULL);

@@ -165,6 +165,15 @@ void ClusterManager::reconnectClusters()
         // Check if the cluster is online
         if (!isClusterOnline(cluster))
         {
+            // Skip LTK clusters - they connect autonomously
+            const auto& details = cluster->getClusterDetails();
+            if (details->getLtk().has_value())
+            {
+                std::cout << "Skipping LTK cluster " << cluster->getName()
+                          << " - waits for autonomous connection" << '\n';
+                continue;
+            }
+
             // Create a database connection
             auto database = MySqlConnector();
 
@@ -248,6 +257,39 @@ auto ClusterManager::handleNewConnection(const std::shared_ptr<WsServer::Connect
         return cluster;
     }
 
+    // Check LTK authentication first (before UUID DB lookup)
+    for (auto& cluster : vClusters)
+    {
+        const auto& details = cluster->getClusterDetails();
+        if (const auto& ltk = details->getLtk(); ltk.has_value() && ltk.value() == uuid)
+        {
+            // LTK match found - check for duplicate connection (security)
+            if (cluster->isOnline())
+            {
+                std::cerr << "Security: Duplicate LTK connection attempt for cluster " << cluster->getName() << '\n';
+                return nullptr;
+            }
+
+            // Apply rate limiting timeout
+            if (LTK_CONNECTION_TIMEOUT_MS > 0)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(LTK_CONNECTION_TIMEOUT_MS));
+            }
+
+            // Authenticate LTK cluster
+            mConnectedClusters[connection] = cluster;
+            {
+                const std::unique_lock<std::mutex> mClusterPingsDeletionLock(mClusterPingsDeletionLockMutex);
+                mClusterPings[connection] = {};
+            }
+
+            cluster->setConnection(connection);
+            std::cout << "LTK cluster " << cluster->getName() << " connected" << '\n';
+            return cluster;
+        }
+    }
+
+    // No LTK match - fall back to UUID DB lookup (existing logic)
     // Get the tables
     const schema::JobserverClusteruuid clusterUuidTable;
 

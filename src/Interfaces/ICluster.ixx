@@ -6,6 +6,7 @@
 module;
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,18 @@ export struct sClusterDetails
         host     = cluster["host"];
         username = cluster["username"];
         path     = cluster["path"];
-        key      = cluster["key"];
+        
+        // Key is optional for LTK clusters
+        if (cluster.contains("key"))
+        {
+            key = cluster["key"].get<std::string>();
+        }
+        
+        // LTK is optional - for SSH clusters this will be empty
+        if (cluster.contains("ltk"))
+        {
+            ltk = cluster["ltk"].get<std::string>();
+        }
         // NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     }
 
@@ -54,12 +66,18 @@ export struct sClusterDetails
         return key;
     }
 
+    auto getLtk() const -> const std::optional<std::string>&
+    {
+        return ltk;
+    }
+
 private:
-    std::string name;
-    std::string host;
-    std::string username;
-    std::string path;
-    std::string key;
+    std::string          name;
+    std::string          host;
+    std::string          username;
+    std::string          path;
+    std::string          key;
+    std::optional<std::string> ltk;
 };
 
 // Cluster role enumeration

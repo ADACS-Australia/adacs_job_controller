@@ -15,3 +15,7 @@ docker/db/
 docker/logs/
 config/clusters.json
 config/access_secrets.json
+
+# Rust build artifacts
+rust/target/
+**/*.rs.bk
