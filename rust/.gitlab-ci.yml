@@ -1,0 +1,46 @@
+default:
+  image: docker/compose:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker info
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_DRIVER: overlay2
+
+stages:
+  - lint
+  - test
+
+# Lint: rustfmt + clippy
+lint:
+  stage: lint
+  image: rust:1.87-bookworm
+  before_script:
+    - rustup component add rustfmt clippy
+  script:
+    - cd rust
+    - cargo fmt -- --check
+    - cargo clippy --all-targets -- -D warnings
+
+# Tests with coverage
+tests:
+  stage: test
+  script:
+    - cd rust
+    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml build
+    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml up --abort-on-container-exit --exit-code-from web
+  after_script:
+    - cd rust
+    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml down -v --remove-orphans || true
+  artifacts:
+    when: always
+    paths:
+      - rust/test_report/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: rust/test_report/coverage.xml
+      junit: rust/test_report/junit.xml
