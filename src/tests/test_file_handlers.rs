@@ -369,13 +369,13 @@ async fn test_download_file_cluster_offline_returns_503() {
 async fn test_download_file_streams_chunks() {
     let db = setup_test_db().await;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
-    
+
     // Generate random file data like the C++ test (0 to 1MB range)
     use rand::{Rng, SeedableRng};
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let file_size = rng.random_range(0..=1024 * 1024);
     let expected_data: Vec<u8> = (0..file_size).map(|_| rng.random()).collect();
-    
+
     // Insert 5 download records for 5 repeated downloads
     let mut uuids = Vec::new();
     for i in 0..5 {
@@ -404,7 +404,7 @@ async fn test_download_file_streams_chunks() {
         .expect_get_cluster_by_name()
         .times(5)
         .returning(move |_| Some(c.clone()));
-    
+
     let c2 = Arc::new(online_cluster_no_messages());
     manager
         .expect_create_file_download()
@@ -415,7 +415,7 @@ async fn test_download_file_streams_chunks() {
                 async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
             )
         });
-    
+
     // For each get_file_download call, create a fresh FileDownloadState and spawn a task to push data
     let expected_data_for_mock = expected_data.clone();
     let call_count = Arc::new(std::sync::Mutex::new(0));
@@ -427,17 +427,19 @@ async fn test_download_file_streams_chunks() {
             let fd_state = Arc::new(FileDownloadState::new());
             let fd_state_sim = Arc::clone(&fd_state);
             let data_copy = expected_data_for_mock.clone();
-            
+
             // Track call count to ensure unique state per call
             {
                 let mut count = call_count.lock().unwrap();
                 *count += 1;
             }
-            
+
             tokio::spawn(async move {
                 // Brief delay so the HTTP handler starts waiting first
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                fd_state_sim.file_size.store(data_copy.len() as u64, Ordering::Release);
+                fd_state_sim
+                    .file_size
+                    .store(data_copy.len() as u64, Ordering::Release);
                 fd_state_sim.received_data.store(true, Ordering::Release);
                 fd_state_sim.data_ready.store(true, Ordering::Release);
                 fd_state_sim.data_notify.notify_waiters();
@@ -445,46 +447,53 @@ async fn test_download_file_streams_chunks() {
                 // Push the data as a single chunk
                 let _ = fd_state_sim.chunk_sender.send(data_copy);
             });
-            
+
             Some(fd_state)
         });
 
     let app = create_router(make_test_state(db, manager));
 
     // Perform 5 repeated downloads like the C++ test
-    for i in 0..5 {
+    for (i, uuid) in uuids.iter().enumerate().take(5) {
         let resp = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/file/apiv1/file/?fileId={}", uuids[i]))
+                    .uri(format!("/file/apiv1/file/?fileId={}", uuid))
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(resp.status(), StatusCode::OK, "Download iteration {} failed", i + 1);
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "Download iteration {} failed",
+            i + 1
+        );
         assert_eq!(
             resp.headers()
                 .get("content-length")
                 .and_then(|v| v.to_str().ok()),
             Some(file_size.to_string().as_str()),
-            "Content-Length mismatch on download {}", i + 1
+            "Content-Length mismatch on download {}",
+            i + 1
         );
         assert_eq!(
             resp.headers()
                 .get("content-type")
                 .and_then(|v| v.to_str().ok()),
             Some("application/octet-stream"),
-            "Content-Type mismatch on download {}", i + 1
+            "Content-Type mismatch on download {}",
+            i + 1
         );
 
         let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
             .unwrap();
-        
+
         // Verify data integrity - equivalent to BOOST_CHECK_EQUAL_COLLECTIONS
         assert_eq!(
             body_bytes.as_ref(),

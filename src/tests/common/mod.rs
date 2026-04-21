@@ -3,9 +3,7 @@
 
 use std::sync::Arc;
 
-use adacs_job_controller::cluster::traits::{
-    MockClusterManagerTrait, MockClusterTrait,
-};
+use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::protocol::types::ClusterRole;

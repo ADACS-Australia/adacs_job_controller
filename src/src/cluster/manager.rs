@@ -133,10 +133,13 @@ impl ClusterManager {
             }
 
             let details = cluster.cluster_details();
-            
+
             // Skip LTK clusters - they connect autonomously
             if details.ltk.is_some() {
-                tracing::info!("Skipping LTK cluster {} - waits for autonomous connection", name);
+                tracing::info!(
+                    "Skipping LTK cluster {} - waits for autonomous connection",
+                    name
+                );
                 continue;
             }
 
@@ -285,7 +288,6 @@ impl ClusterManager {
             cluster.send_ping();
         }
     }
-
 }
 
 #[async_trait]
@@ -330,32 +332,36 @@ impl ClusterManagerTrait for ClusterManager {
         // Check LTK authentication first (before UUID DB lookup)
         let clusters = self.clusters.read().await;
         for (cluster_name, cluster) in clusters.iter() {
-            if let Some(configured_ltk) = &cluster.cluster_details().ltk {
-                if configured_ltk == token {
-                    // LTK match found - check for duplicate connection (security)
-                    if cluster.is_online() {
-                        tracing::warn!(
-                            "Security: Duplicate LTK connection attempt for cluster {} (conn_id={})",
-                            cluster_name,
-                            conn_id
-                        );
-                        return None;
-                    }
-
-                    // Apply rate limiting timeout
-                    let timeout = *crate::config::settings::LTK_CONNECTION_TIMEOUT_MS;
-                    if timeout > 0 {
-                        tokio::time::sleep(std::time::Duration::from_millis(timeout as u64)).await;
-                    }
-
-                    // Authenticate LTK cluster
-                    let cluster = Arc::clone(cluster);
-                    cluster.set_connection(Some(ws_sender));
-                    self.connection_map.insert(conn_id, cluster.clone());
-                    self.pong_times.insert(conn_id, std::time::Instant::now());
-                    tracing::info!("LTK cluster {} connected (conn_id={})", cluster_name, conn_id);
-                    return Some(cluster as Arc<dyn ClusterTrait>);
+            if let Some(configured_ltk) = &cluster.cluster_details().ltk
+                && configured_ltk == token
+            {
+                // LTK match found - check for duplicate connection (security)
+                if cluster.is_online() {
+                    tracing::warn!(
+                        "Security: Duplicate LTK connection attempt for cluster {} (conn_id={})",
+                        cluster_name,
+                        conn_id
+                    );
+                    return None;
                 }
+
+                // Apply rate limiting timeout
+                let timeout = *crate::config::settings::LTK_CONNECTION_TIMEOUT_MS;
+                if timeout > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(timeout as u64)).await;
+                }
+
+                // Authenticate LTK cluster
+                let cluster = Arc::clone(cluster);
+                cluster.set_connection(Some(ws_sender));
+                self.connection_map.insert(conn_id, cluster.clone());
+                self.pong_times.insert(conn_id, std::time::Instant::now());
+                tracing::info!(
+                    "LTK cluster {} connected (conn_id={})",
+                    cluster_name,
+                    conn_id
+                );
+                return Some(cluster as Arc<dyn ClusterTrait>);
             }
         }
 

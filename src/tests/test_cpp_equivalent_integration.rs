@@ -11,7 +11,9 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
+use adacs_job_controller::cluster::traits::{
+    MockClusterManagerTrait, MockClusterTrait, WsConnectionSender, WsOutbound,
+};
 use adacs_job_controller::db::entities::{file_download, job};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
@@ -31,27 +33,30 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, Quer
 #[tokio::test]
 async fn test_download_resume_after_interruption() {
     let db = setup_test_db().await;
-    
+
     let mut cluster = MockClusterTrait::new();
     cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
+    cluster.expect_is_online().returning(|| false);
     cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster.expect_role_string().returning(|| "master".to_string());
-    cluster.expect_cluster_details()
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
+    cluster
+        .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
     cluster.expect_send_message().returning(|_| ());
-    
+
     let cluster_arc = Arc::new(cluster);
-    
+
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster_arc);
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
-    
+
     let job_id = insert_test_job(&db, "ozstar", "testbundle", "testapp").await;
     let uuid = uuid::Uuid::new_v4().to_string();
-    
+
     file_download::ActiveModel {
         user: Set(42),
         job: Set(job_id as i32),
@@ -65,30 +70,30 @@ async fn test_download_resume_after_interruption() {
     .insert(&db)
     .await
     .unwrap();
-    
+
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
-    
+
     let resp = app
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/file/apiv1/file/?fileId={}", uuid))
+                .uri(format!("/file/apiv1/file/?fileId={}", uuid))
                 .header("authorization", &token)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
-    
+
     let dl = file_download::Entity::find()
         .filter(file_download::Column::Uuid.eq(&uuid))
         .one(&db)
         .await
         .unwrap();
-    
+
     assert!(dl.is_some());
 }
 
@@ -99,27 +104,30 @@ async fn test_download_resume_after_interruption() {
 #[tokio::test]
 async fn test_message_on_disconnected_cluster_no_crash() {
     let db = setup_test_db().await;
-    
+
     let mut cluster = MockClusterTrait::new();
     cluster.expect_name().returning(|| "ozstar".to_string());
     cluster.expect_is_online().returning(|| false);
     cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster.expect_role_string().returning(|| "master".to_string());
-    cluster.expect_cluster_details()
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
+    cluster
+        .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
     cluster.expect_send_message().returning(|_| ());
-    
+
     let cluster_arc = Arc::new(cluster);
-    
+
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster_arc);
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
-    
+
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
-    
+
     let resp = app
         .oneshot(
             Request::builder()
@@ -134,9 +142,9 @@ async fn test_message_on_disconnected_cluster_no_crash() {
         )
         .await
         .unwrap();
-    
+
     assert_eq!(resp.status(), StatusCode::OK);
-    
+
     let jobs = job::Entity::find().all(&db).await.unwrap();
     assert_eq!(jobs.len(), 1);
 }
@@ -166,44 +174,59 @@ async fn start_test_server(router: axum::Router) -> u16 {
 #[tokio::test]
 async fn test_real_websocket_connection_and_auth() {
     let db = setup_test_db().await;
-    
+
+    // Shared holder so handle_new_connection can pass tx to send_message
+    let tx_holder: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
+    let tx_for_manager = Arc::clone(&tx_holder);
+    let tx_for_cluster = Arc::clone(&tx_holder);
+
     let mut cluster = MockClusterTrait::new();
     cluster.expect_name().returning(|| "ozstar".to_string());
     cluster.expect_is_online().returning(|| true);
     cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster.expect_role_string().returning(|| "master".to_string());
-    cluster.expect_cluster_details()
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
+    cluster
+        .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    cluster.expect_set_connection().returning(|_| ());
-    cluster.expect_send_message().returning(|_| ());
-    
-    let cluster_arc = Arc::new(cluster);
-    
+    cluster.expect_send_message().returning(move |msg| {
+        if let Some(ref tx) = *tx_for_cluster.lock().unwrap() {
+            let _ = tx.send(WsOutbound::Binary(msg.into_data()));
+        }
+    });
+
+    let cluster_arc: Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> =
+        Arc::new(cluster);
+
     let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster_arc);
     manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    
+        .expect_handle_new_connection()
+        .returning(move |_, tx, _| {
+            *tx_for_manager.lock().unwrap() = Some(tx);
+            let c = Arc::clone(&cluster_arc);
+            Box::pin(async move { Some(c) })
+        });
+    manager
+        .expect_remove_connection()
+        .returning(|_, _| Box::pin(async {}));
+
     let state = make_test_state(db.clone(), manager);
     let router = ws_router(state);
-    
+
     let port = start_test_server(router).await;
-    
+
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
     let ws_url = format!("ws://127.0.0.1:{}/job/ws/", port);
-    
-    let request = tokio_tungstenite::tungstenite::ClientRequestBuilder::new(
-        ws_url.parse().unwrap()
-    )
-    .with_header("Authorization", format!("Bearer {}", token));
-    
-    let (ws_stream, _) = tokio_tungstenite::connect_async(request)
-        .await
-        .unwrap();
-    
+
+    let request =
+        tokio_tungstenite::tungstenite::ClientRequestBuilder::new(ws_url.parse().unwrap())
+            .with_header("Authorization", format!("Bearer {}", token));
+
+    let (ws_stream, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+
     let (mut write, mut read) = ws_stream.split();
-    
+
     if let Some(Ok(msg)) = read.next().await {
         match msg {
             TungsteniteMsg::Binary(data) => {
@@ -215,30 +238,40 @@ async fn test_real_websocket_connection_and_auth() {
     } else {
         panic!("No message received");
     }
-    
+
     write.send(TungsteniteMsg::Close(None)).await.unwrap();
 }
 
 #[tokio::test]
 async fn test_websocket_connection_rejected_invalid_token() {
     let db = setup_test_db().await;
-    
+
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_handle_new_connection()
+        .returning(|_, _, _| Box::pin(async { None }));
     let state = make_test_state(db.clone(), manager);
     let router = ws_router(state);
-    
+
     let port = start_test_server(router).await;
-    
+
     let ws_url = format!("ws://127.0.0.1:{}/job/ws/", port);
-    
-    let request = tokio_tungstenite::tungstenite::ClientRequestBuilder::new(
-        ws_url.parse().unwrap()
-    )
-    .with_header("Authorization", "Bearer invalid_token");
-    
+
+    let request =
+        tokio_tungstenite::tungstenite::ClientRequestBuilder::new(ws_url.parse().unwrap())
+            .with_header("Authorization", "Bearer invalid_token");
+
     let result = tokio_tungstenite::connect_async(request).await;
-    
-    assert!(result.is_err());
+    assert!(result.is_ok(), "WS upgrade always succeeds at HTTP level");
+    let (mut stream, _) = result.unwrap();
+    // With invalid token, handle_new_connection returns None and server drops the socket
+    let first_msg = stream.next().await;
+    assert!(
+        first_msg.is_none()
+            || matches!(first_msg, Some(Ok(TungsteniteMsg::Close(_))))
+            || matches!(first_msg, Some(Err(_))),
+        "Expected connection to close without SERVER_READY"
+    );
 }
 
 // ===========================================================================
@@ -248,53 +281,56 @@ async fn test_websocket_connection_rejected_invalid_token() {
 #[tokio::test]
 async fn test_multiple_clusters_concurrent_job_submission() {
     let db = setup_test_db().await;
-    
+
     let mut cluster1 = MockClusterTrait::new();
-    cluster1.expect_name().returning(|| "cluster1".to_string());
+    cluster1.expect_name().returning(|| "ozstar".to_string());
     cluster1.expect_is_online().returning(|| true);
     cluster1.expect_role().returning(|| ClusterRole::Master);
-    cluster1.expect_role_string().returning(|| "master cluster1".to_string());
-    cluster1.expect_cluster_details()
-        .returning(|| test_cluster_config("cluster1"));
+    cluster1
+        .expect_role_string()
+        .returning(|| "master ozstar".to_string());
+    cluster1
+        .expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
     cluster1.expect_send_message().returning(|_| ());
-    
+
     let mut cluster2 = MockClusterTrait::new();
-    cluster2.expect_name().returning(|| "cluster2".to_string());
+    cluster2.expect_name().returning(|| "nci".to_string());
     cluster2.expect_is_online().returning(|| true);
     cluster2.expect_role().returning(|| ClusterRole::Master);
-    cluster2.expect_role_string().returning(|| "master cluster2".to_string());
-    cluster2.expect_cluster_details()
-        .returning(|| test_cluster_config("cluster2"));
+    cluster2
+        .expect_role_string()
+        .returning(|| "master nci".to_string());
+    cluster2
+        .expect_cluster_details()
+        .returning(|| test_cluster_config("nci"));
     cluster2.expect_send_message().returning(|_| ());
-    
+
     let mut manager = MockClusterManagerTrait::new();
     let c1 = Arc::new(cluster1);
     let c2 = Arc::new(cluster2);
-    
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |name| {
-            if name == "cluster1" {
-                Some(c1.clone())
-            } else if name == "cluster2" {
-                Some(c2.clone())
-            } else {
-                None
-            }
-        });
-    
+
+    manager.expect_get_cluster_by_name().returning(move |name| {
+        if name == "ozstar" {
+            Some(c1.clone())
+        } else if name == "nci" {
+            Some(c2.clone())
+        } else {
+            None
+        }
+    });
+
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({
         "userId": 42,
-        "clusters": ["cluster1", "cluster2"]
     }));
-    
+
     let tasks: Vec<_> = (0..10)
         .map(|i| {
             let app_clone = app.clone();
             let token_clone = token.clone();
-            let cluster_name = if i % 2 == 0 { "cluster1" } else { "cluster2" };
-            
+            let cluster_name = if i % 2 == 0 { "ozstar" } else { "nci" };
+
             tokio::spawn(async move {
                 let resp = app_clone
                     .oneshot(
@@ -311,25 +347,25 @@ async fn test_multiple_clusters_concurrent_job_submission() {
                     )
                     .await
                     .unwrap();
-                
+
                 (resp.status(), cluster_name.to_string())
             })
         })
         .collect();
-    
+
     let results = futures_util::future::join_all(tasks).await;
-    
+
     for result in results {
         let (status, _cluster) = result.unwrap();
         assert_eq!(status, StatusCode::OK);
     }
-    
+
     let jobs = job::Entity::find().all(&db).await.unwrap();
     assert_eq!(jobs.len(), 10);
-    
-    let cluster1_jobs = jobs.iter().filter(|j| j.cluster == "cluster1").count();
-    let cluster2_jobs = jobs.iter().filter(|j| j.cluster == "cluster2").count();
-    
-    assert_eq!(cluster1_jobs, 5);
-    assert_eq!(cluster2_jobs, 5);
+
+    let ozstar_jobs = jobs.iter().filter(|j| j.cluster == "ozstar").count();
+    let nci_jobs = jobs.iter().filter(|j| j.cluster == "nci").count();
+
+    assert_eq!(ozstar_jobs, 5);
+    assert_eq!(nci_jobs, 5);
 }

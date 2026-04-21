@@ -29,7 +29,9 @@ fn test_cluster_config(name: &str) -> ClusterConfig {
         key: String::new(),
         connection_type: "manual".to_string(),
         keytab: String::new(),
-        kerberos_principal: String::new(),        ltk: None,    }
+        kerberos_principal: String::new(),
+        ltk: None,
+    }
 }
 
 fn make_app_context() -> Arc<AppContext> {
@@ -401,10 +403,10 @@ async fn test_resume_logic_via_sent_bytes_update() {
             .client_paused
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
-        {
-            let resume_msg = Message::new(RESUME_FILE_CHUNK_STREAM, Priority::Highest, "test_uuid");
-            cluster.send_message(resume_msg);
-        }
+    {
+        let resume_msg = Message::new(RESUME_FILE_CHUNK_STREAM, Priority::Highest, "test_uuid");
+        cluster.send_message(resume_msg);
+    }
 
     // 4. Drain WS channel — should see RESUME_FILE_CHUNK_STREAM
     let outgoing = drain_channel(&mut rx, Duration::from_millis(100)).await;

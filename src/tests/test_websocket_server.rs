@@ -452,15 +452,26 @@ async fn test_ws_authorization_header_success() {
 
     // Connect with Authorization: Bearer header
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/").into_client_request().unwrap();
-    request.headers_mut().insert("Authorization", "Bearer valid-token".parse().unwrap());
-    
-    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request).await.unwrap().0.split();
+
+    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", "Bearer valid-token".parse().unwrap());
+
+    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
+        .await
+        .unwrap()
+        .0
+        .split();
 
     // Should receive SERVER_READY
     let msg = recv_binary(&mut stream).await;
-    assert!(msg.is_some(), "Should receive SERVER_READY with valid Bearer token");
+    assert!(
+        msg.is_some(),
+        "Should receive SERVER_READY with valid Bearer token"
+    );
 
     sink.close().await.unwrap();
 }
@@ -487,8 +498,7 @@ async fn test_ws_missing_authorization_header() {
     let port = start_test_server(state).await;
 
     // Connect without Authorization header
-    let (mut _sink, mut stream) =
-        connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await;
+    let (mut _sink, mut stream) = connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await;
 
     // Should not receive SERVER_READY (connection rejected)
     let msg = recv_binary(&mut stream).await;
@@ -521,11 +531,19 @@ async fn test_ws_malformed_authorization_header() {
 
     // Connect with malformed Authorization header (no "Bearer " prefix)
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/").into_client_request().unwrap();
-    request.headers_mut().insert("Authorization", "invalid-token-format".parse().unwrap());
-    
-    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request).await.unwrap().0.split();
+
+    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", "invalid-token-format".parse().unwrap());
+
+    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
+        .await
+        .unwrap()
+        .0
+        .split();
 
     // Should not receive SERVER_READY
     let msg = recv_binary(&mut stream).await;
@@ -533,7 +551,7 @@ async fn test_ws_malformed_authorization_header() {
         msg.is_none(),
         "Malformed Authorization header should be rejected"
     );
-    
+
     sink.close().await.unwrap();
 }
 

@@ -23,7 +23,9 @@ fn test_config() -> ClusterConfig {
         key: String::new(),
         connection_type: "manual".to_string(),
         keytab: String::new(),
-        kerberos_principal: String::new(),        ltk: None,    }
+        kerberos_principal: String::new(),
+        ltk: None,
+    }
 }
 
 // ---------------------------------------------------------------------------

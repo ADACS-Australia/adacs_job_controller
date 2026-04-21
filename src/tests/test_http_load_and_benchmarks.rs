@@ -26,7 +26,7 @@ use common::{
     encode_test_jwt, insert_test_job, make_test_state, setup_test_db, test_cluster_config,
 };
 
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, PaginatorTrait};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 // ---------------------------------------------------------------------------
 // HTTP Load Tests - Match C++ test_http_worker_pool_exhaustion
@@ -56,7 +56,9 @@ async fn test_http_concurrent_job_creation_moderate_load() {
     cluster.expect_name().returning(|| "ozstar".to_string());
     cluster.expect_is_online().returning(|| true);
     cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster.expect_role_string().returning(|| "master".to_string());
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
@@ -64,9 +66,12 @@ async fn test_http_concurrent_job_creation_moderate_load() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(Arc::clone(&cluster_arc) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>));
+    manager.expect_get_cluster_by_name().returning(move |_| {
+        Some(Arc::clone(&cluster_arc)
+            as Arc<
+                dyn adacs_job_controller::cluster::traits::ClusterTrait,
+            >)
+    });
     manager
         .expect_handle_new_connection()
         .returning(move |_, _, _| Box::pin(async move { None }));
@@ -81,7 +86,7 @@ async fn test_http_concurrent_job_creation_moderate_load() {
     for i in 0..num_requests {
         let app_clone = app.clone();
         let token_clone = token.clone();
-        
+
         let handle = tokio::spawn(async move {
             let job_data = json!({
                 "cluster": "ozstar",
@@ -149,10 +154,7 @@ async fn test_http_concurrent_job_creation_moderate_load() {
 
     // Verify database consistency
     let job_count = job::Entity::find().count(&db).await.unwrap();
-    assert!(
-        job_count > 0,
-        "At least some jobs should be in database"
-    );
+    assert!(job_count > 0, "At least some jobs should be in database");
 }
 
 /// Tests server behavior under heavy concurrent load.
@@ -179,7 +181,9 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     cluster.expect_name().returning(|| "ozstar".to_string());
     cluster.expect_is_online().returning(|| true);
     cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster.expect_role_string().returning(|| "master".to_string());
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
@@ -187,9 +191,12 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(Arc::clone(&cluster_arc) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>));
+    manager.expect_get_cluster_by_name().returning(move |_| {
+        Some(Arc::clone(&cluster_arc)
+            as Arc<
+                dyn adacs_job_controller::cluster::traits::ClusterTrait,
+            >)
+    });
     manager
         .expect_handle_new_connection()
         .returning(move |_, _, _| Box::pin(async move { None }));
@@ -200,12 +207,12 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     // Send 500 concurrent requests
     let num_requests = 500;
     let start_time = Instant::now();
-    
+
     let mut handles = Vec::new();
     for i in 0..num_requests {
         let app_clone = app.clone();
         let token_clone = token.clone();
-        
+
         let handle = tokio::spawn(async move {
             let job_data = json!({
                 "cluster": "ozstar",
@@ -244,15 +251,13 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     let mut total_response_time = Duration::ZERO;
     let mut max_response_time = Duration::ZERO;
 
-    for result in results {
-        if let Ok((status, response_time)) = result {
-            if status.is_success() {
-                success_count += 1;
-            }
-            total_response_time += response_time;
-            if response_time > max_response_time {
-                max_response_time = response_time;
-            }
+    for (status, response_time) in results.into_iter().flatten() {
+        if status.is_success() {
+            success_count += 1;
+        }
+        total_response_time += response_time;
+        if response_time > max_response_time {
+            max_response_time = response_time;
         }
     }
 
@@ -307,7 +312,9 @@ async fn test_benchmark_job_creation_performance() {
     cluster.expect_name().returning(|| "ozstar".to_string());
     cluster.expect_is_online().returning(|| true);
     cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster.expect_role_string().returning(|| "master".to_string());
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
@@ -315,9 +322,12 @@ async fn test_benchmark_job_creation_performance() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(Arc::clone(&cluster_arc) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>));
+    manager.expect_get_cluster_by_name().returning(move |_| {
+        Some(Arc::clone(&cluster_arc)
+            as Arc<
+                dyn adacs_job_controller::cluster::traits::ClusterTrait,
+            >)
+    });
     manager
         .expect_handle_new_connection()
         .returning(move |_, _, _| Box::pin(async move { None }));
@@ -334,7 +344,8 @@ async fn test_benchmark_job_creation_performance() {
             "parameters": "{}"
         });
 
-        let _ = app.clone()
+        let _ = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -360,7 +371,8 @@ async fn test_benchmark_job_creation_performance() {
         });
 
         let start = Instant::now();
-        let resp = app.clone()
+        let resp = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -372,14 +384,17 @@ async fn test_benchmark_job_creation_performance() {
             )
             .await
             .unwrap();
-        
-        assert!(resp.status().is_success(), "Benchmark request should succeed");
+
+        assert!(
+            resp.status().is_success(),
+            "Benchmark request should succeed"
+        );
         response_times.push(start.elapsed());
     }
 
     // Calculate statistics
     response_times.sort();
-    
+
     let avg = response_times.iter().sum::<Duration>() / num_requests as u32;
     let min = *response_times.first().unwrap();
     let max = *response_times.last().unwrap();
@@ -392,7 +407,10 @@ async fn test_benchmark_job_creation_performance() {
     println!("  Max: {:?}", max);
     println!("  Avg: {:?}", avg);
     println!("  P95: {:?}", p95);
-    println!("  Throughput: {:.2} req/s", num_requests as f64 / avg.as_secs_f64());
+    println!(
+        "  Throughput: {:.2} req/s",
+        num_requests as f64 / avg.as_secs_f64()
+    );
 
     // Performance thresholds (regression detection)
     assert!(
@@ -488,7 +506,9 @@ async fn test_connection_pool_exhaustion() {
     cluster.expect_name().returning(|| "ozstar".to_string());
     cluster.expect_is_online().returning(|| true);
     cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster.expect_role_string().returning(|| "master".to_string());
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
@@ -496,9 +516,12 @@ async fn test_connection_pool_exhaustion() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(Arc::clone(&cluster_arc) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>));
+    manager.expect_get_cluster_by_name().returning(move |_| {
+        Some(Arc::clone(&cluster_arc)
+            as Arc<
+                dyn adacs_job_controller::cluster::traits::ClusterTrait,
+            >)
+    });
     manager
         .expect_handle_new_connection()
         .returning(move |_, _, _| Box::pin(async move { None }));
@@ -509,17 +532,17 @@ async fn test_connection_pool_exhaustion() {
     // Limit concurrent connections to simulate pool exhaustion
     let semaphore = Arc::new(Semaphore::new(10)); // Only 10 concurrent
     let num_requests = 200;
-    
+
     let mut handles = Vec::new();
-    
+
     for i in 0..num_requests {
         let app_clone = app.clone();
         let token_clone = token.clone();
         let sem_clone = Arc::clone(&semaphore);
-        
+
         let handle = tokio::spawn(async move {
             let permit = sem_clone.acquire().await.unwrap();
-            
+
             let job_data = json!({
                 "cluster": "ozstar",
                 "bundle": format!("stress_{}", i),
@@ -538,7 +561,7 @@ async fn test_connection_pool_exhaustion() {
                         .unwrap(),
                 )
                 .await;
-            
+
             drop(permit); // Release semaphore
             result.is_ok()
         });
@@ -548,10 +571,16 @@ async fn test_connection_pool_exhaustion() {
 
     // Wait for all requests
     let results = join_all(handles).await;
-    
+
     // Count completions
-    let completed = results.iter().filter(|r| r.is_ok() && *r.as_ref().unwrap()).count();
-    let failed = results.iter().filter(|r| r.is_ok() && !*r.as_ref().unwrap()).count();
+    let completed = results
+        .iter()
+        .filter(|r| r.is_ok() && *r.as_ref().unwrap())
+        .count();
+    let failed = results
+        .iter()
+        .filter(|r| r.is_ok() && !*r.as_ref().unwrap())
+        .count();
     let panicked = results.iter().filter(|r| r.is_err()).count();
 
     println!(
@@ -561,7 +590,8 @@ async fn test_connection_pool_exhaustion() {
 
     // All tasks should complete (even if request fails)
     assert_eq!(
-        completed + failed, num_requests,
+        completed + failed,
+        num_requests,
         "All tasks should complete"
     );
 

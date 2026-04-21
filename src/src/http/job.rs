@@ -162,64 +162,64 @@ pub async fn get_jobs(
     if let Some(ts) = params.start_time_gt
         && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
     {
-            let cutoff = dt.naive_utc();
-            let subq = Query::select()
-                .column(job_history::Column::JobId)
-                .from(job_history::Entity)
-                .and_where(Expr::col(job_history::Column::What).eq(SYSTEM_SOURCE))
-                .group_by_col(job_history::Column::JobId)
-                .and_having(
-                    Expr::expr(Func::min(Expr::col(job_history::Column::Timestamp))).gte(cutoff),
-                )
-                .to_owned();
-            job_query = job_query.filter(job::Column::Id.in_subquery(subq));
+        let cutoff = dt.naive_utc();
+        let subq = Query::select()
+            .column(job_history::Column::JobId)
+            .from(job_history::Entity)
+            .and_where(Expr::col(job_history::Column::What).eq(SYSTEM_SOURCE))
+            .group_by_col(job_history::Column::JobId)
+            .and_having(
+                Expr::expr(Func::min(Expr::col(job_history::Column::Timestamp))).gte(cutoff),
+            )
+            .to_owned();
+        job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
     // start_time_lt: job must have a SYSTEM_SOURCE history entry where MIN(timestamp) <= cutoff
     if let Some(ts) = params.start_time_lt
         && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
     {
-            let cutoff = dt.naive_utc();
-            let subq = Query::select()
-                .column(job_history::Column::JobId)
-                .from(job_history::Entity)
-                .and_where(Expr::col(job_history::Column::What).eq(SYSTEM_SOURCE))
-                .group_by_col(job_history::Column::JobId)
-                .and_having(
-                    Expr::expr(Func::min(Expr::col(job_history::Column::Timestamp))).lte(cutoff),
-                )
-                .to_owned();
-            job_query = job_query.filter(job::Column::Id.in_subquery(subq));
+        let cutoff = dt.naive_utc();
+        let subq = Query::select()
+            .column(job_history::Column::JobId)
+            .from(job_history::Entity)
+            .and_where(Expr::col(job_history::Column::What).eq(SYSTEM_SOURCE))
+            .group_by_col(job_history::Column::JobId)
+            .and_having(
+                Expr::expr(Func::min(Expr::col(job_history::Column::Timestamp))).lte(cutoff),
+            )
+            .to_owned();
+        job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
     // end_time_gt: job must have a completion history entry with timestamp >= cutoff
     if let Some(ts) = params.end_time_gt
         && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
     {
-            let cutoff = dt.naive_utc();
-            let subq = Query::select()
-                .distinct()
-                .column(job_history::Column::JobId)
-                .from(job_history::Entity)
-                .and_where(Expr::col(job_history::Column::What).eq(JOB_COMPLETION_SOURCE))
-                .and_where(Expr::col(job_history::Column::Timestamp).gte(cutoff))
-                .to_owned();
-            job_query = job_query.filter(job::Column::Id.in_subquery(subq));
+        let cutoff = dt.naive_utc();
+        let subq = Query::select()
+            .distinct()
+            .column(job_history::Column::JobId)
+            .from(job_history::Entity)
+            .and_where(Expr::col(job_history::Column::What).eq(JOB_COMPLETION_SOURCE))
+            .and_where(Expr::col(job_history::Column::Timestamp).gte(cutoff))
+            .to_owned();
+        job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
     // end_time_lt: job must have a completion history entry with timestamp <= cutoff
     if let Some(ts) = params.end_time_lt
         && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
     {
-            let cutoff = dt.naive_utc();
-            let subq = Query::select()
-                .distinct()
-                .column(job_history::Column::JobId)
-                .from(job_history::Entity)
-                .and_where(Expr::col(job_history::Column::What).eq(JOB_COMPLETION_SOURCE))
-                .and_where(Expr::col(job_history::Column::Timestamp).lte(cutoff))
-                .to_owned();
-            job_query = job_query.filter(job::Column::Id.in_subquery(subq));
+        let cutoff = dt.naive_utc();
+        let subq = Query::select()
+            .distinct()
+            .column(job_history::Column::JobId)
+            .from(job_history::Entity)
+            .and_where(Expr::col(job_history::Column::What).eq(JOB_COMPLETION_SOURCE))
+            .and_where(Expr::col(job_history::Column::Timestamp).lte(cutoff))
+            .to_owned();
+        job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
     // job_steps: job must have at least one history entry matching a (what, state) pair

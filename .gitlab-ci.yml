@@ -1,64 +1,45 @@
 variables:
-  GIT_SUBMODULE_STRATEGY: recursive
   DOCKER_TLS_CERTDIR: ""
   DOCKER_HOST: tcp://docker:2375/
   DOCKER_DRIVER: overlay2
-
-default:
-  image:
-    name: docker/compose:latest
-    entrypoint: ["/usr/bin/env"]
-  before_script:
-    - apk update
-    - apk upgrade --available && sync
-    - apk add git bash xmlstarlet
 
 stages:
   - lint
   - test
 
-# Clang-format check job
-clang-format-check:
+# Lint: rustfmt check + clippy
+lint:
   stage: lint
-  image: ubuntu:24.04
+  image: rust:latest
   before_script:
-    - apt-get update && apt-get install -y wget lsb-release software-properties-common gnupg
-    - wget https://apt.llvm.org/llvm.sh && bash ./llvm.sh 23 all
+    - rustup component add rustfmt clippy
   script:
-    - ./scripts/check-format.sh
-  allow_failure: false
+    - cd src
+    - cargo fmt -- --check
+    - cargo clippy --all-targets -- -D warnings
 
+# Tests with coverage
 tests:
   stage: test
+  image: docker/compose:latest
   services:
     - name: docker:20.10.17-dind
+  before_script:
+    - docker info
   script:
-    - docker version
-    - docker-compose version
-    - bash scripts/test.sh
-    - xmlstarlet ed -u "coverage/sources/source" -v "`pwd`/src" test_report/coverage_docker.xml > test_report/coverage.xml 
+    - cd src
+    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml build
+    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml up --abort-on-container-exit --exit-code-from web
+  after_script:
+    - cd src
+    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml down -v --remove-orphans || true
   artifacts:
+    when: always
+    paths:
+      - src/test_report/
     reports:
       coverage_report:
         coverage_format: cobertura
-        path: test_report/coverage.xml
-      junit: test_report/junit.xml
-      codequality: test_report/code_climate.json
-
-
-code-quality:
-  image: docker:stable
-  services:
-    - name: docker:20.10.17-dind
-  allow_failure: true
-  before_script: []
-  script:
-    - docker run
-        --env SOURCE_CODE="$PWD"
-        --volume "$PWD":/code
-        --volume /var/run/docker.sock:/var/run/docker.sock
-        "registry.gitlab.com/gitlab-org/ci-cd/codequality:latest" /code
-  artifacts:
-    reports:
-      codequality: gl-code-quality-report.json
+        path: src/test_report/coverage.xml
+      junit: src/test_report/junit.xml
 

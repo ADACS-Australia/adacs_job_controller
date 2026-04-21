@@ -108,7 +108,10 @@ mod tests {
         let configs: Vec<ClusterConfig> = serde_json::from_str(json).unwrap();
         assert_eq!(configs.len(), 1);
         assert_eq!(configs[0].name, "ltk-cluster");
-        assert_eq!(configs[0].ltk, Some("super-secret-random-string".to_string()));
+        assert_eq!(
+            configs[0].ltk,
+            Some("super-secret-random-string".to_string())
+        );
     }
 
     #[test]

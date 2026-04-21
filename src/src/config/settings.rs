@@ -1,5 +1,6 @@
 use std::sync::LazyLock;
 
+#[allow(dead_code)]
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
@@ -25,6 +26,7 @@ fn env_or_u64(key: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
+#[allow(dead_code)]
 fn env_or_bool(key: &str, default: bool) -> bool {
     std::env::var(key)
         .ok()
@@ -33,13 +35,19 @@ fn env_or_bool(key: &str, default: bool) -> bool {
 }
 
 // Database settings
+#[allow(dead_code)]
 pub static DATABASE_USER: LazyLock<String> = LazyLock::new(|| env_or("MYSQL_USER", "jobserver"));
+#[allow(dead_code)]
 pub static DATABASE_PASSWORD: LazyLock<String> =
     LazyLock::new(|| env_or("MYSQL_PASSWORD", "jobserver"));
+#[allow(dead_code)]
 pub static DATABASE_SCHEMA: LazyLock<String> =
     LazyLock::new(|| env_or("MYSQL_DATABASE", "jobserver"));
+#[allow(dead_code)]
 pub static DATABASE_HOST: LazyLock<String> = LazyLock::new(|| env_or("DATABASE_HOST", "localhost"));
+#[allow(dead_code)]
 pub static DATABASE_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("DATABASE_PORT", 3306));
+#[allow(dead_code)]
 pub static DATABASE_DEBUG: LazyLock<bool> = LazyLock::new(|| env_or_bool("DATABASE_DEBUG", false));
 
 // File download expiry
@@ -97,8 +105,10 @@ pub static CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS", 60));
 pub static CLUSTER_MANAGER_PING_INTERVAL_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_PING_INTERVAL_SECONDS", 10));
+#[allow(dead_code)]
 pub static CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS", 60));
+#[allow(dead_code)]
 pub static CLUSTER_MANAGER_MANUAL_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_MANUAL_TOKEN_EXPIRY_SECONDS", 600));
 pub static CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
@@ -106,18 +116,23 @@ pub static CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
 
 // HTTP settings
 pub static HTTP_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("HTTP_PORT", 8000));
+#[allow(dead_code)]
 pub static HTTP_WORKER_POOL_SIZE: LazyLock<u32> =
     LazyLock::new(|| env_or_u32("HTTP_WORKER_POOL_SIZE", 1024));
+#[allow(dead_code)]
 pub static HTTP_CONTENT_TIMEOUT_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("HTTP_CONTENT_TIMEOUT_SECONDS", 86400));
 
 // WebSocket settings
 pub static WEBSOCKET_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("WEBSOCKET_PORT", 8001));
+#[allow(dead_code)]
 pub static WEBSOCKET_WORKER_POOL_SIZE: LazyLock<u32> =
     LazyLock::new(|| env_or_u32("WEBSOCKET_WORKER_POOL_SIZE", 1024));
 
 // Bundle HTTP settings
+#[allow(dead_code)]
 pub static BUNDLE_HTTP_PORT: LazyLock<String> = LazyLock::new(|| env_or("BUNDLE_HTTP_PORT", ":80"));
+#[allow(dead_code)]
 pub static BUNDLE_HTTPS_PORT: LazyLock<String> =
     LazyLock::new(|| env_or("BUNDLE_HTTPS_PORT", ":443"));
 

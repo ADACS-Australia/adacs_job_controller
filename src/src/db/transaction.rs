@@ -9,6 +9,7 @@ use sea_orm::{DatabaseConnection, DbErr, TransactionTrait};
 ///
 /// This is a wrapper around SeaORM's transaction API that provides
 /// consistent error handling and logging.
+#[allow(dead_code)]
 pub async fn with_transaction<F, T>(db: &DatabaseConnection, f: F) -> Result<T, DbErr>
 where
     F: for<'c> FnOnce(

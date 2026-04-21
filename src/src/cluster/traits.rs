@@ -68,6 +68,7 @@ pub trait ClusterTrait: Send + Sync {
     fn close(&self, force: bool);
 
     /// Stop all background tasks (scheduler, prune, resend).
+    #[allow(dead_code)]
     fn stop(&self);
 }
 
@@ -117,6 +118,7 @@ pub trait ClusterManagerTrait: Send + Sync {
     ) -> Arc<dyn ClusterTrait>;
 
     /// Check if a cluster is currently connected.
+    #[allow(dead_code)]
     fn is_cluster_online(&self, cluster: &dyn ClusterTrait) -> bool;
 
     /// Log a WebSocket error for a cluster.

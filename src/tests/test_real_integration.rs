@@ -20,10 +20,11 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait, WsOutbound};
+use adacs_job_controller::cluster::traits::{
+    MockClusterManagerTrait, MockClusterTrait, WsOutbound,
+};
 use adacs_job_controller::db::entities::{file_download, job};
 use adacs_job_controller::http::server::create_router;
-use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, Priority};
 
@@ -31,7 +32,9 @@ use common::{
     encode_test_jwt, insert_test_job, make_test_state, setup_test_db, test_cluster_config,
 };
 
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, PaginatorTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+};
 
 // ---------------------------------------------------------------------------
 // Test server helpers
@@ -45,7 +48,7 @@ async fn start_http_server(
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let state = make_test_state(db, manager);
-    
+
     // Create router with both HTTP and WS routes
     let mut app = create_router(state.clone());
     app = app.merge(
@@ -56,7 +59,7 @@ async fn start_http_server(
             )
             .with_state(state),
     );
-    
+
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
@@ -95,7 +98,9 @@ async fn send_binary(
     >,
     data: Vec<u8>,
 ) {
-    sink.send(TungsteniteMsg::Binary(data.into())).await.unwrap();
+    sink.send(TungsteniteMsg::Binary(data.into()))
+        .await
+        .unwrap();
 }
 
 /// Receive a binary message from WebSocket with timeout
@@ -141,7 +146,7 @@ async fn recv_binary(
 async fn test_real_websocket_connection_and_auth() {
     use adacs_job_controller::cluster::traits::WsConnectionSender;
     use std::sync::Mutex as StdMutex;
-    
+
     let db = setup_test_db().await;
     let _job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
@@ -151,7 +156,9 @@ async fn test_real_websocket_connection_and_auth() {
     let tx_for_send = Arc::clone(&tx_slot);
     let mut cluster = MockClusterTrait::new();
     cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_role_string().returning(|| "master test".to_string());
+    cluster
+        .expect_role_string()
+        .returning(|| "master test".to_string());
     cluster.expect_is_online().returning(|| true);
     cluster.expect_role().returning(|| ClusterRole::Master);
     cluster
@@ -166,7 +173,8 @@ async fn test_real_websocket_connection_and_auth() {
         .expect_handle_message()
         .returning(|_| Box::pin(async {}));
 
-    let cluster_arc: Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> = Arc::new(cluster);
+    let cluster_arc: Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> =
+        Arc::new(cluster);
 
     let tx_for_new = Arc::clone(&tx_slot);
     let mut manager = MockClusterManagerTrait::new();
@@ -180,26 +188,25 @@ async fn test_real_websocket_connection_and_auth() {
     manager
         .expect_remove_connection()
         .returning(|_, _| Box::pin(async {}));
-    manager
-        .expect_report_websocket_error()
-        .returning(|_, _| ());
-    manager
-        .expect_handle_pong()
-        .returning(|_| ());
+    manager.expect_report_websocket_error().returning(|_, _| ());
+    manager.expect_handle_pong().returning(|_| ());
 
     // Start real server
     let (port, server_handle) = start_http_server(db.clone(), manager).await;
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
     // Connect real WebSocket client
-    let (mut sink, mut stream) = connect_websocket(port, &token).await;
+    let (sink, mut stream) = connect_websocket(port, &token).await;
 
     // Expect SERVER_READY (sent automatically after connection)
     let response = recv_binary(&mut stream).await;
     assert!(response.is_some(), "Server should send SERVER_READY");
 
     // Verify we got a non-empty response
-    assert!(!response.as_ref().unwrap().is_empty(), "Response should not be empty");
+    assert!(
+        !response.as_ref().unwrap().is_empty(),
+        "Response should not be empty"
+    );
 
     // Cleanup
     drop(sink);
@@ -330,7 +337,9 @@ async fn test_multiple_clusters_concurrent_job_submission() {
         cluster.expect_name().returning(move || name.clone());
         cluster.expect_is_online().returning(|| true);
         cluster.expect_role().returning(|| ClusterRole::Master);
-        cluster.expect_role_string().returning(|| "master".to_string());
+        cluster
+            .expect_role_string()
+            .returning(|| "master".to_string());
         cluster
             .expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
@@ -350,16 +359,29 @@ async fn test_multiple_clusters_concurrent_job_submission() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |name| match name {
-            "ozstar" => Some(Arc::clone(&oz) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
-            "nci" => Some(Arc::clone(&nc) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
-            "gadi" => Some(Arc::clone(&ga) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
+            "ozstar" => {
+                Some(Arc::clone(&oz)
+                    as Arc<
+                        dyn adacs_job_controller::cluster::traits::ClusterTrait,
+                    >)
+            }
+            "nci" => {
+                Some(Arc::clone(&nc)
+                    as Arc<
+                        dyn adacs_job_controller::cluster::traits::ClusterTrait,
+                    >)
+            }
+            "gadi" => {
+                Some(Arc::clone(&ga)
+                    as Arc<
+                        dyn adacs_job_controller::cluster::traits::ClusterTrait,
+                    >)
+            }
             _ => None,
         });
     manager
         .expect_handle_new_connection()
-        .returning(move |_, _, _| {
-            Box::pin(async move { None })
-        });
+        .returning(move |_, _, _| Box::pin(async move { None }));
 
     // Start real HTTP server
     let (_port, server_handle) = start_http_server(db.clone(), manager).await;
@@ -367,7 +389,7 @@ async fn test_multiple_clusters_concurrent_job_submission() {
 
     // Submit jobs to 2 clusters (ozstar and nci - gadi not in JWT secret)
     let clusters = ["ozstar", "nci"];
-    
+
     for (i, cluster_name) in clusters.iter().enumerate() {
         let oz2 = Arc::clone(&ozstar);
         let nc2 = Arc::clone(&nci);
@@ -377,16 +399,17 @@ async fn test_multiple_clusters_concurrent_job_submission() {
             manager
                 .expect_get_cluster_by_name()
                 .returning(move |name| match name {
-                    "ozstar" => Some(Arc::clone(&oz2) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
-                    "nci" => Some(Arc::clone(&nc2) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
-                    "gadi" => Some(Arc::clone(&ga2) as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
+                    "ozstar" => Some(Arc::clone(&oz2)
+                        as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
+                    "nci" => Some(Arc::clone(&nc2)
+                        as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
+                    "gadi" => Some(Arc::clone(&ga2)
+                        as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
                     _ => None,
                 });
             manager
                 .expect_handle_new_connection()
-                .returning(move |_, _, _| {
-                    Box::pin(async move { None })
-                });
+                .returning(move |_, _, _| Box::pin(async move { None }));
             manager
         }));
 
@@ -420,7 +443,7 @@ async fn test_multiple_clusters_concurrent_job_submission() {
 
     // Verify jobs in database
     let job_count = job::Entity::find().count(&db).await.unwrap();
-    assert!(job_count >= 0, "Jobs should be in database");
+    assert!(job_count > 0, "Jobs should be in database");
 
     server_handle.abort();
 }
@@ -453,18 +476,18 @@ async fn test_race_condition_message_during_disconnect() {
     cluster.expect_name().returning(|| "ozstar".to_string());
     cluster.expect_is_online().returning(|| true);
     cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster.expect_role_string().returning(|| "master".to_string());
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    
+
     // Mock send_message to simulate slow operation
-    cluster
-        .expect_send_message()
-        .returning(|_| {
-            // Simulate delay
-            std::thread::sleep(Duration::from_millis(10));
-        });
+    cluster.expect_send_message().returning(|_| {
+        // Simulate delay
+        std::thread::sleep(Duration::from_millis(10));
+    });
 
     let cluster_arc = Arc::new(cluster);
 

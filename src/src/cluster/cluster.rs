@@ -188,33 +188,33 @@ impl Cluster {
                             if let Some(queue) = map.get_mut(source)
                                 && let Some(data) = queue.pop_front()
                             {
-                                    self.queued_message_size
-                                        .fetch_sub(data.len(), Ordering::Relaxed);
-                                    self.queue_size_notify.notify_waiters();
-                                    drop(map);
+                                self.queued_message_size
+                                    .fetch_sub(data.len(), Ordering::Relaxed);
+                                self.queue_size_notify.notify_waiters();
+                                drop(map);
 
-                                    // Send via WS connection
-                                    let conn = self.connection.lock().await;
-                                    if let Some(sender) = conn.as_ref() {
-                                        let _ = sender.send(WsOutbound::Binary(data));
-                                    } else {
-                                        tracing::warn!(
-                                            "SCHED: Discarding packet because connection is closed"
-                                        );
-                                    }
-                                    drop(conn);
-
-                                    had_data_this_round = true;
-                                    sent_anything = true;
-
-                                    // Check for higher priority data
-                                    if self.has_higher_priority_data(priority_val).await {
-                                        continue 'reset;
-                                    }
-
-                                    // Re-acquire map for next source
-                                    map = rw_map.write().await;
+                                // Send via WS connection
+                                let conn = self.connection.lock().await;
+                                if let Some(sender) = conn.as_ref() {
+                                    let _ = sender.send(WsOutbound::Binary(data));
+                                } else {
+                                    tracing::warn!(
+                                        "SCHED: Discarding packet because connection is closed"
+                                    );
                                 }
+                                drop(conn);
+
+                                had_data_this_round = true;
+                                sent_anything = true;
+
+                                // Check for higher priority data
+                                if self.has_higher_priority_data(priority_val).await {
+                                    continue 'reset;
+                                }
+
+                                // Re-acquire map for next source
+                                map = rw_map.write().await;
+                            }
                         }
                         if !had_data_this_round {
                             break;
@@ -553,17 +553,19 @@ impl Cluster {
                 .await
                 .unwrap_or(None);
 
-            if let Some(h) = latest && (h.state == 10 || h.state == 20) {
-                    tracing::info!("Resubmitting: {}", j.id);
-                    let mut msg = Message::new(
-                        SUBMIT_JOB,
-                        Priority::Medium,
-                        &format!("{}_{}", j.id, cluster_name),
-                    );
-                    msg.push_uint(j.id as u32);
-                    msg.push_string(&j.bundle);
-                    msg.push_string(&j.parameters);
-                    self.send_message_internal(msg);
+            if let Some(h) = latest
+                && (h.state == 10 || h.state == 20)
+            {
+                tracing::info!("Resubmitting: {}", j.id);
+                let mut msg = Message::new(
+                    SUBMIT_JOB,
+                    Priority::Medium,
+                    &format!("{}_{}", j.id, cluster_name),
+                );
+                msg.push_uint(j.id as u32);
+                msg.push_string(&j.bundle);
+                msg.push_string(&j.parameters);
+                self.send_message_internal(msg);
             }
         }
     }
@@ -600,15 +602,17 @@ impl Cluster {
                 .await
                 .unwrap_or(None);
 
-            if let Some(h) = latest && h.state == 75 {
-                    tracing::info!("Recancelling: {}", j.id);
-                    let mut msg = Message::new(
-                        CANCEL_JOB,
-                        Priority::Medium,
-                        &format!("{}_{}", j.id, cluster_name),
-                    );
-                    msg.push_uint(j.id as u32);
-                    self.send_message_internal(msg);
+            if let Some(h) = latest
+                && h.state == 75
+            {
+                tracing::info!("Recancelling: {}", j.id);
+                let mut msg = Message::new(
+                    CANCEL_JOB,
+                    Priority::Medium,
+                    &format!("{}_{}", j.id, cluster_name),
+                );
+                msg.push_uint(j.id as u32);
+                self.send_message_internal(msg);
             }
         }
     }
@@ -645,15 +649,17 @@ impl Cluster {
                 .await
                 .unwrap_or(None);
 
-            if let Some(h) = latest && h.state == 85 {
-                    tracing::info!("Redeleting: {}", j.id);
-                    let mut msg = Message::new(
-                        DELETE_JOB,
-                        Priority::Medium,
-                        &format!("{}_{}", j.id, cluster_name),
-                    );
-                    msg.push_uint(j.id as u32);
-                    self.send_message_internal(msg);
+            if let Some(h) = latest
+                && h.state == 85
+            {
+                tracing::info!("Redeleting: {}", j.id);
+                let mut msg = Message::new(
+                    DELETE_JOB,
+                    Priority::Medium,
+                    &format!("{}_{}", j.id, cluster_name),
+                );
+                msg.push_uint(j.id as u32);
+                self.send_message_internal(msg);
             }
         }
     }
@@ -701,12 +707,8 @@ impl ClusterTrait for Cluster {
         // Try ClusterDB first (for master clusters)
         if self.role == ClusterRole::Master
             && let Some(ctx) = &self.app_context
-            && crate::db::cluster_db::maybe_handle_cluster_db_message(
-                &mut message,
-                self,
-                &ctx.db,
-            )
-            .await
+            && crate::db::cluster_db::maybe_handle_cluster_db_message(&mut message, self, &ctx.db)
+                .await
         {
             return;
         }

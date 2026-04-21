@@ -11,12 +11,13 @@ pub struct Message {
     priority: super::types::Priority,
 }
 
+#[allow(dead_code)]
 impl Message {
     /// Create a new outgoing message with source and ID in the header.
     pub fn new(msg_id: u32, priority: super::types::Priority, source: &str) -> Self {
         let mut msg = Self {
             data: Vec::with_capacity(
-                *crate::config::settings::MESSAGE_INITIAL_VECTOR_SIZE as usize
+                *crate::config::settings::MESSAGE_INITIAL_VECTOR_SIZE as usize,
             ),
             index: 0,
             id: msg_id,

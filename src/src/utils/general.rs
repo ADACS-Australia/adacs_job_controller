@@ -4,12 +4,14 @@ pub fn generate_uuid() -> String {
 }
 
 /// Base64-encode raw bytes using the standard alphabet.
+#[allow(dead_code)]
 pub fn base64_encode(data: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(data)
 }
 
 /// Base64-decode a string using the standard alphabet.
+#[allow(dead_code)]
 pub fn base64_decode(data: &str) -> Result<Vec<u8>, base64::DecodeError> {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.decode(data)

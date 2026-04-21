@@ -39,14 +39,13 @@ pub async fn run() -> anyhow::Result<()> {
 
     let file_list_map: Arc<DashMap<_, _>> = Arc::new(DashMap::new());
 
-    let cluster_config_path = std::env::var(
-        crate::config::settings::CLUSTER_CONFIG_FILE_ENV_VARIABLE,
-    )
-    .unwrap_or_else(|_| "config/clusters.json".to_string());
-    let cluster_configs = crate::config::clusters::load_cluster_configs(
-        std::path::Path::new(&cluster_config_path),
-    )?;
-    let cluster_manager = ClusterManager::new(cluster_configs, db.clone(), Arc::clone(&file_list_map));
+    let cluster_config_path =
+        std::env::var(crate::config::settings::CLUSTER_CONFIG_FILE_ENV_VARIABLE)
+            .unwrap_or_else(|_| "config/clusters.json".to_string());
+    let cluster_configs =
+        crate::config::clusters::load_cluster_configs(std::path::Path::new(&cluster_config_path))?;
+    let cluster_manager =
+        ClusterManager::new(cluster_configs, db.clone(), Arc::clone(&file_list_map));
     cluster_manager.start_tasks();
     let cluster_manager: Arc<dyn ClusterManagerTrait> = cluster_manager;
 
