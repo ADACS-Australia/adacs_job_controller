@@ -13,6 +13,7 @@ pub async fn create_test_schema(db: &sea_orm::DatabaseConnection) {
         builder.build(&schema.create_table_from_entity(super::entities::job_history::Entity)),
         builder.build(&schema.create_table_from_entity(super::entities::file_download::Entity)),
         builder.build(&schema.create_table_from_entity(super::entities::file_list_cache::Entity)),
+        builder.build(&schema.create_table_from_entity(super::entities::cluster_job_status::Entity)),
     ];
 
     for stmt in stmts {

@@ -355,108 +355,146 @@ async fn test_download_file_cluster_offline_returns_503() {
 /// Tests the full file download flow: WS pushes data, HTTP streams it back.
 ///
 /// # Setup
-/// Inserts a download record. A background task simulates FILE_DETAILS + one chunk
-/// arriving via the `FileDownloadState` after a short delay.
+/// Inserts 5 download records (one for each repeated download). For each download,
+/// a background task simulates FILE_DETAILS + chunks arriving via a fresh `FileDownloadState`.
 ///
 /// # Act
-/// Sends GET /file/apiv1/file/?fileId={uuid}.
+/// Sends GET /file/apiv1/file/?fileId={uuid} **5 times** with different UUIDs (repeated downloads).
 ///
 /// # Assert
 /// Verifies 200 OK with correct `Content-Length`, `Content-Type: application/octet-stream`,
-/// and the exact chunk bytes in the response body.
+/// and the exact chunk bytes in the response body for **each of the 5 downloads**,
+/// matching the C++ test_file_transfer behavior with BOOST_CHECK_EQUAL_COLLECTIONS.
 #[tokio::test]
 async fn test_download_file_streams_chunks() {
     let db = setup_test_db().await;
-    // Insert a download record
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
-    let uuid = "download-uuid-5678".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid.clone()),
-        path: Set("".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
+    
+    // Generate random file data like the C++ test (0 to 1MB range)
+    use rand::{Rng, SeedableRng};
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let file_size = rng.random_range(0..=1024 * 1024);
+    let expected_data: Vec<u8> = (0..file_size).map(|_| rng.random()).collect();
+    
+    // Insert 5 download records for 5 repeated downloads
+    let mut uuids = Vec::new();
+    for i in 0..5 {
+        let uuid = format!("download-uuid-{}", i);
+        file_download::ActiveModel {
+            user: Set(1),
+            job: Set(0),
+            cluster: Set("ozstar".to_string()),
+            bundle: Set("b".to_string()),
+            uuid: Set(uuid.clone()),
+            path: Set("".to_string()),
+            timestamp: Set(chrono::Utc::now().naive_utc()),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        uuids.push(uuid);
     }
-    .insert(&db)
-    .await
-    .unwrap();
 
-    // Pre-create a FileDownloadState we'll signal from the test
-    let fd_state = Arc::new(FileDownloadState::new());
-
-    // Simulate the WS handler: push file details + one chunk
-    let expected_data = b"hello world data".to_vec();
-    let file_size = expected_data.len() as u64;
-
-    let fd_state_sim = Arc::clone(&fd_state);
-    let data_copy = expected_data.clone();
-    tokio::spawn(async move {
-        // Brief delay so the HTTP handler starts waiting first
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        fd_state_sim.file_size.store(file_size, Ordering::Release);
-        fd_state_sim.received_data.store(true, Ordering::Release);
-        fd_state_sim.data_ready.store(true, Ordering::Release);
-        fd_state_sim.data_notify.notify_waiters();
-
-        // Push the chunk
-        let _ = fd_state_sim.chunk_sender.send(data_copy);
-    });
-
-    let fd_for_manager = Arc::clone(&fd_state);
+    // Set up mock manager that creates a fresh FileDownloadState for each download
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
+        .times(5)
         .returning(move |_| Some(c.clone()));
-    // create_file_download returns the same cluster (required by signature)
+    
     let c2 = Arc::new(online_cluster_no_messages());
     manager
         .expect_create_file_download()
+        .times(5)
         .returning(move |_, _| {
             let c = Arc::clone(&c2);
             Box::pin(
                 async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
             )
         });
+    
+    // For each get_file_download call, create a fresh FileDownloadState and spawn a task to push data
+    let expected_data_for_mock = expected_data.clone();
+    let call_count = Arc::new(std::sync::Mutex::new(0));
     manager
         .expect_get_file_download()
-        .returning(move |_| Some(Arc::clone(&fd_for_manager)));
+        .times(5)
+        .returning(move |_| {
+            // Create a fresh FileDownloadState for this download
+            let fd_state = Arc::new(FileDownloadState::new());
+            let fd_state_sim = Arc::clone(&fd_state);
+            let data_copy = expected_data_for_mock.clone();
+            
+            // Track call count to ensure unique state per call
+            {
+                let mut count = call_count.lock().unwrap();
+                *count += 1;
+            }
+            
+            tokio::spawn(async move {
+                // Brief delay so the HTTP handler starts waiting first
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                fd_state_sim.file_size.store(data_copy.len() as u64, Ordering::Release);
+                fd_state_sim.received_data.store(true, Ordering::Release);
+                fd_state_sim.data_ready.store(true, Ordering::Release);
+                fd_state_sim.data_notify.notify_waiters();
+
+                // Push the data as a single chunk
+                let _ = fd_state_sim.chunk_sender.send(data_copy);
+            });
+            
+            Some(fd_state)
+        });
 
     let app = create_router(make_test_state(db, manager));
 
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri(format!("/file/apiv1/file/?fileId={uuid}"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    // Perform 5 repeated downloads like the C++ test
+    for i in 0..5 {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/file/apiv1/file/?fileId={}", uuids[i]))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(
-        resp.headers()
-            .get("content-length")
-            .and_then(|v| v.to_str().ok()),
-        Some(file_size.to_string().as_str())
-    );
-    assert_eq!(
-        resp.headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok()),
-        Some("application/octet-stream")
-    );
+        assert_eq!(resp.status(), StatusCode::OK, "Download iteration {} failed", i + 1);
+        assert_eq!(
+            resp.headers()
+                .get("content-length")
+                .and_then(|v| v.to_str().ok()),
+            Some(file_size.to_string().as_str()),
+            "Content-Length mismatch on download {}", i + 1
+        );
+        assert_eq!(
+            resp.headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok()),
+            Some("application/octet-stream"),
+            "Content-Type mismatch on download {}", i + 1
+        );
 
-    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    assert_eq!(body_bytes.as_ref(), expected_data.as_slice());
+        let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        
+        // Verify data integrity - equivalent to BOOST_CHECK_EQUAL_COLLECTIONS
+        assert_eq!(
+            body_bytes.as_ref(),
+            expected_data.as_slice(),
+            "Data integrity check failed on download {} (expected {} bytes, got {})",
+            i + 1,
+            expected_data.len(),
+            body_bytes.len()
+        );
+    }
 }
 
 /// Tests that a cluster file error propagates to a 400 response with the error message.
