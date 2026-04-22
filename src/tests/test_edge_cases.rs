@@ -2692,7 +2692,6 @@ async fn test_large_file_transfers() {
     let mut total_body_read: u64 = 0;
     let mut header_bytes: Vec<u8> = Vec::new();
     let mut headers_parsed = false;
-    let mut body_start_in_buf = 0;
 
     // Read until we have the headers (look for \r\n\r\n)
     loop {
@@ -2716,22 +2715,21 @@ async fn test_large_file_transfers() {
                 // Body starts at header_end in header_bytes
                 // In THIS buffer (buf), body starts at: header_end - previous_len
                 let body_offset_in_buf = header_end - previous_len;
-                body_start_in_buf = body_offset_in_buf;
                 total_body_read += (n - body_offset_in_buf) as u64;
                 headers_parsed = true;
 
                 // Parse Content-Length and verify
                 let headers_str = String::from_utf8_lossy(&header_bytes[..header_end]);
                 for line in headers_str.lines() {
-                    if line.starts_with("content-length:") || line.starts_with("Content-Length:") {
-                        if let Some(len_str) = line.split(':').nth(1) {
-                            if let Ok(len) = len_str.trim().parse::<u64>() {
-                                assert_eq!(
-                                    len, file_size,
-                                    "Content-Length header should match file size"
-                                );
-                            }
-                        }
+                    if (line.starts_with("content-length:")
+                        || line.starts_with("Content-Length:"))
+                        && let Some(len_str) = line.split(':').nth(1)
+                        && let Ok(len) = len_str.trim().parse::<u64>()
+                    {
+                        assert_eq!(
+                            len, file_size,
+                            "Content-Length header should match file size"
+                        );
                     }
                 }
             }
@@ -2814,7 +2812,7 @@ async fn test_large_file_uploads() {
 
     // Generate random file data between 1MB and 5MB
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let file_size = rng.gen_range(1_048_576..=5_242_880);
+    let file_size = rng.random_range(1_048_576..=5_242_880);
     let mut file_data = vec![0u8; file_size];
     rng.fill(&mut file_data[..]);
 
