@@ -57,10 +57,9 @@ test-and-coverage:
   script:
     - cd src
     # Run tests with coverage instrumentation (parallel execution)
-    - cargo llvm-cov --html
     # Generate cobertura XML for GitLab coverage report
     - cargo llvm-cov --cobertura --output-path cobertura.xml
-    # Generate JSON for parsing coverage percentage (single run, no need to run tests twice)
+    # Generate JSON for parsing coverage percentage (single run)
     - cargo llvm-cov --json --output-path coverage.json
     # Extract and display coverage summary
     - |
@@ -78,7 +77,6 @@ test-and-coverage:
         coverage_format: cobertura
         path: src/cobertura.xml
     paths:
-      - src/target/llvm-cov/html/
       - src/cobertura.xml
       - src/coverage.json
     expire_in: 30 days
