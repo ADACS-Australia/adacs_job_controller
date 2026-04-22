@@ -56,12 +56,12 @@ test-and-coverage:
     - cargo install cargo-llvm-cov
   script:
     - cd src
-    # Run tests with coverage instrumentation
-    - cargo llvm-cov --html -- --test-threads=1
+    # Run tests with coverage instrumentation (parallel execution)
+    - cargo llvm-cov --html
     # Generate cobertura XML for GitLab coverage report
-    - cargo llvm-cov --cobertura --output-path cobertura.xml -- --test-threads=1
-    # Generate JSON for parsing coverage percentage
-    - cargo llvm-cov --json --output-path coverage.json -- --test-threads=1
+    - cargo llvm-cov --cobertura --output-path cobertura.xml
+    # Generate JSON for parsing coverage percentage (single run, no need to run tests twice)
+    - cargo llvm-cov --json --output-path coverage.json
     # Extract and display coverage summary
     - |
       echo "=== Coverage Report ==="
