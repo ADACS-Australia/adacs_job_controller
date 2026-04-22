@@ -2721,8 +2721,7 @@ async fn test_large_file_transfers() {
                 // Parse Content-Length and verify
                 let headers_str = String::from_utf8_lossy(&header_bytes[..header_end]);
                 for line in headers_str.lines() {
-                    if (line.starts_with("content-length:")
-                        || line.starts_with("Content-Length:"))
+                    if (line.starts_with("content-length:") || line.starts_with("Content-Length:"))
                         && let Some(len_str) = line.split(':').nth(1)
                         && let Ok(len) = len_str.trim().parse::<u64>()
                     {
