@@ -154,15 +154,11 @@ async fn test_http_concurrent_requests_stress() {
     }
 
     // Most should succeed (allowing for some race conditions in test setup)
-    assert!(
-        success_count > 90,
-        "Expected >90 successes, got {}",
-        success_count
-    );
+    assert_eq!(success_count, 100, "All requests should succeed");
 
     // Verify jobs were created
     let jobs = job::Entity::find().all(&db).await.unwrap();
-    assert!(jobs.len() >= 90, "Expected >=90 jobs, got {}", jobs.len());
+    assert_eq!(jobs.len(), 100, "All jobs should be in database");
 }
 
 // ===========================================================================

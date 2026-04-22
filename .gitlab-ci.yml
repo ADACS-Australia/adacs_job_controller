@@ -1,45 +1,103 @@
-variables:
-  DOCKER_TLS_CERTDIR: ""
-  DOCKER_HOST: tcp://docker:2375/
-  DOCKER_DRIVER: overlay2
-
 stages:
   - lint
   - test
+  - release
 
-# Lint: rustfmt check + clippy
-lint:
+variables:
+  CARGO_HOME: "$CI_PROJECT_DIR/src/.cargo"
+
+rustfmt:
   stage: lint
   image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-cargo"
+    paths:
+      - src/.cargo/
+      - src/target/
+      - src/Cargo.lock
   before_script:
-    - rustup component add rustfmt clippy
+    - rustup component add rustfmt
   script:
     - cd src
     - cargo fmt -- --check
-    - cargo clippy --all-targets -- -D warnings
 
-# Tests with coverage
-tests:
-  stage: test
-  image: docker/compose:latest
-  services:
-    - name: docker:20.10.17-dind
+clippy:
+  stage: lint
+  image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-cargo"
+    paths:
+      - src/.cargo/
+      - src/target/
+      - src/Cargo.lock
   before_script:
-    - docker info
+    - rustup component add clippy
   script:
     - cd src
-    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml build
-    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml up --abort-on-container-exit --exit-code-from web
-  after_script:
-    - cd src
-    - docker compose -f docker/docker-compose.yaml -f docker/docker-compose.test.yaml down -v --remove-orphans || true
-  artifacts:
-    when: always
+    - cargo clippy --all-targets -- -D warnings
+
+test-and-coverage:
+  stage: test
+  image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-cargo"
     paths:
-      - src/test_report/
+      - src/.cargo/
+      - src/target/
+      - src/Cargo.lock
+  before_script:
+    - apt-get update && apt-get install -y jq
+    - |
+      if ! command -v rustc &> /dev/null; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+      fi
+    - rustup component add llvm-tools
+    - cargo install cargo-llvm-cov
+  script:
+    - cd src
+    # Run tests with coverage instrumentation
+    - cargo llvm-cov --html -- --test-threads=1
+    # Generate cobertura XML for GitLab coverage report
+    - cargo llvm-cov --cobertura --output-path cobertura.xml -- --test-threads=1
+    # Generate JSON for parsing coverage percentage
+    - cargo llvm-cov --json --output-path coverage.json -- --test-threads=1
+    # Extract and display coverage summary
+    - |
+      echo "=== Coverage Report ==="
+      jq -r '"Line Coverage: \(.data[].totals.lines.percent)%"' coverage.json
+      jq -r '"Function Coverage: \(.data[].totals.functions.percent)%"' coverage.json
+      jq -r '"Region Coverage: \(.data[].totals.regions.percent)%"' coverage.json
+      # Output for GitLab coverage regex
+      LINE_COV=$(jq -r '.data[].totals.lines.percent' coverage.json)
+      echo "TOTAL ${LINE_COV}% covered"
+  coverage: '/TOTAL\s+(\d+\.\d+)%/'
+  artifacts:
     reports:
       coverage_report:
         coverage_format: cobertura
-        path: src/test_report/coverage.xml
-      junit: src/test_report/junit.xml
+        path: src/cobertura.xml
+    paths:
+      - src/target/llvm-cov/html/
+      - src/cobertura.xml
+      - src/coverage.json
+    expire_in: 30 days
 
+release:
+  stage: release
+  image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-cargo"
+    paths:
+      - src/.cargo/
+      - src/target/
+      - src/Cargo.lock
+  needs:
+    - test-and-coverage
+  script:
+    - cd src
+    - ./build_release.sh
+    - echo "=== Verifying binary ==="
+    - ldd target/release/adacs_job_controller || true
+    - echo "=== Binary size ==="
+    - ls -lh target/release/adacs_job_controller

@@ -8,7 +8,6 @@
 mod common;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::traits::WsOutbound;
@@ -258,8 +257,8 @@ async fn test_check_unsubmitted_jobs_resends_old_pending() {
     // Call check_unsubmitted_jobs
     cluster.check_unsubmitted_jobs().await;
 
-    // Wait briefly for the scheduler to forward the message
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Wait for scheduler to forward all queued messages
+    cluster.wait_for_queue_drain(true).await;
 
     // Drain channel
     let mut messages = Vec::new();
@@ -320,7 +319,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
     cluster.start_tasks();
 
     cluster.check_unsubmitted_jobs().await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    cluster.wait_for_queue_drain(true).await;
 
     let mut messages = Vec::new();
     while let Ok(outbound) = rx.try_recv() {
@@ -401,7 +400,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
     cluster.start_tasks();
 
     cluster.check_cancelling_jobs().await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    cluster.wait_for_queue_drain(true).await;
 
     let mut messages = Vec::new();
     while let Ok(outbound) = rx.try_recv() {
@@ -448,7 +447,7 @@ async fn test_check_cancelling_jobs_ignores_recent() {
     cluster.start_tasks();
 
     cluster.check_cancelling_jobs().await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    cluster.wait_for_queue_drain(true).await;
 
     let cancel_msgs: Vec<_> = {
         let mut msgs = Vec::new();
@@ -499,7 +498,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
     cluster.start_tasks();
 
     cluster.check_deleting_jobs().await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    cluster.wait_for_queue_drain(true).await;
 
     let mut messages = Vec::new();
     while let Ok(outbound) = rx.try_recv() {
@@ -546,7 +545,7 @@ async fn test_check_deleting_jobs_ignores_recent() {
     cluster.start_tasks();
 
     cluster.check_deleting_jobs().await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    cluster.wait_for_queue_drain(true).await;
 
     let delete_msgs: Vec<_> = {
         let mut msgs = Vec::new();
@@ -598,7 +597,7 @@ async fn test_check_unsubmitted_jobs_only_for_own_cluster() {
     cluster.start_tasks();
 
     cluster.check_unsubmitted_jobs().await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    cluster.wait_for_queue_drain(true).await;
 
     let submit_msgs: Vec<_> = {
         let mut msgs = Vec::new();
@@ -670,7 +669,7 @@ async fn test_check_unsubmitted_jobs_noop_for_non_matching_statuses() {
         cluster.start_tasks();
 
         cluster.check_unsubmitted_jobs().await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        cluster.wait_for_queue_drain(true).await;
 
         let submit_msgs: Vec<_> = {
             let mut msgs = Vec::new();
@@ -740,7 +739,7 @@ async fn test_check_cancelling_jobs_noop_for_non_matching_statuses() {
         cluster.start_tasks();
 
         cluster.check_cancelling_jobs().await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        cluster.wait_for_queue_drain(true).await;
 
         let cancel_msgs: Vec<_> = {
             let mut msgs = Vec::new();
@@ -810,7 +809,7 @@ async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
         cluster.start_tasks();
 
         cluster.check_deleting_jobs().await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        cluster.wait_for_queue_drain(true).await;
 
         let delete_msgs: Vec<_> = {
             let mut msgs = Vec::new();
@@ -869,7 +868,7 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
     cluster.start_tasks();
 
     cluster.check_unsubmitted_jobs().await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    cluster.wait_for_queue_drain(true).await;
 
     let mut messages = Vec::new();
     while let Ok(outbound) = rx.try_recv() {

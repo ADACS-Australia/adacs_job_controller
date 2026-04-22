@@ -37,15 +37,15 @@ fn ws_router(state: adacs_job_controller::app::AppState) -> Router {
 }
 
 /// Start an axum server on a random OS-assigned port.
-/// Returns `(port, join_handle)`. Drop the handle to stop the server.
-async fn start_test_server(state: adacs_job_controller::app::AppState) -> u16 {
+/// Returns a `TestServer` RAII guard that aborts the server on drop.
+async fn start_test_server(state: adacs_job_controller::app::AppState) -> common::TestServer {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let app = ws_router(state);
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap_or(());
     });
-    port
+    common::TestServer::new(port, handle)
 }
 
 /// Connect a tokio-tungstenite WebSocket client to the given URL.
@@ -193,7 +193,8 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
 async fn test_ws_invalid_token_disconnects() {
     let db = setup_test_db().await;
     let state = make_test_state(db, manager_rejecting_connections());
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     // Connect with an invalid token
     let (_, mut stream) =
@@ -221,7 +222,8 @@ async fn test_ws_invalid_token_disconnects() {
 async fn test_ws_no_token_disconnects() {
     let db = setup_test_db().await;
     let state = make_test_state(db, manager_rejecting_connections());
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     // Connect without any token query param
     let (_, mut stream) = connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await;
@@ -252,7 +254,8 @@ async fn test_ws_valid_token_receives_server_ready() {
     let db = setup_test_db().await;
     let manager = manager_with_forwarding_cluster("ozstar");
     let state = make_test_state(db, manager);
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     let (_, mut stream) =
         connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid_token")).await;
@@ -289,7 +292,8 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
     let db = setup_test_db().await;
     let manager = manager_with_forwarding_cluster("ozstar");
     let state = make_test_state(db, manager);
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     let (mut sink, mut stream) =
         connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
@@ -301,7 +305,7 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
     sink.close().await.unwrap();
 
     // Server should process the disconnect without issues (no panic/timeout)
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::task::yield_now().await;
 }
 
 // ---------------------------------------------------------------------------
@@ -364,7 +368,8 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
     manager.expect_handle_pong().returning(|_| ());
 
     let state = make_test_state(db, manager);
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     let (mut sink, mut stream) =
         connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
@@ -383,13 +388,21 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
         .await
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // Wait for message to be processed with timeout
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(100);
+    loop {
+        if start.elapsed() > timeout {
+            break;
+        }
+        let ids = received.lock().unwrap().clone();
+        if ids.contains(&UPDATE_JOB) {
+            return; // Test passed
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
 
-    let ids = received.lock().unwrap().clone();
-    assert!(
-        ids.contains(&UPDATE_JOB),
-        "UPDATE_JOB should have been dispatched to cluster.handle_message"
-    );
+    panic!("UPDATE_JOB should have been dispatched to cluster.handle_message");
 }
 
 // ---------------------------------------------------------------------------
@@ -412,7 +425,8 @@ async fn test_ws_pong_handled() {
 
     let manager = manager_with_forwarding_cluster("ozstar");
     let state = make_test_state(db, manager);
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     let (mut sink, mut stream) =
         connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
@@ -425,7 +439,7 @@ async fn test_ws_pong_handled() {
         .await
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    tokio::task::yield_now().await;
     // No assertion needed — the test passes if no panic occurs
 }
 
@@ -448,7 +462,8 @@ async fn test_ws_authorization_header_success() {
     let db = setup_test_db().await;
     let manager = manager_with_forwarding_cluster("ozstar");
     let state = make_test_state(db, manager);
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     // Connect with Authorization: Bearer header
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -495,7 +510,8 @@ async fn test_ws_missing_authorization_header() {
     let db = setup_test_db().await;
     let manager = manager_rejecting_connections();
     let state = make_test_state(db, manager);
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     // Connect without Authorization header
     let (mut _sink, mut stream) = connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await;
@@ -527,7 +543,8 @@ async fn test_ws_malformed_authorization_header() {
     let db = setup_test_db().await;
     let manager = manager_rejecting_connections();
     let state = make_test_state(db, manager);
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     // Connect with malformed Authorization header (no "Bearer " prefix)
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -574,7 +591,8 @@ async fn test_ws_query_param_rejected() {
     let db = setup_test_db().await;
     let manager = manager_rejecting_connections();
     let state = make_test_state(db, manager);
-    let port = start_test_server(state).await;
+    let server = start_test_server(state).await;
+    let port = server.port;
 
     // Connect with old query parameter method (should be rejected)
     let (mut _sink, mut stream) =

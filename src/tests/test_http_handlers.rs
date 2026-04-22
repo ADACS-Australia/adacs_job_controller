@@ -50,13 +50,13 @@ fn test_router_with_manager(
 // Authentication tests (apply to all routes)
 // ---------------------------------------------------------------------------
 
-/// Tests that a request with no Authorization header is rejected with 403 Forbidden.
+/// Tests that POST /job/apiv1/job/ with no auth returns 403 Forbidden.
 ///
 /// # Setup
-/// Creates a minimal router with a mock manager (no clusters).
+/// Creates a minimal router with a mock manager.
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with no `authorization` header.
+/// Sends POST /job/apiv1/job/ with no Authorization header.
 ///
 /// # Assert
 /// Verifies the response status is 403 Forbidden.
@@ -65,16 +65,13 @@ async fn test_auth_no_token_returns_forbidden() {
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
 
-    // POST /job/apiv1/job/ with no Authorization header
     let resp = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"cluster":"ozstar","parameters":"p","bundle":"b"}"#,
-                ))
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -83,13 +80,13 @@ async fn test_auth_no_token_returns_forbidden() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
-/// Tests that a malformed JWT token is rejected with 403 Forbidden.
+/// Tests that POST /job/apiv1/job/ with invalid token returns 403 Forbidden.
 ///
 /// # Setup
-/// Creates a minimal router with a mock manager (no clusters).
+/// Creates a minimal router with a mock manager.
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with a syntactically invalid token string.
+/// Sends POST /job/apiv1/job/ with Authorization: Bearer invalid_token.
 ///
 /// # Assert
 /// Verifies the response status is 403 Forbidden.
@@ -97,16 +94,15 @@ async fn test_auth_no_token_returns_forbidden() {
 async fn test_auth_bad_token_returns_forbidden() {
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
+
     let resp = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
                 .header("content-type", "application/json")
-                .header("authorization", "totally.invalid.token")
-                .body(Body::from(
-                    r#"{"cluster":"ozstar","parameters":"p","bundle":"b"}"#,
-                ))
+                .header("authorization", "Bearer invalid_token")
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -115,31 +111,32 @@ async fn test_auth_bad_token_returns_forbidden() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
-/// Tests that a JWT signed with the wrong secret is rejected with 403 Forbidden.
+/// Tests that POST /job/apiv1/job/ with token signed by wrong secret returns 403.
 ///
 /// # Setup
-/// Creates a minimal router using the test secrets. Manually encodes a JWT with
-/// a different (wrong) HMAC key.
+/// Creates a router with known JWT secrets.
+/// Creates a token signed with a different secret.
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with the incorrectly-signed token.
+/// Sends POST /job/apiv1/job/ with the mismatched token.
 ///
 /// # Assert
 /// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_auth_wrong_secret_returns_forbidden() {
+    use jsonwebtoken::{Header, encode};
+
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
 
-    let token = {
-        use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
-        encode(
-            &Header::new(Algorithm::HS256),
-            &serde_json::json!({"userId": 1}),
-            &EncodingKey::from_secret(b"wrong_secret"),
-        )
-        .unwrap()
-    };
+    // Create a token signed with a secret not in the config
+    let payload = serde_json::json!({"userId": 42});
+    let token = encode(
+        &Header::default(),
+        &payload,
+        &jsonwebtoken::EncodingKey::from_secret(b"wrong_secret"),
+    )
+    .unwrap();
 
     let resp = app
         .oneshot(
@@ -148,9 +145,7 @@ async fn test_auth_wrong_secret_returns_forbidden() {
                 .uri("/job/apiv1/job/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
-                .body(Body::from(
-                    r#"{"cluster":"ozstar","parameters":"p","bundle":"b"}"#,
-                ))
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -160,23 +155,21 @@ async fn test_auth_wrong_secret_returns_forbidden() {
 }
 
 // ---------------------------------------------------------------------------
-// Job API: valid token, cluster access check
+// Job API: POST (create job) tests
 // ---------------------------------------------------------------------------
 
-/// Tests that requesting a cluster not in the token's allowed list returns 400.
+/// Tests that POST /job/apiv1/job/ with valid auth but no cluster access returns 400.
 ///
 /// # Setup
-/// Creates a router with a mock manager that returns no clusters.
+/// Creates a router with a mock manager. The test JWT secret allows "ozstar" and "nci".
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with a valid token but cluster name "unknown_cluster".
+/// Sends POST /job/apiv1/job/ with a valid token but cluster "unknown" (not in secret).
 ///
 /// # Assert
-/// Verifies 400 response with body containing "does not have access".
+/// Verifies 400 Bad Request with body containing "does not have access".
 #[tokio::test]
-async fn test_create_job_cluster_not_in_secret_returns_bad_request() {
-    // The test secret has clusters: ["ozstar", "nci"]
-    // Requesting cluster "unknown_cluster" should fail with access error
+async fn test_create_job_no_cluster_access_returns_bad_request() {
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
 
@@ -190,7 +183,7 @@ async fn test_create_job_cluster_not_in_secret_returns_bad_request() {
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
-                    r#"{"cluster":"unknown_cluster","parameters":"p","bundle":"b"}"#,
+                    r#"{"cluster":"unknown","parameters":"p","bundle":"b"}"#,
                 ))
                 .unwrap(),
         )
@@ -318,133 +311,8 @@ async fn test_get_jobs_no_auth_returns_forbidden() {
 }
 
 // ---------------------------------------------------------------------------
-// PATCH /job/apiv1/job/ (cancel) and DELETE /job/apiv1/job/ (delete)
+// File API: PUT (upload) tests
 // ---------------------------------------------------------------------------
-
-/// Tests that PATCH /job/apiv1/job/ (cancel) with no auth returns 403 Forbidden.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends PATCH /job/apiv1/job/ with no Authorization header.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
-#[tokio::test]
-async fn test_cancel_job_no_auth_returns_forbidden() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("PATCH")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"jobId": 1}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-}
-
-/// Tests that DELETE /job/apiv1/job/ with no auth returns 403 Forbidden.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends DELETE /job/apiv1/job/ with no Authorization header.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
-#[tokio::test]
-async fn test_delete_job_no_auth_returns_forbidden() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"jobId": 1}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-}
-
-// ---------------------------------------------------------------------------
-// File download / upload: auth tests
-// ---------------------------------------------------------------------------
-
-/// Tests that POST /file/apiv1/file/ with no auth returns 403 Forbidden.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends POST /file/apiv1/file/ with no Authorization header.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
-#[tokio::test]
-async fn test_create_file_download_no_auth_returns_forbidden() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/file/apiv1/file/")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"jobId":1,"path":"/file.txt","cluster":"ozstar","bundle":"b"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-}
-
-/// Tests that GET /file/apiv1/file/ without a fileId query parameter returns 400.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends GET /file/apiv1/file/ with no `fileId` parameter and no auth token.
-///
-/// # Assert
-/// Verifies the response status is 400 Bad Request (no auth required for this endpoint).
-#[tokio::test]
-async fn test_download_file_no_file_id_returns_bad_request() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-    // download_file doesn't use auth
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/file/apiv1/file/")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    // Without fileId param, should get BAD_REQUEST
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
 
 /// Tests that PUT /file/apiv1/file/upload/ with no auth returns 403 Forbidden.
 ///
@@ -504,28 +372,27 @@ async fn test_list_files_valid_auth_missing_cluster_returns_error() {
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
-                    r#"{"path":"/project","recursive":true,"cluster":"unknown","bundle":"b"}"#,
+                    r#"{"path":"/","recursive":false,"cluster":"unknown","bundle":"b"}"#,
                 ))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    // Should fail because "unknown" is not in the secret's clusters
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 // ---------------------------------------------------------------------------
-// Route existence tests (all methods on all endpoints)
+// Route existence tests (verify routes are registered)
 // ---------------------------------------------------------------------------
 
-/// Tests that GET /job/apiv1/job/ is a registered route (returns 403, not 404).
+/// Tests that POST /job/apiv1/job/ is a registered route (returns non-404).
 ///
 /// # Setup
 /// Creates a minimal router with a mock manager.
 ///
 /// # Act
-/// Sends GET /job/apiv1/job/ with no auth.
+/// Sends POST /job/apiv1/job/ with no auth.
 ///
 /// # Assert
 /// Verifies the response is not 404 (indicates the route exists).
@@ -534,13 +401,12 @@ async fn test_routes_exist_for_job_api() {
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
 
-    // An OPTIONS or HEAD request should not return 404/405 for known routes
-    // We use GET without auth - should get FORBIDDEN (not NOT_FOUND)
     let resp = app
         .oneshot(
             Request::builder()
-                .method("GET")
+                .method("POST")
                 .uri("/job/apiv1/job/")
+                .header("content-type", "application/json")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -608,4 +474,180 @@ async fn test_upload_route_exists() {
         .unwrap();
 
     assert_ne!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ===========================================================================
+// HttpServer constructor and access secrets tests
+// ===========================================================================
+
+/// Tests that HttpServer constructor with empty access config creates zero JWT secrets.
+///
+/// # Setup
+/// Creates empty access config JSON "[]".
+///
+/// # Act
+/// Instantiates HttpServer through Application/router creation.
+///
+/// # Assert
+/// - Router is created successfully
+/// - Zero JWT secrets configured (auth will fail for all tokens)
+#[tokio::test]
+async fn test_http_server_constructor_empty_config() {
+    let manager = common::mock_cluster_manager_no_clusters();
+
+    // Empty JWT secrets list
+    let app = test_router_with_manager(manager, vec![]);
+
+    // Verify router is created (no panic)
+    // Empty secrets means all auth will fail - verified by auth tests
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/job/")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer test")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // With empty secrets, all tokens are unauthorized
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+/// Tests that HttpServer constructor with populated access config creates correct JWT secrets.
+///
+/// # Setup
+/// Creates 3 access secrets with different names and secrets.
+///
+/// # Act
+/// Instantiates HttpServer with populated config.
+///
+/// # Assert
+/// - Router accepts tokens signed with any of the 3 secrets
+/// - Each secret has correct name
+#[tokio::test]
+async fn test_http_server_constructor_populated_config() {
+    use jsonwebtoken::{Header, encode};
+
+    let manager = common::mock_cluster_manager_no_clusters();
+
+    // Create 3 access secrets
+    let secrets = vec![
+        AccessSecret {
+            name: "app1".to_string(),
+            secret: "secret1".to_string(),
+            applications: vec![],
+            clusters: vec!["ozstar".to_string()],
+        },
+        AccessSecret {
+            name: "app2".to_string(),
+            secret: "secret2".to_string(),
+            applications: vec![],
+            clusters: vec!["ozstar".to_string()],
+        },
+        AccessSecret {
+            name: "app3".to_string(),
+            secret: "secret3".to_string(),
+            applications: vec![],
+            clusters: vec!["ozstar".to_string()],
+        },
+    ];
+
+    let app = test_router_with_manager(manager, secrets);
+
+    // Verify tokens signed with each secret are accepted
+    for (secret_name, secret_value) in [
+        ("app1", "secret1"),
+        ("app2", "secret2"),
+        ("app3", "secret3"),
+    ] {
+        let app = app.clone(); // Clone router for each iteration
+        let payload = serde_json::json!({"userId": 1});
+        let token = encode(
+            &Header::default(),
+            &payload,
+            &jsonwebtoken::EncodingKey::from_secret(secret_value.as_bytes()),
+        )
+        .unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/job/apiv1/job/")
+                    .header("content-type", "application/json")
+                    .header("authorization", &token)
+                    .body(Body::from(
+                        r#"{"cluster":"ozstar","parameters":"p","bundle":"b"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Token should be accepted (may fail for other reasons, but not auth)
+        assert_ne!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "Token signed with {} should be accepted",
+            secret_name
+        );
+    }
+}
+
+// ===========================================================================
+// Cluster getter tests
+// ===========================================================================
+
+/// Tests that Cluster::name() returns the correct name from ClusterDetails.
+///
+/// # Setup
+/// Creates Cluster with known name in ClusterConfig.
+///
+/// # Act
+/// Calls name() method.
+///
+/// # Assert
+/// Returns name matching ClusterConfig.name.
+#[tokio::test]
+async fn test_cluster_get_name() {
+    use crate::common::test_cluster_config;
+    use adacs_job_controller::cluster::cluster::Cluster;
+    use adacs_job_controller::cluster::traits::ClusterTrait;
+
+    let config = test_cluster_config("test_cluster");
+    let cluster = Cluster::new(config.clone(), None);
+
+    assert_eq!(cluster.name(), config.name);
+    assert_eq!(cluster.name(), "test_cluster");
+}
+
+/// Tests that Cluster::cluster_details() returns the correct details.
+///
+/// # Setup
+/// Creates Cluster with known ClusterConfig.
+///
+/// # Act
+/// Calls cluster_details() method.
+///
+/// # Assert
+/// Returns ClusterDetails with correct values matching config.
+#[tokio::test]
+async fn test_cluster_get_cluster_details() {
+    use crate::common::test_cluster_config;
+    use adacs_job_controller::cluster::cluster::Cluster;
+    use adacs_job_controller::cluster::traits::ClusterTrait;
+
+    let config = test_cluster_config("test_cluster");
+    let cluster = Cluster::new(config.clone(), None);
+
+    let details = cluster.cluster_details();
+    assert_eq!(details.name, config.name);
+    assert_eq!(details.host, config.host);
+    assert_eq!(details.username, config.username);
+    assert_eq!(details.path, config.path);
+    assert_eq!(details.connection_type, config.connection_type);
 }

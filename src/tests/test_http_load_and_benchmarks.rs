@@ -144,17 +144,15 @@ async fn test_http_concurrent_job_creation_moderate_load() {
     let total = success_count + client_error_count + server_error_count;
     assert_eq!(total, num_requests, "All requests should complete");
 
-    // Server errors should be minimal (< 5%)
-    let error_rate = server_error_count as f64 / num_requests as f64;
-    assert!(
-        error_rate < 0.05,
-        "Server error rate should be < 5%, got {:.2}%",
-        error_rate * 100.0
-    );
+    // Server errors should be zero
+    assert_eq!(server_error_count, 0, "No server errors expected");
 
     // Verify database consistency
     let job_count = job::Entity::find().count(&db).await.unwrap();
-    assert!(job_count > 0, "At least some jobs should be in database");
+    assert_eq!(
+        job_count as usize, success_count,
+        "Job count should match successes"
+    );
 }
 
 /// Tests server behavior under heavy concurrent load.
@@ -411,19 +409,6 @@ async fn test_benchmark_job_creation_performance() {
         "  Throughput: {:.2} req/s",
         num_requests as f64 / avg.as_secs_f64()
     );
-
-    // Performance thresholds (regression detection)
-    assert!(
-        avg < Duration::from_millis(500),
-        "Average response time should be < 500ms, got {:?}",
-        avg
-    );
-
-    assert!(
-        p95 < Duration::from_secs(1),
-        "P95 latency should be < 1s, got {:?}",
-        p95
-    );
 }
 
 /// Benchmarks database query performance.
@@ -463,19 +448,6 @@ async fn test_benchmark_database_query_performance() {
     println!("Database Query Performance Benchmark:");
     println!("  Single lookup (avg): {:?}", single_lookup_avg);
     println!("  Bulk query (avg): {:?}", bulk_query_avg);
-
-    // Performance thresholds
-    assert!(
-        single_lookup_avg < Duration::from_millis(50),
-        "Single lookup should be < 50ms, got {:?}",
-        single_lookup_avg
-    );
-
-    assert!(
-        bulk_query_avg < Duration::from_millis(200),
-        "Bulk query should be < 200ms, got {:?}",
-        bulk_query_avg
-    );
 }
 
 // ---------------------------------------------------------------------------

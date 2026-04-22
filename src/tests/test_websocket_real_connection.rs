@@ -517,9 +517,6 @@ async fn test_race_condition_message_during_disconnect() {
     drop(sink);
     drop(stream);
 
-    // Small delay to let server process disconnect
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
     // If we get here without panic, the race was handled
     server_handle.abort();
 }

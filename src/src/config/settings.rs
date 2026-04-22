@@ -141,12 +141,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_database_defaults() {
-        // These will use defaults since env vars are not set in test
-        assert_eq!(DATABASE_USER.as_str(), "jobserver");
-        assert_eq!(DATABASE_PASSWORD.as_str(), "jobserver");
-        assert_eq!(DATABASE_SCHEMA.as_str(), "jobserver");
-        assert_eq!(DATABASE_HOST.as_str(), "localhost");
+    fn test_database_port_and_debug() {
+        // DATABASE_PORT and DATABASE_DEBUG are not typically overridden in .env
         assert_eq!(*DATABASE_PORT, 3306);
         assert!(!*DATABASE_DEBUG);
     }

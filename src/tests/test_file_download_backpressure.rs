@@ -9,7 +9,6 @@ mod common;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::file_download::FileDownloadState;
@@ -93,10 +92,11 @@ fn make_file_download_cluster() -> (
 // Collect outgoing WS messages from the channel (non-blocking drain).
 // ---------------------------------------------------------------------------
 async fn drain_channel(
+    cluster: &Arc<Cluster>,
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
-    wait: Duration,
 ) -> Vec<Message> {
-    tokio::time::sleep(wait).await;
+    use adacs_job_controller::cluster::traits::ClusterTrait;
+    cluster.wait_for_queue_drain(true).await;
     let mut msgs = Vec::new();
     while let Ok(outbound) = rx.try_recv() {
         if let WsOutbound::Binary(data) = outbound {
@@ -152,7 +152,7 @@ async fn test_file_chunk_received_correctly() {
     assert_eq!(received_chunk, chunk_data);
 
     cluster.stop();
-    drain_channel(&mut rx, Duration::from_millis(10)).await;
+    drain_channel(&cluster, &mut rx).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ async fn test_file_details_sets_file_size() {
     assert_eq!(download_state.file_size.load(Ordering::Relaxed), 1_234_567);
 
     cluster.stop();
-    drain_channel(&mut rx, Duration::from_millis(10)).await;
+    drain_channel(&cluster, &mut rx).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +215,7 @@ async fn test_file_error_sets_error_state() {
     assert_eq!(*details, "permission denied");
 
     cluster.stop();
-    drain_channel(&mut rx, Duration::from_millis(10)).await;
+    drain_channel(&cluster, &mut rx).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
     cluster.handle_message(msg).await;
 
     // The cluster should have sent a PAUSE_FILE_CHUNK_STREAM message
-    let outgoing = drain_channel(&mut rx, Duration::from_millis(100)).await;
+    let outgoing = drain_channel(&cluster, &mut rx).await;
     let pause_msgs: Vec<_> = outgoing
         .iter()
         .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
@@ -288,7 +288,7 @@ async fn test_backpressure_no_pause_for_small_chunks() {
     let msg = make_file_chunk_message(small_data);
     cluster.handle_message(msg).await;
 
-    let outgoing = drain_channel(&mut rx, Duration::from_millis(50)).await;
+    let outgoing = drain_channel(&cluster, &mut rx).await;
     let pause_msgs: Vec<_> = outgoing
         .iter()
         .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
@@ -333,7 +333,7 @@ async fn test_backpressure_pause_not_resent_when_already_paused() {
     let msg = make_file_chunk_message(large_data);
     cluster.handle_message(msg).await;
 
-    let outgoing = drain_channel(&mut rx, Duration::from_millis(50)).await;
+    let outgoing = drain_channel(&cluster, &mut rx).await;
     let pause_msgs: Vec<_> = outgoing
         .iter()
         .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
@@ -409,7 +409,7 @@ async fn test_resume_logic_via_sent_bytes_update() {
     }
 
     // 4. Drain WS channel — should see RESUME_FILE_CHUNK_STREAM
-    let outgoing = drain_channel(&mut rx, Duration::from_millis(100)).await;
+    let outgoing = drain_channel(&cluster, &mut rx).await;
     let resume_msgs: Vec<_> = outgoing
         .iter()
         .filter(|m| m.id() == RESUME_FILE_CHUNK_STREAM)
@@ -459,7 +459,7 @@ async fn test_file_download_completes_without_pause_for_small_file() {
     // Should have received all chunks without pause
     assert_eq!(download_state.received_bytes.load(Ordering::Relaxed), 30);
 
-    let outgoing = drain_channel(&mut rx, Duration::from_millis(50)).await;
+    let outgoing = drain_channel(&cluster, &mut rx).await;
     let pause_msgs: Vec<_> = outgoing
         .iter()
         .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
@@ -513,14 +513,14 @@ async fn test_file_chunk_notifies_data_ready() {
         done_clone.store(true, Ordering::Relaxed);
     });
 
-    // Small sleep to ensure the notifier task is waiting
-    tokio::time::sleep(Duration::from_millis(10)).await;
+    // Yield to ensure the notifier task is waiting
+    tokio::task::yield_now().await;
 
     // Send a chunk — should trigger data_notify
     let msg = make_file_chunk_message(b"ping".to_vec());
     cluster.handle_message(msg).await;
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::task::yield_now().await;
 
     assert!(
         done.load(Ordering::Relaxed),
@@ -528,5 +528,5 @@ async fn test_file_chunk_notifies_data_ready() {
     );
 
     cluster.stop();
-    drain_channel(&mut rx, Duration::from_millis(10)).await;
+    drain_channel(&cluster, &mut rx).await;
 }

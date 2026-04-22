@@ -1357,7 +1357,7 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
 /// A new bundle row is created (total count=2); the original bundle is unchanged;
 /// the `DB_RESPONSE` returns an id differing from the original.
 #[tokio::test]
-async fn test_handle_bundle_update_wrong_hash_creates_new() {
+async fn test_handle_bundle_update_wrong_hash_returns_error() {
     let db = make_db().await;
     setup_cluster_db(&db).await;
 
@@ -1373,9 +1373,10 @@ async fn test_handle_bundle_update_wrong_hash_creates_new() {
     .unwrap();
     let original_id = inserted.id;
 
-    // Try to "update" using a different hash — Rust will create a new bundle
+    // Try to update using the bundle ID but with a different hash
+    // C++ behavior: return error (id=0) when hash doesn't match
     let bundle = BundleJob {
-        id: 0,
+        id: original_id, // Use existing ID
         content: "updated content".to_string(),
         cluster: String::new(),
         bundle_hash: String::new(),
@@ -1391,34 +1392,27 @@ async fn test_handle_bundle_update_wrong_hash_creates_new() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    // Verify: a NEW bundle was created (not updated)
+    // Verify: NO new bundle was created (update failed)
     let count = bundle_job::Entity::find().count(&db).await.unwrap();
-    assert_eq!(
-        count, 2,
-        "Wrong hash should create a new bundle, not update existing"
-    );
+    assert_eq!(count, 1, "Wrong hash should NOT create a new bundle");
 
     // Original bundle should be unchanged
-    let original = bundle_job::Entity::find_by_id(original_id)
+    let original = bundle_job::Entity::find_by_id(original_id as i64)
         .one(&db)
         .await
         .unwrap()
         .unwrap();
-    let content = original.content.clone();
     assert_eq!(
-        content, "original content",
+        original.content, "original content",
         "Original bundle should be unchanged"
     );
 
-    // Response should contain the new bundle's ID
+    // Response should contain id=0 (error)
     let captured = sent.lock().unwrap();
     let (req_id, mut body) = parse_response(captured[0].clone());
     assert_eq!(req_id, 5004);
-    let new_id = body.pop_ulong();
-    assert!(
-        new_id == 0 || new_id != original_id as u64,
-        "Returned ID should differ from original"
-    );
+    let returned_id = body.pop_ulong();
+    assert_eq!(returned_id, 0, "Wrong hash should return id=0 (error)");
 }
 
 // ---------------------------------------------------------------------------

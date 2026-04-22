@@ -233,6 +233,24 @@ pub fn encode_jwt_for_secret(secret: &AccessSecret, claims: &serde_json::Value) 
     .expect("failed to encode JWT")
 }
 
+/// RAII guard for a test server that aborts the server task on drop.
+pub struct TestServer {
+    pub port: u16,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
+impl TestServer {
+    pub fn new(port: u16, handle: tokio::task::JoinHandle<()>) -> Self {
+        Self { port, handle }
+    }
+}
+
 /// Build a test AppState with a custom list of JWT secrets.
 pub fn make_test_state_with_secrets(
     db: sea_orm::DatabaseConnection,
