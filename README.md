@@ -1,443 +1,455 @@
-# GWCloud Job Server
+# ADACS Job Controller Server (Rust)
 
-The GWCloud Job Server is a C++ project that manages the server side of the Job Controller Server/Client architecture. 
+Rust port of the ADACS Job Controller Server. The original C++ implementation is in `legacy/`.
 
+A server that manages distributed job submissions to HPC/compute clusters via an HTTP REST API and WebSocket binary message protocol.
 
+## First-Time Setup
 
-## Software Architecture
+1. **Install Rust**:
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
 
-The job server has three distinct components:-
+2. **Clone and initialize submodules**:
+   ```bash
+   git clone https://gitlab.com/CAS-eResearch/GWDC/adacs_job_controller.git
+   cd adacs_job_controller
+   git submodule update --init --recursive
+   ```
 
-* The C++ server code, which is a CMake project
-* The Schema/DDL python project - for maintaining database schema and migration state used by the C++ component.
-* The keyserver python project - called by the C++ component for starting remote clients via SSH.
+3. **Set up environment**:
+   ```bash
+   cp .env.template .env
+   # Edit .env with your database credentials
+   ```
 
-
-
-## Local Development
-
-### Prerequisites
-
-Several system libraries are required for local development. Package names for Ubuntu 22.04 can be found in `docker/gwcloud_job_server.Dockerfile`, but at the time of writing, that list looks like:
-
-```
-python3 python3-venv gcovr mariadb-client libunwind-dev libdw-dev libgtest-dev libmysqlclient-dev build-essential cmake libboost-dev libgoogle-glog-dev libboost-test-dev libboost-system-dev libboost-thread-dev libboost-coroutine-dev libboost-context-dev libssl-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libevent-dev libfmt-dev libdouble-conversion-dev libcurl4-openssl-dev git libjemalloc-dev libzstd-dev liblz4-dev libsnappy-dev libbz2-dev valgrind libdwarf-dev libfast-float-dev clang-tidy ninja-build libcpp-jwt-dev libhowardhinnant-date-dev nlohmann-json3-dev
-```
-
-**Note**: The project now uses C++20 modules and requires the `ninja-build` package for optimal build performance.
-
-### Initial Setup
-
-If this is a freshly checked out repository, you'll need to initialize and update the Git submodules:
-
-```bash
-git submodule update --init --recursive
-```
-
-This will pull in the required third-party dependencies:
-- Simple-Web-Server
-- Simple-WebSocket-Server  
-- folly
-- sqlpp11
-
-
-
-This project makes heavy use of docker for testing and building the project in a controlled environment. You will need mysql running on the local host if you wish to run the tests locally, with a user configured. See `Settings.ixx` for the expected user details - they can be overridden using environment variables.
-
-
-
-## Building
-
-The project uses C++20 modules and requires the Ninja build system. The main targets are `adacs_job_controller` (runtime binary) and `Boost_Tests_run` (test suite).
-
-### Standard Build Process
-
-```bash
-cd src
-mkdir build
-cd build
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ..
-ninja
-```
-
-### Build Options
-
-**Static Analysis**: By default, clang-tidy static analysis is enabled. To disable it for faster builds:
-
-```bash
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_CLANG_TIDY=OFF ..
-```
-
-### Running Tests
-
-You can run the generated `Boost_Tests_run` target which will execute the full test suite:
-
-```bash
-./Boost_Tests_run
-```
-
-For local development with test coverage reporting, use the `test-coverage.sh` script from the `src/build/` directory:
-
-```bash
-cd src/build
-../../scripts/test-coverage.sh
-```
-
-A comprehensive test suite (used by the CI) can be run by running `bash scripts/test.sh` from the repository root. This will report any test failures, and will also generate a code coverage report. To run valgrind on the project, another script exists `bash scripts/valgrind.sh` - you can expect this to take some time to run.
-
-Finally, to build the production docker asset, run `bash scripts/build.sh`, then push the docker image.
-
-
-
-## Deployment Configuration
-
-The Job Controller requires two JSON configuration files to be provided at startup:
-
-1. **Cluster Configuration** (`clusters.json`) - Configures the remote clients and their SSH connection details
-2. **Access Secret Configuration** (`access_secrets.json`) - Configures HTTP access and restricts applications to specific cluster(s)
-
-The paths to these files are specified via environment variables:
-- `CLUSTER_CONFIG_FILE` - Path to the clusters configuration file (default: `config/clusters.json`)
-- `ACCESS_SECRET_CONFIG_FILE` - Path to the access secrets configuration file (default: `config/access_secrets.json`)
-
-### Configuration File Setup
-
-Template files are provided in the `config/` directory:
-- `config/clusters.json.template`
-- `config/access_secrets.json.template`
-
-To set up your configuration:
-
-1. Copy the template files:
+4. **Set up configuration files**:
    ```bash
    cp config/clusters.json.template config/clusters.json
    cp config/access_secrets.json.template config/access_secrets.json
+   # Edit with your cluster and application configuration
    ```
 
-2. Edit the files with your actual configuration values
+## Project Structure
 
-3. The actual config files (`clusters.json` and `access_secrets.json`) are git-ignored and should never be committed
+All Rust code is in the `src/` directory. All commands below should be run from `src/`:
+
+```bash
+cd src
+```
+
+## Development
+
+### Running Tests
+
+The test suite (500+ tests) uses in-memory SQLite and must run sequentially to avoid race conditions with shared global state.
+
+```bash
+# Run all tests
+./run_tests.sh
+
+# Run specific test module
+./run_tests.sh cluster_tests
+./run_tests.sh http_tests
+./run_tests.sh db_tests
+
+# Run with verbose output
+./run_tests.sh --verbose
+
+# Run specific test function
+./run_tests.sh test_handle_job_save -- --nocapture
+
+# Pass any arguments to cargo test
+./run_tests.sh -- --test-threads=1 --nocapture
+```
+
+### Coverage
+
+```bash
+# Generate HTML coverage report
+./run_tests.sh --coverage
+
+# Generate and open in browser
+./run_tests.sh --coverage --open
+```
+
+Report location: `target/llvm-cov/html/index.html`
+
+### Debug Build
+
+```bash
+cargo build
+```
+
+Output: `target/debug/adacs_job_controller`
+
+### Run the Binary
+
+```bash
+cargo run
+```
+
+## Release Build
+
+Builds an optimized release binary. Unlike the client, the server does not need zigbuild since it doesn't link against external C++ libraries.
+
+```bash
+./build_release.sh
+```
+
+Output: `target/release/adacs_job_controller`
+
+### Manual build:
+```bash
+cargo build --release
+```
+
+### Verify the binary:
+```bash
+# Check dependencies
+ldd target/release/adacs_job_controller
+
+# Check binary size
+ls -lh target/release/adacs_job_controller
+```
+
+## Architecture
+
+```
+HTTP API (:8000)  ──┐
+                    ├──→ AppState ──→ ClusterManager ──→ Cluster(s)
+WebSocket (:8001) ──┘                                    ├── Priority Queue Scheduler
+                                                         ├── Message Resend
+                                                         ├── FileDownload/Upload
+                                                         └── ClusterDB Dispatch
+                                      MySQL ←─────────────┘
+```
+
+### Key Modules
+
+| Module | Description |
+|--------|-------------|
+| `config/` | Settings from env vars, cluster config (`clusters.json`), access secrets (`access_secrets.json`) |
+| `protocol/` | Binary message serialization (little-endian, byte-compatible with C++ clients) |
+| `cluster/` | Core cluster connection, priority queue scheduler, backpressure, file transfer |
+| `http/` | Axum-based REST API — Job CRUD, File download/upload/listing, JWT auth |
+| `websocket/` | WebSocket server for binary message protocol with cluster clients |
+| `db/` | MySQL connection pool, model structs, ClusterDB message dispatcher |
+| `app.rs` | Application state wiring and server startup |
+
+### Binary Protocol
+
+Custom binary format (little-endian) for server↔cluster communication:
+```
+[source: u64-length-prefix + bytes][messageId: u32][...payload fields...]
+```
+
+40+ message types covering job control, file transfer, and database operations.
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/job/apiv1/job/` | Create and submit a job |
+| GET | `/job/apiv1/job/` | Query jobs with filters |
+| PATCH | `/job/apiv1/job/` | Cancel a running job |
+| DELETE | `/job/apiv1/job/` | Delete a non-running job |
+| POST | `/job/apiv1/file/` | Create file download record(s) |
+| GET | `/job/apiv1/file/` | Stream file download |
+| PUT | `/job/apiv1/file/upload/` | Upload file to cluster |
+| PATCH | `/job/apiv1/file/` | List remote files |
+
+All HTTP endpoints require JWT (HS256) authentication via `Authorization: Bearer <token>` header.
+
+## Configuration
+
+The Job Controller requires two JSON configuration files:
+
+1. **Cluster Configuration** (`clusters.json`) - Remote clusters and SSH connection details
+2. **Access Secret Configuration** (`access_secrets.json`) - HTTP access and cluster permissions
+
+Paths are specified via environment variables:
+- `CLUSTER_CONFIG_FILE` - Path to clusters config (default: `config/clusters.json`)
+- `ACCESS_SECRET_CONFIG_FILE` - Path to access secrets (default: `config/access_secrets.json`)
 
 ### Cluster Configuration Format
 
-The `clusters.json` file has the following format:
-
-```
+```json
 [
   {
-    "name": "ozstar", 							# The cluster name - must be unique,
-    "host": "ozstar.swin.edu.au",				# The SSH host name
-    "username": "bilby",						# The SSH username
-    "path": "/fred/oz988/gwcloud_job_client/",	# The remote path to the job controller client
-    "key": "-----BEGIN RSA PRIVATE KEY-----..."	# The SSH *RSA* private key used to connect
-  },
-  ...
+    "name": "ozstar",
+    "host": "ozstar.swin.edu.au",
+    "username": "bilby",
+    "path": "/fred/oz988/gwcloud_job_client/",
+    "key": "-----BEGIN RSA PRIVATE KEY-----..."
+  }
 ]
 ```
-
-
 
 ### Access Secret Configuration Format
 
-The `access_secrets.json` file has the following format:
-
-```
+```json
 [
   {
-    "name": "bilbyui",							# The application name
-    "secret": "super_secret",					# A very long and complex JWT secret key (ideally a 128 character string with symbols and numbers)
-    "applications": [							# A list of other applications, if any, that this application can access (ie read job information)
-      "gwlab"
-    ],
-    "clusters": [								# A list of clusters that this application can access (ie to submit jobs to)
-      "ozstar",
-      "cit"
-    ]
-  },
-  ...
+    "name": "bilbyui",
+    "secret": "super_secret",
+    "applications": ["gwlab"],
+    "clusters": ["ozstar", "cit"]
+  }
 ]
 ```
 
-
-
 ### Adding a New Cluster/Application
 
-The typical process to add a new application would look something like the following:
-
-1. Create or gain access to the remote SSH user who will be running the job controller client. Typically this user should be a system user.
-2. Install and configure the job controller client on that remote machine. (Refer to https://github.com/gravitationalwavedc/gwcloud_job_client)
-3. Create a new **RSA** ssh key pair and add the public key to the remote SSH user (Note: OPENSSH keys won't work) (Add option `-m PEM` into your ssh-keygen command. For example, you can run `ssh-keygen -m PEM -t rsa -b 4096 -C "your_email@example.com"` to force ssh-keygen to export as PEM format.)
-4. Edit `config/clusters.json` and add a new entry with the cluster name and SSH details
-5. Edit `config/access_secrets.json` and add a new entry with the application name, JWT secret, and the cluster name from step 4 in the `clusters` list.
-6. Restart the job controller to apply the new configuration:
+1. Create SSH user and install job controller client on remote machine
+2. Generate RSA SSH key pair:
    ```bash
-   docker-compose -f docker/docker-compose.yaml restart web
+   ssh-keygen -m PEM -t rsa -b 4096 -C "your_email@example.com"
+   ```
+3. Add public key to remote SSH user's `~/.ssh/authorized_keys`
+4. Edit `config/clusters.json` with cluster name and SSH details
+5. Edit `config/access_secrets.json` with application name, JWT secret, and cluster permissions
+6. Restart the server:
+   ```bash
+   docker compose -f docker/docker-compose.yaml restart web
    ```
 
-### Production Deployment
+## Production Deployment
 
-For production deployment using docker-compose:
-
-1. Set up the `.env` file:
+1. Set up `.env`:
    ```bash
    cp .env.template .env
-   # Edit .env with your database passwords and configuration
+   # Edit with database passwords and configuration
    ```
 
-2. Set up the configuration files as described above
+2. Set up configuration files as described above
 
-3. Start the services:
+3. Start services:
    ```bash
    bash scripts/run.sh
    ```
 
-The configuration files are mounted as read-only volumes in the container at `/app/config/`.
+Configuration files are mounted as read-only volumes at `/app/config/`.
 
-
-
-## Using the API 
-
-The job controller server exposes a RESTful API that uses JWT authentication. There are two main objects that can be operated on, jobs and files. The Job API is under the url path `/job/apiv1/job/`, and the File API is under `/job/apiv1/file/`. Most (but not all) API requests require a JWT `Authorization` header to be sent in the request, refer to https://jwt.io/introduction for more details.
-
-
+## API Reference
 
 ### Job API
 
-#### GET
+#### GET - Query Jobs
 
-Fetch the status of and/or filter for job(s). 
+Fetch status and/or filter jobs.
 
-Request query parameters;
+**Query Parameters (all optional):**
+- `jobIds` - Fetch array of jobs by ID (CSV separated)
+- `startTimeGt` - Start time greater than (epoch seconds)
+- `startTimeLt` - Start time less than (epoch seconds)
+- `endTimeGt` - End time greater than (epoch seconds)
+- `endTimeLt` - End time less than (epoch seconds)
+- `jobSteps` - Filter by job step state (format: `jobStepId,state` pairs, combined with OR)
 
+**Example:**
 ```
-Query parameters (All optional)
-  jobIds:          fetch array of jobs by ID (CSV separated)
-  startTimeGt:     start time greater than this (Newer than this) (Integer epoch time)
-  startTimeLt:     start time less than this (Older than this) (Integer epoch time)
-  endTimeGt:       end time greater than this (Newer than this) (Integer epoch time)
-  endTimeLt:       end time less than this (Older than this) (Integer epoch time)
-  Job Step filtering (Must include a job step id and at least one filter parameter). Job step filtering filters by the provided job step's MOST RECENT state.
-  jobSteps:        csv list of:-
-    jobStepId:     the name of the job step id to filter on
-    state:         the state of the job step
-
-Job steps are combined using OR
-
-So a job filter might look like
-
-/job/apiv1/job/?jobIDs=50,51,52&startTimeLt=1589838778&endTimeGt=1589836778&jobSteps=jid0,500,jid1,500
-
-Which will return any jobs with ID's 51, 51, or 52, with a start time less than 1589838778 and greater than 1589836778, which have job steps with jid0 = 500 or jid1 = 500.
+/job/apiv1/job/?jobIDs=50,51,52&startTimeLt=1589838778&jobSteps=jid0,500,jid1,500
 ```
 
-
-
-The return JSON object;
-
-```
+**Response:**
+```json
 [
   {
-    "id": 5,					# Job ID
-    "user": 32,					# Id of the user who submitted the job
-    "parameters": "whatever",	# The parameter payload used to launch the job
-    "cluster": "ozstar",		# The cluster the job was/will be submitted to
-    "bundle": "whatever",		# The bundle hash of the bundle that has/will handle the job
-    "history": [				# A list of Job History objects for this job
+    "id": 5,
+    "user": 32,
+    "parameters": "whatever",
+    "cluster": "ozstar",
+    "bundle": "whatever",
+    "history": [
       {
-        "jobId": 5, 			# ID of the Job this Job History object is for
-        "timestamp": 34233		# The timestamp when this Job History object was created
-        "what": "jid0"			# The job step this Job History is for. Can be anything - is usually defined by the bundle implementation. May be "system" or "_job_completion_" for the final job outcome.
-        "state": 500			# The state for this 
-      },
-      ...
+        "jobId": 5,
+        "timestamp": 34233,
+        "what": "jid0",
+        "state": 500
+      }
     ]
-  },
-  ...
+  }
 ]
 ```
 
+#### POST - Create and Submit Job
 
-
-#### POST
-
-Create and submit a new job. If submission fails, a Bad Request response will be sent.
-
-POST payload;
-
-```
+**Request:**
+```json
 {
-  "cluster": "ozstar",			# The name of the cluster to submit the job to (Must be defined in ACCESS_SECRET_CONFIG for the JWT secret making the request)
-  "userId": 32,					# The ID of the user who submitted the job (This is not enforced and can be anything)
-  "parameters": "whatever",		# The parameter payload sent to the bundle to submit the job.
-  "bundle": "whatever",			# The SHA1 hash of the client bundle to handle the job
+  "cluster": "ozstar",
+  "userId": 32,
+  "parameters": "whatever",
+  "bundle": "whatever"
 }
 ```
 
-
-
-The return JSON object;
-
-```
+**Response:**
+```json
 {
-  "jobId": 56					# The ID of the submitted job
+  "jobId": 56
 }
 ```
 
+#### PATCH - Cancel Job
 
-
-#### PATCH
-
-Cancel a job. If cancellation fails, a Bad Request response will be sent.
-
-POST payload;
-
-```
+**Request:**
+```json
 {
-  "jobId": 56					# The ID of the job to cancel
+  "jobId": 56
 }
 ```
 
-
-
-The return JSON object;
-
-```
+**Response:**
+```json
 {
-  "cancelled": 56					# The ID of the job that was cancelled
+  "cancelled": 56
 }
 ```
 
+#### DELETE - Delete Job
 
+Job must not be in running state.
 
-#### DELETE
-
-Delete a job. If cancellation fails, a Bad Request response will be sent. A job must not be in a running state to be deleted.
-
-POST payload;
-
-```
+**Request:**
+```json
 {
-  "jobId": 56						# The ID of the job to delete
+  "jobId": 56
 }
 ```
 
-
-
-The return JSON object;
-
-```
+**Response:**
+```json
 {
-  "cancelled": 56					# The ID of the job that was deleted
+  "deleted": 56
 }
 ```
-
-
 
 ### File API
 
-#### GET
+#### GET - Download File
 
-Download a file. This request does not require JWT authorization - instead relying on the passed file download ID. If a file download can not be initiated due to an error or invalid file download id, a Bad Request response will be sent. If a client is not online, or fails to respond during the file download process, a Service Unavailable response will be sent.
+Does not require JWT - uses file download ID for authorization.
 
+**Query Parameters:**
+- `fileId` - File download ID from POST request
+- `forceDownload` - If `true`, triggers attachment download
 
-
-Query parameters;
-
-```
-fileId				# The file download ID generated from a POST verb
-forceDownload		# If the response should trigger an attachment download or not
-```
-
-
-
-The returned response will be a streaming file download with the following headers;
-
+**Response Headers:**
 ```
 Content-Type: application/octet-stream
-Content-Length: remote file size
-if forceDownload == True:
-  Content-Disposition: attachment; filename="remote file name"
-else:
-  Content-Disposition: filename="remote file name"
+Content-Length: <remote file size>
+Content-Disposition: attachment; filename="remote file name"
 ```
 
+#### POST - Create File Download ID(s)
 
-
-#### POST
-
-Creates new file download ID(s). If an issue occurs, a Bad Request response will be sent. Download IDs are to be used with the GET verb to actually download the file. If no paths are provided an empty array of ID's is generated.
-
-POST payload;
-
-```
-A. Only providing 1 path
+**Request (single path):**
+```json
 {
-  "jobId": 56,				# The job ID to generate the file download ID for
-  "path": "whatever"		# Path relative to the root of the remote job to genarate a file download ID for
+  "jobId": 56,
+  "path": "whatever"
 }
+```
 
-B. Providing a list of paths
+**Request (multiple paths):**
+```json
 {
-  "jobId": 56,				# The job ID to generate the file download ID for
-  "paths": [				# A list of paths to generate download IDs for
-    "path1",
-    "path2",
-    ...
+  "jobId": 56,
+  "paths": ["path1", "path2"]
+}
+```
+
+**Response (single):**
+```json
+{
+  "fileId": "some-uuid"
+}
+```
+
+**Response (multiple):**
+```json
+{
+  "fileIds": ["uuid1", "uuid2"]
+}
+```
+
+#### PATCH - List Remote Files
+
+**Request:**
+```json
+{
+  "jobId": 56,
+  "recursive": true,
+  "path": "/my/path/"
+}
+```
+
+**Response:**
+```json
+{
+  "files": [
+    {
+      "path": "/file/path",
+      "isDir": false,
+      "fileSize": 345652,
+      "permissions": null
+    }
   ]
 }
 ```
 
+## Docker
 
+```bash
+# Build and run
+cd docker
+docker compose up -d --build
 
-The return JSON object;
-
-```
-A. Only providing 1 path
-{
-  "fileId": "some uuid"		# The generated file download ID
-}
-
-B. Providing a list of paths
-{
-  "fileIds": [				# A list of generated file download ID's. These are guarenteed to be in the same order as the provided path list.
-    "uuid1",	
-    "uuid2"
-  ]
-}
+# Run tests
+docker compose -f docker-compose.yaml -f docker-compose.test.yaml up --abort-on-container-exit
 ```
 
+## Troubleshooting
 
-
-#### PATCH
-
-Get a remote file list for a job. If fetching the file list fails, a Bad Request response will be sent.
-
-
-
-POST payload;
-
-```
-{
-  "jobId": 56,				# The ID of the job to fetch the file list for
-  "recursive": true,		# If the result should be a recursive file list, or a file list just at the provided path
-  "path": "/my/path/"		# The path relative to the root of the job that the file list should be returned for.
-}
+### Submodule errors
+```bash
+git submodule update --init --recursive
 ```
 
-
-
-The return JSON object:
-
-```
-{
-  "files": [				# The list of files returned
-  	{
-  	  "path": "/file/path", # The path to the file,
-  	  "isDir": false,		# If the file is a directory or not
-  	  "fileSize": 345652,	# The file size in bytes
-  	  "permissions": null	# The permissions mask of the file (currently not implemented)
-  	}
-  ]
-}
+### Database connection errors
+Ensure MySQL is running and credentials in `.env` are correct:
+```bash
+# Check MySQL is accessible
+mysql -h localhost -u gwcloud -p
 ```
 
+### Clean build
+```bash
+cargo clean
+cargo build
+```
+
+### Test failures
+Tests require sequential execution (`--test-threads=1`) due to shared global state. The `run_tests.sh` script handles this automatically.
+
+## Requirements
+
+- **Build**: Rust stable (see `rust-toolchain.toml` if present)
+- **Runtime**: MySQL database, configured clusters and access secrets
+- **Test**: None (tests use in-memory SQLite)
+
+## CI/CD
+
+The project uses GitLab CI with three stages:
+
+1. **lint**: rustfmt and clippy checks
+2. **test**: Test execution with coverage reporting
+3. **release**: Build optimized release binary
+
+Run locally with:
+```bash
+gitlab-ci-local
+```

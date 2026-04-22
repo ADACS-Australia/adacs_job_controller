@@ -1,64 +1,101 @@
-variables:
-  GIT_SUBMODULE_STRATEGY: recursive
-  DOCKER_TLS_CERTDIR: ""
-  DOCKER_HOST: tcp://docker:2375/
-  DOCKER_DRIVER: overlay2
-
-default:
-  image:
-    name: docker/compose:latest
-    entrypoint: ["/usr/bin/env"]
-  before_script:
-    - apk update
-    - apk upgrade --available && sync
-    - apk add git bash xmlstarlet
-
 stages:
   - lint
   - test
+  - release
 
-# Clang-format check job
-clang-format-check:
+variables:
+  CARGO_HOME: "$CI_PROJECT_DIR/src/.cargo"
+
+rustfmt:
   stage: lint
-  image: ubuntu:24.04
+  image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-cargo"
+    paths:
+      - src/.cargo/
+      - src/target/
+      - src/Cargo.lock
   before_script:
-    - apt-get update && apt-get install -y wget lsb-release software-properties-common gnupg
-    - wget https://apt.llvm.org/llvm.sh && bash ./llvm.sh 23 all
+    - rustup component add rustfmt
   script:
-    - ./scripts/check-format.sh
-  allow_failure: false
+    - cd src
+    - cargo fmt -- --check
 
-tests:
-  stage: test
-  services:
-    - name: docker:20.10.17-dind
+clippy:
+  stage: lint
+  image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-cargo"
+    paths:
+      - src/.cargo/
+      - src/target/
+      - src/Cargo.lock
+  before_script:
+    - rustup component add clippy
   script:
-    - docker version
-    - docker-compose version
-    - bash scripts/test.sh
-    - xmlstarlet ed -u "coverage/sources/source" -v "`pwd`/src" test_report/coverage_docker.xml > test_report/coverage.xml 
+    - cd src
+    - cargo clippy --all-targets -- -D warnings
+
+test-and-coverage:
+  stage: test
+  image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-cargo"
+    paths:
+      - src/.cargo/
+      - src/target/
+      - src/Cargo.lock
+  before_script:
+    - apt-get update && apt-get install -y jq
+    - |
+      if ! command -v rustc &> /dev/null; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+      fi
+    - rustup component add llvm-tools
+    - cargo install cargo-llvm-cov
+  script:
+    - cd src
+    # Run tests with coverage instrumentation (parallel execution)
+    # Generate cobertura XML for GitLab coverage report
+    - cargo llvm-cov --cobertura --output-path cobertura.xml
+    # Generate JSON for parsing coverage percentage (single run)
+    - cargo llvm-cov --json --output-path coverage.json
+    # Extract and display coverage summary
+    - |
+      echo "=== Coverage Report ==="
+      jq -r '"Line Coverage: \(.data[].totals.lines.percent)%"' coverage.json
+      jq -r '"Function Coverage: \(.data[].totals.functions.percent)%"' coverage.json
+      jq -r '"Region Coverage: \(.data[].totals.regions.percent)%"' coverage.json
+      # Output for GitLab coverage regex
+      LINE_COV=$(jq -r '.data[].totals.lines.percent' coverage.json)
+      echo "TOTAL ${LINE_COV}% covered"
+  coverage: '/TOTAL\s+(\d+\.\d+)%/'
   artifacts:
     reports:
       coverage_report:
         coverage_format: cobertura
-        path: test_report/coverage.xml
-      junit: test_report/junit.xml
-      codequality: test_report/code_climate.json
+        path: src/cobertura.xml
+    paths:
+      - src/cobertura.xml
+      - src/coverage.json
+    expire_in: 30 days
 
-
-code-quality:
-  image: docker:stable
-  services:
-    - name: docker:20.10.17-dind
-  allow_failure: true
-  before_script: []
+release:
+  stage: release
+  image: rust:latest
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-cargo"
+    paths:
+      - src/.cargo/
+      - src/target/
+      - src/Cargo.lock
+  needs:
+    - test-and-coverage
   script:
-    - docker run
-        --env SOURCE_CODE="$PWD"
-        --volume "$PWD":/code
-        --volume /var/run/docker.sock:/var/run/docker.sock
-        "registry.gitlab.com/gitlab-org/ci-cd/codequality:latest" /code
-  artifacts:
-    reports:
-      codequality: gl-code-quality-report.json
-
+    - cd src
+    - ./build_release.sh
+    - echo "=== Verifying binary ==="
+    - ldd target/release/adacs_job_controller || true
+    - echo "=== Binary size ==="
+    - ls -lh target/release/adacs_job_controller

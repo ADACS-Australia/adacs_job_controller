@@ -1,0 +1,28 @@
+# Test compose override
+services:
+  web:
+    build:
+      target: test
+    volumes:
+      - ../test_report:/app/test_report
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: jobserver
+      MYSQL_USER: jobserver
+      MYSQL_PASSWORD: jobserver
+    volumes:
+      - test_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  test_db_data:
