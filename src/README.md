@@ -56,17 +56,6 @@ Copy `.env.template` to `.env` and configure:
 
 Create `config/clusters.json` and `config/access_secrets.json` from templates in the parent `config/` directory.
 
-## Docker
-
-```bash
-# Build and run
-cd docker
-docker compose up -d --build
-
-# Run tests
-docker compose -f docker-compose.yaml -f docker-compose.test.yaml up --abort-on-container-exit
-```
-
 ## API Endpoints
 
 | Method | Path | Description |

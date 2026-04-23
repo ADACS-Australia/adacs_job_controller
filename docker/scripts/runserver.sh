@@ -1,24 +1,25 @@
-#! /bin/bash
-# /jobserver is already the working directory (set in dockerfile)
+#!/bin/bash
+set -e
 
-# Ensure the logs directory is writable by jobserver user
-mkdir -p /jobserver/logs
-chmod 755 /jobserver/logs
-touch /jobserver/logs/logfile
-chown -R jobserver:jobserver /jobserver/logs
+# Ensure logs directory exists and is writable
+mkdir -p /app/logs
+chown -R jobserver:jobserver /app/logs
 
-# Wait for MySQL to be ready (using TCP connection check instead of mysqladmin)
-echo "Waiting for MySQL to be ready..."
-until nc -z "${DATABASE_HOST}" 3306 2>/dev/null; do
-    echo "MySQL is unavailable - sleeping"
+# Wait for MySQL to be available
+echo "Waiting for MySQL..."
+until nc -z "${DATABASE_HOST:-db}" "${DATABASE_PORT:-3306}"; do
+    echo "  MySQL not ready, retrying in 2s..."
     sleep 2
 done
-echo "MySQL port is open - waiting for it to be fully ready..."
-sleep 2
-echo "MySQL is up - continuing"
+echo "MySQL is ready."
 
-# Migrate the database (as jobserver user)
-su -s /bin/bash jobserver -c "utils/schema/venv/bin/python utils/schema/manage.py migrate"
+# Run database migrations (Django schema is external)
+# If sqlx migrations exist, run them
+if [ -d "/app/migrations" ] && command -v sqlx &> /dev/null; then
+    echo "Running database migrations..."
+    DATABASE_URL="mysql://${MYSQL_USER:-jobserver}:${MYSQL_PASSWORD:-jobserver}@${DATABASE_HOST:-db}:${DATABASE_PORT:-3306}/${MYSQL_DATABASE:-jobserver}" \
+        sqlx migrate run --source /app/migrations
+fi
 
-# Run the jobserver (as jobserver user)
-su -s /bin/bash jobserver -c "./adacs_job_controller 2>&1 | tee ./logs/logfile"
+echo "Starting ADACS Job Controller..."
+exec su -s /bin/bash jobserver -c "/app/adacs_job_controller 2>&1 | tee /app/logs/logfile"
