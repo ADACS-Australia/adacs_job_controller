@@ -587,6 +587,7 @@ async fn test_download_timeout_when_cluster_never_responds() {
     let db = {
         let mut opts = sea_orm::ConnectOptions::new("sqlite::memory:");
         opts.acquire_timeout(std::time::Duration::from_secs(3600));
+        opts.max_lifetime(std::time::Duration::from_secs(3600));
         sea_orm::Database::connect(opts)
             .await
             .expect("sqlite in-memory connect failed")
