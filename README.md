@@ -8,14 +8,16 @@ A server that manages distributed job submissions to HPC/compute clusters via an
 
 1. **Install Rust**:
    ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+   source "$HOME/.cargo/env"
    ```
 
-2. **Clone and initialize submodules**:
+   The project uses a `rust-toolchain.toml` file (`src/rust-toolchain.toml`) — rustup will automatically install the correct version when you run cargo commands from `src/`.
+
+2. **Clone the repository**:
    ```bash
    git clone https://gitlab.com/CAS-eResearch/GWDC/adacs_job_controller.git
    cd adacs_job_controller
-   git submodule update --init --recursive
    ```
 
 3. **Set up environment**:
@@ -33,13 +35,38 @@ A server that manages distributed job submissions to HPC/compute clusters via an
 
 ## Project Structure
 
-All Rust code is in the `src/` directory. All commands below should be run from `src/`:
+All Rust code is in the `src/` directory. All cargo commands should be run from `src/`:
 
 ```bash
 cd src
 ```
 
 ## Development
+
+### Building
+
+```bash
+# Debug build
+cargo build
+
+# Release build
+cargo build --release
+```
+
+Or use the build script:
+```bash
+./build_release.sh
+```
+
+Output: `target/release/adacs_job_controller`
+
+### Running
+
+```bash
+cargo run
+```
+
+Make sure `.env` is configured and MySQL is accessible.
 
 ### Running Tests
 
@@ -67,6 +94,9 @@ The test suite (500+ tests) uses in-memory SQLite and must run sequentially to a
 ### Coverage
 
 ```bash
+# Install cargo-llvm-cov
+cargo install cargo-llvm-cov
+
 # Generate HTML coverage report
 ./run_tests.sh --coverage
 
@@ -76,42 +106,35 @@ The test suite (500+ tests) uses in-memory SQLite and must run sequentially to a
 
 Report location: `target/llvm-cov/html/index.html`
 
-### Debug Build
+## Docker
+
+### Build and Run
 
 ```bash
-cargo build
+cd docker
+docker compose up --build
 ```
 
-Output: `target/debug/adacs_job_controller`
+This builds the Rust binary and starts the application with MySQL.
 
-### Run the Binary
+### Background
 
 ```bash
-cargo run
+cd docker
+docker compose up -d --build
 ```
 
-## Release Build
-
-Builds an optimized release binary. Unlike the client, the server does not need zigbuild since it doesn't link against external C++ libraries.
+### View Logs
 
 ```bash
-./build_release.sh
+docker compose -f docker/docker-compose.yaml logs -f web
 ```
 
-Output: `target/release/adacs_job_controller`
+### Stop
 
-### Manual build:
 ```bash
-cargo build --release
-```
-
-### Verify the binary:
-```bash
-# Check dependencies
-ldd target/release/adacs_job_controller
-
-# Check binary size
-ls -lh target/release/adacs_job_controller
+cd docker
+docker compose down
 ```
 
 ## Architecture
@@ -401,25 +424,10 @@ Content-Disposition: attachment; filename="remote file name"
 }
 ```
 
-## Docker
-
-```bash
-# Build and run
-cd docker
-docker compose up -d --build
-
-# Run tests
-docker compose -f docker-compose.yaml -f docker-compose.test.yaml up --abort-on-container-exit
-```
-
 ## Troubleshooting
 
-### Submodule errors
-```bash
-git submodule update --init --recursive
-```
-
 ### Database connection errors
+
 Ensure MySQL is running and credentials in `.env` are correct:
 ```bash
 # Check MySQL is accessible
@@ -433,11 +441,12 @@ cargo build
 ```
 
 ### Test failures
+
 Tests require sequential execution (`--test-threads=1`) due to shared global state. The `run_tests.sh` script handles this automatically.
 
 ## Requirements
 
-- **Build**: Rust stable (see `rust-toolchain.toml` if present)
+- **Build**: Rust stable (pinned in `src/rust-toolchain.toml`, rustup will auto-install)
 - **Runtime**: MySQL database, configured clusters and access secrets
 - **Test**: None (tests use in-memory SQLite)
 

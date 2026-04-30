@@ -32,8 +32,13 @@ pub async fn run() -> anyhow::Result<()> {
     ))?;
 
     // SeaORM connection for all database operations
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "mysql://root:root@localhost/jobcontroller".to_string());
+    let db_url = format!(
+        "mysql://{}:{}@{}/{}?ssl-mode=disabled",
+        &*crate::config::settings::DATABASE_USER,
+        &*crate::config::settings::DATABASE_PASSWORD,
+        &*crate::config::settings::DATABASE_HOST,
+        &*crate::config::settings::DATABASE_SCHEMA,
+    );
     let db = sea_orm::Database::connect(&db_url).await?;
     tracing::info!("SeaORM connection established");
 

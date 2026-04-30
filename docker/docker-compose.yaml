@@ -1,27 +1,36 @@
-version: '3.4'
-
 services:
   web:
     build:
-      dockerfile: ./docker/adacs_job_controller.Dockerfile
       context: ..
+      dockerfile: docker/Dockerfile
       target: production
     container_name: adacs_job_controller
-    env_file: ../.env
     ports:
       - "8000:8000"
       - "8001:8001"
     volumes:
       - ../config:/app/config:ro
-      - ./logs:/jobserver/logs
+      - ./logs:/app/logs
+    env_file:
+      - ../.env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   db:
     image: mysql:5.7
     container_name: adacs_job_controller_mysql
-    env_file: ../.env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-jobserver}
+      MYSQL_USER: ${MYSQL_USER:-jobserver}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-jobserver}
     volumes:
       - ./db:/var/lib/mysql
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
