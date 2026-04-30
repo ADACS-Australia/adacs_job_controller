@@ -124,13 +124,13 @@ pub trait ClusterManagerTrait: Send + Sync {
     /// Log a WebSocket error for a cluster.
     fn report_websocket_error(&self, cluster_name: Option<String>, error: String);
 
-    /// Get the FileDownloadSession for a given UUID (for HTTP handler to access).
+    /// Get the `FileDownloadSession` for a given UUID (for HTTP handler to access).
     fn get_file_download(
         &self,
         uuid: &str,
     ) -> Option<Arc<crate::cluster::file_download::FileDownloadState>>;
 
-    /// Get the FileUploadSession for a given UUID (for HTTP handler to access).
+    /// Get the `FileUploadSession` for a given UUID (for HTTP handler to access).
     fn get_file_upload(
         &self,
         uuid: &str,

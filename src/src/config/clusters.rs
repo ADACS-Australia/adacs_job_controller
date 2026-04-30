@@ -24,6 +24,12 @@ fn default_connection_type() -> String {
 }
 
 /// Load cluster configurations from a JSON file.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The file cannot be read
+/// - The JSON is invalid
 pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
     let content = std::fs::read_to_string(path)?;
     let configs: Vec<ClusterConfig> = serde_json::from_str(&content)?;

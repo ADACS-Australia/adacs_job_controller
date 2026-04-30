@@ -3,6 +3,7 @@ use std::path::{Component, PathBuf};
 use crate::protocol::types::FileInfo;
 
 /// Parse a comma-separated list of u64 values from a query parameter string.
+#[must_use]
 pub fn parse_csv_u64(s: &str) -> Vec<u64> {
     s.split(',')
         .filter_map(|v| v.trim().parse::<u64>().ok())
@@ -12,8 +13,9 @@ pub fn parse_csv_u64(s: &str) -> Vec<u64> {
 /// Parse a CSV-encoded job steps string into (what, state) pairs.
 /// Format: "what1,state1,what2,state2,..."
 /// Returns a Vec to preserve duplicate `what` values (e.g. same source, different states).
+#[must_use]
 pub fn parse_job_steps(s: &str) -> Vec<(String, u32)> {
-    let parts: Vec<&str> = s.split(',').map(|p| p.trim()).collect();
+    let parts: Vec<&str> = s.split(',').map(str::trim).collect();
     let mut result = Vec::new();
     let mut i = 0;
     while i + 1 < parts.len() {
@@ -42,6 +44,7 @@ fn weak_canonical(path: &str) -> String {
 }
 
 /// Filters a list of files by path and recursion flag, canonicalising the target path before matching.
+#[must_use]
 pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec<FileInfo> {
     // Get the canonical path with leading and trailing slash
     let mut abs_path = weak_canonical(file_path);

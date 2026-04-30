@@ -1,6 +1,6 @@
 /// Binary message format compatible with the orchestrator wire protocol.
 ///
-/// All numeric types use little-endian byte order (x86_64 native).
+/// All numeric types use little-endian byte order (`x86_64` native).
 /// Strings and byte arrays are length-prefixed with a u64 (little-endian).
 #[derive(Debug, Clone)]
 pub struct Message {
@@ -14,6 +14,7 @@ pub struct Message {
 #[allow(dead_code)]
 impl Message {
     /// Create a new outgoing message with source and ID in the header.
+    #[must_use]
     pub fn new(msg_id: u32, priority: super::types::Priority, source: &str) -> Self {
         let mut msg = Self {
             data: Vec::with_capacity(
@@ -30,6 +31,7 @@ impl Message {
     }
 
     /// Parse an incoming message from raw bytes.
+    #[must_use]
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         let mut msg = Self {
             data: bytes,
@@ -45,30 +47,52 @@ impl Message {
 
     // --- Getters ---
 
+    #[must_use]
     pub fn id(&self) -> u32 {
         self.id
     }
 
+    #[must_use]
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    #[must_use]
     pub fn priority(&self) -> super::types::Priority {
         self.priority
     }
 
+    #[must_use]
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 
+    #[must_use]
     pub fn into_data(self) -> Vec<u8> {
         self.data
+    }
+
+    // --- Private helper: bounds checking ---
+
+    /// Check if at least `n` bytes remain in the buffer.
+    /// Logs error and returns false if not enough data.
+    fn check_remaining(&self, n: usize) -> bool {
+        let remaining = self.data.len().saturating_sub(self.index);
+        if remaining < n {
+            eprintln!(
+                "ERROR: Message buffer underrun: expected {} bytes, but only {} bytes remaining (index={})",
+                n, remaining, self.index
+            );
+            false
+        } else {
+            true
+        }
     }
 
     // --- Push / Pop: bool ---
 
     pub fn push_bool(&mut self, value: bool) {
-        self.push_ubyte(if value { 1 } else { 0 });
+        self.push_ubyte(u8::from(value));
     }
 
     pub fn pop_bool(&mut self) -> bool {
@@ -82,6 +106,9 @@ impl Message {
     }
 
     pub fn pop_ubyte(&mut self) -> u8 {
+        if !self.check_remaining(1) {
+            return 0;
+        }
         let val = self.data[self.index];
         self.index += 1;
         val
@@ -101,7 +128,15 @@ impl Message {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    /// Pop an unsigned 16-bit integer from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are fewer than 2 bytes remaining in the buffer.
     pub fn pop_ushort(&mut self) -> u16 {
+        if !self.check_remaining(2) {
+            return 0;
+        }
         let bytes: [u8; 2] = self.data[self.index..self.index + 2].try_into().unwrap();
         self.index += 2;
         u16::from_le_bytes(bytes)
@@ -111,7 +146,15 @@ impl Message {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    /// Pop a signed 16-bit integer from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are fewer than 2 bytes remaining in the buffer.
     pub fn pop_short(&mut self) -> i16 {
+        if !self.check_remaining(2) {
+            return 0;
+        }
         let bytes: [u8; 2] = self.data[self.index..self.index + 2].try_into().unwrap();
         self.index += 2;
         i16::from_le_bytes(bytes)
@@ -123,7 +166,15 @@ impl Message {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    /// Pop an unsigned 32-bit integer from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are fewer than 4 bytes remaining in the buffer.
     pub fn pop_uint(&mut self) -> u32 {
+        if !self.check_remaining(4) {
+            return 0;
+        }
         let bytes: [u8; 4] = self.data[self.index..self.index + 4].try_into().unwrap();
         self.index += 4;
         u32::from_le_bytes(bytes)
@@ -133,7 +184,15 @@ impl Message {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    /// Pop a signed 32-bit integer from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are fewer than 4 bytes remaining in the buffer.
     pub fn pop_int(&mut self) -> i32 {
+        if !self.check_remaining(4) {
+            return 0;
+        }
         let bytes: [u8; 4] = self.data[self.index..self.index + 4].try_into().unwrap();
         self.index += 4;
         i32::from_le_bytes(bytes)
@@ -145,7 +204,15 @@ impl Message {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    /// Pop an unsigned 64-bit integer from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are fewer than 8 bytes remaining in the buffer.
     pub fn pop_ulong(&mut self) -> u64 {
+        if !self.check_remaining(8) {
+            return 0;
+        }
         let bytes: [u8; 8] = self.data[self.index..self.index + 8].try_into().unwrap();
         self.index += 8;
         u64::from_le_bytes(bytes)
@@ -155,7 +222,15 @@ impl Message {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    /// Pop a signed 64-bit integer from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are fewer than 8 bytes remaining in the buffer.
     pub fn pop_long(&mut self) -> i64 {
+        if !self.check_remaining(8) {
+            return 0;
+        }
         let bytes: [u8; 8] = self.data[self.index..self.index + 8].try_into().unwrap();
         self.index += 8;
         i64::from_le_bytes(bytes)
@@ -167,7 +242,15 @@ impl Message {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    /// Pop a 32-bit float from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are fewer than 4 bytes remaining in the buffer.
     pub fn pop_float(&mut self) -> f32 {
+        if !self.check_remaining(4) {
+            return 0.0;
+        }
         let bytes: [u8; 4] = self.data[self.index..self.index + 4].try_into().unwrap();
         self.index += 4;
         f32::from_le_bytes(bytes)
@@ -177,7 +260,15 @@ impl Message {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    /// Pop a 64-bit float from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are fewer than 8 bytes remaining in the buffer.
     pub fn pop_double(&mut self) -> f64 {
+        if !self.check_remaining(8) {
+            return 0.0;
+        }
         let bytes: [u8; 8] = self.data[self.index..self.index + 8].try_into().unwrap();
         self.index += 8;
         f64::from_le_bytes(bytes)
@@ -190,9 +281,16 @@ impl Message {
         self.data.extend_from_slice(value.as_bytes());
     }
 
+    /// Pop a UTF-8 string from the message buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - There are insufficient bytes remaining to read the string length
+    /// - The bytes do not form valid UTF-8
     pub fn pop_string(&mut self) -> String {
         let bytes = self.pop_bytes();
-        String::from_utf8(bytes).expect("Invalid UTF-8 in message string")
+        String::from_utf8(bytes).unwrap_or_default()
     }
 
     // --- Push / Pop: raw bytes ---
@@ -204,6 +302,9 @@ impl Message {
 
     pub fn pop_bytes(&mut self) -> Vec<u8> {
         let len = self.pop_ulong() as usize;
+        if !self.check_remaining(len) {
+            return Vec::new();
+        }
         let result = self.data[self.index..self.index + len].to_vec();
         self.index += len;
         result

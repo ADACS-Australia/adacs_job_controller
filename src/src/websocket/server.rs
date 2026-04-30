@@ -9,7 +9,7 @@ use futures_util::{SinkExt, StreamExt};
 
 use crate::app::AppState;
 use crate::cluster::traits::ConnectionId;
-use crate::protocol::constants::*;
+use crate::protocol::constants::{SERVER_READY, SYSTEM_SOURCE};
 use crate::protocol::message::Message;
 use crate::protocol::types::Priority;
 
@@ -63,19 +63,16 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
         .handle_new_connection(conn_id, tx.clone(), &token)
         .await;
 
-    let cluster = match cluster {
-        Some(c) => {
-            tracing::info!(
-                "WS: Opened connection from {} as role {}",
-                c.name(),
-                c.role_string()
-            );
-            c
-        }
-        None => {
-            tracing::warn!("WS: Invalid token used - {token}");
-            return;
-        }
+    let cluster = if let Some(c) = cluster {
+        tracing::info!(
+            "WS: Opened connection from {} as role {}",
+            c.name(),
+            c.role_string()
+        );
+        c
+    } else {
+        tracing::warn!("WS: Invalid token used - {token}");
+        return;
     };
 
     // Send SERVER_READY

@@ -3,6 +3,16 @@ name = "adacs_job_controller"
 version = "0.1.0"
 edition = "2024"
 
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# These casting warnings are intentional conversions between protocol/database types
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+# Style preferences that would require significant refactoring
+struct_excessive_bools = "allow"
+
 [features]
 default = []
 test-support = ["dep:mockall"]

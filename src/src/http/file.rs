@@ -12,7 +12,10 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::filter_files;
-use crate::protocol::constants::*;
+use crate::protocol::constants::{
+    DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
+    RESUME_FILE_CHUNK_STREAM, UPLOAD_FILE,
+};
 use crate::protocol::message::Message;
 use crate::protocol::types::{FileInfo, FileListState, Priority};
 use crate::utils::general::generate_uuid;
@@ -59,6 +62,15 @@ pub struct FileListRequest {
 
 // ---- POST /file/apiv1/file/ (Create file download records) ----
 
+/// Create file download records in the database.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Authorization fails
+/// - No path is provided in the request
+/// - Cluster or bundle resolution fails
+/// - Database operation fails
 pub async fn create_file_download(
     auth: AuthResult,
     State(state): State<AppState>,
@@ -92,7 +104,7 @@ pub async fn create_file_download(
     let user_id = auth
         .payload
         .get("userId")
-        .and_then(|v| v.as_i64())
+        .and_then(sea_orm::JsonValue::as_i64)
         .unwrap_or(0) as i32;
 
     let job_id = body.job_id.unwrap_or(0) as i32;
@@ -126,6 +138,17 @@ pub async fn create_file_download(
 
 // ---- GET /file/apiv1/file/ (Stream file download) ----
 
+/// Stream a file download from a remote cluster.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - File ID parameter is missing
+/// - File download record is not found
+/// - Cluster is offline or unavailable
+/// - File transmission fails
+/// - Response header construction fails
+#[allow(clippy::too_many_lines)]
 pub async fn download_file(
     State(state): State<AppState>,
     Query(params): Query<FileDownloadQuery>,
@@ -220,10 +243,10 @@ pub async fn download_file(
 
     let file_size = fd_state.file_size.load(Ordering::Acquire);
 
-    let filename = std::path::Path::new(&s_file_path)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "download".to_string());
+    let filename = std::path::Path::new(&s_file_path).file_name().map_or_else(
+        || "download".to_string(),
+        |n| n.to_string_lossy().to_string(),
+    );
 
     let content_disposition = if force_download {
         format!("attachment; filename=\"{filename}\"")
@@ -251,9 +274,9 @@ pub async fn download_file(
                     // Backpressure: when buffer drains below MIN_FILE_BUFFER_SIZE, send RESUME
                     // to the cluster so it resumes sending chunks. Synchronized via
                     // compare_exchange to prevent races with the WS-side PAUSE logic.
-                    let received = fd_state_stream.received_bytes.load(Ordering::Acquire);
+                    let received_bytes = fd_state_stream.received_bytes.load(Ordering::Acquire);
                     if fd_state_stream.client_paused.load(Ordering::Acquire)
-                        && received.saturating_sub(sent) < min_buffer
+                        && received_bytes.saturating_sub(sent) < min_buffer
                         && fd_state_stream
                             .client_paused
                             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
@@ -301,12 +324,28 @@ pub async fn download_file(
 
 // ---- PUT /file/apiv1/file/upload/ (Stream file upload) ----
 
+/// Handle a file upload to a remote cluster.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Target path parameter is missing
+/// - Content-Length header is missing or invalid
+/// - Authorization fails
+/// - Cluster or bundle resolution fails
+/// - Cluster is offline
+/// - File upload session cannot be created
+/// - Upload timeout occurs
+/// - Chunk reception fails
+#[allow(clippy::too_many_lines)]
 pub async fn upload_file(
     auth: AuthResult,
     State(state): State<AppState>,
     Query(params): Query<FileUploadQuery>,
     request: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    use axum::body::to_bytes;
+
     let target_path = params.target_path.ok_or((
         StatusCode::BAD_REQUEST,
         "targetPath parameter is required".to_string(),
@@ -390,7 +429,6 @@ pub async fn upload_file(
     let chunk_size = *settings::FILE_CHUNK_SIZE as usize;
     let mut total_read: u64 = 0;
 
-    use axum::body::to_bytes;
     let body_bytes = to_bytes(request.into_body(), content_length as usize + 1)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}")))?;
@@ -465,6 +503,17 @@ pub async fn upload_file(
 
 // ---- PATCH /file/apiv1/file/ (List files) ----
 
+/// List files on a remote cluster.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Authorization fails
+/// - Cluster or bundle resolution fails
+/// - Cluster is offline
+/// - File list request times out
+/// - Database operations fail
+#[allow(clippy::too_many_lines)]
 pub async fn list_files(
     auth: AuthResult,
     State(state): State<AppState>,
@@ -727,6 +776,12 @@ async fn resolve_cluster_bundle(
 }
 
 /// Look up cluster and bundle from a job record, verifying application access.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Database query fails
+/// - Job is not found or inaccessible to the application
 pub async fn resolve_cluster_bundle_for_file_list(
     state: &AppState,
     applications: &[String],

@@ -27,6 +27,7 @@ pub struct FileDownloadState {
 }
 
 impl FileDownloadState {
+    #[must_use]
     pub fn new() -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         Self {

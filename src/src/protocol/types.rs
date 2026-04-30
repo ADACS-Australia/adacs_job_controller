@@ -68,6 +68,7 @@ pub enum ClusterRole {
 }
 
 impl ClusterRole {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             ClusterRole::Master => "master",
@@ -113,6 +114,7 @@ pub struct FileListState {
 }
 
 impl FileListState {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             files: Vec::new(),

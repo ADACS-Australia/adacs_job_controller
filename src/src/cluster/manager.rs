@@ -11,10 +11,13 @@ use crate::cluster::file_download::FileDownloadState;
 use crate::cluster::file_upload::FileUploadState;
 use crate::cluster::traits::{ClusterManagerTrait, ClusterTrait, ConnectionId, WsConnectionSender};
 use crate::config::clusters::ClusterConfig;
-use crate::config::settings::*;
+use crate::config::settings::{
+    CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS, CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS,
+    CLUSTER_MANAGER_PING_INTERVAL_SECONDS,
+};
 use crate::protocol::types::ClusterRole;
 
-/// ClusterManager manages the lifecycle of all cluster connections.
+/// `ClusterManager` manages the lifecycle of all cluster connections.
 ///
 /// It handles:
 /// - Cluster registration from clusters.json
@@ -29,10 +32,10 @@ pub struct ClusterManager {
     /// WebSocket connection ID → cluster mapping
     connection_map: DashMap<ConnectionId, Arc<Cluster>>,
 
-    /// File download sessions: UUID → (download_state, cluster)
+    /// File download sessions: UUID → (`download_state`, cluster)
     file_download_map: DashMap<String, (Arc<FileDownloadState>, Arc<Cluster>)>,
 
-    /// File upload sessions: UUID → (upload_state, cluster)
+    /// File upload sessions: UUID → (`upload_state`, cluster)
     file_upload_map: DashMap<String, (Arc<FileUploadState>, Arc<Cluster>)>,
 
     /// Database connection for token lookups, UUID generation, etc.
@@ -44,10 +47,10 @@ pub struct ClusterManager {
     /// Whether the manager is running
     running: AtomicBool,
 
-    /// Pong timestamps for latency tracking (connection_id → last_pong_time)
+    /// Pong timestamps for latency tracking (`connection_id` → `last_pong_time`)
     pong_times: DashMap<ConnectionId, std::time::Instant>,
 
-    /// Ping timestamps for dead connection detection (connection_id → last_ping_sent_time)
+    /// Ping timestamps for dead connection detection (`connection_id` → `last_ping_sent_time`)
     ping_times: DashMap<ConnectionId, std::time::Instant>,
 
     /// Pause/resume locks per cluster name (shared with file download clusters)
@@ -55,7 +58,8 @@ pub struct ClusterManager {
 }
 
 impl ClusterManager {
-    /// Create a new ClusterManager and register clusters from config.
+    /// Create a new `ClusterManager` and register clusters from config.
+    #[must_use]
     pub fn new(
         cluster_configs: Vec<ClusterConfig>,
         db: sea_orm::DatabaseConnection,
@@ -92,12 +96,22 @@ impl ClusterManager {
     }
 
     /// Start background tasks (reconnection, ping).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `RwLock` on clusters cannot be acquired for reading.
     pub fn start_tasks(self: &Arc<Self>) {
         // Start scheduler tasks for each cluster
         {
-            let clusters = self.clusters.try_read().unwrap();
-            for cluster in clusters.values() {
-                cluster.start_tasks();
+            match self.clusters.try_read() {
+                Ok(clusters) => {
+                    for cluster in clusters.values() {
+                        cluster.start_tasks();
+                    }
+                }
+                Err(e) => {
+                    eprintln!("WARNING: Failed to acquire read lock on clusters: {e}");
+                }
             }
         }
 
@@ -126,6 +140,13 @@ impl ClusterManager {
 
     /// Try to reconnect all offline master clusters.
     pub async fn reconnect_clusters(&self) {
+        use crate::db::entities::cluster_uuid;
+        use sea_orm::{
+            ActiveModelTrait,
+            ActiveValue::{NotSet, Set},
+            ColumnTrait, EntityTrait, QueryFilter,
+        };
+
         let clusters = self.clusters.read().await;
         for (name, cluster) in clusters.iter() {
             if cluster.is_online() {
@@ -146,12 +167,6 @@ impl ClusterManager {
             let uuid = uuid::Uuid::new_v4().to_string();
 
             // Delete any existing UUIDs for this cluster before inserting a new one
-            use crate::db::entities::cluster_uuid;
-            use sea_orm::{
-                ActiveModelTrait,
-                ActiveValue::{NotSet, Set},
-                ColumnTrait, EntityTrait, QueryFilter,
-            };
             let _ = cluster_uuid::Entity::delete_many()
                 .filter(cluster_uuid::Column::Cluster.eq(name.as_str()))
                 .exec(&self.db)
@@ -177,14 +192,15 @@ impl ClusterManager {
                 }
                 _ => {
                     // SSH or Kerberos: launch Python keyserver
-                    self.launch_ssh_connection(&details, &uuid).await;
+                    self.launch_ssh_connection(&details, &uuid);
                 }
             }
         }
     }
 
     /// Launch SSH connection via Python keyserver.
-    async fn launch_ssh_connection(&self, details: &ClusterConfig, token: &str) {
+    #[allow(clippy::unused_self)]
+    fn launch_ssh_connection(&self, details: &ClusterConfig, token: &str) {
         let mut cmd = tokio::process::Command::new("./utils/keyserver/venv/bin/python");
         cmd.arg("./utils/keyserver/keyserver.py");
         cmd.env("SSH_HOST", &details.host);
@@ -259,8 +275,7 @@ impl ClusterManager {
             let cluster_name = self
                 .connection_map
                 .get(&conn_id)
-                .map(|c| c.name())
-                .unwrap_or_else(|| "unknown".to_string());
+                .map_or_else(|| "unknown".to_string(), |c| c.name());
             tracing::warn!(
                 "WS: Cluster {} timed out waiting for pong (conn_id={}). Disconnecting.",
                 cluster_name,
@@ -271,7 +286,7 @@ impl ClusterManager {
         }
 
         // 3. Send fresh ping to all online master connections
-        for entry in self.connection_map.iter() {
+        for entry in &self.connection_map {
             let conn_id = *entry.key();
             let cluster = entry.value();
 
@@ -311,6 +326,9 @@ impl ClusterManagerTrait for ClusterManager {
         ws_sender: WsConnectionSender,
         token: &str,
     ) -> Option<Arc<dyn ClusterTrait>> {
+        use crate::db::entities::cluster_uuid;
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
         // Check file download map first
         if let Some(entry) = self.file_download_map.get(token) {
             let (_, cluster) = entry.value();
@@ -348,7 +366,7 @@ impl ClusterManagerTrait for ClusterManager {
                 // Apply rate limiting timeout
                 let timeout = *crate::config::settings::LTK_CONNECTION_TIMEOUT_MS;
                 if timeout > 0 {
-                    tokio::time::sleep(std::time::Duration::from_millis(timeout as u64)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(u64::from(timeout))).await;
                 }
 
                 // Authenticate LTK cluster
@@ -366,8 +384,6 @@ impl ClusterManagerTrait for ClusterManager {
         }
 
         // No LTK match - fall back to UUID DB lookup (existing logic)
-        use crate::db::entities::cluster_uuid;
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
         // First clean up any expired UUIDs
         let cutoff = chrono::Utc::now().naive_utc()
@@ -450,8 +466,7 @@ impl ClusterManagerTrait for ClusterManager {
             let cluster_name = self
                 .connection_map
                 .get(&conn_id)
-                .map(|c| c.name())
-                .unwrap_or_else(|| "unknown".to_string());
+                .map_or_else(|| "unknown".to_string(), |c| c.name());
             tracing::info!(
                 "WS: Cluster {} had {}ms latency.",
                 cluster_name,
@@ -516,9 +531,10 @@ impl ClusterManagerTrait for ClusterManager {
     }
 
     fn report_websocket_error(&self, cluster_name: Option<String>, error: String) {
-        match cluster_name {
-            Some(name) => tracing::error!("WebSocket error for cluster {}: {}", name, error),
-            None => tracing::error!("WebSocket error (unknown cluster): {}", error),
+        if let Some(name) = cluster_name {
+            tracing::error!("WebSocket error for cluster {}: {}", name, error)
+        } else {
+            tracing::error!("WebSocket error (unknown cluster): {}", error)
         }
     }
 
