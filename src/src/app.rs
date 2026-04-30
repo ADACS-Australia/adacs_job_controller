@@ -11,8 +11,8 @@ use crate::protocol::types::FileListState;
 /// Shared application state, injected into all HTTP/WS handlers.
 #[derive(Clone)]
 pub struct AppState {
-    /// SeaORM connection for HTTP handler database operations.
-    /// Backed by MySQL in production, SQLite in tests.
+    /// `SeaORM` connection for HTTP handler database operations.
+    /// Backed by `MySQL` in production, `SQLite` in tests.
     pub db: sea_orm::DatabaseConnection,
     pub cluster_manager: Arc<dyn ClusterManagerTrait>,
     pub file_list_map: Arc<DashMap<String, Arc<Mutex<FileListState>>>>,
@@ -20,6 +20,14 @@ pub struct AppState {
 }
 
 /// Initialize all components and start HTTP + WebSocket servers.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Environment variables are missing or invalid
+/// - Database connection fails
+/// - Configuration files cannot be read or parsed
+/// - HTTP or WebSocket server fails to start
 pub async fn run() -> anyhow::Result<()> {
     tracing::info!("ADACS Job Controller starting...");
 

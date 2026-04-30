@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
 
   db:
-    image: mysql:5.7
+    image: mysql:9.7
     container_name: adacs_job_controller_mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}

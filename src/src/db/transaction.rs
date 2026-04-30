@@ -7,8 +7,15 @@ use sea_orm::{DatabaseConnection, DbErr, TransactionTrait};
 
 /// Execute a database transaction with the provided closure.
 ///
-/// This is a wrapper around SeaORM's transaction API that provides
+/// This is a wrapper around `SeaORM`'s transaction API that provides
 /// consistent error handling and logging.
+///
+/// # Errors
+///
+/// Returns a database error if:
+/// - Transaction cannot be created
+/// - The closure execution fails
+/// - Transaction commit or rollback fails
 #[allow(dead_code)]
 pub async fn with_transaction<F, T>(db: &DatabaseConnection, f: F) -> Result<T, DbErr>
 where

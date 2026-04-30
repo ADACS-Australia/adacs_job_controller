@@ -1,16 +1,22 @@
 /// Generate a new random UUID v4 string.
+#[must_use]
 pub fn generate_uuid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
 /// Base64-encode raw bytes using the standard alphabet.
 #[allow(dead_code)]
+#[must_use]
 pub fn base64_encode(data: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(data)
 }
 
 /// Base64-decode a string using the standard alphabet.
+///
+/// # Errors
+///
+/// Returns an error if the input is not valid base64.
 #[allow(dead_code)]
 pub fn base64_decode(data: &str) -> Result<Vec<u8>, base64::DecodeError> {
     use base64::Engine;

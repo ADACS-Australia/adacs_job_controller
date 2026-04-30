@@ -18,6 +18,7 @@ pub struct FileUploadState {
 }
 
 impl FileUploadState {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             error: AtomicBool::new(false),

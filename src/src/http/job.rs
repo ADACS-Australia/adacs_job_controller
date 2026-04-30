@@ -12,7 +12,9 @@ use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{parse_csv_u64, parse_job_steps};
-use crate::protocol::constants::*;
+use crate::protocol::constants::{
+    CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
+};
 use crate::protocol::message::Message;
 use crate::protocol::types::{JobStatus, Priority};
 
@@ -49,6 +51,16 @@ pub struct JobQueryParams {
 
 // ---- POST /job/apiv1/job/ ----
 
+/// Create a new job on a remote cluster.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Authorization fails
+/// - Application lacks access to the specified cluster
+/// - Cluster is not found or offline
+/// - Database operation fails
+/// - Job submission message send fails
 pub async fn create_job(
     auth: AuthResult,
     State(state): State<AppState>,
@@ -72,7 +84,7 @@ pub async fn create_job(
     let user_id = auth
         .payload
         .get("userId")
-        .and_then(|v| v.as_i64())
+        .and_then(sea_orm::JsonValue::as_i64)
         .unwrap_or(0);
 
     let job_row = job::ActiveModel {
@@ -126,6 +138,20 @@ pub async fn create_job(
 
 // ---- GET /job/apiv1/job/ ----
 
+/// Retrieve jobs filtered by various criteria.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Authorization fails
+/// - Both startTimeGt and startTimeLt are provided
+/// - Both endTimeGt and endTimeLt are provided
+/// - Database query fails
+///
+/// # Panics
+///
+/// Panics if internal JSON operations fail (unwrap on `as_array_mut` or job history parsing).
+#[allow(clippy::too_many_lines)]
 pub async fn get_jobs(
     auth: AuthResult,
     State(state): State<AppState>,
@@ -287,14 +313,16 @@ pub async fn get_jobs(
             })
             .unwrap_or_default();
 
-        result.as_array_mut().unwrap().push(serde_json::json!({
-            "id": j.id,
-            "user": j.user,
-            "parameters": j.parameters,
-            "cluster": j.cluster,
-            "bundle": j.bundle,
-            "history": job_histories,
-        }));
+        if let Some(arr) = result.as_array_mut() {
+            arr.push(serde_json::json!({
+                "id": j.id,
+                "user": j.user,
+                "parameters": j.parameters,
+                "cluster": j.cluster,
+                "bundle": j.bundle,
+                "history": job_histories,
+            }));
+        }
     }
 
     Ok(Json(result))
@@ -302,6 +330,17 @@ pub async fn get_jobs(
 
 // ---- PATCH /job/apiv1/job/ (Cancel) ----
 
+/// Cancel a running job.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Authorization fails or job is not accessible
+/// - Job is not found
+/// - Job history is not found
+/// - Job state does not allow cancellation
+/// - Cluster is not found
+/// - Database operation fails
 pub async fn cancel_job(
     auth: AuthResult,
     State(state): State<AppState>,
@@ -384,6 +423,17 @@ pub async fn cancel_job(
 
 // ---- DELETE /job/apiv1/job/ (Delete) ----
 
+/// Delete a job record.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Authorization fails or job is not accessible
+/// - Job is not found
+/// - Job history is not found
+/// - Job state does not allow deletion
+/// - Cluster is not found
+/// - Database operation fails
 pub async fn delete_job(
     auth: AuthResult,
     State(state): State<AppState>,
@@ -465,6 +515,13 @@ pub async fn delete_job(
 
 /// Fetch a job by ID and verify the requester's application has access to its cluster.
 /// Does NOT verify cluster manager existence — callers that send WS messages check that.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Database query fails
+/// - Job is not found
+/// - Application lacks access to the job's cluster
 pub async fn get_job_with_access_check(
     state: &AppState,
     auth: &AuthResult,

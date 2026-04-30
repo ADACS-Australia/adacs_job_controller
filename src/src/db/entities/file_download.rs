@@ -1,6 +1,6 @@
 use sea_orm::entity::prelude::*;
 
-/// SeaORM entity for the `JobserverFiledownload` table.
+/// `SeaORM` entity for the `JobserverFiledownload` table.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "JobserverFiledownload")]
 pub struct Model {

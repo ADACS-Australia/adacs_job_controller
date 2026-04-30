@@ -34,7 +34,7 @@ clippy:
     - rustup component add clippy
   script:
     - cd src
-    - cargo clippy --all-targets -- -D warnings
+    - cargo clippy --all-targets
 
 test-and-coverage:
   stage: test

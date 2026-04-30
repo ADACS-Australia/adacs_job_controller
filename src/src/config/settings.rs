@@ -28,10 +28,9 @@ fn env_or_u64(key: &str, default: u64) -> u64 {
 
 #[allow(dead_code)]
 fn env_or_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .ok()
-        .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(default)
+    std::env::var(key).ok().map_or(default, |v| {
+        matches!(v.as_str(), "1" | "true" | "yes" | "on")
+    })
 }
 
 // Database settings

@@ -60,6 +60,7 @@ where
 }
 
 /// Build the applications list from the secret (the secret's own name + its applications).
+#[must_use]
 pub fn get_applications(secret: &AccessSecret) -> Vec<String> {
     let mut apps = vec![secret.name.clone()];
     apps.extend(secret.applications.iter().cloned());

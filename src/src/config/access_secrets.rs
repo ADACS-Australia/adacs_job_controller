@@ -10,6 +10,12 @@ pub struct AccessSecret {
 }
 
 /// Load access secret configurations from a JSON file.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The file cannot be read
+/// - The JSON is invalid
 pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
     let content = std::fs::read_to_string(path)?;
     let secrets: Vec<AccessSecret> = serde_json::from_str(&content)?;

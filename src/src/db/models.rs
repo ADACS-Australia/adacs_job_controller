@@ -4,7 +4,7 @@ use crate::protocol::message::Message;
 // Cluster-specific tables (accessed via binary message protocol)
 // ============================================================
 
-/// A cluster job record (wire format only — DB ops use SeaORM entities).
+/// A cluster job record (wire format only — DB ops use `SeaORM` entities).
 #[derive(Debug, Clone, Default)]
 pub struct ClusterJob {
     pub id: i64,
