@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [lints.clippy]
-pedantic = { level = "warn", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
 # These casting warnings are intentional conversions between protocol/database types
 cast_sign_loss = "allow"
 cast_precision_loss = "allow"
@@ -12,6 +12,16 @@ cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
 # Style preferences that would require significant refactoring
 struct_excessive_bools = "allow"
+# Test code allowances - these lints are often unavoidable in test scenarios
+# and reduce readability when forced:
+# - similar_names: test variables like msg_a, msg_b are intentionally similar
+# - float_cmp: exact float comparison is sometimes needed in tests
+# - too_many_lines: test setup can be verbose
+# - items_after_statements: helper closures/items mid-function are common in tests
+similar_names = "allow"
+float_cmp = "allow"
+too_many_lines = "allow"
+items_after_statements = "allow"
 
 [features]
 default = []

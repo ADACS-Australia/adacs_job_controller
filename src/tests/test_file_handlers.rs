@@ -320,7 +320,7 @@ async fn test_download_file_cluster_offline_returns_503() {
         cluster: Set("ozstar".to_string()),
         bundle: Set("b".to_string()),
         uuid: Set(uuid.clone()),
-        path: Set("".to_string()),
+        path: Set(String::new()),
         timestamp: Set(chrono::Utc::now().naive_utc()),
         ..Default::default()
     }
@@ -356,7 +356,7 @@ async fn test_download_file_cluster_offline_returns_503() {
 ///
 /// # Setup
 /// Inserts 5 download records (one for each repeated download). For each download,
-/// a background task simulates FILE_DETAILS + chunks arriving via a fresh `FileDownloadState`.
+/// a background task simulates `FILE_DETAILS` + chunks arriving via a fresh `FileDownloadState`.
 ///
 /// # Act
 /// Sends GET /file/apiv1/file/?fileId={uuid} **5 times** with different UUIDs (repeated downloads).
@@ -364,7 +364,7 @@ async fn test_download_file_cluster_offline_returns_503() {
 /// # Assert
 /// Verifies 200 OK with correct `Content-Length`, `Content-Type: application/octet-stream`,
 /// and the exact chunk bytes in the response body for **each of the 5 downloads**,
-/// matching the C++ test_file_transfer behavior with BOOST_CHECK_EQUAL_COLLECTIONS.
+/// matching the C++ `test_file_transfer` behavior with `BOOST_CHECK_EQUAL_COLLECTIONS`.
 #[tokio::test]
 async fn test_download_file_streams_chunks() {
     let db = setup_test_db().await;
@@ -379,14 +379,14 @@ async fn test_download_file_streams_chunks() {
     // Insert 5 download records for 5 repeated downloads
     let mut uuids = Vec::new();
     for i in 0..5 {
-        let uuid = format!("download-uuid-{}", i);
+        let uuid = format!("download-uuid-{i}");
         file_download::ActiveModel {
             user: Set(1),
             job: Set(0),
             cluster: Set("ozstar".to_string()),
             bundle: Set("b".to_string()),
             uuid: Set(uuid.clone()),
-            path: Set("".to_string()),
+            path: Set(String::new()),
             timestamp: Set(chrono::Utc::now().naive_utc()),
             ..Default::default()
         }
@@ -460,7 +460,7 @@ async fn test_download_file_streams_chunks() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/file/apiv1/file/?fileId={}", uuid))
+                    .uri(format!("/file/apiv1/file/?fileId={uuid}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -604,7 +604,7 @@ async fn test_download_file_error_from_cluster_returns_400() {
 ///
 /// # Assert
 /// Verifies 200 OK with a `files` array containing the 2 cached entries,
-/// and no WS FILE_LIST message is sent.
+/// and no WS `FILE_LIST` message is sent.
 #[tokio::test]
 async fn test_list_files_cache_hit_returns_cached_files() {
     let db = setup_test_db().await;
@@ -674,11 +674,11 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     assert_eq!(files.len(), 2, "should return 2 cached files");
 }
 
-/// Tests the WS-driven file list flow: cluster receives FILE_LIST, populates state, HTTP returns result.
+/// Tests the WS-driven file list flow: cluster receives `FILE_LIST`, populates state, HTTP returns result.
 ///
 /// # Setup
 /// Inserts a Running job (no cache). Wires a cluster whose `send_message` mock intercepts
-/// the FILE_LIST message, parses the UUID, and populates the `file_list_map` entry.
+/// the `FILE_LIST` message, parses the UUID, and populates the `file_list_map` entry.
 ///
 /// # Act
 /// Sends PATCH /file/apiv1/file/ with the job ID.
@@ -1011,10 +1011,10 @@ async fn test_upload_file_cluster_offline_returns_503() {
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
-/// Tests the full file upload flow: SERVER_READY then FILE_UPLOAD_COMPLETE signals lead to success.
+/// Tests the full file upload flow: `SERVER_READY` then `FILE_UPLOAD_COMPLETE` signals lead to success.
 ///
 /// # Setup
-/// Inserts a test job. A background task simulates SERVER_READY then FILE_UPLOAD_COMPLETE
+/// Inserts a test job. A background task simulates `SERVER_READY` then `FILE_UPLOAD_COMPLETE`
 /// arriving in the `FileUploadState`. Cluster captures sent WS messages.
 ///
 /// # Act
@@ -1123,7 +1123,7 @@ async fn test_upload_file_success_full_flow() {
 ///
 /// # Setup
 /// Inserts a test job. A background task sets the error flag and error details before
-/// SERVER_READY arrives in the `FileUploadState`.
+/// `SERVER_READY` arrives in the `FileUploadState`.
 ///
 /// # Act
 /// Sends PUT /file/apiv1/file/upload/ with a small body.

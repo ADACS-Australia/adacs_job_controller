@@ -8,7 +8,7 @@ use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::protocol::types::ClusterRole;
 
-/// Create a test ClusterConfig with reasonable defaults.
+/// Create a test `ClusterConfig` with reasonable defaults.
 pub fn test_cluster_config(name: &str) -> ClusterConfig {
     ClusterConfig {
         name: name.to_string(),
@@ -23,7 +23,7 @@ pub fn test_cluster_config(name: &str) -> ClusterConfig {
     }
 }
 
-/// Create a test ClusterConfig with LTK configured.
+/// Create a test `ClusterConfig` with LTK configured.
 pub fn test_cluster_config_with_ltk(name: &str, ltk: &str) -> ClusterConfig {
     ClusterConfig {
         name: name.to_string(),
@@ -59,7 +59,7 @@ pub fn encode_test_jwt(claims: &serde_json::Value) -> String {
     .expect("failed to encode test JWT")
 }
 
-/// Build a mock ClusterManagerTrait with a default `get_cluster_by_name` expectation
+/// Build a mock `ClusterManagerTrait` with a default `get_cluster_by_name` expectation
 /// that returns a mock cluster for `cluster_name`.
 pub fn mock_cluster_manager_with_online_cluster(
     cluster_name: &str,
@@ -88,7 +88,7 @@ pub fn mock_cluster_manager_with_online_cluster(
     (mock_manager, cluster_arc)
 }
 
-/// Build a mock ClusterManagerTrait that returns None for all cluster lookups.
+/// Build a mock `ClusterManagerTrait` that returns None for all cluster lookups.
 pub fn mock_cluster_manager_no_clusters() -> MockClusterManagerTrait {
     let mut mock_manager = MockClusterManagerTrait::new();
     mock_manager
@@ -103,7 +103,7 @@ pub fn mock_cluster_manager_no_clusters() -> MockClusterManagerTrait {
 // SQLite test database helpers
 // ---------------------------------------------------------------------------
 
-/// Create a fresh in-memory SQLite database with all HTTP handler tables.
+/// Create a fresh in-memory `SQLite` database with all HTTP handler tables.
 pub async fn setup_test_db() -> sea_orm::DatabaseConnection {
     let db = sea_orm::Database::connect("sqlite::memory:")
         .await
@@ -112,7 +112,7 @@ pub async fn setup_test_db() -> sea_orm::DatabaseConnection {
     db
 }
 
-/// Build a test AppState with a real SQLite DB and the given cluster manager.
+/// Build a test `AppState` with a real `SQLite` DB and the given cluster manager.
 pub fn make_test_state(
     db: sea_orm::DatabaseConnection,
     manager: MockClusterManagerTrait,
@@ -189,10 +189,10 @@ pub async fn insert_job_history_at(
 
 /// Create 4 JWT secrets for testing:
 ///
-/// - secret 0 (app1): owns clusters ["ozstar", "nci"], can also access "bilby"
-/// - secret 1 (app2): owns cluster ["ozstar"], can access app1's jobs  (applications: ["app1"])
-/// - secret 2 (app3): owns cluster ["ozstar"], no cross-app access
-/// - secret 3 (app4): no cluster access, no cross-app access
+/// - `secret 0` (app1): owns clusters `["ozstar", "nci"]`, can also access `"bilby"`
+/// - `secret 1` (app2): owns cluster `["ozstar"]`, can access app1's jobs  (applications: `["app1"]`)
+/// - `secret 2` (app3): owns cluster `["ozstar"]`, no cross-app access
+/// - `secret 3` (app4): no cluster access, no cross-app access
 pub fn test_jwt_secrets_multi() -> Vec<AccessSecret> {
     vec![
         AccessSecret {
@@ -222,7 +222,7 @@ pub fn test_jwt_secrets_multi() -> Vec<AccessSecret> {
     ]
 }
 
-/// Encode a JWT token for a specific secret from test_jwt_secrets_multi().
+/// Encode a JWT token for a specific secret from `test_jwt_secrets_multi()`.
 pub fn encode_jwt_for_secret(secret: &AccessSecret, claims: &serde_json::Value) -> String {
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     encode(
@@ -251,7 +251,7 @@ impl TestServer {
     }
 }
 
-/// Build a test AppState with a custom list of JWT secrets.
+/// Build a test `AppState` with a custom list of JWT secrets.
 pub fn make_test_state_with_secrets(
     db: sea_orm::DatabaseConnection,
     manager: adacs_job_controller::cluster::traits::MockClusterManagerTrait,

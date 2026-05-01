@@ -396,14 +396,14 @@ fn test_large_payload_roundtrip() {
     let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, "stress_test");
     msg.push_string(&big_string);
     msg.push_bytes(&big_bytes);
-    msg.push_uint(0xDEADBEEF);
+    msg.push_uint(0xDEAD_BEEF);
 
     let mut parsed = Message::from_bytes(msg.into_data());
     assert_eq!(parsed.source(), "stress_test");
     assert_eq!(parsed.id(), SUBMIT_JOB);
     assert_eq!(parsed.pop_string(), big_string);
     assert_eq!(parsed.pop_bytes(), big_bytes);
-    assert_eq!(parsed.pop_uint(), 0xDEADBEEF);
+    assert_eq!(parsed.pop_uint(), 0xDEAD_BEEF);
 }
 
 /// Verifies that a message with an empty source string serializes and parses correctly.

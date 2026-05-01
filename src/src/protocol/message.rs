@@ -429,7 +429,7 @@ mod tests {
     /// Verifies that `push_uint` / `pop_uint` round-trips zero, a known bit-pattern, and `u32::MAX`.
     ///
     /// # Setup
-    /// Create a new message, push 0, `0xDEADBEEF`, and `u32::MAX`.
+    /// Create a new message, push 0, `0xDEAD_BEEF`, and `u32::MAX`.
     ///
     /// # Act
     /// Serialise via `into_data`, parse back with `from_bytes`.
@@ -440,11 +440,11 @@ mod tests {
     fn test_uint_roundtrip() {
         let mut msg = Message::new(1, Priority::Lowest, "t");
         msg.push_uint(0);
-        msg.push_uint(0xDEADBEEF);
+        msg.push_uint(0xDEAD_BEEF);
         msg.push_uint(u32::MAX);
         let mut msg2 = Message::from_bytes(msg.into_data());
         assert_eq!(msg2.pop_uint(), 0);
-        assert_eq!(msg2.pop_uint(), 0xDEADBEEF);
+        assert_eq!(msg2.pop_uint(), 0xDEAD_BEEF);
         assert_eq!(msg2.pop_uint(), u32::MAX);
     }
 
@@ -473,7 +473,7 @@ mod tests {
     /// Verifies that `push_ulong` / `pop_ulong` round-trips zero, a known bit-pattern, and `u64::MAX`.
     ///
     /// # Setup
-    /// Create a new message, push 0, `0xDEADBEEFCAFEBABE`, and `u64::MAX`.
+    /// Create a new message, push 0, `0xDEAD_BEEFCAFEBABE`, and `u64::MAX`.
     ///
     /// # Act
     /// Serialise via `into_data`, parse back with `from_bytes`.
@@ -484,11 +484,11 @@ mod tests {
     fn test_ulong_roundtrip() {
         let mut msg = Message::new(1, Priority::Lowest, "t");
         msg.push_ulong(0);
-        msg.push_ulong(0xDEADBEEFCAFEBABE);
+        msg.push_ulong(0xDEAD_BEEFCAFEBABE);
         msg.push_ulong(u64::MAX);
         let mut msg2 = Message::from_bytes(msg.into_data());
         assert_eq!(msg2.pop_ulong(), 0);
-        assert_eq!(msg2.pop_ulong(), 0xDEADBEEFCAFEBABE);
+        assert_eq!(msg2.pop_ulong(), 0xDEAD_BEEFCAFEBABE);
         assert_eq!(msg2.pop_ulong(), u64::MAX);
     }
 
@@ -659,8 +659,8 @@ mod tests {
         msg.push_bool(true);
         msg.push_ubyte(42);
         msg.push_ushort(1234);
-        msg.push_uint(0xCAFEBABE);
-        msg.push_ulong(9999999999);
+        msg.push_uint(0xCAFE_BABE);
+        msg.push_ulong(9_999_999_999);
         msg.push_float(std::f32::consts::PI);
         msg.push_double(std::f64::consts::E);
         msg.push_string("payload");
@@ -674,8 +674,8 @@ mod tests {
         assert!(msg2.pop_bool());
         assert_eq!(msg2.pop_ubyte(), 42);
         assert_eq!(msg2.pop_ushort(), 1234);
-        assert_eq!(msg2.pop_uint(), 0xCAFEBABE);
-        assert_eq!(msg2.pop_ulong(), 9999999999);
+        assert_eq!(msg2.pop_uint(), 0xCAFE_BABE);
+        assert_eq!(msg2.pop_ulong(), 9_999_999_999);
         assert!((msg2.pop_float() - std::f32::consts::PI).abs() < 1e-6);
         assert!((msg2.pop_double() - std::f64::consts::E).abs() < 1e-9);
         assert_eq!(msg2.pop_string(), "payload");
@@ -699,7 +699,7 @@ mod tests {
         let mut msg = Message::new(1, Priority::Lowest, "");
         // After header: empty-string length (8 bytes of 0) + msg_id (1 as LE u32)
         let header_len = msg.data().len();
-        msg.push_uint(0x12345678);
+        msg.push_uint(0x1234_5678);
         let data = msg.data();
         // The 4 bytes after the header should be [0x78, 0x56, 0x34, 0x12]
         assert_eq!(data[header_len], 0x78);
@@ -742,7 +742,7 @@ mod tests {
     fn test_ulong_byte_layout_little_endian() {
         let mut msg = Message::new(1, Priority::Lowest, "");
         let header_len = msg.data().len();
-        msg.push_ulong(0x0102030405060708);
+        msg.push_ulong(0x0102_0304_0506_0708);
         let data = msg.data();
         assert_eq!(data[header_len], 0x08);
         assert_eq!(data[header_len + 1], 0x07);
@@ -893,7 +893,7 @@ mod tests {
     /// Verifies that negative signed integers round-trip correctly across all signed integer types.
     ///
     /// # Setup
-    /// Create a new message, push -1 (i8), -256 (i16), -100_000 (i32), and -1_000_000_000_000 (i64).
+    /// Create a new message, push -1 (i8), -256 (i16), -`100_000` (i32), and -`1_000_000_000_000` (i64).
     ///
     /// # Act
     /// Serialise via `into_data`, parse back with `from_bytes`.

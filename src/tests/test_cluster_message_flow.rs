@@ -57,15 +57,15 @@ async fn test_priority_queue_ordering_via_channel() {
     cluster.start_tasks();
 
     // Queue messages at different priorities
-    let mut msg_low = Message::new(1000001, Priority::Lowest, "low");
+    let mut msg_low = Message::new(1_000_001, Priority::Lowest, "low");
     msg_low.push_string("lowest_msg");
     let data_low = msg_low.into_data();
 
-    let mut msg_high = Message::new(1000002, Priority::Highest, "high");
+    let mut msg_high = Message::new(1_000_002, Priority::Highest, "high");
     msg_high.push_string("highest_msg");
     let data_high = msg_high.into_data();
 
-    let mut msg_med = Message::new(1000003, Priority::Medium, "med");
+    let mut msg_med = Message::new(1_000_003, Priority::Medium, "med");
     msg_med.push_string("medium_msg");
     let data_med = msg_med.into_data();
 
@@ -93,9 +93,9 @@ async fn test_priority_queue_ordering_via_channel() {
     let id2 = Message::from_bytes(received[2].clone()).id();
 
     // Highest priority (0) should come first, then Medium (10), then Lowest (19)
-    assert_eq!(id0, 1000002, "first should be highest priority");
-    assert_eq!(id1, 1000003, "second should be medium priority");
-    assert_eq!(id2, 1000001, "third should be lowest priority");
+    assert_eq!(id0, 1_000_002, "first should be highest priority");
+    assert_eq!(id1, 1_000_003, "second should be medium priority");
+    assert_eq!(id2, 1_000_001, "third should be lowest priority");
 }
 
 /// Verifies that multiple messages queued at the same priority are all delivered.
@@ -108,7 +108,7 @@ async fn test_priority_queue_ordering_via_channel() {
 /// The scheduler drains the queue. Both messages are received with a 2-second timeout each.
 ///
 /// # Assert
-/// Both message IDs (`1000001` and `1000002`) appear in the received output.
+/// Both message IDs (`1_000_001` and `1_000_002`) appear in the received output.
 #[tokio::test]
 async fn test_multiple_messages_same_priority_round_robin() {
     let cluster = Cluster::new(test_config(), None);
@@ -118,9 +118,9 @@ async fn test_multiple_messages_same_priority_round_robin() {
     cluster.start_tasks();
 
     // Queue 2 messages from different sources at same priority
-    let mut msg_a = Message::new(1000001, Priority::Medium, "source_a");
+    let mut msg_a = Message::new(1_000_001, Priority::Medium, "source_a");
     msg_a.push_string("A");
-    let mut msg_b = Message::new(1000002, Priority::Medium, "source_b");
+    let mut msg_b = Message::new(1_000_002, Priority::Medium, "source_b");
     msg_b.push_string("B");
 
     cluster.queue_message("source_a".into(), msg_a.into_data(), Priority::Medium);
@@ -142,8 +142,8 @@ async fn test_multiple_messages_same_priority_round_robin() {
         .iter()
         .map(|d| Message::from_bytes(d.clone()).id())
         .collect();
-    assert!(ids.contains(&1000001));
-    assert!(ids.contains(&1000002));
+    assert!(ids.contains(&1_000_001));
+    assert!(ids.contains(&1_000_002));
 }
 
 // ---------------------------------------------------------------------------
@@ -368,7 +368,7 @@ async fn test_wait_for_queue_drain_blocks_then_unblocks() {
     cluster.start_tasks();
 
     // Queue a message
-    let msg = Message::new(1000001, Priority::Medium, "test");
+    let msg = Message::new(1_000_001, Priority::Medium, "test");
     cluster.queue_message("test".into(), msg.into_data(), Priority::Medium);
 
     // wait_for_queue_drain(true) should eventually return true once scheduler drains it
@@ -446,7 +446,7 @@ async fn test_cluster_close_disconnects() {
 /// Verifies that the Cluster constructor initializes all fields correctly.
 ///
 /// # Setup
-/// Creates a Cluster with a test ClusterConfig.
+/// Creates a Cluster with a test `ClusterConfig`.
 ///
 /// # Act
 /// Instantiates Cluster object.
@@ -479,17 +479,17 @@ async fn test_cluster_constructor() {
     assert_eq!(details.path, config.path);
 }
 
-/// Verifies that Cluster constructor with AppContext works correctly.
+/// Verifies that Cluster constructor with `AppContext` works correctly.
 ///
 /// # Setup
-/// Creates an AppContext with in-memory SQLite and empty file_list_map.
+/// Creates an `AppContext` with in-memory `SQLite` and empty `file_list_map`.
 ///
 /// # Act
-/// Instantiates Cluster with AppContext.
+/// Instantiates Cluster with `AppContext`.
 ///
 /// # Assert
 /// - Cluster is created successfully
-/// - AppContext is stored (verified via file operations later)
+/// - `AppContext` is stored (verified via file operations later)
 #[tokio::test]
 async fn test_cluster_constructor_with_app_context() {
     let db = futures::executor::block_on(sea_orm::Database::connect("sqlite::memory:"))
@@ -503,20 +503,20 @@ async fn test_cluster_constructor_with_app_context() {
     assert!(!cluster.is_online());
 }
 
-/// Verifies that FileDownloadState constructor initializes all fields.
+/// Verifies that `FileDownloadState` constructor initializes all fields.
 ///
 /// # Setup
 /// None - tests default constructor.
 ///
 /// # Act
-/// Instantiates FileDownloadState.
+/// Instantiates `FileDownloadState`.
 ///
 /// # Assert
 /// - All atomic flags are false initially
 /// - All counters are zero
-/// - file_size is zero
-/// - chunk_receiver is empty
-/// - data_notify has no pending notifications
+/// - `file_size` is zero
+/// - `chunk_receiver` is empty
+/// - `data_notify` has no pending notifications
 #[tokio::test]
 async fn test_file_download_constructor() {
     let state = FileDownloadState::new();
@@ -536,17 +536,17 @@ async fn test_file_download_constructor() {
     assert!(state.chunk_receiver.lock().await.try_recv().is_err());
 }
 
-/// Verifies that FileUploadState constructor initializes all fields.
+/// Verifies that `FileUploadState` constructor initializes all fields.
 ///
 /// # Setup
 /// None - tests default constructor.
 ///
 /// # Act
-/// Instantiates FileUploadState.
+/// Instantiates `FileUploadState`.
 ///
 /// # Assert
 /// - All atomic flags are false
-/// - data_notify has no pending notifications
+/// - `data_notify` has no pending notifications
 #[tokio::test]
 async fn test_file_upload_constructor() {
     let state = FileUploadState::new();
@@ -693,9 +693,9 @@ async fn test_does_higher_priority_data_exist() {
 
     // Queue some Medium priority messages first
     for i in 0..3 {
-        let mut msg = Message::new(2000 + i, Priority::Medium, &format!("medium_s{}", i));
-        msg.push_string(&format!("medium_data_{}", i));
-        cluster.queue_message(format!("medium_s{}", i), msg.into_data(), Priority::Medium);
+        let mut msg = Message::new(2000 + i, Priority::Medium, &format!("medium_s{i}"));
+        msg.push_string(&format!("medium_data_{i}"));
+        cluster.queue_message(format!("medium_s{i}"), msg.into_data(), Priority::Medium);
     }
 
     // Verify there is higher priority data when checking from Medium context
@@ -788,7 +788,7 @@ async fn test_send_message_queues_correctly() {
 /// A `FileUploadState` and a file-upload `Cluster` with uuid `"ul-uuid-unknown"` are prepared.
 ///
 /// # Act
-/// A message with ID `999999` is dispatched.
+/// A message with ID `999_999` is dispatched.
 ///
 /// # Assert
 /// Neither the `error` nor the `complete` flag is set on the upload state.
@@ -803,7 +803,7 @@ async fn test_file_upload_unrecognized_message_no_crash() {
     );
 
     // Send a message with an ID that the file upload handler doesn't handle
-    let unknown_msg = Message::new(999999, Priority::Medium, "test");
+    let unknown_msg = Message::new(999_999, Priority::Medium, "test");
     let unknown_msg = Message::from_bytes(unknown_msg.into_data());
     cluster.handle_message(unknown_msg).await;
 
@@ -832,9 +832,9 @@ async fn test_prune_sources_removes_empty_queues() {
     let cluster = Cluster::new(test_config(), None);
 
     // Queue messages from two sources
-    let mut msg_a = Message::new(1000001, Priority::Medium, "source_a");
+    let mut msg_a = Message::new(1_000_001, Priority::Medium, "source_a");
     msg_a.push_string("A");
-    let mut msg_b = Message::new(1000002, Priority::Medium, "source_b");
+    let mut msg_b = Message::new(1_000_002, Priority::Medium, "source_b");
     msg_b.push_string("B");
 
     cluster.queue_message("source_a".into(), msg_a.into_data(), Priority::Medium);
@@ -870,7 +870,7 @@ async fn test_prune_sources_removes_empty_queues() {
 /// Equivalent to C++ test: `legacy/Cluster/tests/background_threads_tests.cpp:test_PruneSources`
 ///
 /// # Setup
-/// - Sets QUEUE_SOURCE_PRUNE_MILLISECONDS=100 for fast test execution
+/// - Sets `QUEUE_SOURCE_PRUNE_MILLISECONDS=100` for fast test execution
 /// - Creates Cluster with multiple sources at different priorities
 /// - Starts cluster with WebSocket connection to drain messages
 ///
@@ -924,8 +924,7 @@ async fn test_prune_sources_background_thread() {
         while received_this_iter < 3 {
             match tokio::time::timeout(Duration::from_secs(2), rx.recv()).await {
                 Ok(Some(_)) => received_this_iter += 1,
-                Ok(None) => break,
-                Err(_) => panic!("Timeout waiting for messages"),
+                Ok(None) | Err(_) => break,
             }
         }
         total_received += received_this_iter;

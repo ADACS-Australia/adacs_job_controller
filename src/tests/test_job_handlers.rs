@@ -1,8 +1,8 @@
 //! Comprehensive tests for job HTTP handlers.
 //!
-//! All tests use a real SQLite in-memory database so the full business logic
+//! All tests use a real `SQLite` in-memory database so the full business logic
 //! (DB inserts, state machine transitions, WS message dispatch) is exercised.
-//! Cluster interactions are mocked via MockClusterTrait / MockClusterManagerTrait.
+//! Cluster interactions are mocked via `MockClusterTrait` / `MockClusterManagerTrait`.
 
 mod common;
 
@@ -73,7 +73,7 @@ fn offline_cluster() -> MockClusterTrait {
 ///
 /// # Assert
 /// Verifies 200 OK, job row in DB, PENDING + SUBMITTING history entries,
-/// and exactly one SUBMIT_JOB WS message containing the new job ID.
+/// and exactly one `SUBMIT_JOB` WS message containing the new job ID.
 #[tokio::test]
 async fn test_create_job_cluster_online_inserts_and_submits() {
     let db = setup_test_db().await;
@@ -144,14 +144,14 @@ async fn test_create_job_cluster_online_inserts_and_submits() {
     assert_eq!(msgs.len(), 1);
     let mut sent_msg = Message::from_bytes(msgs[0].clone().into_data());
     assert_eq!(sent_msg.id(), SUBMIT_JOB);
-    let sent_job_id = sent_msg.pop_uint() as i64;
+    let sent_job_id = i64::from(sent_msg.pop_uint());
     assert_eq!(sent_job_id, job_id);
 }
 
 /// Tests that creating a job when the cluster is offline stores only a PENDING history entry.
 ///
 /// # Setup
-/// Wires an offline cluster (is_online = false).
+/// Wires an offline cluster (`is_online` = false).
 ///
 /// # Act
 /// Sends POST /job/apiv1/job/ with valid auth.
@@ -212,7 +212,7 @@ async fn test_create_job_cluster_offline_only_pending_no_ws_message() {
 /// Wires a manager that returns no cluster. Token authorises "ozstar" and "nci" only.
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with cluster "unknown_cluster".
+/// Sends POST /job/apiv1/job/ with cluster "`unknown_cluster`".
 ///
 /// # Assert
 /// Verifies 400 Bad Request with body containing "does not have access".
@@ -336,7 +336,7 @@ async fn test_cancel_job_pending_directly_cancelled_no_ws() {
     assert!(sent.lock().unwrap().is_empty());
 }
 
-/// Tests that cancelling a SUBMITTING job transitions it to Cancelling and sends CANCEL_JOB.
+/// Tests that cancelling a SUBMITTING job transitions it to Cancelling and sends `CANCEL_JOB`.
 ///
 /// # Setup
 /// Inserts a job with PENDING → SUBMITTING history.
@@ -345,7 +345,7 @@ async fn test_cancel_job_pending_directly_cancelled_no_ws() {
 /// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
 ///
 /// # Assert
-/// Verifies 200 OK, latest history state is Cancelling, and a CANCEL_JOB WS message
+/// Verifies 200 OK, latest history state is Cancelling, and a `CANCEL_JOB` WS message
 /// containing the job ID was sent.
 #[tokio::test]
 async fn test_cancel_job_submitting_sends_cancel_ws_message() {
@@ -374,10 +374,10 @@ async fn test_cancel_job_submitting_sends_cancel_ws_message() {
     assert_eq!(msgs.len(), 1);
     let mut m = Message::from_bytes(msgs[0].clone().into_data());
     assert_eq!(m.id(), CANCEL_JOB);
-    assert_eq!(m.pop_uint() as i64, job_id);
+    assert_eq!(i64::from(m.pop_uint()), job_id);
 }
 
-/// Tests that cancelling a RUNNING job sends a CANCEL_JOB WS message.
+/// Tests that cancelling a RUNNING job sends a `CANCEL_JOB` WS message.
 ///
 /// # Setup
 /// Inserts a job with a RUNNING history entry.
@@ -386,7 +386,7 @@ async fn test_cancel_job_submitting_sends_cancel_ws_message() {
 /// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
 ///
 /// # Assert
-/// Verifies 200 OK and exactly one CANCEL_JOB WS message sent.
+/// Verifies 200 OK and exactly one `CANCEL_JOB` WS message sent.
 #[tokio::test]
 async fn test_cancel_job_running_sends_cancel_ws_message() {
     let db = setup_test_db().await;
@@ -464,10 +464,10 @@ async fn test_cancel_job_completed_returns_400() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
-/// Tests that cancelling a WallTimeExceeded job returns 400 Bad Request.
+/// Tests that cancelling a `WallTimeExceeded` job returns 400 Bad Request.
 ///
 /// # Setup
-/// Inserts a job with a WallTimeExceeded history entry.
+/// Inserts a job with a `WallTimeExceeded` history entry.
 ///
 /// # Act
 /// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
@@ -483,10 +483,10 @@ async fn test_cancel_job_wall_time_exceeded_returns_400() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
-/// Tests that cancelling an OutOfMemory job returns 400 Bad Request.
+/// Tests that cancelling an `OutOfMemory` job returns 400 Bad Request.
 ///
 /// # Setup
-/// Inserts a job with an OutOfMemory history entry.
+/// Inserts a job with an `OutOfMemory` history entry.
 ///
 /// # Act
 /// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
@@ -685,7 +685,7 @@ async fn test_delete_job_pending_directly_deleted_no_ws() {
     assert!(sent.lock().unwrap().is_empty());
 }
 
-/// Tests that deleting a Cancelled job transitions it to Deleting and sends DELETE_JOB.
+/// Tests that deleting a Cancelled job transitions it to Deleting and sends `DELETE_JOB`.
 ///
 /// # Setup
 /// Inserts a job with a Cancelled history entry.
@@ -694,7 +694,7 @@ async fn test_delete_job_pending_directly_deleted_no_ws() {
 /// Sends DELETE /job/apiv1/job/ with the job ID.
 ///
 /// # Assert
-/// Verifies 200 OK, latest history state is Deleting, and a DELETE_JOB WS message
+/// Verifies 200 OK, latest history state is Deleting, and a `DELETE_JOB` WS message
 /// containing the job ID was sent.
 #[tokio::test]
 async fn test_delete_job_cancelled_sends_delete_ws_message() {
@@ -720,10 +720,10 @@ async fn test_delete_job_cancelled_sends_delete_ws_message() {
     assert_eq!(msgs.len(), 1);
     let mut m = Message::from_bytes(msgs[0].clone().into_data());
     assert_eq!(m.id(), DELETE_JOB);
-    assert_eq!(m.pop_uint() as i64, job_id);
+    assert_eq!(i64::from(m.pop_uint()), job_id);
 }
 
-/// Tests that deleting a Completed job sends a DELETE_JOB WS message.
+/// Tests that deleting a Completed job sends a `DELETE_JOB` WS message.
 ///
 /// # Setup
 /// Inserts a job with a Completed history entry.
@@ -732,7 +732,7 @@ async fn test_delete_job_cancelled_sends_delete_ws_message() {
 /// Sends DELETE /job/apiv1/job/ with the job ID.
 ///
 /// # Assert
-/// Verifies 200 OK and exactly one DELETE_JOB WS message sent.
+/// Verifies 200 OK and exactly one `DELETE_JOB` WS message sent.
 #[tokio::test]
 async fn test_delete_job_completed_sends_delete_ws_message() {
     let db = setup_test_db().await;
@@ -746,7 +746,7 @@ async fn test_delete_job_completed_sends_delete_ws_message() {
     assert_eq!(sent.lock().unwrap().len(), 1);
 }
 
-/// Tests that deleting an Error-state job sends a DELETE_JOB WS message.
+/// Tests that deleting an Error-state job sends a `DELETE_JOB` WS message.
 ///
 /// # Setup
 /// Inserts a job with an Error history entry.
@@ -755,7 +755,7 @@ async fn test_delete_job_completed_sends_delete_ws_message() {
 /// Sends DELETE /job/apiv1/job/ with the job ID.
 ///
 /// # Assert
-/// Verifies 200 OK and exactly one DELETE_JOB WS message sent.
+/// Verifies 200 OK and exactly one `DELETE_JOB` WS message sent.
 #[tokio::test]
 async fn test_delete_job_error_sends_delete_ws_message() {
     let db = setup_test_db().await;
@@ -911,13 +911,13 @@ async fn test_delete_job_already_deleted_returns_400() {
 /// excluding jobs from other applications.
 ///
 /// # Setup
-/// Inserts two jobs for "testapp" and one for "other_app".
+/// Inserts two jobs for "testapp" and one for "`other_app`".
 ///
 /// # Act
 /// Sends GET /job/apiv1/job/ with a valid token for "testapp".
 ///
 /// # Assert
-/// Verifies 200 OK, exactly 2 jobs returned, and the "other_app" job is absent.
+/// Verifies 200 OK, exactly 2 jobs returned, and the "`other_app`" job is absent.
 #[tokio::test]
 async fn test_get_jobs_returns_all_application_jobs() {
     let db = setup_test_db().await;
@@ -1147,7 +1147,7 @@ async fn get_jobs_with_query(db: sea_orm::DatabaseConnection, query: &str) -> se
     .unwrap()
 }
 
-/// Tests that startTimeGt includes only jobs whose first SYSTEM_SOURCE entry is after the cutoff.
+/// Tests that startTimeGt includes only jobs whose first `SYSTEM_SOURCE` entry is after the cutoff.
 ///
 /// # Setup
 /// Inserts job1 (PENDING at t=100) and job2 (PENDING at t=1000). Cutoff is 500.
@@ -1181,7 +1181,7 @@ async fn test_get_jobs_start_time_gt_includes_jobs_started_after_cutoff() {
     assert_eq!(jobs[0]["id"].as_i64().unwrap(), job2);
 }
 
-/// Tests that startTimeLt includes only jobs whose first SYSTEM_SOURCE entry is before the cutoff.
+/// Tests that startTimeLt includes only jobs whose first `SYSTEM_SOURCE` entry is before the cutoff.
 ///
 /// # Setup
 /// Inserts job1 (PENDING at t=100) and job2 (PENDING at t=1000). Cutoff is 500.
@@ -1445,10 +1445,10 @@ async fn test_get_jobs_job_ids_filter_excludes_non_matching() {
     assert!(ids.contains(&job3));
 }
 
-/// Tests that startTimeGt uses only SYSTEM_SOURCE history entries, ignoring cluster-source entries.
+/// Tests that startTimeGt uses only `SYSTEM_SOURCE` history entries, ignoring cluster-source entries.
 ///
 /// # Setup
-/// Inserts job1 with a SYSTEM_SOURCE PENDING at t=100 and a cluster-source RUNNING at t=800.
+/// Inserts job1 with a `SYSTEM_SOURCE` PENDING at t=100 and a cluster-source RUNNING at t=800.
 ///
 /// # Act
 /// Sends GET /job/apiv1/job/?startTimeGt=500 (job1's system entry is at t=100, before cutoff),

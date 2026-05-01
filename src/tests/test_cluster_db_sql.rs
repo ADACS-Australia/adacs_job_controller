@@ -1,7 +1,7 @@
-//! SQLite-backed integration tests for the ClusterDB SQL handlers.
+//! SQLite-backed integration tests for the `ClusterDB` SQL handlers.
 //!
-//! Each test creates a fresh in-memory SQLite pool, sets up the cluster-specific
-//! schema, and verifies BOTH the resulting DB state AND the DB_RESPONSE message
+//! Each test creates a fresh in-memory `SQLite` pool, sets up the cluster-specific
+//! schema, and verifies BOTH the resulting DB state AND the `DB_RESPONSE` message
 //! content for every handler in `cluster_db.rs`.
 
 mod common;
@@ -66,7 +66,7 @@ fn dispatch_message(id: u32, push: impl FnOnce(&mut Message)) -> Message {
     Message::from_bytes(msg.into_data())
 }
 
-/// Parse a DB_RESPONSE message: round-trip to reset read position, then pop db_request_id.
+/// Parse a `DB_RESPONSE` message: round-trip to reset read position, then pop `db_request_id`.
 fn parse_response(msg: Message) -> (u32, Message) {
     let mut parsed = Message::from_bytes(msg.into_data());
     assert_eq!(parsed.id(), DB_RESPONSE);
@@ -78,18 +78,18 @@ fn parse_response(msg: Message) -> (u32, Message) {
 // DB_JOB_SAVE — insert (id == 0)
 // ---------------------------------------------------------------------------
 
-/// Verifies that a DB_JOB_SAVE message with id=0 inserts a new cluster job row and responds with the assigned row id.
+/// Verifies that a `DB_JOB_SAVE` message with id=0 inserts a new cluster job row and responds with the assigned row id.
 ///
 /// # Setup
-/// Empty in-memory DB with cluster job schema; `ClusterJob` with id=0, job_id=42, submitting=true,
-/// bundle_hash="hash_abc", and working_directory="/work/dir".
+/// Empty in-memory DB with cluster job schema; `ClusterJob` with id=0, `job_id=42`, submitting=true,
+/// `bundle_hash="hash_abc`", and `working_directory="/work/dir`".
 ///
 /// # Act
-/// Dispatch a `DB_JOB_SAVE` message with db_request_id=100 and the `ClusterJob` payload.
+/// Dispatch a `DB_JOB_SAVE` message with `db_request_id=100` and the `ClusterJob` payload.
 ///
 /// # Assert
 /// A new row exists in `cluster_job` with the correct field values; the `DB_RESPONSE`
-/// contains db_request_id=100 and the assigned row id.
+/// contains `db_request_id=100` and the assigned row id.
 #[tokio::test]
 async fn test_handle_job_save_insert() {
     let db = make_db().await;
@@ -149,8 +149,7 @@ async fn test_handle_job_save_insert() {
     // SeaORM with SQLite returns the real id
     assert!(
         returned_id == 0 || returned_id == db_id as u64,
-        "returned_id should be 0 (SQLite) or db_id, got {}",
-        returned_id
+        "returned_id should be 0 (SQLite) or db_id, got {returned_id}"
     );
 }
 
@@ -158,18 +157,18 @@ async fn test_handle_job_save_insert() {
 // DB_JOB_SAVE — update (id != 0)
 // ---------------------------------------------------------------------------
 
-/// Verifies that a DB_JOB_SAVE message with a non-zero id updates the existing cluster job row.
+/// Verifies that a `DB_JOB_SAVE` message with a non-zero id updates the existing cluster job row.
 ///
 /// # Setup
 /// In-memory DB with one pre-inserted cluster job row; `ClusterJob` carries the existing id
-/// with updated fields (scheduler_id=99, bundle_hash="newhash", running=true).
+/// with updated fields (`scheduler_id=99`, `bundle_hash="newhash`", running=true).
 ///
 /// # Act
-/// Dispatch a `DB_JOB_SAVE` message with db_request_id=200 and the updated `ClusterJob` payload.
+/// Dispatch a `DB_JOB_SAVE` message with `db_request_id=200` and the updated `ClusterJob` payload.
 ///
 /// # Assert
 /// The existing row reflects the updated field values; the `DB_RESPONSE` contains
-/// db_request_id=200 and the existing row id.
+/// `db_request_id=200` and the existing row id.
 #[tokio::test]
 async fn test_handle_job_save_update() {
     let db = make_db().await;
@@ -242,17 +241,17 @@ async fn test_handle_job_save_update() {
 // DB_JOB_GET_BY_ID — found
 // ---------------------------------------------------------------------------
 
-/// Verifies that a DB_JOB_GET_BY_ID message returns the matching cluster job row when it exists.
+/// Verifies that a `DB_JOB_GET_BY_ID` message returns the matching cluster job row when it exists.
 ///
 /// # Setup
-/// In-memory DB with one pre-inserted cluster job row (job_id=55, scheduler_id=7,
-/// submitting=true, submitting_count=3, bundle_hash="myhash", running=true).
+/// In-memory DB with one pre-inserted cluster job row (`job_id=55`, `scheduler_id=7`,
+/// submitting=true, `submitting_count=3`, `bundle_hash="myhash`", running=true).
 ///
 /// # Act
-/// Dispatch a `DB_JOB_GET_BY_ID` message with db_request_id=301 and the row's id.
+/// Dispatch a `DB_JOB_GET_BY_ID` message with `db_request_id=301` and the row's id.
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=301, count=1, and a `ClusterJob` with all
+/// The `DB_RESPONSE` contains `db_request_id=301`, count=1, and a `ClusterJob` with all
 /// fields matching the inserted row.
 #[tokio::test]
 async fn test_handle_job_get_by_id_found() {
@@ -308,16 +307,16 @@ async fn test_handle_job_get_by_id_found() {
 // DB_JOB_GET_BY_ID — not found
 // ---------------------------------------------------------------------------
 
-/// Verifies that a DB_JOB_GET_BY_ID message returns count=0 when no matching row exists.
+/// Verifies that a `DB_JOB_GET_BY_ID` message returns count=0 when no matching row exists.
 ///
 /// # Setup
 /// Empty in-memory DB with cluster job schema.
 ///
 /// # Act
-/// Dispatch a `DB_JOB_GET_BY_ID` message with db_request_id=302 and non-existent id=99999.
+/// Dispatch a `DB_JOB_GET_BY_ID` message with `db_request_id=302` and non-existent id=99999.
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=302 and count=0.
+/// The `DB_RESPONSE` contains `db_request_id=302` and count=0.
 #[tokio::test]
 async fn test_handle_job_get_by_id_not_found() {
     let db = make_db().await;
@@ -342,16 +341,16 @@ async fn test_handle_job_get_by_id_not_found() {
 // DB_JOB_GET_BY_JOB_ID — found
 // ---------------------------------------------------------------------------
 
-/// Verifies that a DB_JOB_GET_BY_JOB_ID message returns matching rows for the given job_id.
+/// Verifies that a `DB_JOB_GET_BY_JOB_ID` message returns matching rows for the given `job_id`.
 ///
 /// # Setup
-/// In-memory DB with one cluster job row with job_id=77.
+/// In-memory DB with one cluster job row with `job_id=77`.
 ///
 /// # Act
-/// Dispatch a `DB_JOB_GET_BY_JOB_ID` message with db_request_id=400 and job_id=77.
+/// Dispatch a `DB_JOB_GET_BY_JOB_ID` message with `db_request_id=400` and `job_id=77`.
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=400, count=1, and a `ClusterJob` with job_id=77.
+/// The `DB_RESPONSE` contains `db_request_id=400`, `count=1`, and a `ClusterJob` with `job_id=77`.
 #[tokio::test]
 async fn test_handle_job_get_by_job_id_found() {
     let db = make_db().await;
@@ -396,18 +395,18 @@ async fn test_handle_job_get_by_job_id_found() {
 // DB_JOB_GET_RUNNING_JOBS — mixed running/non-running
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_JOB_GET_RUNNING_JOBS returns only running jobs belonging to the calling cluster.
+/// Verifies that `DB_JOB_GET_RUNNING_JOBS` returns only running jobs belonging to the calling cluster.
 ///
 /// # Setup
 /// In-memory DB with three rows: one running job for "ozstar", one non-running job for
 /// "ozstar", and one running job for "nci".
 ///
 /// # Act
-/// Dispatch a `DB_JOB_GET_RUNNING_JOBS` message with db_request_id=500 from cluster "ozstar".
+/// Dispatch a `DB_JOB_GET_RUNNING_JOBS` message with `db_request_id=500` from cluster "ozstar".
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=500, count=1, and the single running ozstar
-/// job (job_id=1).
+/// The `DB_RESPONSE` contains `db_request_id=500`, count=1, and the single running ozstar
+/// job (`job_id=1`).
 #[tokio::test]
 async fn test_handle_job_get_running_jobs() {
     let db = make_db().await;
@@ -459,16 +458,16 @@ async fn test_handle_job_get_running_jobs() {
 // DB_JOB_DELETE
 // ---------------------------------------------------------------------------
 
-/// Verifies that a DB_JOB_DELETE message removes the specified cluster job row from the database.
+/// Verifies that a `DB_JOB_DELETE` message removes the specified cluster job row from the database.
 ///
 /// # Setup
-/// In-memory DB with one pre-inserted cluster job row (job_id=88).
+/// In-memory DB with one pre-inserted cluster job row (`job_id=88`).
 ///
 /// # Act
-/// Dispatch a `DB_JOB_DELETE` message with db_request_id=600 and the row's id.
+/// Dispatch a `DB_JOB_DELETE` message with `db_request_id=600` and the row's id.
 ///
 /// # Assert
-/// No row with the given id remains in `cluster_job`; the `DB_RESPONSE` echoes db_request_id=600.
+/// No row with the given id remains in `cluster_job`; the `DB_RESPONSE` echoes `db_request_id=600`.
 #[tokio::test]
 async fn test_handle_job_delete() {
     let db = make_db().await;
@@ -517,18 +516,18 @@ async fn test_handle_job_delete() {
 // DB_JOBSTATUS_SAVE — insert
 // ---------------------------------------------------------------------------
 
-/// Verifies that a DB_JOBSTATUS_SAVE message with id=0 creates a new cluster job status row.
+/// Verifies that a `DB_JOBSTATUS_SAVE` message with id=0 creates a new cluster job status row.
 ///
 /// # Setup
 /// Empty in-memory DB with cluster job status schema; `ClusterJobStatus` with id=0,
-/// job_id=42, what="scheduler_id", state=500.
+/// `job_id=42`, `what="scheduler_id`", state=500.
 ///
 /// # Act
-/// Dispatch a `DB_JOBSTATUS_SAVE` message with db_request_id=700 and the `ClusterJobStatus` payload.
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=700` and the `ClusterJobStatus` payload.
 ///
 /// # Assert
 /// A new row exists in `cluster_job_status` with the correct field values; the `DB_RESPONSE`
-/// contains db_request_id=700 and the assigned row id.
+/// contains `db_request_id=700` and the assigned row id.
 #[tokio::test]
 async fn test_handle_jobstatus_save_insert() {
     let db = make_db().await;
@@ -579,18 +578,18 @@ async fn test_handle_jobstatus_save_insert() {
 // DB_JOBSTATUS_SAVE — update
 // ---------------------------------------------------------------------------
 
-/// Verifies that a DB_JOBSTATUS_SAVE message with a non-zero id updates the existing job status row.
+/// Verifies that a `DB_JOBSTATUS_SAVE` message with a non-zero id updates the existing job status row.
 ///
 /// # Setup
-/// In-memory DB with one pre-inserted cluster job status row (what="old_what", state=1);
-/// `ClusterJobStatus` updated to what="new_what", state=999.
+/// In-memory DB with one pre-inserted cluster job status row (`what="old_what`", state=1);
+/// `ClusterJobStatus` updated to `what="new_what`", state=999.
 ///
 /// # Act
-/// Dispatch a `DB_JOBSTATUS_SAVE` message with db_request_id=701 and the updated payload.
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=701` and the updated payload.
 ///
 /// # Assert
 /// The existing row reflects the updated field values; the `DB_RESPONSE` contains
-/// db_request_id=701 and the existing row id.
+/// `db_request_id=701` and the existing row id.
 #[tokio::test]
 async fn test_handle_jobstatus_save_update() {
     let db = make_db().await;
@@ -643,17 +642,17 @@ async fn test_handle_jobstatus_save_update() {
 // DB_JOBSTATUS_GET_BY_JOB_ID
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_JOBSTATUS_GET_BY_JOB_ID returns all status rows for the specified job_id.
+/// Verifies that `DB_JOBSTATUS_GET_BY_JOB_ID` returns all status rows for the specified `job_id`.
 ///
 /// # Setup
-/// In-memory DB with three status rows: two for job_id=20 (what="a", "b") and one for
-/// job_id=21 (what="c").
+/// In-memory DB with three status rows: two for `job_id=20` (what="a", "b") and one for
+/// `job_id=21` (what="c").
 ///
 /// # Act
-/// Dispatch a `DB_JOBSTATUS_GET_BY_JOB_ID` message with db_request_id=800 and job_id=20.
+/// Dispatch a `DB_JOBSTATUS_GET_BY_JOB_ID` message with `db_request_id=800` and `job_id=20`.
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=800, count=2, and two rows both with job_id=20
+/// The `DB_RESPONSE` contains `db_request_id=800`, count=2, and two rows both with `job_id=20`
 /// and whats "a" and "b".
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id() {
@@ -700,19 +699,19 @@ async fn test_handle_jobstatus_get_by_job_id() {
 // DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT returns only the status row matching both job_id and what.
+/// Verifies that `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` returns only the status row matching both `job_id` and what.
 ///
 /// # Setup
-/// In-memory DB with three status rows: two for job_id=30 (what="cpu_time", "wall_time")
-/// and one for job_id=31 (what="cpu_time").
+/// In-memory DB with three status rows: two for `job_id=30` (`what="cpu_time`", "`wall_time`")
+/// and one for `job_id=31` (`what="cpu_time`").
 ///
 /// # Act
-/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` with db_request_id=900, job_id=30,
-/// and what="cpu_time".
+/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` with `db_request_id=900`, `job_id=30`,
+/// and `what="cpu_time`".
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=900, count=1, and the single status row
-/// with job_id=30, what="cpu_time", state=42.
+/// The `DB_RESPONSE` contains `db_request_id=900`, count=1, and the single status row
+/// with `job_id=30`, `what="cpu_time`", state=42.
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_and_what() {
     let db = make_db().await;
@@ -759,18 +758,18 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
 // DB_JOBSTATUS_DELETE_BY_ID_LIST
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_JOBSTATUS_DELETE_BY_ID_LIST removes exactly the specified status rows by id.
+/// Verifies that `DB_JOBSTATUS_DELETE_BY_ID_LIST` removes exactly the specified status rows by id.
 ///
 /// # Setup
-/// In-memory DB with four status rows (what: "a", "b", "c", "d") all for job_id=1.
+/// In-memory DB with four status rows (what: "a", "b", "c", "d") all for `job_id=1`.
 ///
 /// # Act
-/// Dispatch `DB_JOBSTATUS_DELETE_BY_ID_LIST` with db_request_id=1000 and the ids of rows
+/// Dispatch `DB_JOBSTATUS_DELETE_BY_ID_LIST` with `db_request_id=1000` and the ids of rows
 /// "a" and "c".
 ///
 /// # Assert
 /// Only rows "b" and "d" remain in `cluster_job_status`; the `DB_RESPONSE` echoes
-/// db_request_id=1000.
+/// `db_request_id=1000`.
 #[tokio::test]
 async fn test_handle_jobstatus_delete_by_id_list() {
     let db = make_db().await;
@@ -821,19 +820,19 @@ async fn test_handle_jobstatus_delete_by_id_list() {
 // DB_BUNDLE_CREATE_OR_UPDATE_JOB — new bundle
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_BUNDLE_CREATE_OR_UPDATE_JOB creates a new bundle row when no row with the given hash exists.
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` creates a new bundle row when no row with the given hash exists.
 ///
 /// # Setup
 /// Empty in-memory DB with bundle job schema; `BundleJob` with id=0 and
 /// content=`{"script":"run.sh"}`.
 ///
 /// # Act
-/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with db_request_id=1100, the `BundleJob`
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with `db_request_id=1100`, the `BundleJob`
 /// payload, and hash="myhash".
 ///
 /// # Assert
 /// A new row exists in `bundle_job` with the correct content, cluster="ozstar", and
-/// bundle_hash="myhash"; the `DB_RESPONSE` contains db_request_id=1100.
+/// `bundle_hash="myhash`"; the `DB_RESPONSE` contains `db_request_id=1100`.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_new() {
     let db = make_db().await;
@@ -885,19 +884,19 @@ async fn test_handle_bundle_create_or_update_new() {
 // DB_BUNDLE_CREATE_OR_UPDATE_JOB — existing bundle (update)
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_BUNDLE_CREATE_OR_UPDATE_JOB updates an existing bundle row when the hash matches.
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` updates an existing bundle row when the hash matches.
 ///
 /// # Setup
-/// In-memory DB with one pre-inserted bundle row (content="old", bundle_hash="samehash");
-/// updated `BundleJob` carries content="new_content".
+/// In-memory DB with one pre-inserted bundle row (content="old", `bundle_hash="samehash`");
+/// updated `BundleJob` carries `content="new_content`".
 ///
 /// # Act
-/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with db_request_id=1101, updated content,
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with `db_request_id=1101`, updated content,
 /// and hash="samehash".
 ///
 /// # Assert
-/// The existing row is updated to content="new_content"; no new row is created; the
-/// `DB_RESPONSE` contains db_request_id=1101 and the existing row id.
+/// The existing row is updated to `content="new_content`"; no new row is created; the
+/// `DB_RESPONSE` contains `db_request_id=1101` and the existing row id.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_existing() {
     let db = make_db().await;
@@ -953,17 +952,17 @@ async fn test_handle_bundle_create_or_update_existing() {
 // DB_BUNDLE_GET_JOB_BY_ID — found
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_BUNDLE_GET_JOB_BY_ID returns the matching bundle row when it exists.
+/// Verifies that `DB_BUNDLE_GET_JOB_BY_ID` returns the matching bundle row when it exists.
 ///
 /// # Setup
-/// In-memory DB with one pre-inserted bundle row (content="bundle_content",
-/// bundle_hash="xyz").
+/// In-memory DB with one pre-inserted bundle row (`content="bundle_content`",
+/// `bundle_hash="xyz`").
 ///
 /// # Act
-/// Dispatch `DB_BUNDLE_GET_JOB_BY_ID` with db_request_id=1200 and the bundle's id.
+/// Dispatch `DB_BUNDLE_GET_JOB_BY_ID` with `db_request_id=1200` and the bundle's id.
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=1200, count=1, and a `BundleJob` with
+/// The `DB_RESPONSE` contains `db_request_id=1200`, count=1, and a `BundleJob` with
 /// the correct id and content.
 #[tokio::test]
 async fn test_handle_bundle_get_by_id_found() {
@@ -1004,16 +1003,16 @@ async fn test_handle_bundle_get_by_id_found() {
 // DB_BUNDLE_GET_JOB_BY_ID — not found
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_BUNDLE_GET_JOB_BY_ID returns count=0 when no bundle matches the given id.
+/// Verifies that `DB_BUNDLE_GET_JOB_BY_ID` returns count=0 when no bundle matches the given id.
 ///
 /// # Setup
 /// Empty in-memory DB with bundle job schema.
 ///
 /// # Act
-/// Dispatch `DB_BUNDLE_GET_JOB_BY_ID` with db_request_id=1201 and non-existent id=99999.
+/// Dispatch `DB_BUNDLE_GET_JOB_BY_ID` with `db_request_id=1201` and non-existent id=99999.
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=1201 and count=0.
+/// The `DB_RESPONSE` contains `db_request_id=1201` and count=0.
 #[tokio::test]
 async fn test_handle_bundle_get_by_id_not_found() {
     let db = make_db().await;
@@ -1038,16 +1037,16 @@ async fn test_handle_bundle_get_by_id_not_found() {
 // DB_BUNDLE_DELETE_JOB
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_BUNDLE_DELETE_JOB removes the specified bundle row from the database.
+/// Verifies that `DB_BUNDLE_DELETE_JOB` removes the specified bundle row from the database.
 ///
 /// # Setup
 /// In-memory DB with one pre-inserted bundle row.
 ///
 /// # Act
-/// Dispatch `DB_BUNDLE_DELETE_JOB` with db_request_id=1300 and the bundle's id.
+/// Dispatch `DB_BUNDLE_DELETE_JOB` with `db_request_id=1300` and the bundle's id.
 ///
 /// # Assert
-/// No row with the given id remains in `bundle_job`; the `DB_RESPONSE` echoes db_request_id=1300.
+/// No row with the given id remains in `bundle_job`; the `DB_RESPONSE` echoes `db_request_id=1300`.
 #[tokio::test]
 async fn test_handle_bundle_delete() {
     let db = make_db().await;
@@ -1135,16 +1134,16 @@ async fn test_unhandled_message_returns_false() {
 // Equivalent behavior: test_db_job_status_get_by_job_id_invalid_job
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_JOBSTATUS_GET_BY_JOB_ID returns count=0 when the requested job_id does not exist.
+/// Verifies that `DB_JOBSTATUS_GET_BY_JOB_ID` returns count=0 when the requested `job_id` does not exist.
 ///
 /// # Setup
 /// In-memory DB with one real cluster job row; no status rows for the target job id exist.
 ///
 /// # Act
-/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID` with db_request_id=5001 and a non-existent job id.
+/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID` with `db_request_id=5001` and a non-existent job id.
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=5001 and count=0.
+/// The `DB_RESPONSE` contains `db_request_id=5001` and count=0.
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_nonexistent_job() {
     let db = make_db().await;
@@ -1191,18 +1190,18 @@ async fn test_handle_jobstatus_get_by_job_id_nonexistent_job() {
 // Equivalent behavior: test_db_job_status_get_by_job_id_and_what_invalid_job
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT returns count=0 when the job_id does not exist.
+/// Verifies that `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` returns count=0 when the `job_id` does not exist.
 ///
 /// # Setup
 /// In-memory DB with one real job row and one status row for that job; a different
 /// non-existent job id is queried.
 ///
 /// # Act
-/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` with db_request_id=5002, a non-existent
-/// job id, and what="cpu_time".
+/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` with `db_request_id=5002`, a non-existent
+/// job id, and `what="cpu_time`".
 ///
 /// # Assert
-/// The `DB_RESPONSE` contains db_request_id=5002 and count=0.
+/// The `DB_RESPONSE` contains `db_request_id=5002` and count=0.
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
     let db = make_db().await;
@@ -1262,18 +1261,18 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
 // Rust: no FK constraint, so the insert succeeds and returns the new row ID.
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_JOBSTATUS_SAVE succeeds even when the referenced job_id does not exist, because no FK constraint is enforced.
+/// Verifies that `DB_JOBSTATUS_SAVE` succeeds even when the referenced `job_id` does not exist, because no FK constraint is enforced.
 ///
 /// # Setup
 /// In-memory DB with one real cluster job row; a `ClusterJobStatus` references a
-/// non-existent job id (job_row_id + 999).
+/// non-existent job id (`job_row_id` + 999).
 ///
 /// # Act
-/// Dispatch `DB_JOBSTATUS_SAVE` with db_request_id=5003 and the orphan status payload.
+/// Dispatch `DB_JOBSTATUS_SAVE` with `db_request_id=5003` and the orphan status payload.
 ///
 /// # Assert
 /// The insert succeeds; the new status row is found in `cluster_job_status` with the
-/// non-existent job_id; the `DB_RESPONSE` echoes db_request_id=5003.
+/// non-existent `job_id`; the `DB_RESPONSE` echoes `db_request_id=5003`.
 #[tokio::test]
 async fn test_handle_jobstatus_save_nonexistent_job_fk() {
     let db = make_db().await;
@@ -1343,15 +1342,15 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
 // Rust: lookup by hash fails to find existing, so a new bundle is created.
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_BUNDLE_CREATE_OR_UPDATE_JOB creates a new bundle instead of updating when the hash does not match any existing row.
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` creates a new bundle instead of updating when the hash does not match any existing row.
 ///
 /// # Setup
-/// In-memory DB with one bundle row (bundle_hash="original_hash"); attempt to update
-/// using hash="different_hash".
+/// In-memory DB with one bundle row (`bundle_hash="original_hash`"); attempt to update
+/// using `hash="different_hash`".
 ///
 /// # Act
-/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with db_request_id=5004 and
-/// hash="different_hash".
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with `db_request_id=5004` and
+/// `hash="different_hash"`.
 ///
 /// # Assert
 /// A new bundle row is created (total count=2); the original bundle is unchanged;
@@ -1421,16 +1420,16 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
 // Rust: delete_by_id is silently ignored, no error response.
 // ---------------------------------------------------------------------------
 
-/// Verifies that DB_BUNDLE_DELETE_JOB is a no-op when the target id does not exist, leaving existing rows untouched.
+/// Verifies that `DB_BUNDLE_DELETE_JOB` is a no-op when the target id does not exist, leaving existing rows untouched.
 ///
 /// # Setup
-/// In-memory DB with one real bundle row (bundle_hash="keep_hash").
+/// In-memory DB with one real bundle row (`bundle_hash="keep_hash`").
 ///
 /// # Act
-/// Dispatch `DB_BUNDLE_DELETE_JOB` with db_request_id=5005 and non-existent id=99999.
+/// Dispatch `DB_BUNDLE_DELETE_JOB` with `db_request_id=5005` and non-existent id=99999.
 ///
 /// # Assert
-/// The existing bundle row is unaffected; the `DB_RESPONSE` echoes db_request_id=5005.
+/// The existing bundle row is unaffected; the `DB_RESPONSE` echoes `db_request_id=5005`.
 #[tokio::test]
 async fn test_handle_bundle_delete_nonexistent_is_noop() {
     let db = make_db().await;

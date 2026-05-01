@@ -209,7 +209,7 @@ mod tests {
         assert_eq!(env_or("__NONEXISTENT_TEST_VAR__", "fallback"), "fallback");
         assert_eq!(env_or_u16("__NONEXISTENT_TEST_VAR__", 42), 42);
         assert_eq!(env_or_u32("__NONEXISTENT_TEST_VAR__", 999), 999);
-        assert_eq!(env_or_u64("__NONEXISTENT_TEST_VAR__", 123456), 123456);
+        assert_eq!(env_or_u64("__NONEXISTENT_TEST_VAR__", 123_456), 123_456);
         assert!(!env_or_bool("__NONEXISTENT_TEST_VAR__", false));
     }
 }

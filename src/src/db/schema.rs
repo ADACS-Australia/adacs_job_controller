@@ -1,5 +1,9 @@
-/// Creates all HTTP-handler tables in an in-memory SQLite database for testing.
-/// ClusterDB tables are NOT created here — those are MySQL-only production concerns.
+/// Creates all HTTP-handler tables in an in-memory `SQLite` database for testing.
+/// `ClusterDB` tables are NOT created here — those are MySQL-only production concerns.
+///
+/// # Panics
+///
+/// Panics if the test schema table cannot be created.
 #[cfg(feature = "test-support")]
 #[allow(dead_code)]
 pub async fn create_test_schema(db: &sea_orm::DatabaseConnection) {

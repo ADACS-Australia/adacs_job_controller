@@ -44,14 +44,13 @@ where
 
         for secret in &secrets {
             let key = DecodingKey::from_secret(secret.secret.as_bytes());
-            match jsonwebtoken::decode::<serde_json::Value>(auth_header, &key, &validation) {
-                Ok(token_data) => {
-                    return Ok(AuthResult {
-                        payload: token_data.claims,
-                        secret: secret.clone(),
-                    });
-                }
-                Err(_) => continue,
+            if let Ok(token_data) =
+                jsonwebtoken::decode::<serde_json::Value>(auth_header, &key, &validation)
+            {
+                return Ok(AuthResult {
+                    payload: token_data.claims,
+                    secret: secret.clone(),
+                });
             }
         }
 

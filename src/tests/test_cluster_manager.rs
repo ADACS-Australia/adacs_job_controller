@@ -1,6 +1,6 @@
-//! Integration tests for ClusterManager.
+//! Integration tests for `ClusterManager`.
 //!
-//! Each test creates a fresh in-memory SQLite database and a real ClusterManager
+//! Each test creates a fresh in-memory `SQLite` database and a real `ClusterManager`
 //! instance to test connection lifecycle, token management, and cluster configuration.
 
 mod common;
@@ -98,10 +98,10 @@ fn make_manager(configs: Vec<ClusterConfig>, db: DatabaseConnection) -> Arc<Clus
 // Tests
 // ---------------------------------------------------------------------------
 
-/// Verifies that ClusterManager with empty config creates no clusters.
+/// Verifies that `ClusterManager` with empty config creates no clusters.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, then instantiate ClusterManager with an empty config list.
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with an empty config list.
 ///
 /// # Act
 /// Call `get_cluster_by_name` with an arbitrary cluster name.
@@ -118,10 +118,10 @@ async fn test_constructor_empty_config() {
     assert!(mgr.get_cluster_by_name("anything").is_none());
 }
 
-/// Verifies that ClusterManager correctly initializes clusters from a provided config list.
+/// Verifies that `ClusterManager` correctly initializes clusters from a provided config list.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, then instantiate ClusterManager with three cluster configs.
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with three cluster configs.
 ///
 /// # Act
 /// Call `get_cluster_by_name` for each configured cluster name and for a non-existent name.
@@ -138,15 +138,15 @@ async fn test_constructor_with_clusters() {
 
     // Each cluster should be findable by name
     for i in 1..=3 {
-        let name = format!("cluster{}", i);
+        let name = format!("cluster{i}");
         let cluster = mgr.get_cluster_by_name(&name);
-        assert!(cluster.is_some(), "cluster {} should exist", name);
+        assert!(cluster.is_some(), "cluster {name} should exist");
         let cluster = cluster.unwrap();
         assert_eq!(cluster.name(), name);
-        assert_eq!(cluster.cluster_details().host, format!("cluster{}.com", i));
-        assert_eq!(cluster.cluster_details().username, format!("user{}", i));
-        assert_eq!(cluster.cluster_details().path, format!("/cluster{}/", i));
-        assert_eq!(cluster.cluster_details().key, format!("cluster{}_key", i));
+        assert_eq!(cluster.cluster_details().host, format!("cluster{i}.com"));
+        assert_eq!(cluster.cluster_details().username, format!("user{i}"));
+        assert_eq!(cluster.cluster_details().path, format!("/cluster{i}/"));
+        assert_eq!(cluster.cluster_details().key, format!("cluster{i}_key"));
     }
 
     // Getting a non-existent cluster should return None
@@ -156,7 +156,7 @@ async fn test_constructor_with_clusters() {
 /// Verifies that looking up a cluster by an invalid connection ID returns `None`.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, then instantiate ClusterManager with three cluster configs.
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with three cluster configs.
 ///
 /// # Act
 /// Call `get_cluster_by_connection` with an invalid connection ID (999).
@@ -173,10 +173,10 @@ async fn test_get_cluster_by_connection() {
     assert!(mgr.get_cluster_by_connection(999).is_none());
 }
 
-/// Verifies that all clusters are initially offline after ClusterManager construction.
+/// Verifies that all clusters are initially offline after `ClusterManager` construction.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, then instantiate ClusterManager with three cluster configs.
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with three cluster configs.
 ///
 /// # Act
 /// Call `is_cluster_online` on each configured cluster.
@@ -190,7 +190,7 @@ async fn test_is_cluster_online_initially_offline() {
     let mgr = make_manager(three_cluster_configs(), db);
 
     for i in 1..=3 {
-        let name = format!("cluster{}", i);
+        let name = format!("cluster{i}");
         let cluster = mgr.get_cluster_by_name(&name).unwrap();
         assert!(!mgr.is_cluster_online(cluster.as_ref()));
     }
@@ -199,7 +199,7 @@ async fn test_is_cluster_online_initially_offline() {
 /// Verifies that `reconnect_clusters` inserts one UUID token per offline cluster.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, then instantiate ClusterManager with three cluster configs. Confirm no UUIDs exist initially.
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with three cluster configs. Confirm no UUIDs exist initially.
 ///
 /// # Act
 /// Call `reconnect_clusters`.
@@ -223,7 +223,7 @@ async fn test_reconnect_clusters_inserts_uuids() {
 /// Verifies that `reconnect_clusters` does not insert a UUID for an already-connected cluster.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, connect cluster2 via `handle_new_connection`, then clear all UUID rows.
+/// Create an in-memory `SQLite` database and UUID table, connect cluster2 via `handle_new_connection`, then clear all UUID rows.
 ///
 /// # Act
 /// Call `reconnect_clusters`.
@@ -346,7 +346,7 @@ async fn test_handle_new_connection_valid_uuid() {
     // Insert UUIDs for a fake cluster (should not match any real cluster)
     let mut last_uuid = String::new();
     for i in 0..5 {
-        last_uuid = format!("fake-uuid-{}", i);
+        last_uuid = format!("fake-uuid-{i}");
         cluster_uuid::ActiveModel {
             cluster: Set("not_real_cluster".to_string()),
             uuid: Set(last_uuid.clone()),
@@ -360,7 +360,7 @@ async fn test_handle_new_connection_valid_uuid() {
 
     // All clusters should be offline
     for i in 1..=3 {
-        let cluster = mgr.get_cluster_by_name(&format!("cluster{}", i)).unwrap();
+        let cluster = mgr.get_cluster_by_name(&format!("cluster{i}")).unwrap();
         assert!(!mgr.is_cluster_online(cluster.as_ref()));
     }
 
@@ -375,14 +375,14 @@ async fn test_handle_new_connection_valid_uuid() {
 
     // No clusters should be connected
     for i in 1..=3 {
-        let cluster = mgr.get_cluster_by_name(&format!("cluster{}", i)).unwrap();
+        let cluster = mgr.get_cluster_by_name(&format!("cluster{i}")).unwrap();
         assert!(!mgr.is_cluster_online(cluster.as_ref()));
     }
 
     // Now insert UUIDs for a real cluster (cluster2)
     let mut last_uuid = String::new();
     for i in 0..5 {
-        last_uuid = format!("real-uuid-{}", i);
+        last_uuid = format!("real-uuid-{i}");
         cluster_uuid::ActiveModel {
             cluster: Set("cluster2".to_string()),
             uuid: Set(last_uuid.clone()),
@@ -502,8 +502,8 @@ async fn test_remove_connection() {
 
     // Connect all three clusters
     for i in 1..=3u64 {
-        let name = format!("cluster{}", i);
-        let uuid = format!("uuid-{}", i);
+        let name = format!("cluster{i}");
+        let uuid = format!("uuid-{i}");
         cluster_uuid::ActiveModel {
             cluster: Set(name.clone()),
             uuid: Set(uuid.clone()),
@@ -521,7 +521,7 @@ async fn test_remove_connection() {
 
     // Verify all clusters are online
     for i in 1..=3 {
-        let cluster = mgr.get_cluster_by_name(&format!("cluster{}", i)).unwrap();
+        let cluster = mgr.get_cluster_by_name(&format!("cluster{i}")).unwrap();
         assert!(mgr.is_cluster_online(cluster.as_ref()));
     }
 
@@ -544,10 +544,10 @@ async fn test_remove_connection() {
     mgr.remove_connection(0, true).await;
 }
 
-/// Verifies that ClusterManager correctly parses SSH, Kerberos, and manual connection type configs.
+/// Verifies that `ClusterManager` correctly parses SSH, Kerberos, and manual connection type configs.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, then instantiate ClusterManager with three configs covering `ssh`, `kerberos`, and `manual` connection types.
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with three configs covering `ssh`, `kerberos`, and `manual` connection types.
 ///
 /// # Act
 /// Call `get_cluster_by_name` for each cluster and inspect its `cluster_details`.
@@ -631,7 +631,7 @@ async fn test_constructor_connection_types() {
 /// Verifies that repeated calls to `reconnect_clusters` do not accumulate stale UUID rows.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, then instantiate ClusterManager with three cluster configs.
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with three cluster configs.
 ///
 /// # Act
 /// Call `reconnect_clusters` three times in succession.
@@ -660,7 +660,7 @@ async fn test_reconnect_clusters_deletes_stale_uuids() {
 /// Verifies that `handle_pong` records timestamps without panicking, even for connections that do not exist.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, then instantiate ClusterManager with three cluster configs.
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with three cluster configs.
 ///
 /// # Act
 /// Call `handle_pong` with connection IDs 1 and 2, then call it again with ID 1.
@@ -682,7 +682,7 @@ async fn test_handle_pong_records_timestamp() {
 /// Verifies that `create_file_download` creates a session that is retrievable by UUID.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, and obtain a reference to cluster1.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, and obtain a reference to cluster1.
 ///
 /// # Act
 /// Call `create_file_download` with a UUID, then call `get_file_download` with the same UUID and a non-existent UUID.
@@ -711,7 +711,7 @@ async fn test_create_file_download_session() {
 /// Verifies that `create_file_upload` creates a session that is retrievable by UUID.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, and obtain a reference to cluster1.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, and obtain a reference to cluster1.
 ///
 /// # Act
 /// Call `create_file_upload` with a UUID, then call `get_file_upload` with the same UUID and a non-existent UUID.
@@ -740,7 +740,7 @@ async fn test_create_file_upload_session() {
 /// Verifies that `handle_new_connection` accepts a file download session token and registers the connection.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, then create a file download session for cluster1 using a known token.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, then create a file download session for cluster1 using a known token.
 ///
 /// # Act
 /// Call `handle_new_connection` with the file download token and connection ID 50.
@@ -770,7 +770,7 @@ async fn test_handle_new_connection_file_download() {
 /// Verifies that `handle_new_connection` accepts a file upload session token and registers the connection.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, then create a file upload session for cluster1 using a known token.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, then create a file upload session for cluster1 using a known token.
 ///
 /// # Act
 /// Call `handle_new_connection` with the file upload token and connection ID 60.
@@ -800,7 +800,7 @@ async fn test_handle_new_connection_file_upload() {
 /// Verifies that `remove_connection` removes the connection and cleans up the associated file download session.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, create a file download session, and connect it with ID 70.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, create a file download session, and connect it with ID 70.
 ///
 /// # Act
 /// Call `remove_connection(70, true)`.
@@ -834,7 +834,7 @@ async fn test_remove_connection_file_download_cleanup() {
 /// Verifies that `remove_connection` removes the connection and cleans up the associated file upload session.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, create a file upload session, and connect it with ID 80.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, create a file upload session, and connect it with ID 80.
 ///
 /// # Act
 /// Call `remove_connection(80, true)`.
@@ -871,8 +871,8 @@ async fn test_remove_connection_file_upload_cleanup() {
 
 use adacs_job_controller::cluster::traits::WsOutbound;
 
-/// Helper: connect a cluster via UUID insertion + handle_new_connection.
-/// Returns (conn_id, rx) where rx is the WS channel receiver.
+/// Helper: connect a cluster via UUID insertion + `handle_new_connection`.
+/// Returns (`conn_id`, rx) where rx is the WS channel receiver.
 async fn connect_cluster(
     mgr: &Arc<ClusterManager>,
     db: &DatabaseConnection,
@@ -882,7 +882,7 @@ async fn connect_cluster(
     // Insert a UUID for the cluster
     cluster_uuid::ActiveModel {
         cluster: Set(cluster_name.to_string()),
-        uuid: Set(format!("ping-uuid-{}", conn_id)),
+        uuid: Set(format!("ping-uuid-{conn_id}")),
         timestamp: Set(chrono::Utc::now().naive_utc()),
         ..Default::default()
     }
@@ -892,16 +892,16 @@ async fn connect_cluster(
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr
-        .handle_new_connection(conn_id, tx, &format!("ping-uuid-{}", conn_id))
+        .handle_new_connection(conn_id, tx, &format!("ping-uuid-{conn_id}"))
         .await;
-    assert!(result.is_some(), "cluster {} should connect", cluster_name);
+    assert!(result.is_some(), "cluster {cluster_name} should connect");
     rx
 }
 
 /// Verifies that pong times are initialized during connection, preventing the first `check_pings` from evicting the cluster.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, and connect cluster1 via `connect_cluster`.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, and connect cluster1 via `connect_cluster`.
 ///
 /// # Act
 /// Call `check_pings` once immediately after connection.
@@ -935,7 +935,7 @@ async fn test_pong_times_initialized_after_connection() {
 /// Verifies that a cluster remains online when a pong is received between two consecutive `check_pings` calls.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, and connect cluster1 via `connect_cluster`.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, and connect cluster1 via `connect_cluster`.
 ///
 /// # Act
 /// Call `check_pings`, verify a `Ping` frame is sent, call `handle_pong`, then call `check_pings` again.
@@ -957,8 +957,7 @@ async fn test_check_pings_send_ping_success() {
     let outbound = rx.try_recv().expect("should have received a ping");
     assert!(
         matches!(outbound, WsOutbound::Ping),
-        "expected WsOutbound::Ping, got {:?}",
-        outbound
+        "expected WsOutbound::Ping, got {outbound:?}"
     );
 
     // Simulate the cluster responding with a Pong
@@ -982,7 +981,7 @@ async fn test_check_pings_send_ping_success() {
 /// Verifies that a cluster is evicted when no pong is received after a ping is sent.
 ///
 /// # Setup
-/// Create an in-memory SQLite database and UUID table, instantiate ClusterManager with three configs, and connect cluster1 via `connect_cluster`.
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, and connect cluster1 via `connect_cluster`.
 ///
 /// # Act
 /// Call `check_pings` twice without calling `handle_pong` in between.
