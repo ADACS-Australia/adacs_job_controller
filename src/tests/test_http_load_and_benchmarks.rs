@@ -1,7 +1,7 @@
 //! HTTP Load Testing and Performance Benchmarks
 //!
 //! These tests match C++ load testing coverage:
-//! - test_http_worker_pool_exhaustion (1024 connections)
+//! - `test_http_worker_pool_exhaustion` (1024 connections)
 //! - Performance regression tests
 //! - Stress testing under load
 
@@ -34,7 +34,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 /// Tests server behavior under moderate concurrent load.
 ///
-/// Matches C++: test_http_worker_pool_exhaustion (simplified version)
+/// Matches C++: `test_http_worker_pool_exhaustion` (simplified version)
 ///
 /// # Setup
 /// - Creates online cluster mock
@@ -157,7 +157,7 @@ async fn test_http_concurrent_job_creation_moderate_load() {
 
 /// Tests server behavior under heavy concurrent load.
 ///
-/// Matches C++: test_http_worker_pool_exhaustion
+/// Matches C++: `test_http_worker_pool_exhaustion`
 ///
 /// # Setup
 /// - Creates online cluster mock
@@ -264,18 +264,16 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     // Performance assertions
     assert!(
         avg_response_time < Duration::from_secs(5),
-        "Average response time should be < 5s, got {:?}",
-        avg_response_time
+        "Average response time should be < 5s, got {avg_response_time:?}"
     );
 
     assert!(
         max_response_time < Duration::from_secs(30),
-        "Max response time should be < 30s, got {:?}",
-        max_response_time
+        "Max response time should be < 30s, got {max_response_time:?}"
     );
 
     // Success rate should be reasonable (> 50%)
-    let success_rate = success_count as f64 / num_requests as f64;
+    let success_rate = f64::from(success_count) / f64::from(num_requests);
     assert!(
         success_rate > 0.5,
         "Success rate should be > 50%, got {:.2}%",
@@ -283,8 +281,7 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     );
 
     println!(
-        "Load test results: {}/{} success, avg: {:?}, max: {:?}, total: {:?}",
-        success_count, num_requests, avg_response_time, max_response_time, total_elapsed
+        "Load test results: {success_count}/{num_requests} success, avg: {avg_response_time:?}, max: {max_response_time:?}, total: {total_elapsed:?}"
     );
 }
 
@@ -400,11 +397,11 @@ async fn test_benchmark_job_creation_performance() {
     let p95 = response_times[p95_idx.min(num_requests - 1)];
 
     println!("Job Creation Performance Benchmark:");
-    println!("  Requests: {}", num_requests);
-    println!("  Min: {:?}", min);
-    println!("  Max: {:?}", max);
-    println!("  Avg: {:?}", avg);
-    println!("  P95: {:?}", p95);
+    println!("  Requests: {num_requests}");
+    println!("  Min: {min:?}");
+    println!("  Max: {max:?}");
+    println!("  Avg: {avg:?}");
+    println!("  P95: {p95:?}");
     println!(
         "  Throughput: {:.2} req/s",
         num_requests as f64 / avg.as_secs_f64()
@@ -424,7 +421,7 @@ async fn test_benchmark_database_query_performance() {
     // Insert test data
     let mut job_ids = Vec::new();
     for i in 0..100 {
-        let job_id = insert_test_job(&db, "ozstar", &format!("b{}", i), "testapp").await;
+        let job_id = insert_test_job(&db, "ozstar", &format!("b{i}"), "testapp").await;
         job_ids.push(job_id);
     }
 
@@ -446,8 +443,8 @@ async fn test_benchmark_database_query_performance() {
     let bulk_query_avg = start.elapsed() / 10;
 
     println!("Database Query Performance Benchmark:");
-    println!("  Single lookup (avg): {:?}", single_lookup_avg);
-    println!("  Bulk query (avg): {:?}", bulk_query_avg);
+    println!("  Single lookup (avg): {single_lookup_avg:?}");
+    println!("  Bulk query (avg): {bulk_query_avg:?}");
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +453,7 @@ async fn test_benchmark_database_query_performance() {
 
 /// Tests connection pool behavior under extreme load.
 ///
-/// Matches C++: test_http_worker_pool_exhaustion
+/// Matches C++: `test_http_worker_pool_exhaustion`
 ///
 /// # Setup
 /// - Semaphore to limit concurrent connections
@@ -556,8 +553,7 @@ async fn test_connection_pool_exhaustion() {
     let panicked = results.iter().filter(|r| r.is_err()).count();
 
     println!(
-        "Connection pool stress test: {}/{} completed, {} failed, {} panicked",
-        completed, num_requests, failed, panicked
+        "Connection pool stress test: {completed}/{num_requests} completed, {failed} failed, {panicked} panicked"
     );
 
     // All tasks should complete (even if request fails)

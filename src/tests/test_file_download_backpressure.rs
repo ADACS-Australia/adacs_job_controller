@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::file_download::FileDownloadState;
+use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::cluster::traits::WsOutbound;
 use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::protocol::constants::*;
@@ -42,28 +43,28 @@ fn make_app_context() -> Arc<AppContext> {
     })
 }
 
-/// Build a FILE_CHUNK message with the given data.
-fn make_file_chunk_message(data: Vec<u8>) -> Message {
+/// Build a `FILE_CHUNK` message with the given data.
+fn make_file_chunk_message(data: &[u8]) -> Message {
     let mut msg = Message::new(FILE_CHUNK, Priority::Highest, "test_uuid");
-    msg.push_bytes(&data);
+    msg.push_bytes(data);
     Message::from_bytes(msg.into_data())
 }
 
-/// Build a FILE_DETAILS message with the given file size.
+/// Build a `FILE_DETAILS` message with the given file size.
 fn make_file_details_message(file_size: u64) -> Message {
     let mut msg = Message::new(FILE_DETAILS, Priority::Highest, "test_uuid");
     msg.push_ulong(file_size);
     Message::from_bytes(msg.into_data())
 }
 
-/// Build a FILE_ERROR message.
+/// Build a `FILE_ERROR` message.
 fn make_file_error_message(detail: &str) -> Message {
     let mut msg = Message::new(FILE_ERROR, Priority::Highest, "test_uuid");
     msg.push_string(detail);
     Message::from_bytes(msg.into_data())
 }
 
-/// Create a FileDownload Cluster and a WS sender channel.
+/// Create a `FileDownload` Cluster and a WS sender channel.
 /// Returns `(Arc<Cluster>, WS channel receiver)`.
 fn make_file_download_cluster() -> (
     Arc<Cluster>,
@@ -110,13 +111,13 @@ async fn drain_channel(
 // test_file_chunk_received_correctly
 // ---------------------------------------------------------------------------
 
-/// Tests that handling a FILE_CHUNK message correctly updates state and delivers data.
+/// Tests that handling a `FILE_CHUNK` message correctly updates state and delivers data.
 ///
 /// # Setup
 /// Creates a file download cluster with a fresh `FileDownloadState`.
 ///
 /// # Act
-/// Calls `handle_message` with a FILE_CHUNK containing "hello world chunk".
+/// Calls `handle_message` with a `FILE_CHUNK` containing "hello world chunk".
 ///
 /// # Assert
 /// Verifies `data_ready` is set, `received_bytes` is updated to the chunk length,
@@ -125,12 +126,10 @@ async fn drain_channel(
 async fn test_file_chunk_received_correctly() {
     let (cluster, mut rx, download_state) = make_file_download_cluster();
 
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-
     let chunk_data = b"hello world chunk".to_vec();
     let chunk_len = chunk_data.len() as u64;
 
-    let msg = make_file_chunk_message(chunk_data.clone());
+    let msg = make_file_chunk_message(&chunk_data);
     cluster.handle_message(msg).await;
 
     // data_ready should be set
@@ -159,13 +158,13 @@ async fn test_file_chunk_received_correctly() {
 // test_file_details_sets_file_size
 // ---------------------------------------------------------------------------
 
-/// Tests that handling a FILE_DETAILS message records the declared file size.
+/// Tests that handling a `FILE_DETAILS` message records the declared file size.
 ///
 /// # Setup
 /// Creates a file download cluster with a fresh `FileDownloadState`.
 ///
 /// # Act
-/// Calls `handle_message` with a FILE_DETAILS message declaring size 1,234,567.
+/// Calls `handle_message` with a `FILE_DETAILS` message declaring size 1,234,567.
 ///
 /// # Assert
 /// Verifies `received_data`, `data_ready`, and `file_size` atomics are all set correctly.
@@ -190,13 +189,13 @@ async fn test_file_details_sets_file_size() {
 // test_file_error_sets_error_state
 // ---------------------------------------------------------------------------
 
-/// Tests that handling a FILE_ERROR message sets the error flag and stores the details string.
+/// Tests that handling a `FILE_ERROR` message sets the error flag and stores the details string.
 ///
 /// # Setup
 /// Creates a file download cluster with a fresh `FileDownloadState`.
 ///
 /// # Act
-/// Calls `handle_message` with a FILE_ERROR message containing "permission denied".
+/// Calls `handle_message` with a `FILE_ERROR` message containing "permission denied".
 ///
 /// # Assert
 /// Verifies `error` and `data_ready` flags are set, and `error_details` contains the error string.
@@ -222,16 +221,16 @@ async fn test_file_error_sets_error_state() {
 // test_backpressure_pause_sent_when_buffer_exceeds_max
 // ---------------------------------------------------------------------------
 
-/// Tests that a PAUSE_FILE_CHUNK_STREAM message is sent when buffered bytes exceed the limit.
+/// Tests that a `PAUSE_FILE_CHUNK_STREAM` message is sent when buffered bytes exceed the limit.
 ///
 /// # Setup
 /// Creates a file download cluster with a fresh `FileDownloadState`.
 ///
 /// # Act
-/// Calls `handle_message` with a FILE_CHUNK larger than `MAX_FILE_BUFFER_SIZE`.
+/// Calls `handle_message` with a `FILE_CHUNK` larger than `MAX_FILE_BUFFER_SIZE`.
 ///
 /// # Assert
-/// Verifies a PAUSE_FILE_CHUNK_STREAM message was sent on the WS channel
+/// Verifies a `PAUSE_FILE_CHUNK_STREAM` message was sent on the WS channel
 /// and `client_paused` is set to true.
 #[tokio::test]
 async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
@@ -244,7 +243,7 @@ async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
     // Set received_bytes >> sent_bytes to exceed the buffer limit
     let max_buf = *MAX_FILE_BUFFER_SIZE;
     let large_data = vec![0u8; (max_buf + 1024) as usize];
-    let msg = make_file_chunk_message(large_data);
+    let msg = make_file_chunk_message(&large_data);
     cluster.handle_message(msg).await;
 
     // The cluster should have sent a PAUSE_FILE_CHUNK_STREAM message
@@ -273,10 +272,10 @@ async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
 /// Creates a file download cluster with a fresh `FileDownloadState`.
 ///
 /// # Act
-/// Calls `handle_message` with a 128-byte FILE_CHUNK.
+/// Calls `handle_message` with a 128-byte `FILE_CHUNK`.
 ///
 /// # Assert
-/// Verifies no PAUSE_FILE_CHUNK_STREAM message is sent on the WS channel.
+/// Verifies no `PAUSE_FILE_CHUNK_STREAM` message is sent on the WS channel.
 #[tokio::test]
 async fn test_backpressure_no_pause_for_small_chunks() {
     let (cluster, mut rx, _download_state) = make_file_download_cluster();
@@ -285,7 +284,7 @@ async fn test_backpressure_no_pause_for_small_chunks() {
 
     // Small chunk — well below the buffer limit
     let small_data = vec![0u8; 128];
-    let msg = make_file_chunk_message(small_data);
+    let msg = make_file_chunk_message(&small_data);
     cluster.handle_message(msg).await;
 
     let outgoing = drain_channel(&cluster, &mut rx).await;
@@ -312,10 +311,10 @@ async fn test_backpressure_no_pause_for_small_chunks() {
 /// Creates a file download cluster and pre-sets `client_paused = true`.
 ///
 /// # Act
-/// Calls `handle_message` with a large FILE_CHUNK.
+/// Calls `handle_message` with a large `FILE_CHUNK`.
 ///
 /// # Assert
-/// Verifies no additional PAUSE_FILE_CHUNK_STREAM is sent, preventing duplicate pauses.
+/// Verifies no additional `PAUSE_FILE_CHUNK_STREAM` is sent, preventing duplicate pauses.
 #[tokio::test]
 async fn test_backpressure_pause_not_resent_when_already_paused() {
     use adacs_job_controller::config::settings::MAX_FILE_BUFFER_SIZE;
@@ -330,7 +329,7 @@ async fn test_backpressure_pause_not_resent_when_already_paused() {
     // Send large chunk — should not send another PAUSE
     let max_buf = *MAX_FILE_BUFFER_SIZE;
     let large_data = vec![0u8; (max_buf + 1024) as usize];
-    let msg = make_file_chunk_message(large_data);
+    let msg = make_file_chunk_message(&large_data);
     cluster.handle_message(msg).await;
 
     let outgoing = drain_channel(&cluster, &mut rx).await;
@@ -355,7 +354,7 @@ async fn test_backpressure_pause_not_resent_when_already_paused() {
 // that `send_resume_if_needed` would send a RESUME (via the cluster's queue).
 // ---------------------------------------------------------------------------
 
-/// Tests that a RESUME_FILE_CHUNK_STREAM is sent after the consumer drains the buffer.
+/// Tests that a `RESUME_FILE_CHUNK_STREAM` is sent after the consumer drains the buffer.
 ///
 /// # Setup
 /// Sets `received_bytes` to a large value simulating a full buffer, then sets
@@ -367,7 +366,7 @@ async fn test_backpressure_pause_not_resent_when_already_paused() {
 /// `RESUME_FILE_CHUNK_STREAM` if the buffer difference is below `MIN_FILE_BUFFER_SIZE`.
 ///
 /// # Assert
-/// Verifies RESUME_FILE_CHUNK_STREAM appears in the outgoing WS channel and
+/// Verifies `RESUME_FILE_CHUNK_STREAM` appears in the outgoing WS channel and
 /// `client_paused` is false.
 #[tokio::test]
 async fn test_resume_logic_via_sent_bytes_update() {
@@ -431,13 +430,13 @@ async fn test_resume_logic_via_sent_bytes_update() {
 /// Tests that a small file is downloaded in order without triggering backpressure.
 ///
 /// # Setup
-/// Creates a file download cluster and sends FILE_DETAILS declaring 30 bytes total.
+/// Creates a file download cluster and sends `FILE_DETAILS` declaring 30 bytes total.
 ///
 /// # Act
-/// Sends three 10-byte FILE_CHUNK messages in sequence.
+/// Sends three 10-byte `FILE_CHUNK` messages in sequence.
 ///
 /// # Assert
-/// Verifies all 30 bytes are received, no PAUSE_FILE_CHUNK_STREAM is sent, and the
+/// Verifies all 30 bytes are received, no `PAUSE_FILE_CHUNK_STREAM` is sent, and the
 /// chunk data is available in the receiver channel in the correct order.
 #[tokio::test]
 async fn test_file_download_completes_without_pause_for_small_file() {
@@ -452,7 +451,7 @@ async fn test_file_download_completes_without_pause_for_small_file() {
     // Send 3 small chunks (10 bytes each)
     for i in 0u8..3 {
         let chunk_data = vec![i; 10];
-        let msg = make_file_chunk_message(chunk_data);
+        let msg = make_file_chunk_message(&chunk_data);
         cluster.handle_message(msg).await;
     }
 
@@ -484,13 +483,13 @@ async fn test_file_download_completes_without_pause_for_small_file() {
 // test_file_chunk_notifies_data_ready
 // ---------------------------------------------------------------------------
 
-/// Tests that receiving a FILE_CHUNK triggers the `data_notify` notification.
+/// Tests that receiving a `FILE_CHUNK` triggers the `data_notify` notification.
 ///
 /// # Setup
 /// Creates a file download cluster and spawns a task that waits on `data_notify`.
 ///
 /// # Act
-/// Calls `handle_message` with a small FILE_CHUNK after the waiting task is registered.
+/// Calls `handle_message` with a small `FILE_CHUNK` after the waiting task is registered.
 ///
 /// # Assert
 /// Verifies the notification was delivered and the waiting task observed it.
@@ -517,7 +516,7 @@ async fn test_file_chunk_notifies_data_ready() {
     tokio::task::yield_now().await;
 
     // Send a chunk — should trigger data_notify
-    let msg = make_file_chunk_message(b"ping".to_vec());
+    let msg = make_file_chunk_message(b"ping");
     cluster.handle_message(msg).await;
 
     tokio::task::yield_now().await;

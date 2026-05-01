@@ -50,7 +50,7 @@ pub const DB_BUNDLE_DELETE_JOB: u32 = 8002;
 // Test message IDs
 #[cfg(feature = "test-support")]
 #[allow(dead_code)]
-pub const TEST_MESSAGE_ID_MIN: u32 = 1000000;
+pub const TEST_MESSAGE_ID_MIN: u32 = 1_000_000;
 #[cfg(feature = "test-support")]
 #[allow(dead_code)]
-pub const TEST_MESSAGE_ID_MAX: u32 = 1001000;
+pub const TEST_MESSAGE_ID_MAX: u32 = 1_001_000;

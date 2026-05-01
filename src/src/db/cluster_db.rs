@@ -586,7 +586,7 @@ mod tests {
                     | DB_BUNDLE_GET_JOB_BY_ID
                     | DB_BUNDLE_DELETE_JOB
             );
-            assert!(!is_db, "ID {} should not be a DB message", id);
+            assert!(!is_db, "ID {id} should not be a DB message");
         }
     }
 }

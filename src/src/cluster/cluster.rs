@@ -305,9 +305,8 @@ impl Cluster {
         let status = message.pop_uint();
         let details = message.pop_string();
 
-        let ctx = match &self.app_context {
-            Some(ctx) => ctx,
-            None => return,
+        let Some(ctx) = &self.app_context else {
+            return;
         };
 
         let record = job_history::ActiveModel {
@@ -438,9 +437,8 @@ impl Cluster {
     // ---- FileDownload message handling ----
 
     async fn handle_file_chunk(&self, message: &mut Message) {
-        let state = match &self.file_download_state {
-            Some(s) => s,
-            None => return,
+        let Some(state) = &self.file_download_state else {
+            return;
         };
 
         let chunk = message.pop_bytes();
@@ -467,9 +465,8 @@ impl Cluster {
     }
 
     fn handle_file_details(&self, message: &mut Message) {
-        let state = match &self.file_download_state {
-            Some(s) => s,
-            None => return,
+        let Some(state) = &self.file_download_state else {
+            return;
         };
 
         let file_size = message.pop_ulong();
@@ -480,9 +477,8 @@ impl Cluster {
     }
 
     async fn handle_file_error(&self, message: &mut Message) {
-        let state = match &self.file_download_state {
-            Some(s) => s,
-            None => return,
+        let Some(state) = &self.file_download_state else {
+            return;
         };
 
         let details = message.pop_string();
@@ -503,9 +499,8 @@ impl Cluster {
     }
 
     async fn handle_file_upload_error(&self, message: &mut Message) {
-        let state = match &self.file_upload_state {
-            Some(s) => s,
-            None => return,
+        let Some(state) = &self.file_upload_state else {
+            return;
         };
         let details = message.pop_string();
         *state.error_details.lock().await = details;
@@ -515,9 +510,8 @@ impl Cluster {
     }
 
     fn handle_file_upload_complete(&self) {
-        let state = match &self.file_upload_state {
-            Some(s) => s,
-            None => return,
+        let Some(state) = &self.file_upload_state else {
+            return;
         };
         state.complete.store(true, Ordering::Release);
         state.received_data.store(true, Ordering::Release);
@@ -534,9 +528,8 @@ impl Cluster {
         if !self.is_online_internal().await {
             return;
         }
-        let ctx = match &self.app_context {
-            Some(ctx) => ctx,
-            None => return,
+        let Some(ctx) = &self.app_context else {
+            return;
         };
         let db = &ctx.db;
         let cluster_name = &self.details.name;
@@ -583,9 +576,8 @@ impl Cluster {
         if !self.is_online_internal().await {
             return;
         }
-        let ctx = match &self.app_context {
-            Some(ctx) => ctx,
-            None => return,
+        let Some(ctx) = &self.app_context else {
+            return;
         };
         let db = &ctx.db;
         let cluster_name = &self.details.name;
@@ -630,9 +622,8 @@ impl Cluster {
         if !self.is_online_internal().await {
             return;
         }
-        let ctx = match &self.app_context {
-            Some(ctx) => ctx,
-            None => return,
+        let Some(ctx) = &self.app_context else {
+            return;
         };
         let db = &ctx.db;
         let cluster_name = &self.details.name;
@@ -1503,7 +1494,7 @@ mod tests {
             } else if l == &s5_d1 || l == &s5_d2 {
                 found_s5.push(l.clone());
             } else {
-                eprintln!("WARNING: unexpected data in lowest priority: {:?}", l);
+                eprintln!("WARNING: unexpected data in lowest priority: {l:?}");
             }
         }
         // Verify all messages from each source arrived in FIFO order
@@ -1557,7 +1548,7 @@ mod tests {
         assert!(!cluster.wait_for_queue_drain(true).await);
     }
 
-    /// Verifies that a queue at exactly MAX_FILE_BUFFER_SIZE still returns true (boundary is inclusive).
+    /// Verifies that a queue at exactly `MAX_FILE_BUFFER_SIZE` still returns true (boundary is inclusive).
     #[tokio::test]
     async fn test_wait_for_queue_drain_at_threshold() {
         let cluster = Cluster::new(test_config(), None);
@@ -1575,7 +1566,7 @@ mod tests {
         assert!(cluster.wait_for_queue_drain(false).await);
     }
 
-    /// Verifies that a queue above MAX_FILE_BUFFER_SIZE times out when the scheduler is stopped.
+    /// Verifies that a queue above `MAX_FILE_BUFFER_SIZE` times out when the scheduler is stopped.
     #[tokio::test]
     async fn test_wait_for_queue_drain_above_threshold_timeout() {
         tokio::time::pause(); // use virtual time

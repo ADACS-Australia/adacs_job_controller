@@ -197,7 +197,6 @@ async fn test_rate_limiting_disabled_in_test() {
     assert!(result.is_some(), "LTK authentication should succeed");
     assert!(
         elapsed < Duration::from_millis(50),
-        "Rate limiting should be disabled in tests. Elapsed: {:?}",
-        elapsed
+        "Rate limiting should be disabled in tests. Elapsed: {elapsed:?}"
     );
 }

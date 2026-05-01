@@ -10,6 +10,7 @@ mod common;
 use std::sync::Arc;
 
 use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
+use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::cluster::traits::WsOutbound;
 use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::db::entities::{job, job_history};
@@ -107,7 +108,7 @@ fn make_app_context(db: DatabaseConnection) -> Arc<AppContext> {
     })
 }
 
-/// Make an UPDATE_JOB message with the given fields.
+/// Make an `UPDATE_JOB` message with the given fields.
 fn make_update_job_message(job_id: u32, what: &str, status: u32, details: &str) -> Message {
     let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
     msg.push_uint(job_id);
@@ -125,7 +126,7 @@ fn make_update_job_message(job_id: u32, what: &str, status: u32, details: &str) 
 /// Verifies that `handle_message` with an `UPDATE_JOB` message inserts a row into `JobserverJobhistory`.
 ///
 /// # Setup
-/// An in-memory SQLite DB with the `JobserverJob` and `JobserverJobhistory` tables is created.
+/// An in-memory `SQLite` DB with the `JobserverJob` and `JobserverJobhistory` tables is created.
 /// A `Cluster` is initialized with an `AppContext` wrapping that DB.
 /// An `UPDATE_JOB` message for `job_id=42` with `what="job_submission"` and `state=10` is constructed.
 ///
@@ -145,7 +146,6 @@ async fn test_handle_update_job_inserts_history() {
     let msg = make_update_job_message(42, "job_submission", 10, "submitted to scheduler");
 
     // handle_message dispatches to handle_update_job for UPDATE_JOB
-    use adacs_job_controller::cluster::traits::ClusterTrait;
     cluster.handle_message(msg).await;
 
     // Verify row was inserted
@@ -165,7 +165,7 @@ async fn test_handle_update_job_inserts_history() {
 /// Verifies that multiple `UPDATE_JOB` messages for the same job each insert a separate history row.
 ///
 /// # Setup
-/// An in-memory SQLite DB with the required tables is created. Three `UPDATE_JOB` messages
+/// An in-memory `SQLite` DB with the required tables is created. Three `UPDATE_JOB` messages
 /// are built for `job_id=7` with states 10 (queued), 40 (running), and 500 (complete).
 ///
 /// # Act
@@ -331,7 +331,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
 
     let submit_msgs: Vec<_> = messages
         .iter()
-        .filter(|data| Message::from_bytes(data.to_vec()).id() == SUBMIT_JOB)
+        .filter(|data| Message::from_bytes((*data).clone()).id() == SUBMIT_JOB)
         .collect();
 
     assert!(
@@ -412,7 +412,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
 
     let cancel_msgs: Vec<_> = messages
         .iter()
-        .filter(|data| Message::from_bytes(data.to_vec()).id() == CANCEL_JOB)
+        .filter(|data| Message::from_bytes((*data).clone()).id() == CANCEL_JOB)
         .collect();
 
     assert!(!cancel_msgs.is_empty(), "Expected at least one CANCEL_JOB");
@@ -510,7 +510,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
 
     let delete_msgs: Vec<_> = messages
         .iter()
-        .filter(|data| Message::from_bytes(data.to_vec()).id() == DELETE_JOB)
+        .filter(|data| Message::from_bytes((*data).clone()).id() == DELETE_JOB)
         .collect();
 
     assert!(!delete_msgs.is_empty(), "Expected at least one DELETE_JOB");
@@ -624,7 +624,7 @@ async fn test_check_unsubmitted_jobs_only_for_own_cluster() {
 // all non-matching statuses
 // ---------------------------------------------------------------------------
 
-/// All JobStatus values that should NOT trigger check_unsubmitted_jobs.
+/// All `JobStatus` values that should NOT trigger `check_unsubmitted_jobs`.
 /// (Only PENDING=10 and SUBMITTING=20 should trigger.)
 const UNSUBMITTED_NOOP_STATES: &[i32] = &[
     30,  // Submitted
@@ -686,14 +686,13 @@ async fn test_check_unsubmitted_jobs_noop_for_non_matching_statuses() {
 
         assert!(
             submit_msgs.is_empty(),
-            "State {} should NOT trigger SUBMIT_JOB",
-            state_val
+            "State {state_val} should NOT trigger SUBMIT_JOB"
         );
         cluster.stop();
     }
 }
 
-/// All JobStatus values that should NOT trigger check_cancelling_jobs.
+/// All `JobStatus` values that should NOT trigger `check_cancelling_jobs`.
 /// (Only CANCELLING=75 should trigger.)
 const CANCELLING_NOOP_STATES: &[i32] = &[
     10,  // Pending
@@ -756,14 +755,13 @@ async fn test_check_cancelling_jobs_noop_for_non_matching_statuses() {
 
         assert!(
             cancel_msgs.is_empty(),
-            "State {} should NOT trigger CANCEL_JOB",
-            state_val
+            "State {state_val} should NOT trigger CANCEL_JOB"
         );
         cluster.stop();
     }
 }
 
-/// All JobStatus values that should NOT trigger check_deleting_jobs.
+/// All `JobStatus` values that should NOT trigger `check_deleting_jobs`.
 /// (Only DELETING=85 should trigger.)
 const DELETING_NOOP_STATES: &[i32] = &[
     10,  // Pending
@@ -826,8 +824,7 @@ async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
 
         assert!(
             delete_msgs.is_empty(),
-            "State {} should NOT trigger DELETE_JOB",
-            state_val
+            "State {state_val} should NOT trigger DELETE_JOB"
         );
         cluster.stop();
     }

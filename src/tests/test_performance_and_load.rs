@@ -3,6 +3,9 @@
 mod common;
 
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
+
+use adacs_job_controller::db::entities::job_history;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -26,7 +29,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 // ===========================================================================
 
 /// Tests handling of large binary messages (fragmentation).
-/// Matches C++ test: test_websocket_large_message_fragmentation
+/// Matches C++ test: `test_websocket_large_message_fragmentation`
 #[tokio::test]
 async fn test_large_binary_message_handling() {
     let db = setup_test_db().await;
@@ -84,7 +87,7 @@ async fn test_large_binary_message_handling() {
 // ===========================================================================
 
 /// Tests server behavior under high concurrent load.
-/// Matches C++ test: test_http_worker_pool_exhaustion
+/// Matches C++ test: `test_http_worker_pool_exhaustion`
 #[tokio::test]
 async fn test_http_concurrent_requests_stress() {
     let db = setup_test_db().await;
@@ -130,8 +133,7 @@ async fn test_http_concurrent_requests_stress() {
                             .header("content-type", "application/json")
                             .header("authorization", &token_clone)
                             .body(Body::from(format!(
-                                r#"{{"cluster":"ozstar","parameters":"{{}}","bundle":"bundle{}"}}"#,
-                                i
+                                r#"{{"cluster":"ozstar","parameters":"{{}}","bundle":"bundle{i}"}}"#
                             )))
                             .unwrap(),
                     )
@@ -166,7 +168,7 @@ async fn test_http_concurrent_requests_stress() {
 // ===========================================================================
 
 /// Tests priority preemption with heavy load.
-/// Matches C++ test: test_priority_preemption_heavy_load
+/// Matches C++ test: `test_priority_preemption_heavy_load`
 #[tokio::test]
 async fn test_priority_preemption_under_load() {
     use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
@@ -184,7 +186,7 @@ async fn test_priority_preemption_under_load() {
 
     // Queue 100 low priority messages
     for i in 0..100 {
-        let mut msg = Message::new(UPDATE_JOB, Priority::Lowest, &format!("source_{}", i));
+        let mut msg = Message::new(UPDATE_JOB, Priority::Lowest, &format!("source_{i}"));
         msg.push_uint(i);
         msg.push_string("test");
         msg.push_uint(500);
@@ -266,7 +268,6 @@ async fn test_job_creation_atomicity() {
     let jobs = job::Entity::find().all(&db).await.unwrap();
     assert_eq!(jobs.len(), 1);
 
-    use adacs_job_controller::db::entities::job_history;
     let histories = job_history::Entity::find()
         .filter(job_history::Column::JobId.eq(jobs[0].id))
         .all(&db)
@@ -276,5 +277,3 @@ async fn test_job_creation_atomicity() {
     // Should have PENDING and SUBMITTING history
     assert!(!histories.is_empty());
 }
-
-use std::time::Duration;

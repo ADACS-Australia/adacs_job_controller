@@ -3,7 +3,7 @@
 //! These tests use REAL external dependencies:
 //! - Real WebSocket connections with tokio-tungstenite
 //! - Real HTTP server with axum test client
-//! - Real SQLite database
+//! - Real `SQLite` database
 //! - Real message serialization/deserialization
 
 mod common;
@@ -83,7 +83,7 @@ async fn connect_websocket(
         >,
     >,
 ) {
-    let url = format!("ws://127.0.0.1:{}/job/ws/?token={}", port, token);
+    let url = format!("ws://127.0.0.1:{port}/job/ws/?token={token}");
     let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
     ws_stream.split()
 }
@@ -129,7 +129,7 @@ async fn recv_binary(
 
 /// Tests that a real WebSocket client can connect and authenticate.
 ///
-/// This matches C++ test: test_websocket_connection_accepted_valid_token
+/// This matches C++ test: `test_websocket_connection_accepted_valid_token`
 ///
 /// # Setup
 /// - Starts real axum HTTP server
@@ -141,7 +141,7 @@ async fn recv_binary(
 ///
 /// # Assert
 /// - Server accepts connection
-/// - Server sends SERVER_READY message
+/// - Server sends `SERVER_READY` message
 #[tokio::test]
 async fn test_real_websocket_connection_and_auth() {
     use adacs_job_controller::cluster::traits::WsConnectionSender;
@@ -215,7 +215,7 @@ async fn test_real_websocket_connection_and_auth() {
 
 /// Tests that WebSocket connection is rejected with invalid token.
 ///
-/// This matches C++ test: test_websocket_connection_rejected_invalid_token
+/// This matches C++ test: `test_websocket_connection_rejected_invalid_token`
 ///
 /// # Act
 /// - Connects with invalid JWT token
@@ -233,7 +233,7 @@ async fn test_websocket_connection_rejected_invalid_token() {
     let invalid_token = "Bearer invalid_token_12345";
 
     // Try to connect with invalid token - should fail or close immediately
-    let url = format!("ws://127.0.0.1:{}/job/ws/?token={}", port, invalid_token);
+    let url = format!("ws://127.0.0.1:{port}/job/ws/?token={invalid_token}");
     let result = tokio_tungstenite::connect_async(&url).await;
 
     // Connection should be rejected
@@ -251,11 +251,11 @@ async fn test_websocket_connection_rejected_invalid_token() {
 
 /// Tests that file download can resume after interruption.
 ///
-/// This matches C++ test: test_download_resume_after_interruption
+/// This matches C++ test: `test_download_resume_after_interruption`
 ///
 /// # Setup
 /// - Creates file download record in database
-/// - Sets download state to "in_progress" with partial bytes
+/// - Sets download state to "`in_progress`" with partial bytes
 ///
 /// # Act
 /// - Simulates download restart
@@ -314,7 +314,7 @@ async fn test_download_resume_after_interruption() {
 
 /// Tests concurrent job submission to multiple clusters.
 ///
-/// This matches C++ test: test_multiple_clusters_simultaneous
+/// This matches C++ test: `test_multiple_clusters_simultaneous`
 ///
 /// # Setup
 /// - Creates 3 mock clusters (ozstar, nci, gadi)
@@ -454,7 +454,7 @@ async fn test_multiple_clusters_concurrent_job_submission() {
 
 /// Tests race condition when message sent during cluster disconnect.
 ///
-/// This matches C++ test: test_removeConnection_race_with_handleMessage
+/// This matches C++ test: `test_removeConnection_race_with_handleMessage`
 ///
 /// # Setup
 /// - Creates online cluster

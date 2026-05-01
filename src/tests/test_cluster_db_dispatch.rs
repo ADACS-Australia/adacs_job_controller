@@ -1,10 +1,10 @@
-//! Integration tests for ClusterDB message dispatch using MockClusterTrait.
+//! Integration tests for `ClusterDB` message dispatch using `MockClusterTrait`.
 //!
-//! These tests verify that the maybe_handle_cluster_db_message dispatcher
+//! These tests verify that the `maybe_handle_cluster_db_message` dispatcher
 //! correctly routes messages by ID and returns the right boolean.
-//! Since DB operations require a real MySQL connection, we focus on:
+//! Since DB operations require a real `MySQL` connection, we focus on:
 //!   1. Verifying dispatch routing (handled vs unhandled message IDs)
-//!   2. Verifying the response message format via the mock's captured send_message calls
+//!   2. Verifying the response message format via the mock's captured `send_message` calls
 
 use std::sync::{Arc, Mutex};
 
@@ -14,7 +14,7 @@ use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::Priority;
 
-/// Helper: create a MockClusterTrait that captures all sent messages.
+/// Helper: create a `MockClusterTrait` that captures all sent messages.
 fn mock_cluster_capturing_messages() -> (MockClusterTrait, Arc<Mutex<Vec<Message>>>) {
     let sent = Arc::new(Mutex::new(Vec::<Message>::new()));
     let sent_clone = Arc::clone(&sent);

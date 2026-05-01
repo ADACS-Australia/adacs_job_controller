@@ -14,13 +14,13 @@
 //!
 //! Tests added (second pass):
 //!
-//! - test_file_transfer_data_timeout: FILE_DETAILS received but cluster hangs, body truncated
-//! - test_file_transfer_websocket_broken_truncates_download: WS drops mid-stream, body truncated
-//! - test_file_transfer_no_details_returns_503: FILE_CHUNK before FILE_DETAILS → 503
-//! - test_continuous_file_uploads_sequential: two back-to-back uploads on same server
-//! - test_file_upload_with_cluster_bundle_no_job_id: upload using cluster+bundle params (no jobId)
-//! - test_job_finished_update_populates_cache: UPDATE_JOB(_job_completion_) triggers background
-//!   FILE_LIST cache population; subsequent PATCH /file/ returns from cache without WS call
+//! - `test_file_transfer_data_timeout`: `FILE_DETAILS` received but cluster hangs, body truncated
+//! - `test_file_transfer_websocket_broken_truncates_download`: WS drops mid-stream, body truncated
+//! - `test_file_transfer_no_details_returns_503`: `FILE_CHUNK` before `FILE_DETAILS` → 503
+//! - `test_continuous_file_uploads_sequential`: two back-to-back uploads on same server
+//! - `test_file_upload_with_cluster_bundle_no_job_id`: upload using cluster+bundle params (no jobId)
+//! - `test_job_finished_update_populates_cache`: `UPDATE_JOB`(_`job_completion`_) triggers background
+//!   `FILE_LIST` cache population; subsequent PATCH /file/ returns from cache without WS call
 
 mod common;
 
@@ -207,14 +207,14 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
 /// Verifies that a zero-byte file upload completes successfully.
 ///
 /// # Setup
-/// Inserts a test job and mocks the upload cluster with SERVER_READY and FILE_UPLOAD_COMPLETE simulation.
+/// Inserts a test job and mocks the upload cluster with `SERVER_READY` and `FILE_UPLOAD_COMPLETE` simulation.
 ///
 /// # Act
 /// Sends a PUT request with Content-Length: 0 and an empty body.
 ///
 /// # Assert
-/// Response is 200 OK with `status: "completed"`, no FILE_UPLOAD_CHUNK messages sent,
-/// and exactly one FILE_UPLOAD_COMPLETE message sent.
+/// Response is 200 OK with `status: "completed"`, no `FILE_UPLOAD_CHUNK` messages sent,
+/// and exactly one `FILE_UPLOAD_COMPLETE` message sent.
 #[tokio::test]
 async fn test_upload_zero_byte_file_succeeds() {
     let db = setup_test_db().await;
@@ -452,7 +452,7 @@ async fn test_upload_truncated_body_returns_error() {
 /// Verifies the server survives a client disconnecting mid-download without crashing.
 ///
 /// # Setup
-/// Inserts a download record; simulates a slow 100 KB stream via FileDownloadState.
+/// Inserts a download record; simulates a slow 100 KB stream via `FileDownloadState`.
 /// Starts a real TCP server.
 ///
 /// # Act
@@ -568,10 +568,10 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
 // to respond." — the exact message from the Rust implementation.
 // ===========================================================================
 
-/// Verifies the server returns 400 when the cluster never sends FILE_DETAILS (timeout path).
+/// Verifies the server returns 400 when the cluster never sends `FILE_DETAILS` (timeout path).
 ///
 /// # Setup
-/// Creates a FileDownloadState that is never signalled. Pauses tokio virtual time after setup.
+/// Creates a `FileDownloadState` that is never signalled. Pauses tokio virtual time after setup.
 ///
 /// # Act
 /// Sends a GET download request; advances virtual clock 35 seconds past the 30-second timeout.
@@ -586,9 +586,9 @@ async fn test_download_timeout_when_cluster_never_responds() {
     // A 1-hour acquire timeout ensures the pool never times out before we do.
     let db = {
         let mut opts = sea_orm::ConnectOptions::new("sqlite::memory:");
-        opts.acquire_timeout(std::time::Duration::from_secs(3600));
-        opts.max_lifetime(std::time::Duration::from_secs(3600));
-        opts.idle_timeout(std::time::Duration::from_secs(3600));
+        opts.acquire_timeout(std::time::Duration::from_hours(1));
+        opts.max_lifetime(std::time::Duration::from_hours(1));
+        opts.idle_timeout(std::time::Duration::from_hours(1));
         sea_orm::Database::connect(opts)
             .await
             .expect("sqlite in-memory connect failed")
@@ -645,7 +645,7 @@ async fn test_download_timeout_when_cluster_never_responds() {
         .body(Body::empty())
         .unwrap();
 
-    let (resp_result, _) = tokio::join!(app.oneshot(req), async {
+    let (resp_result, ()) = tokio::join!(app.oneshot(req), async {
         // Yield several times to let the handler reach its tokio::time::timeout
         // registration before we advance the clock.
         for _ in 0..10 {
@@ -681,8 +681,8 @@ async fn test_download_timeout_when_cluster_never_responds() {
 /// Verifies that a mid-upload error from the cluster causes the handler to return 400.
 ///
 /// # Setup
-/// Inserts a test job; simulates SERVER_READY then a FILE_UPLOAD_ERROR ("Disk full")
-/// via FileUploadState background task.
+/// Inserts a test job; simulates `SERVER_READY` then a `FILE_UPLOAD_ERROR` ("Disk full")
+/// via `FileUploadState` background task.
 ///
 /// # Act
 /// Sends a PUT upload request with 10,000 bytes of body.
@@ -871,16 +871,16 @@ async fn test_upload_queue_drain_timeout_returns_400() {
 // HTTP handler returns 400.
 // ===========================================================================
 
-/// Verifies that a FILE_ERROR message from the cluster propagates to the FileDownloadState.
+/// Verifies that a `FILE_ERROR` message from the cluster propagates to the `FileDownloadState`.
 ///
 /// # Setup
-/// Creates a real Cluster in file-download mode with a FileDownloadState and a WS sender.
+/// Creates a real Cluster in file-download mode with a `FileDownloadState` and a WS sender.
 ///
 /// # Act
-/// Calls `cluster.handle_message()` with a FILE_ERROR message containing "Permission denied".
+/// Calls `cluster.handle_message()` with a `FILE_ERROR` message containing "Permission denied".
 ///
 /// # Assert
-/// FileDownloadState has `error=true`, `data_ready=true`, and error details match the sent message.
+/// `FileDownloadState` has `error=true`, `data_ready=true`, and error details match the sent message.
 #[tokio::test]
 async fn test_download_file_error_from_cluster_propagates() {
     use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
@@ -936,7 +936,7 @@ async fn test_download_file_error_from_cluster_propagates() {
 /// Starts a real WS server with a forwarding cluster manager. Connects a WS client.
 ///
 /// # Act
-/// Sends one UPDATE_JOB binary message, then forcibly drops sink and stream without a close frame.
+/// Sends one `UPDATE_JOB` binary message, then forcibly drops sink and stream without a close frame.
 ///
 /// # Assert
 /// Server is still accessible via TCP after the abrupt WS drop.
@@ -1407,13 +1407,11 @@ async fn test_download_force_download_sets_attachment_disposition() {
 
     assert!(
         content_disp.contains("attachment"),
-        "forceDownload should set Content-Disposition: attachment; got: {}",
-        content_disp
+        "forceDownload should set Content-Disposition: attachment; got: {content_disp}"
     );
     assert!(
         content_disp.contains("report.pdf"),
-        "Content-Disposition should contain the filename; got: {}",
-        content_disp
+        "Content-Disposition should contain the filename; got: {content_disp}"
     );
 }
 
@@ -1424,16 +1422,16 @@ async fn test_download_force_download_sets_attachment_disposition() {
 // FILE_UPLOAD_CHUNK messages.
 // ===========================================================================
 
-/// Verifies that a body larger than FILE_CHUNK_SIZE is split into multiple FILE_UPLOAD_CHUNK messages.
+/// Verifies that a body larger than `FILE_CHUNK_SIZE` is split into multiple `FILE_UPLOAD_CHUNK` messages.
 ///
 /// # Setup
 /// Inserts a test job; mocks upload cluster to capture sent messages. Body size is 2.5 × chunk size.
 ///
 /// # Act
-/// Sends a PUT upload request with a body of 2.5 × FILE_CHUNK_SIZE bytes.
+/// Sends a PUT upload request with a body of 2.5 × `FILE_CHUNK_SIZE` bytes.
 ///
 /// # Assert
-/// Exactly 3 FILE_UPLOAD_CHUNK messages and 1 FILE_UPLOAD_COMPLETE message are sent.
+/// Exactly 3 `FILE_UPLOAD_CHUNK` messages and 1 `FILE_UPLOAD_COMPLETE` message are sent.
 #[tokio::test]
 async fn test_upload_large_body_is_chunked() {
     use adacs_job_controller::config::settings::FILE_CHUNK_SIZE;
@@ -1549,7 +1547,7 @@ async fn test_upload_large_body_is_chunked() {
 /// Starts a real WS server; mock cluster counts `handle_message` invocations via an `AtomicUsize`.
 ///
 /// # Act
-/// Sends 50 UPDATE_JOB binary messages through a single WS connection.
+/// Sends 50 `UPDATE_JOB` binary messages through a single WS connection.
 ///
 /// # Assert
 /// All 50 messages are dispatched (`handle_message` count equals 50).
@@ -1636,10 +1634,10 @@ async fn test_ws_concurrent_binary_messages() {
 // iteration.
 // ===========================================================================
 
-/// Verifies the HTTP body is truncated when the cluster hangs after sending FILE_DETAILS.
+/// Verifies the HTTP body is truncated when the cluster hangs after sending `FILE_DETAILS`.
 ///
 /// # Setup
-/// Sets up FileDownloadState with file_size=100 and received_data=true but no chunks.
+/// Sets up `FileDownloadState` with `file_size=100` and `received_data=true` but no chunks.
 /// A background task sets error=true after 50 ms and sends a zero-byte wake packet.
 ///
 /// # Act
@@ -1754,7 +1752,7 @@ async fn test_file_transfer_data_timeout_body_truncated() {
 /// Verifies the HTTP download body is truncated when the WS connection drops mid-stream.
 ///
 /// # Setup
-/// Sets up FileDownloadState with file_size=12345. Background sends 1 chunk (3 bytes),
+/// Sets up `FileDownloadState` with `file_size=12345`. Background sends 1 chunk (3 bytes),
 /// then signals error=true and a zero-byte wake packet to simulate WS drop.
 ///
 /// # Act
@@ -1869,11 +1867,11 @@ async fn test_file_transfer_websocket_broken_truncates_download() {
 // 503 if it is false.
 // ===========================================================================
 
-/// Verifies the handler returns 503 when FILE_CHUNK arrives before FILE_DETAILS.
+/// Verifies the handler returns 503 when `FILE_CHUNK` arrives before `FILE_DETAILS`.
 ///
 /// # Setup
-/// Sets data_ready=true but leaves received_data=false in FileDownloadState, simulating
-/// a FILE_CHUNK arriving before FILE_DETAILS.
+/// Sets `data_ready=true` but leaves `received_data=false` in `FileDownloadState`, simulating
+/// a `FILE_CHUNK` arriving before `FILE_DETAILS`.
 ///
 /// # Act
 /// Sends a GET download request.
@@ -1965,7 +1963,7 @@ async fn test_file_transfer_no_details_returns_503() {
 /// Verifies that two sequential uploads on the same server instance both succeed.
 ///
 /// # Setup
-/// Pre-creates two FileUploadState instances. Uses VecDeque mocks so each request gets a
+/// Pre-creates two `FileUploadState` instances. Uses `VecDeque` mocks so each request gets a
 /// separate state and upload cluster. Starts a real server.
 ///
 /// # Act
@@ -2112,7 +2110,7 @@ async fn test_continuous_file_uploads_sequential() {
 // ===========================================================================
 
 /// Verifies that a file upload using cluster+bundle parameters (no jobId) succeeds and
-/// sends the correct UPLOAD_FILE message with jobId=0.
+/// sends the correct `UPLOAD_FILE` message with jobId=0.
 ///
 /// # Setup
 /// No job is inserted; mocks both main and upload clusters. Main cluster captures sent messages.
@@ -2121,7 +2119,7 @@ async fn test_continuous_file_uploads_sequential() {
 /// Sends a PUT upload request with `cluster=ozstar&bundle=test_bundle` but no `jobId` parameter.
 ///
 /// # Assert
-/// Response is 200 OK; UPLOAD_FILE message has jobId=0, correct bundle, path, and file size.
+/// Response is 200 OK; `UPLOAD_FILE` message has jobId=0, correct bundle, path, and file size.
 #[tokio::test]
 async fn test_file_upload_with_cluster_bundle_no_job_id() {
     let db = setup_test_db().await;
@@ -2259,20 +2257,20 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
 //  4. PATCH /file/ response comes from cache (no cluster.send_message called)
 // ===========================================================================
 
-/// Verifies that UPDATE_JOB with `_job_completion_` triggers background FILE_LIST cache
+/// Verifies that `UPDATE_JOB` with `_job_completion_` triggers background `FILE_LIST` cache
 /// population, and a subsequent PATCH /file/ request is served from cache without a WS call.
 ///
 /// # Setup
-/// Creates a real Cluster instance with a shared file_list_map. Background task intercepts
-/// the FILE_LIST WS message and populates the map with 2 file entries.
+/// Creates a real Cluster instance with a shared `file_list_map`. Background task intercepts
+/// the `FILE_LIST` WS message and populates the map with 2 file entries.
 ///
 /// # Act
-/// Calls `cluster.handle_message()` with UPDATE_JOB(_job_completion_), then sends a
+/// Calls `cluster.handle_message()` with `UPDATE_JOB`(_job_completion_), then sends a
 /// PATCH /file/ HTTP request.
 ///
 /// # Assert
 /// DB cache contains 2 files; PATCH response returns the 2 cached files;
-/// mock cluster's send_message is never called (cache hit).
+/// mock cluster's `send_message` is never called (cache hit).
 #[tokio::test]
 async fn test_job_finished_update_populates_cache() {
     use std::sync::atomic::AtomicBool;
@@ -2494,7 +2492,7 @@ async fn test_job_finished_update_populates_cache() {
 // - Data integrity verification
 // ===========================================================================
 
-/// Get current memory usage in KB (Linux: reads VmRSS from /proc/self/status)
+/// Get current memory usage in KB (Linux: reads `VmRSS` from /proc/self/status)
 fn get_memory_usage_kb() -> u64 {
     use std::fs::File;
     use std::io::Read;
@@ -2519,24 +2517,24 @@ fn get_memory_usage_kb() -> u64 {
 ///
 /// This is a simplified end-to-end test that validates the core backpressure mechanism
 /// with large files. For a full WebSocket-integrated test, see the C++ equivalent:
-/// legacy/tests/test_file_transfer.cpp:test_large_file_transfers
+/// `legacy/tests/test_file_transfer.cpp:test_large_file_transfers`
 ///
 /// # Setup
 /// - Starts real HTTP server on random port
-/// - Creates FileDownloadState shared between test and HTTP handler
+/// - Creates `FileDownloadState` shared between test and HTTP handler
 /// - Generates random file data (100-200MB)
 /// - Sets up memory monitoring
 ///
 /// # Act
 /// - HTTP client sends GET request to download file
-/// - Test task pushes FILE_DETAILS + FILE_CHUNK to FileDownloadState
-/// - Backpressure via client_paused flag when buffer exceeds MAX_FILE_BUFFER_SIZE
-/// - HTTP handler updates sent_bytes, triggering resume when buffer drains
+/// - Test task pushes `FILE_DETAILS` + `FILE_CHUNK` to `FileDownloadState`
+/// - Backpressure via `client_paused` flag when buffer exceeds `MAX_FILE_BUFFER_SIZE`
+/// - HTTP handler updates `sent_bytes`, triggering resume when buffer drains
 /// - Data streamed over TCP with memory monitoring throughout
 ///
 /// # Assert
 /// - Memory growth stays under 200MB throughout transfer
-/// - Backpressure triggered (received_bytes - sent_bytes exceeded buffer)
+/// - Backpressure triggered (`received_bytes` - `sent_bytes` exceeded buffer)
 /// - Total bytes received matches file size
 #[tokio::test]
 async fn test_large_file_transfers() {
@@ -2549,7 +2547,7 @@ async fn test_large_file_transfers() {
     // Use extended DB timeout for long-running test
     let db = {
         let mut opts = sea_orm::ConnectOptions::new("sqlite::memory:");
-        opts.acquire_timeout(std::time::Duration::from_secs(3600));
+        opts.acquire_timeout(std::time::Duration::from_hours(1));
         sea_orm::Database::connect(opts)
             .await
             .expect("sqlite in-memory connect failed")
@@ -2631,12 +2629,10 @@ async fn test_large_file_transfers() {
             // Check memory usage
             let current_mem = get_memory_usage_kb();
             let mem_growth = current_mem.saturating_sub(baseline_mem);
-            if mem_growth > max_allowed_growth_kb {
-                panic!(
-                    "Memory growth exceeded 200MB: {} KB (baseline: {}, current: {})",
-                    mem_growth, baseline_mem, current_mem
-                );
-            }
+            assert!(
+                mem_growth <= max_allowed_growth_kb,
+                "Memory growth exceeded 200MB: {mem_growth} KB (baseline: {baseline_mem}, current: {current_mem})"
+            );
 
             // Simulate handle_file_chunk backpressure: set client_paused when buffer exceeds limit
             let received = fd_push.received_bytes.load(Ordering::Relaxed);
@@ -2697,7 +2693,7 @@ async fn test_large_file_transfers() {
 
     // Read until we have the headers (look for \r\n\r\n)
     loop {
-        let n = tokio::time::timeout(Duration::from_secs(120), stream.read(&mut buf))
+        let n = tokio::time::timeout(Duration::from_mins(2), stream.read(&mut buf))
             .await
             .unwrap_or(Ok(0))
             .unwrap_or(0);
@@ -2706,7 +2702,9 @@ async fn test_large_file_transfers() {
             break; // EOF
         }
 
-        if !headers_parsed {
+        if headers_parsed {
+            total_body_read += n as u64;
+        } else {
             let previous_len = header_bytes.len();
             header_bytes.extend_from_slice(&buf[..n]);
 
@@ -2734,19 +2732,15 @@ async fn test_large_file_transfers() {
                     }
                 }
             }
-        } else {
-            total_body_read += n as u64;
         }
 
         // Monitor memory during read
         let current_mem = get_memory_usage_kb();
         let mem_growth = current_mem.saturating_sub(baseline_mem);
-        if mem_growth > max_allowed_growth_kb {
-            panic!(
-                "Memory growth exceeded 200MB during read: {} KB (baseline: {}, current: {})",
-                mem_growth, baseline_mem, current_mem
-            );
-        }
+        assert!(
+            mem_growth <= max_allowed_growth_kb,
+            "Memory growth exceeded 200MB during read: {mem_growth} KB (baseline: {baseline_mem}, current: {current_mem})"
+        );
     }
 
     // Wait for producer to finish
@@ -2755,15 +2749,13 @@ async fn test_large_file_transfers() {
     // Verify total bytes received matches file size
     assert_eq!(
         total_body_read, file_size,
-        "Total body bytes received should match file size (got {}, expected {})",
-        total_body_read, file_size
+        "Total body bytes received should match file size (got {total_body_read}, expected {file_size})"
     );
 
     // Verify backpressure was triggered (buffer exceeded limit at some point)
     assert!(
         backpressure_triggered.load(Ordering::Relaxed),
-        "Backpressure should have been triggered (buffer exceeded {} bytes)",
-        max_buffer
+        "Backpressure should have been triggered (buffer exceeded {max_buffer} bytes)"
     );
 
     // Final memory check
@@ -2771,13 +2763,11 @@ async fn test_large_file_transfers() {
     let final_growth = final_mem.saturating_sub(baseline_mem);
     assert!(
         final_growth < max_allowed_growth_kb,
-        "Final memory growth exceeded 200MB: {} KB",
-        final_growth
+        "Final memory growth exceeded 200MB: {final_growth} KB"
     );
 
     println!(
-        "Large file transfer complete. File size: {} bytes, Max growth: {} KB",
-        file_size, final_growth
+        "Large file transfer complete. File size: {file_size} bytes, Max growth: {final_growth} KB"
     );
 }
 
@@ -2790,17 +2780,17 @@ async fn test_large_file_transfers() {
 /// # Setup
 /// - Creates random file data (1MB-5MB)
 /// - Sets up memory monitoring
-/// - Mocks cluster to simulate SERVER_READY and FILE_UPLOAD_COMPLETE
+/// - Mocks cluster to simulate `SERVER_READY` and `FILE_UPLOAD_COMPLETE`
 ///
 /// # Act
 /// - PUT request to /file/apiv1/file/upload/ with file data
-/// - Cluster simulates upload flow (SERVER_READY → FILE_UPLOAD_COMPLETE)
+/// - Cluster simulates upload flow (`SERVER_READY` → `FILE_UPLOAD_COMPLETE`)
 /// - Memory monitored throughout transfer
 ///
 /// # Assert
 /// - Memory growth stays under 50MB throughout upload
 /// - Upload completes successfully (status: "completed")
-/// - Data integrity verified (UPLOAD_FILE message contains correct fileSize)
+/// - Data integrity verified (`UPLOAD_FILE` message contains correct fileSize)
 #[tokio::test]
 async fn test_large_file_uploads() {
     use adacs_job_controller::cluster::file_upload::FileUploadState;
@@ -2883,8 +2873,7 @@ async fn test_large_file_uploads() {
     let setup_growth = mem_during_setup.saturating_sub(baseline_mem);
     assert!(
         setup_growth < max_allowed_growth_kb,
-        "Memory growth during setup exceeded 50MB: {} KB",
-        setup_growth
+        "Memory growth during setup exceeded 50MB: {setup_growth} KB"
     );
 
     let resp = app
@@ -2917,9 +2906,7 @@ async fn test_large_file_uploads() {
     let final_growth = final_mem.saturating_sub(baseline_mem);
     assert!(
         final_growth < max_allowed_growth_kb,
-        "Final memory growth exceeded 50MB: {} KB (file size: {} bytes)",
-        final_growth,
-        file_size
+        "Final memory growth exceeded 50MB: {final_growth} KB (file size: {file_size} bytes)"
     );
 
     // Verify UPLOAD_FILE message was sent with correct file size
@@ -2934,7 +2921,6 @@ async fn test_large_file_uploads() {
     );
 
     println!(
-        "Large file upload complete. File size: {} bytes, Memory growth: {} KB",
-        file_size, final_growth
+        "Large file upload complete. File size: {file_size} bytes, Memory growth: {final_growth} KB"
     );
 }

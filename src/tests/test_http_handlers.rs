@@ -1,4 +1,4 @@
-//! Integration tests for HTTP handlers using axum's tower::ServiceExt::oneshot.
+//! Integration tests for HTTP handlers using axum's `tower::ServiceExt::oneshot`.
 //!
 //! Tests exercise:
 //!   - JWT authentication (no token, bad token, valid token)
@@ -27,7 +27,7 @@ use crate::common::{encode_test_jwt, test_jwt_secrets};
 // Test router construction helpers
 // ---------------------------------------------------------------------------
 
-/// Create a Router wired to a mock AppState with SQLite in-memory DB.
+/// Create a Router wired to a mock `AppState` with `SQLite` in-memory DB.
 fn test_router_with_manager(
     manager: MockClusterManagerTrait,
     secrets: Vec<AccessSecret>,
@@ -86,7 +86,7 @@ async fn test_auth_no_token_returns_forbidden() {
 /// Creates a minimal router with a mock manager.
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with Authorization: Bearer invalid_token.
+/// Sends POST /job/apiv1/job/ with Authorization: Bearer `invalid_token`.
 ///
 /// # Assert
 /// Verifies the response status is 403 Forbidden.
@@ -480,13 +480,13 @@ async fn test_upload_route_exists() {
 // HttpServer constructor and access secrets tests
 // ===========================================================================
 
-/// Tests that HttpServer constructor with empty access config creates zero JWT secrets.
+/// Tests that `HttpServer` constructor with empty access config creates zero JWT secrets.
 ///
 /// # Setup
 /// Creates empty access config JSON "[]".
 ///
 /// # Act
-/// Instantiates HttpServer through Application/router creation.
+/// Instantiates `HttpServer` through Application/router creation.
 ///
 /// # Assert
 /// - Router is created successfully
@@ -517,13 +517,13 @@ async fn test_http_server_constructor_empty_config() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
-/// Tests that HttpServer constructor with populated access config creates correct JWT secrets.
+/// Tests that `HttpServer` constructor with populated access config creates correct JWT secrets.
 ///
 /// # Setup
 /// Creates 3 access secrets with different names and secrets.
 ///
 /// # Act
-/// Instantiates HttpServer with populated config.
+/// Instantiates `HttpServer` with populated config.
 ///
 /// # Assert
 /// - Router accepts tokens signed with any of the 3 secrets
@@ -592,8 +592,7 @@ async fn test_http_server_constructor_populated_config() {
         assert_ne!(
             resp.status(),
             StatusCode::FORBIDDEN,
-            "Token signed with {} should be accepted",
-            secret_name
+            "Token signed with {secret_name} should be accepted"
         );
     }
 }
@@ -602,13 +601,13 @@ async fn test_http_server_constructor_populated_config() {
 // Cluster getter tests
 // ===========================================================================
 
-/// Tests that Cluster::name() returns the correct name from ClusterDetails.
+/// Tests that `Cluster::name()` returns the correct name from `ClusterDetails`.
 ///
 /// # Setup
-/// Creates Cluster with known name in ClusterConfig.
+/// Creates Cluster with known name in `ClusterConfig`.
 ///
 /// # Act
-/// Calls name() method.
+/// Calls `name()` method.
 ///
 /// # Assert
 /// Returns name matching ClusterConfig.name.
@@ -625,16 +624,16 @@ async fn test_cluster_get_name() {
     assert_eq!(cluster.name(), "test_cluster");
 }
 
-/// Tests that Cluster::cluster_details() returns the correct details.
+/// Tests that `Cluster::cluster_details()` returns the correct details.
 ///
 /// # Setup
-/// Creates Cluster with known ClusterConfig.
+/// Creates Cluster with known `ClusterConfig`.
 ///
 /// # Act
-/// Calls cluster_details() method.
+/// Calls `cluster_details()` method.
 ///
 /// # Assert
-/// Returns ClusterDetails with correct values matching config.
+/// Returns `ClusterDetails` with correct values matching config.
 #[tokio::test]
 async fn test_cluster_get_cluster_details() {
     use crate::common::test_cluster_config;

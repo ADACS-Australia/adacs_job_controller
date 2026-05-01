@@ -12,6 +12,7 @@ use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use adacs_job_controller::cluster::traits::{
     ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsOutbound,
@@ -128,7 +129,7 @@ fn manager_rejecting_connections() -> MockClusterManagerTrait {
 
 /// Mock manager that accepts connections with any token, returning a simple mock cluster.
 /// Mock manager that accepts connections and FORWARDS messages through the WS channel.
-/// This is needed for tests that need to receive SERVER_READY from the server.
+/// This is needed for tests that need to receive `SERVER_READY` from the server.
 fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
     use adacs_job_controller::cluster::traits::WsConnectionSender;
     use std::sync::Mutex as StdMutex;
@@ -456,7 +457,7 @@ async fn test_ws_pong_handled() {
 /// Connect with `Authorization: Bearer valid-token` header.
 ///
 /// # Assert
-/// Connection succeeds and receives SERVER_READY.
+/// Connection succeeds and receives `SERVER_READY`.
 #[tokio::test]
 async fn test_ws_authorization_header_success() {
     let db = setup_test_db().await;
@@ -466,8 +467,6 @@ async fn test_ws_authorization_header_success() {
     let port = server.port;
 
     // Connect with Authorization: Bearer header
-    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-
     let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
         .into_client_request()
         .unwrap();
@@ -504,7 +503,7 @@ async fn test_ws_authorization_header_success() {
 /// Connect without Authorization header.
 ///
 /// # Assert
-/// Connection is rejected (no SERVER_READY).
+/// Connection is rejected (no `SERVER_READY`).
 #[tokio::test]
 async fn test_ws_missing_authorization_header() {
     let db = setup_test_db().await;
