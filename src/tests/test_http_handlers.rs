@@ -42,6 +42,7 @@ fn test_router_with_manager(
         cluster_manager: Arc::new(manager),
         file_list_map: Arc::new(dashmap::DashMap::new()),
         jwt_secrets: std::sync::Arc::new(secrets),
+        client_timeout_seconds: None,
     };
 
     create_router(state)

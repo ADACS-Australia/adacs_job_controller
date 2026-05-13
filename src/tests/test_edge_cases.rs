@@ -639,12 +639,14 @@ async fn test_download_timeout_when_cluster_never_responds() {
         .expect_get_file_download()
         .returning(move |_| Some(Arc::clone(&fd_for_manager)));
 
-    let app = create_router(make_test_state(db, manager));
-
-    // Pause tokio's virtual clock after all setup (DB connect, schema create) so
-    // that pool timeouts work normally. The handler uses tokio::time::timeout
-    // internally, so advancing virtual time fires it instantly.
-    tokio::time::pause();
+    let http_state = AppState {
+        db,
+        cluster_manager: Arc::new(manager),
+        file_list_map: Arc::new(dashmap::DashMap::new()),
+        jwt_secrets: std::sync::Arc::new(common::test_jwt_secrets()),
+        client_timeout_seconds: Some(1),
+    };
+    let app = create_router(http_state);
 
     let req = Request::builder()
         .method("GET")
@@ -652,17 +654,7 @@ async fn test_download_timeout_when_cluster_never_responds() {
         .body(Body::empty())
         .unwrap();
 
-    let (resp_result, ()) = tokio::join!(app.oneshot(req), async {
-        // Yield several times to let the handler reach its tokio::time::timeout
-        // registration before we advance the clock.
-        for _ in 0..10 {
-            tokio::task::yield_now().await;
-        }
-        // Advance past CLIENT_TIMEOUT_SECONDS (default 30s).
-        tokio::time::advance(Duration::from_secs(35)).await;
-    });
-
-    let response = resp_result.unwrap();
+    let response = app.oneshot(req).await.unwrap();
     assert_eq!(
         response.status(),
         StatusCode::BAD_REQUEST,
@@ -2408,6 +2400,7 @@ async fn test_job_finished_update_populates_cache() {
         cluster_manager: Arc::new(http_manager),
         file_list_map: flmap_for_state,
         jwt_secrets: std::sync::Arc::new(common::test_jwt_secrets()),
+        client_timeout_seconds: None,
     };
 
     let app = create_router(http_state);

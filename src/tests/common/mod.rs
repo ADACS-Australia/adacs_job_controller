@@ -124,6 +124,7 @@ pub fn make_test_state(
         cluster_manager: std::sync::Arc::new(manager),
         file_list_map: std::sync::Arc::new(dashmap::DashMap::new()),
         jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: None,
     }
 }
 
@@ -264,5 +265,6 @@ pub fn make_test_state_with_secrets(
         cluster_manager: std::sync::Arc::new(manager),
         file_list_map: std::sync::Arc::new(dashmap::DashMap::new()),
         jwt_secrets: std::sync::Arc::new(secrets),
+        client_timeout_seconds: None,
     }
 }

@@ -740,6 +740,7 @@ async fn test_list_files_ws_response_populates_result() {
         cluster_manager: Arc::new(manager),
         file_list_map,
         jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: None,
     };
 
     let app = create_router(state);

@@ -17,6 +17,8 @@ pub struct AppState {
     pub cluster_manager: Arc<dyn ClusterManagerTrait>,
     pub file_list_map: Arc<DashMap<String, Arc<Mutex<FileListState>>>>,
     pub jwt_secrets: Arc<Vec<AccessSecret>>,
+    /// Override for client timeout seconds. `None` uses the static default.
+    pub client_timeout_seconds: Option<u64>,
 }
 
 /// Initialize all components and start HTTP + WebSocket servers.
@@ -67,6 +69,7 @@ pub async fn run() -> anyhow::Result<()> {
         cluster_manager: Arc::clone(&cluster_manager),
         file_list_map,
         jwt_secrets: Arc::new(jwt_secrets),
+        client_timeout_seconds: None,
     };
 
     let http_router = crate::http::server::create_router(app_state.clone());

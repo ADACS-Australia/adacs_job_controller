@@ -213,7 +213,11 @@ pub async fn download_file(
         "File download session not found".to_string(),
     ))?;
 
-    let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
+    let timeout = std::time::Duration::from_secs(
+        state
+            .client_timeout_seconds
+            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
+    );
     let ready = tokio::time::timeout(timeout, async {
         loop {
             if fd_state.data_ready.load(Ordering::Acquire) {
@@ -257,6 +261,9 @@ pub async fn download_file(
     let fd_state_stream = Arc::clone(&fd_state);
     let min_buffer = *settings::MIN_FILE_BUFFER_SIZE;
     let uuid_for_resume = uuid.clone();
+    let chunk_timeout_secs = state
+        .client_timeout_seconds
+        .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS);
 
     let stream = async_stream::stream! {
         let mut receiver = fd_state_stream.chunk_receiver.lock().await;
@@ -264,7 +271,7 @@ pub async fn download_file(
 
         while sent < file_size && !fd_state_stream.error.load(Ordering::Acquire) {
             match tokio::time::timeout(
-                std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS),
+                std::time::Duration::from_secs(chunk_timeout_secs),
                 receiver.recv()
             ).await {
                 Ok(Some(chunk)) => {
@@ -404,7 +411,11 @@ pub async fn upload_file(
         "File upload session not found".to_string(),
     ))?;
 
-    let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
+    let timeout = std::time::Duration::from_secs(
+        state
+            .client_timeout_seconds
+            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
+    );
     let ready = tokio::time::timeout(timeout, async {
         loop {
             if fu_state.data_ready.load(Ordering::Acquire) {
@@ -614,7 +625,11 @@ pub async fn list_files(
     msg.push_bool(body.recursive);
     cluster.send_message(msg).await;
 
-    let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
+    let timeout = std::time::Duration::from_secs(
+        state
+            .client_timeout_seconds
+            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
+    );
     let fl_state_clone = Arc::clone(&fl_state);
     let wait_result = tokio::time::timeout(timeout, async {
         loop {
@@ -705,7 +720,11 @@ async fn spawn_background_cache(
     msg.push_bool(true);
     cluster.send_message(msg).await;
 
-    let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
+    let timeout = std::time::Duration::from_secs(
+        state
+            .client_timeout_seconds
+            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
+    );
     let fl_clone = Arc::clone(&fl_state);
     let _ = tokio::time::timeout(timeout, async {
         loop {
