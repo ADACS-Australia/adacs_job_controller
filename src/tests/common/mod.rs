@@ -75,7 +75,9 @@ pub fn mock_cluster_manager_with_online_cluster(
     mock_cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    mock_cluster.expect_send_message().returning(|_| ());
+    mock_cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
 
     let cluster_arc: Arc<MockClusterTrait> = Arc::new(mock_cluster);
     let cluster_for_closure = Arc::clone(&cluster_arc);
@@ -121,7 +123,8 @@ pub fn make_test_state(
         db,
         cluster_manager: std::sync::Arc::new(manager),
         file_list_map: std::sync::Arc::new(dashmap::DashMap::new()),
-        jwt_secrets: test_jwt_secrets(),
+        jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: None,
     }
 }
 
@@ -261,6 +264,7 @@ pub fn make_test_state_with_secrets(
         db,
         cluster_manager: std::sync::Arc::new(manager),
         file_list_map: std::sync::Arc::new(dashmap::DashMap::new()),
-        jwt_secrets: secrets,
+        jwt_secrets: std::sync::Arc::new(secrets),
+        client_timeout_seconds: None,
     }
 }

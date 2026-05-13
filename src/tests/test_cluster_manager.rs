@@ -15,8 +15,8 @@ use adacs_job_controller::config::settings::*;
 use adacs_job_controller::db::entities::cluster_uuid;
 use dashmap::DashMap;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
-    DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Schema,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, PaginatorTrait, QueryOrder, Schema,
 };
 
 // ---------------------------------------------------------------------------
@@ -237,16 +237,17 @@ async fn test_reconnect_clusters_skips_online() {
     let mgr = make_manager(three_cluster_configs(), db.clone());
 
     // Insert a UUID for cluster2 and connect it
-    mgr.reconnect_clusters().await;
-
-    // Get cluster2's UUID from DB
-    let model = cluster_uuid::Entity::find()
-        .filter(cluster_uuid::Column::Cluster.eq("cluster2"))
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    let uuid = model.uuid;
+    uuid::Uuid::new_v4();
+    let uuid = uuid::Uuid::new_v4().to_string();
+    cluster_uuid::ActiveModel {
+        id: sea_orm::ActiveValue::NotSet,
+        cluster: Set("cluster2".to_string()),
+        uuid: Set(uuid.clone()),
+        timestamp: Set(chrono::Utc::now().naive_utc()),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
 
     // Connect cluster2 via handle_new_connection
     let conn_id = 100;
@@ -1005,14 +1006,17 @@ async fn test_check_pings_evicts_dead_connection() {
 
     // Do NOT call handle_pong — simulate a dead/unresponsive cluster
 
-    // Second check_pings: ping_times has entry, pong_times does NOT → evict
+    // Second check_pings: pong still missing → missed counter = 1, not yet evicted
+    mgr.check_pings().await;
+
+    // Third check_pings: pong still missing → missed counter = 2 → evict
     mgr.check_pings().await;
 
     // Cluster should now be offline
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
     assert!(
         !cluster.is_online(),
-        "cluster should be evicted when pong is missing after ping"
+        "cluster should be evicted after 2 consecutive missed pongs"
     );
 
     // Connection map should be empty

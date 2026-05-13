@@ -1,5 +1,6 @@
 //! Integration tests for Cluster message flow: priority queuing, scheduling,
 //! file download/upload state transitions, backpressure, and file list handling.
+#![allow(clippy::similar_names)]
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -51,7 +52,7 @@ async fn test_priority_queue_ordering_via_channel() {
 
     // Set up a real channel as the "WS connection"
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
 
     // Start the scheduler
     cluster.start_tasks();
@@ -70,9 +71,15 @@ async fn test_priority_queue_ordering_via_channel() {
     let data_med = msg_med.into_data();
 
     // Queue lowest first, then highest, then medium
-    cluster.queue_message("low".into(), data_low.clone(), Priority::Lowest);
-    cluster.queue_message("high".into(), data_high.clone(), Priority::Highest);
-    cluster.queue_message("med".into(), data_med.clone(), Priority::Medium);
+    cluster
+        .queue_message("low".into(), data_low.clone(), Priority::Lowest)
+        .await;
+    cluster
+        .queue_message("high".into(), data_high.clone(), Priority::Highest)
+        .await;
+    cluster
+        .queue_message("med".into(), data_med.clone(), Priority::Medium)
+        .await;
 
     // Collect results - the scheduler should dequeue in priority order
     let mut received = Vec::new();
@@ -114,17 +121,19 @@ async fn test_multiple_messages_same_priority_round_robin() {
     let cluster = Cluster::new(test_config(), None);
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     // Queue 2 messages from different sources at same priority
-    let mut msg_a = Message::new(1_000_001, Priority::Medium, "source_a");
-    msg_a.push_string("A");
-    let mut msg_b = Message::new(1_000_002, Priority::Medium, "source_b");
-    msg_b.push_string("B");
+    let msg_a = Message::new(1_000_001, Priority::Medium, "source_a");
+    let msg_b = Message::new(1_000_002, Priority::Medium, "source_b");
 
-    cluster.queue_message("source_a".into(), msg_a.into_data(), Priority::Medium);
-    cluster.queue_message("source_b".into(), msg_b.into_data(), Priority::Medium);
+    cluster
+        .queue_message("source_a".into(), msg_a.into_data(), Priority::Medium)
+        .await;
+    cluster
+        .queue_message("source_b".into(), msg_b.into_data(), Priority::Medium)
+        .await;
 
     let mut received = Vec::new();
     for _ in 0..2 {
@@ -364,12 +373,14 @@ async fn test_wait_for_queue_drain_blocks_then_unblocks() {
 
     // Set up a connection so the scheduler can drain the queue
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     // Queue a message
     let msg = Message::new(1_000_001, Priority::Medium, "test");
-    cluster.queue_message("test".into(), msg.into_data(), Priority::Medium);
+    cluster
+        .queue_message("test".into(), msg.into_data(), Priority::Medium)
+        .await;
 
     // wait_for_queue_drain(true) should eventually return true once scheduler drains it
     let result = tokio::time::timeout(
@@ -411,10 +422,10 @@ async fn test_cluster_set_connection_and_offline() {
     assert!(!cluster.is_online());
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     assert!(cluster.is_online());
 
-    cluster.set_connection(None);
+    cluster.set_connection(None).await;
     assert!(!cluster.is_online());
 }
 
@@ -432,10 +443,10 @@ async fn test_cluster_set_connection_and_offline() {
 async fn test_cluster_close_disconnects() {
     let cluster = Cluster::new(test_config(), None);
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     assert!(cluster.is_online());
 
-    cluster.close(false);
+    cluster.close(false).await;
     assert!(!cluster.is_online());
 }
 
@@ -576,7 +587,6 @@ async fn test_file_upload_constructor() {
 /// source order within each priority level.
 #[tokio::test]
 async fn test_run_scheduler_priority_ordering() {
-    use adacs_job_controller::cluster::traits::ClusterTrait;
     use adacs_job_controller::protocol::types::Priority;
 
     let cluster = Cluster::new(test_config(), None);
@@ -585,33 +595,45 @@ async fn test_run_scheduler_priority_ordering() {
     // Highest priority: s1, s2
     let mut msg_h1 = Message::new(1001, Priority::Highest, "s1");
     msg_h1.push_string("highest_s1");
-    cluster.queue_message("s1".into(), msg_h1.into_data(), Priority::Highest);
+    cluster
+        .queue_message("s1".into(), msg_h1.into_data(), Priority::Highest)
+        .await;
 
     let mut msg_h2 = Message::new(1002, Priority::Highest, "s2");
     msg_h2.push_string("highest_s2");
-    cluster.queue_message("s2".into(), msg_h2.into_data(), Priority::Highest);
+    cluster
+        .queue_message("s2".into(), msg_h2.into_data(), Priority::Highest)
+        .await;
 
     // Medium priority: s3, s4
     let mut msg_m1 = Message::new(2001, Priority::Medium, "s3");
     msg_m1.push_string("medium_s3");
-    cluster.queue_message("s3".into(), msg_m1.into_data(), Priority::Medium);
+    cluster
+        .queue_message("s3".into(), msg_m1.into_data(), Priority::Medium)
+        .await;
 
     let mut msg_m2 = Message::new(2002, Priority::Medium, "s4");
     msg_m2.push_string("medium_s4");
-    cluster.queue_message("s4".into(), msg_m2.into_data(), Priority::Medium);
+    cluster
+        .queue_message("s4".into(), msg_m2.into_data(), Priority::Medium)
+        .await;
 
     // Lowest priority: s5, s6
     let mut msg_l1 = Message::new(3001, Priority::Lowest, "s5");
     msg_l1.push_string("lowest_s5");
-    cluster.queue_message("s5".into(), msg_l1.into_data(), Priority::Lowest);
+    cluster
+        .queue_message("s5".into(), msg_l1.into_data(), Priority::Lowest)
+        .await;
 
     let mut msg_l2 = Message::new(3002, Priority::Lowest, "s6");
     msg_l2.push_string("lowest_s6");
-    cluster.queue_message("s6".into(), msg_l2.into_data(), Priority::Lowest);
+    cluster
+        .queue_message("s6".into(), msg_l2.into_data(), Priority::Lowest)
+        .await;
 
     // Set up channel and start scheduler
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     // Receive all 6 messages
@@ -686,7 +708,6 @@ async fn test_run_scheduler_priority_ordering() {
 /// higher priority queue first.
 #[tokio::test]
 async fn test_does_higher_priority_data_exist() {
-    use adacs_job_controller::cluster::traits::ClusterTrait;
     use adacs_job_controller::protocol::types::Priority;
 
     let cluster = Cluster::new(test_config(), None);
@@ -695,7 +716,9 @@ async fn test_does_higher_priority_data_exist() {
     for i in 0..3 {
         let mut msg = Message::new(2000 + i, Priority::Medium, &format!("medium_s{i}"));
         msg.push_string(&format!("medium_data_{i}"));
-        cluster.queue_message(format!("medium_s{i}"), msg.into_data(), Priority::Medium);
+        cluster
+            .queue_message(format!("medium_s{i}"), msg.into_data(), Priority::Medium)
+            .await;
     }
 
     // Verify there is higher priority data when checking from Medium context
@@ -704,11 +727,13 @@ async fn test_does_higher_priority_data_exist() {
     // Now add Highest priority message
     let mut high_msg = Message::new(1000, Priority::Highest, "high_s");
     high_msg.push_string("high_priority_data");
-    cluster.queue_message("high_s".into(), high_msg.into_data(), Priority::Highest);
+    cluster
+        .queue_message("high_s".into(), high_msg.into_data(), Priority::Highest)
+        .await;
 
     // Set up channel and start scheduler
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     // First message received should be the Highest priority one
@@ -749,7 +774,7 @@ async fn test_send_message_queues_correctly() {
     let cluster = Cluster::new(test_config(), None);
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     // Use the trait's send_message
@@ -757,7 +782,7 @@ async fn test_send_message_queues_correctly() {
     msg.push_uint(1);
     msg.push_string("bundle");
     msg.push_string("params");
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
     // Should arrive via the scheduler
     let outbound = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
@@ -837,12 +862,16 @@ async fn test_prune_sources_removes_empty_queues() {
     let mut msg_b = Message::new(1_000_002, Priority::Medium, "source_b");
     msg_b.push_string("B");
 
-    cluster.queue_message("source_a".into(), msg_a.into_data(), Priority::Medium);
-    cluster.queue_message("source_b".into(), msg_b.into_data(), Priority::Medium);
+    cluster
+        .queue_message("source_a".into(), msg_a.into_data(), Priority::Medium)
+        .await;
+    cluster
+        .queue_message("source_b".into(), msg_b.into_data(), Priority::Medium)
+        .await;
 
     // Connect and start so scheduler drains the queue
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     // Wait for both messages to be dequeued
@@ -885,7 +914,6 @@ async fn test_prune_sources_removes_empty_queues() {
 /// - Pruner removes empty sources
 #[tokio::test]
 async fn test_prune_sources_background_thread() {
-    use adacs_job_controller::cluster::traits::ClusterTrait;
     use adacs_job_controller::protocol::message::Message;
 
     // Set prune interval to 100ms for fast test execution
@@ -902,22 +930,28 @@ async fn test_prune_sources_background_thread() {
 
         // Set up WebSocket connection to capture messages and drain queue
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-        cluster.set_connection(Some(tx));
+        cluster.set_connection(Some(tx)).await;
         cluster.start_tasks();
 
         // Queue messages from 3 sources at different priorities (like C++ test)
         // Note: Must queue AFTER start_tasks() so scheduler doesn't miss the notification
         let mut msg_s1 = Message::new(SUBMIT_JOB, Priority::Highest, "s1");
         msg_s1.push_string("s1_data");
-        cluster.queue_message("s1".into(), msg_s1.into_data(), Priority::Highest);
+        cluster
+            .queue_message("s1".into(), msg_s1.into_data(), Priority::Highest)
+            .await;
 
         let mut msg_s2 = Message::new(CANCEL_JOB, Priority::Lowest, "s2");
         msg_s2.push_string("s2_data");
-        cluster.queue_message("s2".into(), msg_s2.into_data(), Priority::Lowest);
+        cluster
+            .queue_message("s2".into(), msg_s2.into_data(), Priority::Lowest)
+            .await;
 
         let mut msg_s3 = Message::new(DELETE_JOB, Priority::Lowest, "s3");
         msg_s3.push_string("s3_data");
-        cluster.queue_message("s3".into(), msg_s3.into_data(), Priority::Lowest);
+        cluster
+            .queue_message("s3".into(), msg_s3.into_data(), Priority::Lowest)
+            .await;
 
         // Wait for all 3 messages to be sent
         let mut received_this_iter = 0;

@@ -6,6 +6,7 @@ use axum::http::StatusCode;
 use sea_orm::sea_query::{Condition, Expr, Func, Query};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
 };
 
 use crate::app::AppState;
@@ -66,6 +67,16 @@ pub async fn create_job(
     State(state): State<AppState>,
     Json(body): Json<CreateJobRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    const MAX_PARAMETERS_LEN: usize = 100_000;
+    const MAX_BUNDLE_LEN: usize = 10_000;
+
+    if body.parameters.len() > MAX_PARAMETERS_LEN {
+        return Err((StatusCode::BAD_REQUEST, "parameters too long".to_string()));
+    }
+    if body.bundle.len() > MAX_BUNDLE_LEN {
+        return Err((StatusCode::BAD_REQUEST, "bundle too long".to_string()));
+    }
+
     if !auth.secret.clusters.contains(&body.cluster) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -87,31 +98,43 @@ pub async fn create_job(
         .and_then(sea_orm::JsonValue::as_i64)
         .unwrap_or(0);
 
-    let job_row = job::ActiveModel {
-        user: Set(user_id),
-        parameters: Set(body.parameters.clone()),
-        cluster: Set(body.cluster.clone()),
-        bundle: Set(body.bundle.clone()),
-        application: Set(auth.secret.name.clone()),
-        ..Default::default()
-    }
-    .insert(&state.db)
-    .await
-    .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
+    let job_id: i64 = state
+        .db
+        .transaction::<_, _, sea_orm::DbErr>(|txn| {
+            let parameters = body.parameters.clone();
+            let cluster = body.cluster.clone();
+            let bundle = body.bundle.clone();
+            let app_name = auth.secret.name.clone();
+            Box::pin(async move {
+                let job_row = job::ActiveModel {
+                    user: Set(user_id),
+                    parameters: Set(parameters),
+                    cluster: Set(cluster),
+                    bundle: Set(bundle),
+                    application: Set(app_name),
+                    ..Default::default()
+                }
+                .insert(txn)
+                .await?;
 
-    let job_id = job_row.id;
+                let jid = job_row.id;
 
-    job_history::ActiveModel {
-        job_id: Set(job_id),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        what: Set(SYSTEM_SOURCE.to_string()),
-        state: Set(JobStatus::Pending as i32),
-        details: Set("Job pending".to_string()),
-        ..Default::default()
-    }
-    .insert(&state.db)
-    .await
-    .map_err(|_| (StatusCode::BAD_REQUEST, "Bad request".to_string()))?;
+                job_history::ActiveModel {
+                    job_id: Set(jid),
+                    timestamp: Set(chrono::Utc::now().naive_utc()),
+                    what: Set(SYSTEM_SOURCE.to_string()),
+                    state: Set(JobStatus::Pending as i32),
+                    details: Set("Job pending".to_string()),
+                    ..Default::default()
+                }
+                .insert(txn)
+                .await?;
+
+                Ok(jid)
+            })
+        })
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
 
     if cluster.is_online() {
         let source = format!("{job_id}_{}", body.cluster);
@@ -119,7 +142,7 @@ pub async fn create_job(
         msg.push_uint(job_id as u32);
         msg.push_string(&body.bundle);
         msg.push_string(&body.parameters);
-        cluster.send_message(msg);
+        cluster.send_message(msg).await;
 
         let _ = job_history::ActiveModel {
             job_id: Set(job_id),
@@ -414,7 +437,7 @@ pub async fn cancel_job(
             let source = format!("{}_{}", body.job_id, job.cluster);
             let mut msg = Message::new(CANCEL_JOB, Priority::Medium, &source);
             msg.push_uint(body.job_id as u32);
-            cluster_obj.send_message(msg);
+            cluster_obj.send_message(msg).await;
         }
     }
 
@@ -506,7 +529,7 @@ pub async fn delete_job(
             let source = format!("{}_{}", body.job_id, job.cluster);
             let mut msg = Message::new(DELETE_JOB, Priority::Medium, &source);
             msg.push_uint(body.job_id as u32);
-            cluster_obj.send_message(msg);
+            cluster_obj.send_message(msg).await;
         }
     }
 

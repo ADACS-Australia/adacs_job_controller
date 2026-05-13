@@ -46,10 +46,10 @@ pub trait ClusterTrait: Send + Sync {
     async fn handle_message(&self, message: Message);
 
     /// Send a message to the remote cluster (queues it for the scheduler).
-    fn send_message(&self, message: Message);
+    async fn send_message(&self, message: Message);
 
     /// Low-level: queue serialized data for sending.
-    fn queue_message(&self, source: String, data: Vec<u8>, priority: Priority);
+    async fn queue_message(&self, source: String, data: Vec<u8>, priority: Priority);
 
     /// Wait for the message queue to drain.
     /// If `wait_for_empty` is false: waits only if queue exceeds MAX threshold, until it drops below MIN.
@@ -59,13 +59,13 @@ pub trait ClusterTrait: Send + Sync {
 
     /// Set or clear the WebSocket connection sender.
     /// Pass `None` to disconnect.
-    fn set_connection(&self, conn: Option<WsConnectionSender>);
+    async fn set_connection(&self, conn: Option<WsConnectionSender>);
 
     /// Send a WebSocket-level Ping frame to the remote cluster (for keep-alive).
     fn send_ping(&self);
 
     /// Close the WebSocket connection.
-    fn close(&self, force: bool);
+    async fn close(&self, force: bool);
 
     /// Stop all background tasks (scheduler, prune, resend).
     #[allow(dead_code)]

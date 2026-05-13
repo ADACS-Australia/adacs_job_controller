@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use rand::{Rng, SeedableRng};
 use tower::ServiceExt;
 
 use adacs_job_controller::cluster::file_download::FileDownloadState;
@@ -28,7 +29,7 @@ use common::{
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 use std::sync::atomic::Ordering;
 
 // ---------------------------------------------------------------------------
@@ -43,7 +44,7 @@ fn online_cluster_no_messages() -> MockClusterTrait {
     c.expect_role_string().returning(|| "master".to_string());
     c.expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    c.expect_send_message().returning(|_| ());
+    c.expect_send_message().returning(|_| Box::pin(async {}));
     c
 }
 
@@ -312,7 +313,6 @@ async fn test_download_file_unknown_uuid_returns_400() {
 async fn test_download_file_cluster_offline_returns_503() {
     let db = setup_test_db().await;
     // Insert a file download record pointing at "ozstar"
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     let uuid = "test-uuid-1234".to_string();
     file_download::ActiveModel {
         user: Set(1),
@@ -368,10 +368,7 @@ async fn test_download_file_cluster_offline_returns_503() {
 #[tokio::test]
 async fn test_download_file_streams_chunks() {
     let db = setup_test_db().await;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
-
     // Generate random file data like the C++ test (0 to 1MB range)
-    use rand::{Rng, SeedableRng};
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let file_size = rng.random_range(0..=1024 * 1024);
     let expected_data: Vec<u8> = (0..file_size).map(|_| rng.random()).collect();
@@ -520,7 +517,6 @@ async fn test_download_file_streams_chunks() {
 #[tokio::test]
 async fn test_download_file_error_from_cluster_returns_400() {
     let db = setup_test_db().await;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     let uuid = "error-uuid".to_string();
     file_download::ActiveModel {
         user: Set(1),
@@ -615,7 +611,6 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
 
     // Pre-populate cache
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
         file_list_cache::ActiveModel {
             job_id: Set(job_id),
@@ -728,6 +723,7 @@ async fn test_list_files_ws_response_populates_result() {
                     locked.notify.notify_waiters();
                 }
             });
+            Box::pin(async {})
         });
         Arc::new(c)
     };
@@ -743,7 +739,8 @@ async fn test_list_files_ws_response_populates_result() {
         db: db.clone(),
         cluster_manager: Arc::new(manager),
         file_list_map,
-        jwt_secrets: test_jwt_secrets(),
+        jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: None,
     };
 
     let app = create_router(state);
@@ -1054,6 +1051,7 @@ async fn test_upload_file_success_full_flow() {
             .returning(|| test_cluster_config("ozstar"));
         c.expect_send_message().returning(move |msg| {
             sent_clone.lock().unwrap().push(msg);
+            Box::pin(async {})
         });
         Arc::new(c)
     };
@@ -1069,6 +1067,7 @@ async fn test_upload_file_success_full_flow() {
             .returning(|| test_cluster_config("ozstar"));
         c.expect_send_message().returning(move |msg| {
             sent2.lock().unwrap().push(msg);
+            Box::pin(async {})
         });
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
@@ -1155,7 +1154,7 @@ async fn test_upload_file_server_error_returns_400() {
         c.expect_role_string().returning(|| "master".to_string());
         c.expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| ());
+        c.expect_send_message().returning(|_| Box::pin(async {}));
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
         Arc::new(c)
@@ -1212,7 +1211,7 @@ fn online_cluster_mock_for_multi(name: &'static str) -> MockClusterTrait {
     c.expect_role_string().returning(|| "master".to_string());
     c.expect_cluster_details()
         .returning(move || test_cluster_config(name));
-    c.expect_send_message().returning(|_| ());
+    c.expect_send_message().returning(|_| Box::pin(async {}));
     c
 }
 

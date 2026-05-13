@@ -66,7 +66,7 @@ fn make_file_error_message(detail: &str) -> Message {
 
 /// Create a `FileDownload` Cluster and a WS sender channel.
 /// Returns `(Arc<Cluster>, WS channel receiver)`.
-fn make_file_download_cluster() -> (
+async fn make_file_download_cluster() -> (
     Arc<Cluster>,
     tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
     Arc<FileDownloadState>,
@@ -82,8 +82,7 @@ fn make_file_download_cluster() -> (
     );
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     (cluster, rx, download_state)
@@ -96,7 +95,6 @@ async fn drain_channel(
     cluster: &Arc<Cluster>,
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
 ) -> Vec<Message> {
-    use adacs_job_controller::cluster::traits::ClusterTrait;
     cluster.wait_for_queue_drain(true).await;
     let mut msgs = Vec::new();
     while let Ok(outbound) = rx.try_recv() {
@@ -124,7 +122,7 @@ async fn drain_channel(
 /// and the chunk bytes are available in the receiver channel.
 #[tokio::test]
 async fn test_file_chunk_received_correctly() {
-    let (cluster, mut rx, download_state) = make_file_download_cluster();
+    let (cluster, mut rx, download_state) = make_file_download_cluster().await;
 
     let chunk_data = b"hello world chunk".to_vec();
     let chunk_len = chunk_data.len() as u64;
@@ -170,9 +168,7 @@ async fn test_file_chunk_received_correctly() {
 /// Verifies `received_data`, `data_ready`, and `file_size` atomics are all set correctly.
 #[tokio::test]
 async fn test_file_details_sets_file_size() {
-    let (cluster, mut rx, download_state) = make_file_download_cluster();
-
-    use adacs_job_controller::cluster::traits::ClusterTrait;
+    let (cluster, mut rx, download_state) = make_file_download_cluster().await;
 
     let msg = make_file_details_message(1_234_567);
     cluster.handle_message(msg).await;
@@ -201,9 +197,7 @@ async fn test_file_details_sets_file_size() {
 /// Verifies `error` and `data_ready` flags are set, and `error_details` contains the error string.
 #[tokio::test]
 async fn test_file_error_sets_error_state() {
-    let (cluster, mut rx, download_state) = make_file_download_cluster();
-
-    use adacs_job_controller::cluster::traits::ClusterTrait;
+    let (cluster, mut rx, download_state) = make_file_download_cluster().await;
 
     let msg = make_file_error_message("permission denied");
     cluster.handle_message(msg).await;
@@ -236,9 +230,7 @@ async fn test_file_error_sets_error_state() {
 async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
     use adacs_job_controller::config::settings::MAX_FILE_BUFFER_SIZE;
 
-    let (cluster, mut rx, download_state) = make_file_download_cluster();
-
-    use adacs_job_controller::cluster::traits::ClusterTrait;
+    let (cluster, mut rx, download_state) = make_file_download_cluster().await;
 
     // Set received_bytes >> sent_bytes to exceed the buffer limit
     let max_buf = *MAX_FILE_BUFFER_SIZE;
@@ -278,9 +270,7 @@ async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
 /// Verifies no `PAUSE_FILE_CHUNK_STREAM` message is sent on the WS channel.
 #[tokio::test]
 async fn test_backpressure_no_pause_for_small_chunks() {
-    let (cluster, mut rx, _download_state) = make_file_download_cluster();
-
-    use adacs_job_controller::cluster::traits::ClusterTrait;
+    let (cluster, mut rx, _download_state) = make_file_download_cluster().await;
 
     // Small chunk — well below the buffer limit
     let small_data = vec![0u8; 128];
@@ -319,9 +309,7 @@ async fn test_backpressure_no_pause_for_small_chunks() {
 async fn test_backpressure_pause_not_resent_when_already_paused() {
     use adacs_job_controller::config::settings::MAX_FILE_BUFFER_SIZE;
 
-    let (cluster, mut rx, download_state) = make_file_download_cluster();
-
-    use adacs_job_controller::cluster::traits::ClusterTrait;
+    let (cluster, mut rx, download_state) = make_file_download_cluster().await;
 
     // Pre-set client_paused = true (as if already paused)
     download_state.client_paused.store(true, Ordering::Relaxed);
@@ -372,9 +360,7 @@ async fn test_backpressure_pause_not_resent_when_already_paused() {
 async fn test_resume_logic_via_sent_bytes_update() {
     use adacs_job_controller::config::settings::{MAX_FILE_BUFFER_SIZE, MIN_FILE_BUFFER_SIZE};
 
-    let (cluster, mut rx, download_state) = make_file_download_cluster();
-
-    use adacs_job_controller::cluster::traits::ClusterTrait;
+    let (cluster, mut rx, download_state) = make_file_download_cluster().await;
 
     // 1. Simulate large incoming data → triggers PAUSE
     let max_buf = *MAX_FILE_BUFFER_SIZE;
@@ -404,7 +390,7 @@ async fn test_resume_logic_via_sent_bytes_update() {
             .is_ok()
     {
         let resume_msg = Message::new(RESUME_FILE_CHUNK_STREAM, Priority::Highest, "test_uuid");
-        cluster.send_message(resume_msg);
+        cluster.send_message(resume_msg).await;
     }
 
     // 4. Drain WS channel — should see RESUME_FILE_CHUNK_STREAM
@@ -440,9 +426,7 @@ async fn test_resume_logic_via_sent_bytes_update() {
 /// chunk data is available in the receiver channel in the correct order.
 #[tokio::test]
 async fn test_file_download_completes_without_pause_for_small_file() {
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-
-    let (cluster, mut rx, download_state) = make_file_download_cluster();
+    let (cluster, mut rx, download_state) = make_file_download_cluster().await;
 
     // Send FILE_DETAILS first
     let msg = make_file_details_message(30);
@@ -495,9 +479,7 @@ async fn test_file_download_completes_without_pause_for_small_file() {
 /// Verifies the notification was delivered and the waiting task observed it.
 #[tokio::test]
 async fn test_file_chunk_notifies_data_ready() {
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-
-    let (cluster, mut rx, download_state) = make_file_download_cluster();
+    let (cluster, mut rx, download_state) = make_file_download_cluster().await;
 
     // Reset data_ready
     download_state.data_ready.store(false, Ordering::Relaxed);

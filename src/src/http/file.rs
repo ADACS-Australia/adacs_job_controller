@@ -18,7 +18,7 @@ use crate::protocol::constants::{
 };
 use crate::protocol::message::Message;
 use crate::protocol::types::{FileInfo, FileListState, Priority};
-use crate::utils::general::generate_uuid;
+use crate::utils::uuid::generate_uuid;
 
 // ---- Request/Response types ----
 
@@ -206,14 +206,18 @@ pub async fn download_file(
     msg.push_string(&uuid);
     msg.push_string(&s_bundle);
     msg.push_string(&s_file_path);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
     let fd_state = state.cluster_manager.get_file_download(&uuid).ok_or((
         StatusCode::BAD_REQUEST,
         "File download session not found".to_string(),
     ))?;
 
-    let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
+    let timeout = std::time::Duration::from_secs(
+        state
+            .client_timeout_seconds
+            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
+    );
     let ready = tokio::time::timeout(timeout, async {
         loop {
             if fd_state.data_ready.load(Ordering::Acquire) {
@@ -257,6 +261,9 @@ pub async fn download_file(
     let fd_state_stream = Arc::clone(&fd_state);
     let min_buffer = *settings::MIN_FILE_BUFFER_SIZE;
     let uuid_for_resume = uuid.clone();
+    let chunk_timeout_secs = state
+        .client_timeout_seconds
+        .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS);
 
     let stream = async_stream::stream! {
         let mut receiver = fd_state_stream.chunk_receiver.lock().await;
@@ -264,7 +271,7 @@ pub async fn download_file(
 
         while sent < file_size && !fd_state_stream.error.load(Ordering::Acquire) {
             match tokio::time::timeout(
-                std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS),
+                std::time::Duration::from_secs(chunk_timeout_secs),
                 receiver.recv()
             ).await {
                 Ok(Some(chunk)) => {
@@ -287,7 +294,7 @@ pub async fn download_file(
                                     Priority::Highest,
                                     &uuid_for_resume,
                                 );
-                        fd_cluster.send_message(resume_msg);
+                        fd_cluster.send_message(resume_msg).await;
                     }
 
                     yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
@@ -397,14 +404,18 @@ pub async fn upload_file(
     msg.push_string(&s_bundle);
     msg.push_string(&target_path);
     msg.push_ulong(content_length);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
     let fu_state = state.cluster_manager.get_file_upload(&uuid).ok_or((
         StatusCode::BAD_REQUEST,
         "File upload session not found".to_string(),
     ))?;
 
-    let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
+    let timeout = std::time::Duration::from_secs(
+        state
+            .client_timeout_seconds
+            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
+    );
     let ready = tokio::time::timeout(timeout, async {
         loop {
             if fu_state.data_ready.load(Ordering::Acquire) {
@@ -453,7 +464,7 @@ pub async fn upload_file(
 
         let mut chunk_msg = Message::new(FILE_UPLOAD_CHUNK, Priority::Lowest, &uuid);
         chunk_msg.push_bytes(&body_bytes[start..end]);
-        upload_cluster.send_message(chunk_msg);
+        upload_cluster.send_message(chunk_msg).await;
 
         total_read += this_chunk as u64;
     }
@@ -471,7 +482,7 @@ pub async fn upload_file(
     }
 
     let complete_msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Highest, &uuid);
-    upload_cluster.send_message(complete_msg);
+    upload_cluster.send_message(complete_msg).await;
 
     let confirm = tokio::time::timeout(timeout, async {
         loop {
@@ -612,9 +623,13 @@ pub async fn list_files(
     msg.push_string(&s_bundle);
     msg.push_string(&body.path);
     msg.push_bool(body.recursive);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
-    let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
+    let timeout = std::time::Duration::from_secs(
+        state
+            .client_timeout_seconds
+            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
+    );
     let fl_state_clone = Arc::clone(&fl_state);
     let wait_result = tokio::time::timeout(timeout, async {
         loop {
@@ -703,9 +718,13 @@ async fn spawn_background_cache(
     msg.push_string(&bundle);
     msg.push_string("");
     msg.push_bool(true);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
-    let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
+    let timeout = std::time::Duration::from_secs(
+        state
+            .client_timeout_seconds
+            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
+    );
     let fl_clone = Arc::clone(&fl_state);
     let _ = tokio::time::timeout(timeout, async {
         loop {

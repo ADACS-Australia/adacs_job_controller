@@ -62,7 +62,9 @@ async fn test_http_concurrent_job_creation_moderate_load() {
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    cluster.expect_send_message().returning(|_| ());
+    cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
@@ -185,7 +187,9 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    cluster.expect_send_message().returning(|_| ());
+    cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
@@ -313,7 +317,9 @@ async fn test_benchmark_job_creation_performance() {
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    cluster.expect_send_message().returning(|_| ());
+    cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
@@ -481,7 +487,9 @@ async fn test_connection_pool_exhaustion() {
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    cluster.expect_send_message().returning(|_| ());
+    cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();

@@ -26,7 +26,9 @@ async fn test_duplicate_ltk_connection_rejected() {
             .expect_name()
             .returning(|| "ltk-test-cluster".to_string());
         mock_cluster.expect_is_online().returning(|| false);
-        mock_cluster.expect_set_connection().returning(|_| ());
+        mock_cluster
+            .expect_set_connection()
+            .returning(|_| Box::pin(async {}));
         mock_cluster.expect_role().returning(|| ClusterRole::Master);
         mock_cluster
             .expect_role_string()
@@ -34,7 +36,9 @@ async fn test_duplicate_ltk_connection_rejected() {
         mock_cluster
             .expect_cluster_details()
             .returning(|| test_cluster_config_with_ltk("ltk-test-cluster", "test-ltk-secret"));
-        mock_cluster.expect_send_message().returning(|_| ());
+        mock_cluster
+            .expect_send_message()
+            .returning(|_| Box::pin(async {}));
         Arc::new(mock_cluster)
     };
 
@@ -103,7 +107,9 @@ async fn test_rate_limiting_applies() {
             .expect_name()
             .returning(|| "ltk-rate-cluster".to_string());
         mock_cluster.expect_is_online().returning(|| false);
-        mock_cluster.expect_set_connection().returning(|_| ());
+        mock_cluster
+            .expect_set_connection()
+            .returning(|_| Box::pin(async {}));
         mock_cluster.expect_role().returning(|| ClusterRole::Master);
         mock_cluster
             .expect_role_string()
@@ -111,7 +117,9 @@ async fn test_rate_limiting_applies() {
         mock_cluster
             .expect_cluster_details()
             .returning(|| test_cluster_config_with_ltk("ltk-rate-cluster", "rate-limit-ltk"));
-        mock_cluster.expect_send_message().returning(|_| ());
+        mock_cluster
+            .expect_send_message()
+            .returning(|_| Box::pin(async {}));
         Arc::new(mock_cluster)
     };
 
@@ -158,7 +166,9 @@ async fn test_rate_limiting_disabled_in_test() {
             .expect_name()
             .returning(|| "ltk-no-delay-cluster".to_string());
         mock_cluster.expect_is_online().returning(|| false);
-        mock_cluster.expect_set_connection().returning(|_| ());
+        mock_cluster
+            .expect_set_connection()
+            .returning(|_| Box::pin(async {}));
         mock_cluster.expect_role().returning(|| ClusterRole::Master);
         mock_cluster
             .expect_role_string()
@@ -166,7 +176,9 @@ async fn test_rate_limiting_disabled_in_test() {
         mock_cluster
             .expect_cluster_details()
             .returning(|| test_cluster_config_with_ltk("ltk-no-delay-cluster", "no-delay-ltk"));
-        mock_cluster.expect_send_message().returning(|_| ());
+        mock_cluster
+            .expect_send_message()
+            .returning(|_| Box::pin(async {}));
         Arc::new(mock_cluster)
     };
 

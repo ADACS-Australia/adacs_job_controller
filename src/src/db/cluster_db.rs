@@ -162,7 +162,7 @@ async fn handle_job_get_by_job_id(
     for row in &rows {
         row.to_message(&mut response);
     }
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 async fn handle_job_get_by_id(
@@ -189,7 +189,7 @@ async fn handle_job_get_by_id(
             response.push_uint(0);
         }
     }
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 async fn handle_job_get_running_jobs(
@@ -215,7 +215,7 @@ async fn handle_job_get_running_jobs(
     for row in &rows {
         row.to_message(&mut response);
     }
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 async fn handle_job_delete(
@@ -229,7 +229,7 @@ async fn handle_job_delete(
     let _ = cluster_job::Entity::delete_by_id(id).exec(db).await;
 
     let response = prepare_response(db_request_id);
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 async fn handle_job_save(
@@ -264,7 +264,7 @@ async fn handle_job_save(
             Ok(model) => response.push_ulong(model.id as u64),
             Err(_) => response.push_ulong(0),
         }
-        cluster.send_message(response);
+        cluster.send_message(response).await;
     } else {
         // Update
         let active = cluster_job::ActiveModel {
@@ -284,7 +284,7 @@ async fn handle_job_save(
 
         let mut response = prepare_response(db_request_id);
         response.push_ulong(job.id as u64);
-        cluster.send_message(response);
+        cluster.send_message(response).await;
     }
 }
 
@@ -314,7 +314,7 @@ async fn handle_jobstatus_get_by_job_id_and_what(
     for row in &rows {
         row.to_message(&mut response);
     }
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 async fn handle_jobstatus_get_by_job_id(
@@ -339,7 +339,7 @@ async fn handle_jobstatus_get_by_job_id(
     for row in &rows {
         row.to_message(&mut response);
     }
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 async fn handle_jobstatus_delete_by_id_list(
@@ -356,7 +356,7 @@ async fn handle_jobstatus_delete_by_id_list(
     }
 
     let response = prepare_response(db_request_id);
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 async fn handle_jobstatus_save(
@@ -383,7 +383,7 @@ async fn handle_jobstatus_save(
             Ok(model) => response.push_ulong(model.id as u64),
             Err(_) => response.push_ulong(0),
         }
-        cluster.send_message(response);
+        cluster.send_message(response).await;
     } else {
         // Update
         let active = cluster_job_status::ActiveModel {
@@ -396,7 +396,7 @@ async fn handle_jobstatus_save(
 
         let mut response = prepare_response(db_request_id);
         response.push_ulong(status.id as u64);
-        cluster.send_message(response);
+        cluster.send_message(response).await;
     }
 }
 
@@ -424,7 +424,7 @@ async fn handle_bundle_create_or_update(
             if model.bundle_hash != bundle_hash {
                 let mut response = prepare_response(db_request_id);
                 response.push_ulong(0); // Error: hash mismatch
-                cluster.send_message(response);
+                cluster.send_message(response).await;
                 return;
             }
 
@@ -439,7 +439,7 @@ async fn handle_bundle_create_or_update(
 
             let mut response = prepare_response(db_request_id);
             response.push_ulong(model.id as u64);
-            cluster.send_message(response);
+            cluster.send_message(response).await;
         } else {
             // Bundle ID not found - insert new
             let result = bundle_job::ActiveModel {
@@ -456,7 +456,7 @@ async fn handle_bundle_create_or_update(
                 Ok(model) => response.push_ulong(model.id as u64),
                 Err(_) => response.push_ulong(0),
             }
-            cluster.send_message(response);
+            cluster.send_message(response).await;
         }
     } else {
         // No ID - search by hash and cluster, insert if not found
@@ -479,7 +479,7 @@ async fn handle_bundle_create_or_update(
 
             let mut response = prepare_response(db_request_id);
             response.push_ulong(model.id as u64);
-            cluster.send_message(response);
+            cluster.send_message(response).await;
         } else {
             // Insert
             let result = bundle_job::ActiveModel {
@@ -496,7 +496,7 @@ async fn handle_bundle_create_or_update(
                 Ok(model) => response.push_ulong(model.id as u64),
                 Err(_) => response.push_ulong(0),
             }
-            cluster.send_message(response);
+            cluster.send_message(response).await;
         }
     }
 }
@@ -525,7 +525,7 @@ async fn handle_bundle_get_by_id(
             response.push_uint(0);
         }
     }
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 async fn handle_bundle_delete(
@@ -539,7 +539,7 @@ async fn handle_bundle_delete(
     let _ = bundle_job::Entity::delete_by_id(id).exec(db).await;
 
     let response = prepare_response(db_request_id);
-    cluster.send_message(response);
+    cluster.send_message(response).await;
 }
 
 #[cfg(test)]

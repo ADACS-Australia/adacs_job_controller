@@ -17,6 +17,7 @@ use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
 use adacs_job_controller::app::AppState;
+use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
 use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::http::server::create_router;
@@ -40,7 +41,8 @@ fn test_router_with_manager(
         db,
         cluster_manager: Arc::new(manager),
         file_list_map: Arc::new(dashmap::DashMap::new()),
-        jwt_secrets: secrets,
+        jwt_secrets: std::sync::Arc::new(secrets),
+        client_timeout_seconds: None,
     };
 
     create_router(state)
@@ -615,7 +617,6 @@ async fn test_http_server_constructor_populated_config() {
 async fn test_cluster_get_name() {
     use crate::common::test_cluster_config;
     use adacs_job_controller::cluster::cluster::Cluster;
-    use adacs_job_controller::cluster::traits::ClusterTrait;
 
     let config = test_cluster_config("test_cluster");
     let cluster = Cluster::new(config.clone(), None);
@@ -638,7 +639,6 @@ async fn test_cluster_get_name() {
 async fn test_cluster_get_cluster_details() {
     use crate::common::test_cluster_config;
     use adacs_job_controller::cluster::cluster::Cluster;
-    use adacs_job_controller::cluster::traits::ClusterTrait;
 
     let config = test_cluster_config("test_cluster");
     let cluster = Cluster::new(config.clone(), None);

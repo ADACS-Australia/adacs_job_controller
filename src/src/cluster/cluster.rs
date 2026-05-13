@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use dashmap::DashMap;
-use tokio::sync::{Mutex, Notify, RwLock};
+use tokio::sync::{Notify, RwLock};
 
 use crate::cluster::file_download::FileDownloadState;
 use crate::cluster::file_upload::FileUploadState;
@@ -22,8 +22,8 @@ use crate::protocol::constants::{
     SERVER_READY, SUBMIT_JOB, UPDATE_JOB,
 };
 use crate::protocol::message::Message;
-use crate::protocol::types::{ClusterRole, FileInfo, FileListState, Priority};
-use crate::utils::general::generate_uuid;
+use crate::protocol::types::{ClusterRole, FileInfo, FileListState, JobStatus, Priority};
+use crate::utils::uuid::generate_uuid;
 
 /// Shared application context needed by Cluster for DB and file-list coordination.
 pub struct AppContext {
@@ -41,8 +41,9 @@ pub struct Cluster {
     role: ClusterRole,
     role_string: String,
 
-    // WebSocket connection sender (None = offline)
-    connection: Mutex<Option<WsConnectionSender>>,
+    // WebSocket connection state (None = offline)
+    connection_tx: tokio::sync::watch::Sender<Option<WsConnectionSender>>,
+    connection_rx: tokio::sync::watch::Receiver<Option<WsConnectionSender>>,
 
     // Priority queue: BTreeMap ensures iteration in priority order (lowest enum value = highest priority)
     // Each priority maps source-strings to their per-source queues.
@@ -75,12 +76,14 @@ impl Cluster {
         queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
         queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
         queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
             role_string: format!("master {}", details.name),
             details,
             role: ClusterRole::Master,
-            connection: Mutex::new(None),
+            connection_tx,
+            connection_rx,
             queue,
             queued_message_size: AtomicUsize::new(0),
             data_notify: Notify::new(),
@@ -106,12 +109,14 @@ impl Cluster {
         queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
         queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
         queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
             role_string: format!("file download {uuid}"),
             details,
             role: ClusterRole::FileDownload,
-            connection: Mutex::new(None),
+            connection_tx,
+            connection_rx,
             queue,
             queued_message_size: AtomicUsize::new(0),
             data_notify: Notify::new(),
@@ -136,12 +141,14 @@ impl Cluster {
         queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
         queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
         queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
             role_string: format!("file upload {uuid}"),
             details,
             role: ClusterRole::FileUpload,
-            connection: Mutex::new(None),
+            connection_tx,
+            connection_rx,
             queue,
             queued_message_size: AtomicUsize::new(0),
             data_notify: Notify::new(),
@@ -162,8 +169,10 @@ impl Cluster {
     /// Start background tasks (scheduler, prune, resend).
     /// Must be called after construction; pass the Arc to self.
     pub fn start_tasks(self: &Arc<Self>) {
+        // Each spawned task gets its own watch receiver
+        let scheduler_rx = self.connection_rx.clone();
         let this = Arc::clone(self);
-        tokio::spawn(async move { this.run_scheduler().await });
+        tokio::spawn(async move { this.run_scheduler(scheduler_rx).await });
 
         let this = Arc::clone(self);
         tokio::spawn(async move { this.run_prune().await });
@@ -176,7 +185,10 @@ impl Cluster {
 
     // ---- Scheduler ----
 
-    async fn run_scheduler(self: Arc<Self>) {
+    async fn run_scheduler(
+        self: Arc<Self>,
+        connection_rx: tokio::sync::watch::Receiver<Option<WsConnectionSender>>,
+    ) {
         while self.running.load(Ordering::Relaxed) {
             // Wait for data
             self.data_notify.notified().await;
@@ -202,16 +214,14 @@ impl Cluster {
                                 self.queue_size_notify.notify_waiters();
                                 drop(map);
 
-                                // Send via WS connection
-                                let conn = self.connection.lock().await;
-                                if let Some(sender) = conn.as_ref() {
+                                // Send via WS connection (non-blocking read of current state)
+                                if let Some(sender) = connection_rx.borrow().as_ref() {
                                     let _ = sender.send(WsOutbound::Binary(data));
                                 } else {
                                     tracing::warn!(
                                         "SCHED: Discarding packet because connection is closed"
                                     );
                                 }
-                                drop(conn);
 
                                 had_data_this_round = true;
                                 sent_anything = true;
@@ -298,7 +308,7 @@ impl Cluster {
 
     async fn handle_update_job(&self, message: &mut Message) {
         use crate::db::entities::{job, job_history};
-        use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
+        use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 
         let job_id = message.pop_uint();
         let what = message.pop_string();
@@ -348,7 +358,7 @@ impl Cluster {
                 msg.push_string(&bundle);
                 msg.push_string("");
                 msg.push_bool(true);
-                self.send_message_internal(msg);
+                self.send_message_internal(msg).await;
 
                 // Background: wait for FILE_LIST_RESPONSE and persist to cache
                 let db = ctx.db.clone();
@@ -373,6 +383,10 @@ impl Cluster {
 
                     let locked = fl_state.lock().await;
                     if !locked.error {
+                        let _ = file_list_cache::Entity::delete_many()
+                            .filter(file_list_cache::Column::JobId.eq(i64::from(job_id)))
+                            .exec(&db)
+                            .await;
                         for file in &locked.files {
                             let _ = file_list_cache::ActiveModel {
                                 job_id: Set(i64::from(job_id)),
@@ -445,7 +459,15 @@ impl Cluster {
         let chunk_len = chunk.len() as u64;
 
         state.received_bytes.fetch_add(chunk_len, Ordering::Relaxed);
-        let _ = state.chunk_sender.send(chunk);
+        // If HTTP side has disconnected, the receiver is dropped and send fails
+        if state.chunk_sender.send(chunk).is_err() {
+            state.error.store(true, Ordering::Release);
+            *state.error_details.lock().await =
+                "Download aborted: HTTP client disconnected".to_string();
+            state.data_ready.store(true, Ordering::Release);
+            state.data_notify.notify_waiters();
+            return;
+        }
 
         // Backpressure: send PAUSE if buffer too big
         let _lock = self.file_download_pause_resume_lock.lock().await;
@@ -456,7 +478,7 @@ impl Cluster {
                 state.client_paused.store(true, Ordering::Relaxed);
                 let uuid = self.uuid.as_deref().unwrap_or("");
                 let msg = Message::new(PAUSE_FILE_CHUNK_STREAM, Priority::Highest, uuid);
-                self.send_message_internal(msg);
+                self.send_message_internal(msg).await;
             }
         }
 
@@ -522,104 +544,47 @@ impl Cluster {
     // ---- Resend helpers ----
 
     pub async fn check_unsubmitted_jobs(&self) {
-        use crate::db::entities::{job, job_history};
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-
-        if !self.is_online_internal().await {
-            return;
-        }
-        let Some(ctx) = &self.app_context else {
-            return;
-        };
-        let db = &ctx.db;
-        let cluster_name = &self.details.name;
-        let ignore_secs = *CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS as i64;
-        let cutoff = chrono::Utc::now().naive_utc()
-            - chrono::Duration::try_seconds(ignore_secs).unwrap_or_default();
-
-        let jobs = job::Entity::find()
-            .filter(job::Column::Cluster.eq(cluster_name.as_str()))
-            .all(db)
-            .await
-            .unwrap_or_default();
-
-        for j in jobs {
-            let latest = job_history::Entity::find()
-                .filter(job_history::Column::JobId.eq(j.id))
-                .filter(job_history::Column::Timestamp.lte(cutoff))
-                .order_by_desc(job_history::Column::Timestamp)
-                .one(db)
-                .await
-                .unwrap_or(None);
-
-            if let Some(h) = latest
-                && (h.state == 10 || h.state == 20)
-            {
-                tracing::info!("Resubmitting: {}", j.id);
-                let mut msg = Message::new(
-                    SUBMIT_JOB,
-                    Priority::Medium,
-                    &format!("{}_{}", j.id, cluster_name),
-                );
-                msg.push_uint(j.id as u32);
-                msg.push_string(&j.bundle);
-                msg.push_string(&j.parameters);
-                self.send_message_internal(msg);
-            }
-        }
+        self.check_resend_jobs(
+            &[JobStatus::Pending as i32, JobStatus::Submitting as i32],
+            SUBMIT_JOB,
+            "Resubmitting",
+            true,
+        )
+        .await;
     }
 
     pub async fn check_cancelling_jobs(&self) {
-        use crate::db::entities::{job, job_history};
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-
-        if !self.is_online_internal().await {
-            return;
-        }
-        let Some(ctx) = &self.app_context else {
-            return;
-        };
-        let db = &ctx.db;
-        let cluster_name = &self.details.name;
-        let ignore_secs = *CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS as i64;
-        let cutoff = chrono::Utc::now().naive_utc()
-            - chrono::Duration::try_seconds(ignore_secs).unwrap_or_default();
-
-        let jobs = job::Entity::find()
-            .filter(job::Column::Cluster.eq(cluster_name.as_str()))
-            .all(db)
-            .await
-            .unwrap_or_default();
-
-        for j in jobs {
-            let latest = job_history::Entity::find()
-                .filter(job_history::Column::JobId.eq(j.id))
-                .filter(job_history::Column::Timestamp.lte(cutoff))
-                .order_by_desc(job_history::Column::Timestamp)
-                .one(db)
-                .await
-                .unwrap_or(None);
-
-            if let Some(h) = latest
-                && h.state == 75
-            {
-                tracing::info!("Recancelling: {}", j.id);
-                let mut msg = Message::new(
-                    CANCEL_JOB,
-                    Priority::Medium,
-                    &format!("{}_{}", j.id, cluster_name),
-                );
-                msg.push_uint(j.id as u32);
-                self.send_message_internal(msg);
-            }
-        }
+        self.check_resend_jobs(
+            &[JobStatus::Cancelling as i32],
+            CANCEL_JOB,
+            "Recancelling",
+            false,
+        )
+        .await;
     }
 
     pub async fn check_deleting_jobs(&self) {
-        use crate::db::entities::{job, job_history};
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+        self.check_resend_jobs(
+            &[JobStatus::Deleting as i32],
+            DELETE_JOB,
+            "Redeleting",
+            false,
+        )
+        .await;
+    }
 
-        if !self.is_online_internal().await {
+    async fn check_resend_jobs(
+        &self,
+        states: &[i32],
+        message_id: u32,
+        log_label: &'static str,
+        push_bundle_and_params: bool,
+    ) {
+        use crate::db::entities::{job, job_history};
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+        use std::collections::HashMap;
+
+        if !self.is_online_internal() {
             return;
         }
         let Some(ctx) = &self.app_context else {
@@ -633,44 +598,61 @@ impl Cluster {
 
         let jobs = job::Entity::find()
             .filter(job::Column::Cluster.eq(cluster_name.as_str()))
+            .limit(500)
             .all(db)
             .await
             .unwrap_or_default();
 
-        for j in jobs {
-            let latest = job_history::Entity::find()
-                .filter(job_history::Column::JobId.eq(j.id))
-                .filter(job_history::Column::Timestamp.lte(cutoff))
-                .order_by_desc(job_history::Column::Timestamp)
-                .one(db)
-                .await
-                .unwrap_or(None);
+        if jobs.is_empty() {
+            return;
+        }
 
-            if let Some(h) = latest
-                && h.state == 85
+        // Batch-fetch latest history entry per job (2 queries instead of N+1)
+        let job_ids: Vec<i64> = jobs.iter().map(|j| j.id).collect();
+        let all_histories = job_history::Entity::find()
+            .filter(job_history::Column::JobId.is_in(job_ids))
+            .filter(job_history::Column::Timestamp.lte(cutoff))
+            .order_by_desc(job_history::Column::Timestamp)
+            .all(db)
+            .await
+            .unwrap_or_default();
+
+        let mut latest_per_job: HashMap<i64, &job_history::Model> = HashMap::new();
+        for h in &all_histories {
+            latest_per_job.entry(h.job_id).or_insert(h);
+        }
+
+        for j in &jobs {
+            if let Some(h) = latest_per_job.get(&j.id)
+                && states.contains(&h.state)
             {
-                tracing::info!("Redeleting: {}", j.id);
+                tracing::info!("{}: {}", log_label, j.id);
                 let mut msg = Message::new(
-                    DELETE_JOB,
+                    message_id,
                     Priority::Medium,
                     &format!("{}_{}", j.id, cluster_name),
                 );
                 msg.push_uint(j.id as u32);
-                self.send_message_internal(msg);
+                if push_bundle_and_params {
+                    msg.push_string(&j.bundle);
+                    msg.push_string(&j.parameters);
+                }
+                self.send_message_internal(msg).await;
             }
         }
     }
 
     // Internal helpers
 
-    async fn is_online_internal(&self) -> bool {
-        self.connection.lock().await.is_some()
+    fn is_online_internal(&self) -> bool {
+        self.connection_rx.borrow().is_some()
     }
 
-    fn send_message_internal(&self, message: Message) {
+    async fn send_message_internal(&self, message: Message) {
+        let priority = message.priority();
         let data = message.into_data();
-        let source = String::new(); // Use empty source for internal sends
-        self.queue_message(source, data, Priority::Medium);
+        let source = String::new();
+        self.queue_message(source, data, priority).await;
     }
 }
 
@@ -681,10 +663,7 @@ impl ClusterTrait for Cluster {
     }
 
     fn is_online(&self) -> bool {
-        // Non-async check using try_lock
-        self.connection
-            .try_lock()
-            .is_ok_and(|guard| guard.is_some())
+        self.connection_rx.borrow().is_some()
     }
 
     fn role(&self) -> ClusterRole {
@@ -739,31 +718,19 @@ impl ClusterTrait for Cluster {
         }
     }
 
-    fn send_message(&self, message: Message) {
+    async fn send_message(&self, message: Message) {
         let source = message.source().to_string();
         let priority = message.priority();
         let data = message.into_data();
-        self.queue_message(source, data, priority);
+        self.queue_message(source, data, priority).await;
     }
 
-    fn queue_message(&self, source: String, data: Vec<u8>, priority: Priority) {
+    async fn queue_message(&self, source: String, data: Vec<u8>, priority: Priority) {
         let priority_val = priority as u8;
         if let Some(rw_map) = self.queue.get(&priority_val) {
-            // Use try_write to avoid blocking; if contended, just block inline
             let data_len = data.len();
-            if let Ok(mut map) = rw_map.try_write() {
-                map.entry(source).or_default().push_back(data);
-            } else {
-                // Contention case: we can't avoid blocking here in sync context
-                // Since this is rare, we use a simple spin
-                loop {
-                    if let Ok(mut map) = rw_map.try_write() {
-                        map.entry(source).or_default().push_back(data);
-                        break;
-                    }
-                    std::hint::spin_loop();
-                }
-            }
+            let mut map = rw_map.write().await;
+            map.entry(source).or_default().push_back(data);
             self.queued_message_size
                 .fetch_add(data_len, Ordering::Relaxed);
             self.data_notify.notify_one();
@@ -815,26 +782,18 @@ impl ClusterTrait for Cluster {
         }
     }
 
-    fn set_connection(&self, conn: Option<WsConnectionSender>) {
-        // Use try_lock for synchronous context; this should rarely contend
-        if let Ok(mut guard) = self.connection.try_lock() {
-            *guard = conn;
-        }
+    async fn set_connection(&self, conn: Option<WsConnectionSender>) {
+        let _ = self.connection_tx.send(conn);
     }
 
     fn send_ping(&self) {
-        if let Ok(guard) = self.connection.try_lock()
-            && let Some(sender) = guard.as_ref()
-        {
+        if let Some(sender) = self.connection_rx.borrow().as_ref() {
             let _ = sender.send(WsOutbound::Ping);
         }
     }
 
-    fn close(&self, _force: bool) {
-        if let Ok(mut guard) = self.connection.try_lock() {
-            // Drop the sender, which will cause the receiver to end
-            *guard = None;
-        }
+    async fn close(&self, _force: bool) {
+        let _ = self.connection_tx.send(None);
     }
 
     fn stop(&self) {
@@ -898,7 +857,9 @@ mod tests {
     async fn test_queue_message_and_size() {
         let cluster = Cluster::new(test_config(), None);
         let data = vec![1u8, 2, 3, 4, 5];
-        cluster.queue_message("source1".into(), data.clone(), Priority::Medium);
+        cluster
+            .queue_message("source1".into(), data.clone(), Priority::Medium)
+            .await;
 
         // Give tokio a moment to process
         tokio::task::yield_now().await;
@@ -911,7 +872,7 @@ mod tests {
     async fn test_send_message_queues_data() {
         let cluster = Cluster::new(test_config(), None);
         let msg = Message::new(SUBMIT_JOB, Priority::Medium, "test_source");
-        cluster.send_message(msg);
+        cluster.send_message(msg).await;
 
         assert!(cluster.queued_message_size.load(Ordering::Relaxed) > 0);
     }
@@ -930,6 +891,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Verifies comprehensive queue insertion: multiple sources and priorities, correct dequeuing order.
+    #[allow(clippy::too_many_lines)]
     #[tokio::test]
     async fn test_queue_message_comprehensive() {
         let cluster = Cluster::new(test_config(), None);
@@ -950,13 +912,19 @@ mod tests {
         }
 
         let s1_d1 = vec![1u8, 2, 3];
-        cluster.queue_message("s1".into(), s1_d1.clone(), Priority::Highest);
+        cluster
+            .queue_message("s1".into(), s1_d1.clone(), Priority::Highest)
+            .await;
 
         let s2_d1 = vec![4u8, 5, 6];
-        cluster.queue_message("s2".into(), s2_d1.clone(), Priority::Lowest);
+        cluster
+            .queue_message("s2".into(), s2_d1.clone(), Priority::Lowest)
+            .await;
 
         let s3_d1 = vec![7u8, 8, 9];
-        cluster.queue_message("s3".into(), s3_d1.clone(), Priority::Lowest);
+        cluster
+            .queue_message("s3".into(), s3_d1.clone(), Priority::Lowest)
+            .await;
 
         // s1 should only exist in Highest
         {
@@ -1052,9 +1020,13 @@ mod tests {
 
         // Queue more to s1
         let s1_d2 = vec![10u8, 11, 12];
-        cluster.queue_message("s1".into(), s1_d2.clone(), Priority::Highest);
+        cluster
+            .queue_message("s1".into(), s1_d2.clone(), Priority::Highest)
+            .await;
         let s1_d3 = vec![13u8, 14, 15];
-        cluster.queue_message("s1".into(), s1_d3.clone(), Priority::Highest);
+        cluster
+            .queue_message("s1".into(), s1_d3.clone(), Priority::Highest)
+            .await;
 
         {
             let h = cluster
@@ -1083,13 +1055,21 @@ mod tests {
 
         // Queue more to s2 and s3, dequeue and verify
         let s2_d2 = vec![16u8, 17];
-        cluster.queue_message("s2".into(), s2_d2.clone(), Priority::Lowest);
+        cluster
+            .queue_message("s2".into(), s2_d2.clone(), Priority::Lowest)
+            .await;
         let s2_d3 = vec![18u8, 19];
-        cluster.queue_message("s2".into(), s2_d3.clone(), Priority::Lowest);
+        cluster
+            .queue_message("s2".into(), s2_d3.clone(), Priority::Lowest)
+            .await;
         let s3_d2 = vec![20u8, 21];
-        cluster.queue_message("s3".into(), s3_d2.clone(), Priority::Lowest);
+        cluster
+            .queue_message("s3".into(), s3_d2.clone(), Priority::Lowest)
+            .await;
         let s3_d3 = vec![22u8, 23];
-        cluster.queue_message("s3".into(), s3_d3.clone(), Priority::Lowest);
+        cluster
+            .queue_message("s3".into(), s3_d3.clone(), Priority::Lowest)
+            .await;
 
         {
             let mut l = cluster
@@ -1126,9 +1106,15 @@ mod tests {
         cluster.stop(); // don't start background tasks
 
         // Queue messages from 3 sources
-        cluster.queue_message("s1".into(), vec![1, 2, 3], Priority::Highest);
-        cluster.queue_message("s2".into(), vec![4, 5, 6], Priority::Lowest);
-        cluster.queue_message("s3".into(), vec![7, 8, 9], Priority::Lowest);
+        cluster
+            .queue_message("s1".into(), vec![1, 2, 3], Priority::Highest)
+            .await;
+        cluster
+            .queue_message("s2".into(), vec![4, 5, 6], Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("s3".into(), vec![7, 8, 9], Priority::Lowest)
+            .await;
 
         // Prune: all sources have data -> nothing should be removed
         cluster.prune_once().await;
@@ -1239,6 +1225,7 @@ mod tests {
 
     /// Verifies that `has_higher_priority_data` correctly detects non-empty queues at priorities
     /// higher than the given level.
+    #[allow(clippy::too_many_lines)]
     #[tokio::test]
     async fn test_has_higher_priority_data() {
         let cluster = Cluster::new(test_config(), None);
@@ -1257,7 +1244,9 @@ mod tests {
         );
 
         // Queue data at Lowest only
-        cluster.queue_message("s4".into(), vec![1], Priority::Lowest);
+        cluster
+            .queue_message("s4".into(), vec![1], Priority::Lowest)
+            .await;
         assert!(
             !cluster
                 .has_higher_priority_data(Priority::Highest as u8)
@@ -1275,7 +1264,9 @@ mod tests {
         );
 
         // Queue data at Medium -- now when checking Lowest, there IS higher priority data
-        cluster.queue_message("s3".into(), vec![2], Priority::Medium);
+        cluster
+            .queue_message("s3".into(), vec![2], Priority::Medium)
+            .await;
         assert!(
             !cluster
                 .has_higher_priority_data(Priority::Highest as u8)
@@ -1293,7 +1284,9 @@ mod tests {
         );
 
         // Queue data at Highest -- now Medium also sees higher priority data
-        cluster.queue_message("s2".into(), vec![3], Priority::Highest);
+        cluster
+            .queue_message("s2".into(), vec![3], Priority::Highest)
+            .await;
         assert!(
             !cluster
                 .has_higher_priority_data(Priority::Highest as u8)
@@ -1311,8 +1304,12 @@ mod tests {
         );
 
         // Add more at Highest
-        cluster.queue_message("s1".into(), vec![4], Priority::Highest);
-        cluster.queue_message("s0".into(), vec![5], Priority::Highest);
+        cluster
+            .queue_message("s1".into(), vec![4], Priority::Highest)
+            .await;
+        cluster
+            .queue_message("s0".into(), vec![5], Priority::Highest)
+            .await;
         assert!(
             !cluster
                 .has_higher_priority_data(Priority::Highest as u8)
@@ -1415,17 +1412,29 @@ mod tests {
         let s1_d1 = vec![11u8];
         let s1_d2 = vec![12u8];
         let s2_d1 = vec![21u8];
-        cluster.queue_message("s1".into(), s1_d1.clone(), Priority::Highest);
-        cluster.queue_message("s1".into(), s1_d2.clone(), Priority::Highest);
-        cluster.queue_message("s2".into(), s2_d1.clone(), Priority::Highest);
+        cluster
+            .queue_message("s1".into(), s1_d1.clone(), Priority::Highest)
+            .await;
+        cluster
+            .queue_message("s1".into(), s1_d2.clone(), Priority::Highest)
+            .await;
+        cluster
+            .queue_message("s2".into(), s2_d1.clone(), Priority::Highest)
+            .await;
 
         // Medium: s6 (3 msgs)
         let s6_d1 = vec![61u8];
         let s6_d2 = vec![62u8];
         let s6_d3 = vec![63u8];
-        cluster.queue_message("s6".into(), s6_d1.clone(), Priority::Medium);
-        cluster.queue_message("s6".into(), s6_d2.clone(), Priority::Medium);
-        cluster.queue_message("s6".into(), s6_d3.clone(), Priority::Medium);
+        cluster
+            .queue_message("s6".into(), s6_d1.clone(), Priority::Medium)
+            .await;
+        cluster
+            .queue_message("s6".into(), s6_d2.clone(), Priority::Medium)
+            .await;
+        cluster
+            .queue_message("s6".into(), s6_d3.clone(), Priority::Medium)
+            .await;
 
         // Lowest: s3 (4 msgs), s4 (2 msgs), s5 (2 msgs)
         let s3_d1 = vec![31u8];
@@ -1436,18 +1445,34 @@ mod tests {
         let s4_d2 = vec![42u8];
         let s5_d1 = vec![51u8];
         let s5_d2 = vec![52u8];
-        cluster.queue_message("s3".into(), s3_d1.clone(), Priority::Lowest);
-        cluster.queue_message("s3".into(), s3_d2.clone(), Priority::Lowest);
-        cluster.queue_message("s3".into(), s3_d3.clone(), Priority::Lowest);
-        cluster.queue_message("s3".into(), s3_d4.clone(), Priority::Lowest);
-        cluster.queue_message("s4".into(), s4_d1.clone(), Priority::Lowest);
-        cluster.queue_message("s4".into(), s4_d2.clone(), Priority::Lowest);
-        cluster.queue_message("s5".into(), s5_d1.clone(), Priority::Lowest);
-        cluster.queue_message("s5".into(), s5_d2.clone(), Priority::Lowest);
+        cluster
+            .queue_message("s3".into(), s3_d1.clone(), Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("s3".into(), s3_d2.clone(), Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("s3".into(), s3_d3.clone(), Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("s3".into(), s3_d4.clone(), Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("s4".into(), s4_d1.clone(), Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("s4".into(), s4_d2.clone(), Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("s5".into(), s5_d1.clone(), Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("s5".into(), s5_d2.clone(), Priority::Lowest)
+            .await;
 
         // Connect and start scheduler
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        cluster.set_connection(Some(tx));
+        cluster.set_connection(Some(tx)).await;
         cluster.start_tasks();
 
         // Collect all 14 messages
@@ -1527,7 +1552,9 @@ mod tests {
         cluster.stop();
 
         // Queue 1KB (well below 50MB threshold)
-        cluster.queue_message("test".into(), vec![0u8; 1024], Priority::Medium);
+        cluster
+            .queue_message("test".into(), vec![0u8; 1024], Priority::Medium)
+            .await;
 
         // waitForEmpty=false should return true (below MAX)
         assert!(cluster.wait_for_queue_drain(false).await);
@@ -1542,7 +1569,9 @@ mod tests {
         cluster.stop();
 
         // Queue 1KB
-        cluster.queue_message("test".into(), vec![0u8; 1024], Priority::Medium);
+        cluster
+            .queue_message("test".into(), vec![0u8; 1024], Priority::Medium)
+            .await;
 
         // waitForEmpty=true should timeout (cluster stopped, can't drain)
         assert!(!cluster.wait_for_queue_drain(true).await);
@@ -1559,7 +1588,9 @@ mod tests {
         let msg_size = 1024 * 100; // 100KB per message
         let num_msgs = max_buf / msg_size;
         for _ in 0..num_msgs {
-            cluster.queue_message("test".into(), vec![0u8; msg_size], Priority::Medium);
+            cluster
+                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
+                .await;
         }
 
         // At exactly threshold, should still return true (using <=)
@@ -1579,7 +1610,9 @@ mod tests {
         let msg_size = 1024 * 100;
         let num_msgs = (max_buf / msg_size) + 10;
         for _ in 0..num_msgs {
-            cluster.queue_message("test".into(), vec![0u8; msg_size], Priority::Medium);
+            cluster
+                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
+                .await;
         }
 
         // Queue is above threshold, cluster stopped -> should timeout
@@ -1597,12 +1630,14 @@ mod tests {
         let msg_size = 1024 * 10; // 10KB per message
         let num_msgs = (max_buf / msg_size) + 5;
         for _ in 0..num_msgs {
-            cluster.queue_message("test".into(), vec![0u8; msg_size], Priority::Medium);
+            cluster
+                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
+                .await;
         }
 
         // Connect and start scheduler to drain
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        cluster.set_connection(Some(tx));
+        cluster.set_connection(Some(tx)).await;
         cluster.start_tasks();
 
         // Drain should succeed once scheduler sends enough messages
@@ -1627,7 +1662,9 @@ mod tests {
         let msg_size = 1024 * 100;
         let num_msgs = (max_buf / msg_size) + 20;
         for _ in 0..num_msgs {
-            cluster.queue_message("test".into(), vec![0u8; msg_size], Priority::Medium);
+            cluster
+                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
+                .await;
         }
 
         // No draining -> timeout
@@ -1644,7 +1681,9 @@ mod tests {
 
         // Queue messages but don't start scheduler
         for _ in 0..10 {
-            cluster.queue_message("test".into(), vec![0u8; 1024], Priority::Medium);
+            cluster
+                .queue_message("test".into(), vec![0u8; 1024], Priority::Medium)
+                .await;
         }
 
         // waitForEmpty=true should timeout
@@ -1662,22 +1701,28 @@ mod tests {
         let msg_size = 1024 * 10;
         let per_source = (max_buf / 3 / msg_size) + 5;
         for i in 0..per_source {
-            cluster.queue_message("source1".into(), vec![i as u8; msg_size], Priority::Medium);
-            cluster.queue_message(
-                "source2".into(),
-                vec![(i + 1) as u8; msg_size],
-                Priority::Medium,
-            );
-            cluster.queue_message(
-                "source3".into(),
-                vec![(i + 2) as u8; msg_size],
-                Priority::Medium,
-            );
+            cluster
+                .queue_message("source1".into(), vec![i as u8; msg_size], Priority::Medium)
+                .await;
+            cluster
+                .queue_message(
+                    "source2".into(),
+                    vec![(i + 1) as u8; msg_size],
+                    Priority::Medium,
+                )
+                .await;
+            cluster
+                .queue_message(
+                    "source3".into(),
+                    vec![(i + 2) as u8; msg_size],
+                    Priority::Medium,
+                )
+                .await;
         }
 
         // Connect and start
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        cluster.set_connection(Some(tx));
+        cluster.set_connection(Some(tx)).await;
         cluster.start_tasks();
 
         assert!(cluster.wait_for_queue_drain(false).await);
@@ -1697,21 +1742,27 @@ mod tests {
         let msg_size = 1024 * 10;
         let num_msgs = (max_buf / 3 / msg_size) + 5;
         for i in 0..num_msgs {
-            cluster.queue_message("test".into(), vec![i as u8; msg_size], Priority::Highest);
-            cluster.queue_message(
-                "test".into(),
-                vec![(i + 1) as u8; msg_size],
-                Priority::Medium,
-            );
-            cluster.queue_message(
-                "test".into(),
-                vec![(i + 2) as u8; msg_size],
-                Priority::Lowest,
-            );
+            cluster
+                .queue_message("test".into(), vec![i as u8; msg_size], Priority::Highest)
+                .await;
+            cluster
+                .queue_message(
+                    "test".into(),
+                    vec![(i + 1) as u8; msg_size],
+                    Priority::Medium,
+                )
+                .await;
+            cluster
+                .queue_message(
+                    "test".into(),
+                    vec![(i + 2) as u8; msg_size],
+                    Priority::Lowest,
+                )
+                .await;
         }
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        cluster.set_connection(Some(tx));
+        cluster.set_connection(Some(tx)).await;
         cluster.start_tasks();
 
         assert!(cluster.wait_for_queue_drain(false).await);

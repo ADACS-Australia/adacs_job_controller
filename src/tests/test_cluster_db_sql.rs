@@ -53,6 +53,7 @@ fn mock_cluster_capturing(name: &str) -> (MockClusterTrait, Arc<Mutex<Vec<Messag
     mock.expect_name().returning(move || n.clone());
     mock.expect_send_message().returning(move |msg| {
         sent_clone.lock().unwrap().push(msg);
+        Box::pin(async {})
     });
 
     (mock, sent)

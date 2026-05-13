@@ -180,8 +180,6 @@ async fn test_handle_update_job_multiple_updates() {
     let ctx = make_app_context(db.clone());
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-
     for (state, what) in [(10u32, "queued"), (40, "running"), (500, "complete")] {
         let msg = make_update_job_message(7, what, state, "details");
         cluster.handle_message(msg).await;
@@ -213,7 +211,6 @@ async fn test_handle_update_job_no_app_context_does_not_panic() {
     let cluster = Cluster::new(test_cluster_config("ozstar"), None);
     let msg = make_update_job_message(1, "test", 10, "no ctx");
 
-    use adacs_job_controller::cluster::traits::ClusterTrait;
     cluster.handle_message(msg).await; // must not panic
 }
 
@@ -248,8 +245,7 @@ async fn test_check_unsubmitted_jobs_resends_old_pending() {
 
     // Set cluster online by giving it a real WS sender
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
 
     // Start the scheduler so queued messages are forwarded to the channel
     cluster.start_tasks();
@@ -314,8 +310,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     cluster.check_unsubmitted_jobs().await;
@@ -395,8 +390,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     cluster.check_cancelling_jobs().await;
@@ -442,8 +436,7 @@ async fn test_check_cancelling_jobs_ignores_recent() {
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     cluster.check_cancelling_jobs().await;
@@ -493,8 +486,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     cluster.check_deleting_jobs().await;
@@ -540,8 +532,7 @@ async fn test_check_deleting_jobs_ignores_recent() {
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     cluster.check_deleting_jobs().await;
@@ -592,8 +583,7 @@ async fn test_check_unsubmitted_jobs_only_for_own_cluster() {
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     cluster.check_unsubmitted_jobs().await;
@@ -664,8 +654,7 @@ async fn test_check_unsubmitted_jobs_noop_for_non_matching_statuses() {
         let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-        use adacs_job_controller::cluster::traits::ClusterTrait;
-        cluster.set_connection(Some(tx));
+        cluster.set_connection(Some(tx)).await;
         cluster.start_tasks();
 
         cluster.check_unsubmitted_jobs().await;
@@ -733,8 +722,7 @@ async fn test_check_cancelling_jobs_noop_for_non_matching_statuses() {
         let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-        use adacs_job_controller::cluster::traits::ClusterTrait;
-        cluster.set_connection(Some(tx));
+        cluster.set_connection(Some(tx)).await;
         cluster.start_tasks();
 
         cluster.check_cancelling_jobs().await;
@@ -802,8 +790,7 @@ async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
         let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-        use adacs_job_controller::cluster::traits::ClusterTrait;
-        cluster.set_connection(Some(tx));
+        cluster.set_connection(Some(tx)).await;
         cluster.start_tasks();
 
         cluster.check_deleting_jobs().await;
@@ -860,8 +847,7 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    use adacs_job_controller::cluster::traits::ClusterTrait;
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     cluster.check_unsubmitted_jobs().await;
@@ -892,4 +878,61 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
         "SUBMITTING state should trigger SUBMIT_JOB resubmission"
     );
     cluster.stop();
+}
+
+/// Verifies that resend logic handles multiple stale jobs in one pass and emits one resubmission
+/// per eligible job.
+///
+/// # Setup
+/// Three old pending jobs and one recent pending job are inserted for the same cluster.
+/// A live WS sender is attached so resent messages are forwarded through the scheduler.
+///
+/// # Act
+/// `cluster.check_unsubmitted_jobs().await` is called and the channel is drained.
+///
+/// # Assert
+/// Exactly the three stale jobs are resubmitted, ensuring the batched resend path processes all
+/// candidates instead of stopping at a single latest-history lookup.
+#[tokio::test]
+async fn test_check_unsubmitted_jobs_resends_all_stale_jobs_in_batch() {
+    let db = make_db().await;
+
+    for job_id in 1..=3 {
+        insert_job(
+            &db,
+            job_id,
+            "ozstar",
+            &format!("bundle-{job_id}"),
+            "myapp",
+            "{}",
+        )
+        .await;
+        insert_history(&db, job_id, old_timestamp(), "submit", 10).await;
+    }
+    insert_job(&db, 4, "ozstar", "bundle-4", "myapp", "{}").await;
+    insert_history(&db, 4, now_timestamp(), "submit", 10).await;
+
+    let ctx = make_app_context(db.clone());
+    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster.set_connection(Some(tx)).await;
+    cluster.start_tasks();
+
+    cluster.check_unsubmitted_jobs().await;
+    cluster.wait_for_queue_drain(true).await;
+
+    let mut resent_ids = Vec::new();
+    for _ in 0..3 {
+        if let Ok(Some(WsOutbound::Binary(data))) =
+            tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await
+        {
+            resent_ids.push(Message::from_bytes(data).pop_uint());
+        }
+    }
+
+    cluster.stop();
+
+    resent_ids.sort_unstable();
+    assert_eq!(resent_ids, vec![1, 2, 3]);
 }

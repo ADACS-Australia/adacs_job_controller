@@ -12,16 +12,7 @@ cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
 # Style preferences that would require significant refactoring
 struct_excessive_bools = "allow"
-# Test code allowances - these lints are often unavoidable in test scenarios
-# and reduce readability when forced:
-# - similar_names: test variables like msg_a, msg_b are intentionally similar
-# - float_cmp: exact float comparison is sometimes needed in tests
-# - too_many_lines: test setup can be verbose
-# - items_after_statements: helper closures/items mid-function are common in tests
-similar_names = "allow"
-float_cmp = "allow"
 too_many_lines = "allow"
-items_after_statements = "allow"
 
 [features]
 default = []
@@ -39,6 +30,9 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # Database
 sea-orm = { version = "1", features = ["sqlx-mysql", "sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono"] }
+
+# Rate limiting
+tower_governor = "0.8"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -66,6 +60,7 @@ dotenvy = "0.15"
 async-trait = "0.1"
 async-stream = "0.3.6"
 mockall = { version = "0.13", optional = true }
+http-body-util = "0.1"
 
 [dev-dependencies]
 mockall = "0.13"

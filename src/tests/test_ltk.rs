@@ -26,7 +26,9 @@ async fn test_ltk_authentication_success() {
             .expect_name()
             .returning(|| "ltk-test".to_string());
         mock_cluster.expect_is_online().returning(|| false);
-        mock_cluster.expect_set_connection().returning(|_| ());
+        mock_cluster
+            .expect_set_connection()
+            .returning(|_| Box::pin(async {}));
         mock_cluster.expect_role().returning(|| ClusterRole::Master);
         mock_cluster
             .expect_role_string()
@@ -34,7 +36,9 @@ async fn test_ltk_authentication_success() {
         mock_cluster
             .expect_cluster_details()
             .returning(|| test_cluster_config_with_ltk("ltk-test", "test-ltk"));
-        mock_cluster.expect_send_message().returning(|_| ());
+        mock_cluster
+            .expect_send_message()
+            .returning(|_| Box::pin(async {}));
         Arc::new(mock_cluster)
     };
 
@@ -84,7 +88,9 @@ async fn test_invalid_ltk_falls_back_to_uuid() {
             .expect_name()
             .returning(|| "test-cluster".to_string());
         mock_cluster.expect_is_online().returning(|| false);
-        mock_cluster.expect_set_connection().returning(|_| ());
+        mock_cluster
+            .expect_set_connection()
+            .returning(|_| Box::pin(async {}));
         mock_cluster.expect_role().returning(|| ClusterRole::Master);
         mock_cluster
             .expect_role_string()
@@ -92,7 +98,9 @@ async fn test_invalid_ltk_falls_back_to_uuid() {
         mock_cluster
             .expect_cluster_details()
             .returning(|| test_cluster_config("test-cluster"));
-        mock_cluster.expect_send_message().returning(|_| ());
+        mock_cluster
+            .expect_send_message()
+            .returning(|_| Box::pin(async {}));
         Arc::new(mock_cluster)
     };
 
