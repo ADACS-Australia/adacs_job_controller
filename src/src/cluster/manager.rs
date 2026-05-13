@@ -253,8 +253,8 @@ impl ClusterManager {
         python_path: &str,
         script_path: &str,
     ) {
-        let mut cmd = tokio::process::Command::new(&python_path);
-        cmd.arg(&script_path);
+        let mut cmd = tokio::process::Command::new(python_path);
+        cmd.arg(script_path);
         cmd.stdin(std::process::Stdio::piped());
         cmd.env("SSH_HOST", &details.host);
         cmd.env("SSH_USERNAME", &details.username);
@@ -820,7 +820,12 @@ mod tests {
         };
 
         let token = "super-secret-token";
-        manager.launch_ssh_connection_with_paths(&details, token, "/bin/sh", &script_path.to_string_lossy());
+        manager.launch_ssh_connection_with_paths(
+            &details,
+            token,
+            "/bin/sh",
+            &script_path.to_string_lossy(),
+        );
 
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
         while (!env_out.exists() || !stdin_out.exists()) && tokio::time::Instant::now() < deadline {
