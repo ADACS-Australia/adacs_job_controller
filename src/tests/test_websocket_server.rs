@@ -153,6 +153,7 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
         if let Some(tx) = tx_for_send.lock().unwrap().as_ref() {
             let _ = tx.send(WsOutbound::Binary(msg.into_data()));
         }
+        Box::pin(async {})
     });
     cluster
         .expect_handle_message()
@@ -344,7 +345,9 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
     mock_cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    mock_cluster.expect_send_message().returning(|_| ());
+    mock_cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
     mock_cluster
         .expect_handle_message()
         .returning(move |msg: Message| {
@@ -546,8 +549,6 @@ async fn test_ws_malformed_authorization_header() {
     let port = server.port;
 
     // Connect with malformed Authorization header (no "Bearer " prefix)
-    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-
     let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
         .into_client_request()
         .unwrap();

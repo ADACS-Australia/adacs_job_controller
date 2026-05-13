@@ -7,11 +7,15 @@ import io
 import time
 
 # Read environment variables passed down from the host
+# NOTE: SSH_TOKEN is now passed via stdin (line 1 of stdin) instead of env var
+# to avoid /proc/<pid>/environ exposure. Both methods still work for transition.
 ssh_host_name = os.getenv("SSH_HOST")
 ssh_user_name = os.getenv("SSH_USERNAME")
 ssh_path = os.getenv("SSH_PATH")
 ssh_key = os.getenv("SSH_KEY")
 ssh_token = os.getenv("SSH_TOKEN")
+if ssh_token is None:
+    ssh_token = sys.stdin.readline().strip()
 
 
 def get_ssh_connection(host_name, user_name, key):

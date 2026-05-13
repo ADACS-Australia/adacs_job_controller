@@ -18,7 +18,7 @@ use crate::protocol::constants::{
 };
 use crate::protocol::message::Message;
 use crate::protocol::types::{FileInfo, FileListState, Priority};
-use crate::utils::general::generate_uuid;
+use crate::utils::uuid::generate_uuid;
 
 // ---- Request/Response types ----
 
@@ -206,7 +206,7 @@ pub async fn download_file(
     msg.push_string(&uuid);
     msg.push_string(&s_bundle);
     msg.push_string(&s_file_path);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
     let fd_state = state.cluster_manager.get_file_download(&uuid).ok_or((
         StatusCode::BAD_REQUEST,
@@ -287,7 +287,7 @@ pub async fn download_file(
                                     Priority::Highest,
                                     &uuid_for_resume,
                                 );
-                        fd_cluster.send_message(resume_msg);
+                        fd_cluster.send_message(resume_msg).await;
                     }
 
                     yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
@@ -397,7 +397,7 @@ pub async fn upload_file(
     msg.push_string(&s_bundle);
     msg.push_string(&target_path);
     msg.push_ulong(content_length);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
     let fu_state = state.cluster_manager.get_file_upload(&uuid).ok_or((
         StatusCode::BAD_REQUEST,
@@ -453,7 +453,7 @@ pub async fn upload_file(
 
         let mut chunk_msg = Message::new(FILE_UPLOAD_CHUNK, Priority::Lowest, &uuid);
         chunk_msg.push_bytes(&body_bytes[start..end]);
-        upload_cluster.send_message(chunk_msg);
+        upload_cluster.send_message(chunk_msg).await;
 
         total_read += this_chunk as u64;
     }
@@ -471,7 +471,7 @@ pub async fn upload_file(
     }
 
     let complete_msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Highest, &uuid);
-    upload_cluster.send_message(complete_msg);
+    upload_cluster.send_message(complete_msg).await;
 
     let confirm = tokio::time::timeout(timeout, async {
         loop {
@@ -612,7 +612,7 @@ pub async fn list_files(
     msg.push_string(&s_bundle);
     msg.push_string(&body.path);
     msg.push_bool(body.recursive);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
     let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
     let fl_state_clone = Arc::clone(&fl_state);
@@ -703,7 +703,7 @@ async fn spawn_background_cache(
     msg.push_string(&bundle);
     msg.push_string("");
     msg.push_bool(true);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
     let timeout = std::time::Duration::from_secs(*settings::CLIENT_TIMEOUT_SECONDS);
     let fl_clone = Arc::clone(&fl_state);

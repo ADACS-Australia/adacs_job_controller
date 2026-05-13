@@ -1,4 +1,5 @@
 //! Comprehensive tests for job HTTP handlers.
+#![allow(clippy::similar_names)]
 //!
 //! All tests use a real `SQLite` in-memory database so the full business logic
 //! (DB inserts, state machine transitions, WS message dispatch) is exercised.
@@ -44,6 +45,7 @@ fn online_cluster_capturing_messages(
         .returning(|| test_cluster_config("ozstar"));
     c.expect_send_message().returning(move |msg| {
         sent.lock().unwrap().push(msg);
+        Box::pin(async {})
     });
     c
 }

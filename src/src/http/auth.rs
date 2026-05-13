@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::request::Parts;
@@ -26,9 +28,9 @@ where
         // Get JWT secrets from request extensions
         let secrets = parts
             .extensions
-            .get::<Vec<AccessSecret>>()
+            .get::<Arc<Vec<AccessSecret>>>()
             .cloned()
-            .unwrap_or_default();
+            .unwrap_or_else(|| Arc::new(Vec::new()));
 
         // Get the authorization header
         let auth_header = parts
@@ -37,15 +39,18 @@ where
             .and_then(|v| v.to_str().ok())
             .ok_or((StatusCode::FORBIDDEN, "Not authorized".to_string()))?;
 
+        // Accept both "Bearer <jwt>" and bare "<jwt>" for backwards compatibility
+        let jwt_str = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header);
+
         // Try each secret with HS256
         let mut validation = Validation::new(Algorithm::HS256);
         validation.required_spec_claims.clear();
         validation.validate_exp = false;
 
-        for secret in &secrets {
+        for secret in secrets.iter() {
             let key = DecodingKey::from_secret(secret.secret.as_bytes());
             if let Ok(token_data) =
-                jsonwebtoken::decode::<serde_json::Value>(auth_header, &key, &validation)
+                jsonwebtoken::decode::<serde_json::Value>(jwt_str, &key, &validation)
             {
                 return Ok(AuthResult {
                     payload: token_data.claims,
@@ -114,7 +119,7 @@ mod tests {
                     .unwrap()
                 }),
             )
-            .layer(axum::Extension(secrets))
+            .layer(axum::Extension(Arc::new(secrets)))
     }
 
     #[tokio::test]

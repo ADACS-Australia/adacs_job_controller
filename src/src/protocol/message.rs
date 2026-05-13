@@ -524,6 +524,7 @@ mod tests {
     ///
     /// # Assert
     /// Each pop returns the original f32 value exactly (bit-for-bit).
+    #[allow(clippy::float_cmp)]
     #[test]
     fn test_float_roundtrip() {
         let mut msg = Message::new(1, Priority::Lowest, "t");
@@ -546,6 +547,7 @@ mod tests {
     ///
     /// # Assert
     /// Each pop returns the original f64 value exactly (bit-for-bit).
+    #[allow(clippy::float_cmp)]
     #[test]
     fn test_double_roundtrip() {
         let mut msg = Message::new(1, Priority::Lowest, "t");
@@ -925,6 +927,7 @@ mod tests {
     ///
     /// # Assert
     /// Header shows empty source and id=0; every popped value is the zero or empty equivalent.
+    #[allow(clippy::float_cmp)]
     #[test]
     fn test_zero_values() {
         let mut msg = Message::new(0, Priority::Lowest, "");

@@ -23,6 +23,7 @@ fn mock_cluster_capturing_messages() -> (MockClusterTrait, Arc<Mutex<Vec<Message
     mock.expect_name().returning(|| "test_cluster".to_string());
     mock.expect_send_message().returning(move |msg| {
         sent_clone.lock().unwrap().push(msg);
+        Box::pin(async {})
     });
 
     (mock, sent)
@@ -335,8 +336,8 @@ fn test_db_jobstatus_get_by_job_id_request_format() {
 ///
 /// # Assert
 /// The captured message vector contains exactly one entry with the correct message ID and source.
-#[test]
-fn test_mock_cluster_captures_sent_messages() {
+#[tokio::test]
+async fn test_mock_cluster_captures_sent_messages() {
     let (mock, sent) = mock_cluster_capturing_messages();
 
     // Simulate what the DB dispatcher would do: create and send a response
@@ -344,7 +345,7 @@ fn test_mock_cluster_captures_sent_messages() {
     response.push_uint(42);
     response.push_uint(0);
 
-    mock.send_message(response);
+    mock.send_message(response).await;
 
     let captured = sent.lock().unwrap();
     assert_eq!(captured.len(), 1);
@@ -362,14 +363,14 @@ fn test_mock_cluster_captures_sent_messages() {
 ///
 /// # Assert
 /// The captured message vector contains exactly 5 entries.
-#[test]
-fn test_mock_cluster_multiple_messages() {
+#[tokio::test]
+async fn test_mock_cluster_multiple_messages() {
     let (mock, sent) = mock_cluster_capturing_messages();
 
     for i in 0..5 {
         let mut msg = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
         msg.push_uint(i);
-        mock.send_message(msg);
+        mock.send_message(msg).await;
     }
 
     let captured = sent.lock().unwrap();

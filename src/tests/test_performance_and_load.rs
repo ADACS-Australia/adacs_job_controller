@@ -50,6 +50,7 @@ async fn test_large_binary_message_handling() {
 
     cluster.expect_send_message().returning(move |msg| {
         received_clone.lock().unwrap().push(msg);
+        Box::pin(async {})
     });
     cluster
         .expect_handle_message()
@@ -102,7 +103,9 @@ async fn test_http_concurrent_requests_stress() {
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    cluster.expect_send_message().returning(|_| ());
+    cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
 
     let cluster_arc = Arc::new(cluster);
 
@@ -191,7 +194,7 @@ async fn test_priority_preemption_under_load() {
         msg.push_string("test");
         msg.push_uint(500);
         msg.push_string("details");
-        cluster.send_message(msg);
+        cluster.send_message(msg).await;
     }
 
     // Add 1 high priority message
@@ -200,7 +203,7 @@ async fn test_priority_preemption_under_load() {
     high_priority_msg.push_string("urgent");
     high_priority_msg.push_uint(500);
     high_priority_msg.push_string("urgent_details");
-    cluster.send_message(high_priority_msg);
+    cluster.send_message(high_priority_msg).await;
 
     // Start the scheduler
     cluster.start_tasks();
@@ -233,7 +236,9 @@ async fn test_job_creation_atomicity() {
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    cluster.expect_send_message().returning(|_| ());
+    cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
 
     let cluster_arc = Arc::new(cluster);
 

@@ -53,8 +53,16 @@ pub struct ClusterManager {
     /// Ping timestamps for dead connection detection (`connection_id` → `last_ping_sent_time`)
     ping_times: DashMap<ConnectionId, std::time::Instant>,
 
+    /// Consecutive missed pongs per connection (threshold = 2 before eviction)
+    missed_pongs: DashMap<ConnectionId, u32>,
+
     /// Pause/resume locks per cluster name (shared with file download clusters)
     pause_resume_locks: DashMap<String, Arc<tokio::sync::Mutex<()>>>,
+
+    /// Reconnect attempt counters per cluster for exponential backoff
+    reconnect_attempts: DashMap<String, u32>,
+    /// Timestamp of last reconnect attempt per cluster
+    last_reconnect_attempt: DashMap<String, std::time::Instant>,
 }
 
 impl ClusterManager {
@@ -91,7 +99,10 @@ impl ClusterManager {
             running: AtomicBool::new(true),
             pong_times: DashMap::new(),
             ping_times: DashMap::new(),
+            missed_pongs: DashMap::new(),
             pause_resume_locks,
+            reconnect_attempts: DashMap::new(),
+            last_reconnect_attempt: DashMap::new(),
         })
     }
 
@@ -164,6 +175,32 @@ impl ClusterManager {
                 continue;
             }
 
+            // Exponential backoff: wait base_interval * 2^(attempt-1) before retrying
+            // First attempt (attempt == 0) is always allowed; retries back off exponentially
+            let attempt = self.reconnect_attempts.get(name).map_or(0, |r| *r);
+            if attempt > 0 {
+                let backoff_secs =
+                    *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS * 2u64.saturating_pow(attempt - 1);
+                if let Some(last_attempt) = self.last_reconnect_attempt.get(name) {
+                    let elapsed = last_attempt.elapsed().as_secs();
+                    if elapsed < backoff_secs {
+                        tracing::info!(
+                            "Skipping reconnect for {} (attempt {}, backoff {}s, {}s elapsed)",
+                            name,
+                            attempt,
+                            backoff_secs,
+                            elapsed
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            self.reconnect_attempts.insert(name.clone(), attempt + 1);
+            self.last_reconnect_attempt
+                .insert(name.clone(), std::time::Instant::now());
+            tracing::info!("Reconnecting cluster {} (attempt {})", name, attempt);
+
             let uuid = uuid::Uuid::new_v4().to_string();
 
             // Delete any existing UUIDs for this cluster before inserting a new one
@@ -201,13 +238,28 @@ impl ClusterManager {
     /// Launch SSH connection via Python keyserver.
     #[allow(clippy::unused_self)]
     fn launch_ssh_connection(&self, details: &ClusterConfig, token: &str) {
-        let mut cmd = tokio::process::Command::new("./utils/keyserver/venv/bin/python");
-        cmd.arg("./utils/keyserver/keyserver.py");
+        let python_path = std::env::var("KEYCLIENT_PYTHON")
+            .unwrap_or_else(|_| "./utils/keyserver/venv/bin/python".to_string());
+        let script_path = std::env::var("KEYCLIENT_SCRIPT")
+            .unwrap_or_else(|_| "./utils/keyserver/keyserver.py".to_string());
+        self.launch_ssh_connection_with_paths(details, token, &python_path, &script_path);
+    }
+
+    #[allow(clippy::unused_self)]
+    fn launch_ssh_connection_with_paths(
+        &self,
+        details: &ClusterConfig,
+        token: &str,
+        python_path: &str,
+        script_path: &str,
+    ) {
+        let mut cmd = tokio::process::Command::new(&python_path);
+        cmd.arg(&script_path);
+        cmd.stdin(std::process::Stdio::piped());
         cmd.env("SSH_HOST", &details.host);
         cmd.env("SSH_USERNAME", &details.username);
         cmd.env("SSH_KEY", &details.key);
         cmd.env("SSH_PATH", &details.path);
-        cmd.env("SSH_TOKEN", token);
 
         if !details.keytab.is_empty() {
             cmd.env("SSH_KEYTAB", &details.keytab);
@@ -216,9 +268,16 @@ impl ClusterManager {
             cmd.env("SSH_PRINCIPAL", &details.kerberos_principal);
         }
 
+        let token_owned = token.to_string();
         match cmd.spawn() {
             Ok(mut child) => {
                 tokio::spawn(async move {
+                    // Write token to stdin (avoids /proc/<pid>/environ exposure)
+                    if let Some(stdin) = child.stdin.as_mut() {
+                        use tokio::io::AsyncWriteExt;
+                        let _ = stdin.write_all(token_owned.as_bytes()).await;
+                        let _ = stdin.shutdown().await;
+                    }
                     match child.wait().await {
                         Ok(status) => {
                             if !status.success() {
@@ -232,7 +291,9 @@ impl ClusterManager {
                 });
             }
             Err(e) => {
-                tracing::warn!("Failed to launch SSH keyserver: {}", e);
+                tracing::warn!(
+                    "Failed to launch SSH keyserver (python={python_path}, script={script_path}): {e}"
+                );
             }
         }
     }
@@ -262,12 +323,22 @@ impl ClusterManager {
     /// After evicting dead connections, a fresh ping is sent to all
     /// remaining master–role connections.
     pub async fn check_pings(&self) {
-        // 1. Find dead connections: ping was sent but no pong received
-        let dead_conn_ids: Vec<ConnectionId> = self
+        // 1. Find connections that missed a pong: ping was sent but no pong received
+        let no_pong: Vec<ConnectionId> = self
             .ping_times
             .iter()
             .filter(|entry| !self.pong_times.contains_key(entry.key()))
             .map(|entry| *entry.key())
+            .collect();
+
+        // 1b. Increment missed counter; evict only after 2 consecutive misses
+        let dead_conn_ids: Vec<ConnectionId> = no_pong
+            .into_iter()
+            .filter(|conn_id| {
+                let mut missed = self.missed_pongs.entry(*conn_id).or_insert(0);
+                *missed += 1;
+                *missed >= 2
+            })
             .collect();
 
         // 2. Evict dead connections
@@ -295,12 +366,10 @@ impl ClusterManager {
                 continue;
             }
 
-            // Record ping time, clear pong time
+            // Send WS ping frame first, then update tracking maps
+            cluster.send_ping();
             self.ping_times.insert(conn_id, std::time::Instant::now());
             self.pong_times.remove(&conn_id);
-
-            // Send WS ping frame
-            cluster.send_ping();
         }
     }
 }
@@ -333,7 +402,7 @@ impl ClusterManagerTrait for ClusterManager {
         if let Some(entry) = self.file_download_map.get(token) {
             let (_, cluster) = entry.value();
             let cluster = Arc::clone(cluster);
-            cluster.set_connection(Some(ws_sender));
+            cluster.set_connection(Some(ws_sender)).await;
             self.connection_map.insert(conn_id, cluster.clone());
             return Some(cluster as Arc<dyn ClusterTrait>);
         }
@@ -342,7 +411,7 @@ impl ClusterManagerTrait for ClusterManager {
         if let Some(entry) = self.file_upload_map.get(token) {
             let (_, cluster) = entry.value();
             let cluster = Arc::clone(cluster);
-            cluster.set_connection(Some(ws_sender));
+            cluster.set_connection(Some(ws_sender)).await;
             self.connection_map.insert(conn_id, cluster.clone());
             return Some(cluster as Arc<dyn ClusterTrait>);
         }
@@ -371,9 +440,11 @@ impl ClusterManagerTrait for ClusterManager {
 
                 // Authenticate LTK cluster
                 let cluster = Arc::clone(cluster);
-                cluster.set_connection(Some(ws_sender));
+                cluster.set_connection(Some(ws_sender)).await;
                 self.connection_map.insert(conn_id, cluster.clone());
                 self.pong_times.insert(conn_id, std::time::Instant::now());
+                self.reconnect_attempts.remove(cluster_name);
+                self.last_reconnect_attempt.remove(cluster_name);
                 tracing::info!(
                     "LTK cluster {} connected (conn_id={})",
                     cluster_name,
@@ -418,9 +489,11 @@ impl ClusterManagerTrait for ClusterManager {
                 }
 
                 let cluster = Arc::clone(cluster);
-                cluster.set_connection(Some(ws_sender));
+                cluster.set_connection(Some(ws_sender)).await;
                 self.connection_map.insert(conn_id, cluster.clone());
                 self.pong_times.insert(conn_id, std::time::Instant::now());
+                self.reconnect_attempts.remove(&cluster_name);
+                self.last_reconnect_attempt.remove(&cluster_name);
                 tracing::info!("Cluster {} connected (conn_id={})", cluster_name, conn_id);
                 return Some(cluster as Arc<dyn ClusterTrait>);
             }
@@ -433,11 +506,12 @@ impl ClusterManagerTrait for ClusterManager {
     async fn remove_connection(&self, conn_id: ConnectionId, close: bool) {
         if let Some((_, cluster)) = self.connection_map.remove(&conn_id) {
             if close {
-                cluster.close(false);
+                cluster.close(false).await;
             }
-            cluster.set_connection(None);
+            cluster.set_connection(None).await;
             self.pong_times.remove(&conn_id);
             self.ping_times.remove(&conn_id);
+            self.missed_pongs.remove(&conn_id);
 
             let role = cluster.role();
             let name = cluster.name();
@@ -459,6 +533,7 @@ impl ClusterManagerTrait for ClusterManager {
     fn handle_pong(&self, conn_id: ConnectionId) {
         let now = std::time::Instant::now();
         self.pong_times.insert(conn_id, now);
+        self.missed_pongs.insert(conn_id, 0);
 
         // Report latency
         if let Some(ping_time) = self.ping_times.get(&conn_id) {
@@ -554,6 +629,12 @@ impl ClusterManagerTrait for ClusterManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cluster::traits::MockClusterManagerTrait;
+    use crate::cluster::traits::MockClusterTrait;
+    use crate::db::entities::cluster_uuid;
+    use sea_orm::{
+        ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, QueryFilter, Schema,
+    };
 
     fn test_configs() -> Vec<ClusterConfig> {
         vec![
@@ -595,12 +676,174 @@ mod tests {
         assert_eq!(configs[1].connection_type, "manual");
     }
 
+    async fn make_db() -> sea_orm::DatabaseConnection {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        let stmt = builder.build(&schema.create_table_from_entity(cluster_uuid::Entity));
+        db.execute(stmt).await.unwrap();
+        db
+    }
+
+    async fn get_uuid_for_cluster(
+        db: &sea_orm::DatabaseConnection,
+        cluster: &str,
+    ) -> Option<String> {
+        cluster_uuid::Entity::find()
+            .filter(cluster_uuid::Column::Cluster.eq(cluster))
+            .one(db)
+            .await
+            .unwrap()
+            .map(|model| model.uuid)
+    }
+
+    #[tokio::test]
+    async fn test_reconnect_backoff_doubles_between_attempts() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
+
+        manager.reconnect_clusters().await;
+        let first_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        assert_eq!(
+            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            Some(1)
+        );
+
+        let first_attempt_time = *manager.last_reconnect_attempt.get("cluster_b").unwrap();
+        manager.reconnect_clusters().await;
+        let second_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        assert_eq!(
+            second_uuid, first_uuid,
+            "backoff should skip immediate retry"
+        );
+        assert_eq!(
+            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            Some(1)
+        );
+        assert_eq!(
+            *manager.last_reconnect_attempt.get("cluster_b").unwrap(),
+            first_attempt_time
+        );
+
+        manager.last_reconnect_attempt.insert(
+            "cluster_b".to_string(),
+            std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(
+                    *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS,
+                ))
+                .unwrap(),
+        );
+        manager.reconnect_clusters().await;
+        let third_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        assert_ne!(
+            third_uuid, second_uuid,
+            "retry should proceed after first backoff window"
+        );
+        assert_eq!(
+            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            Some(2)
+        );
+
+        manager.last_reconnect_attempt.insert(
+            "cluster_b".to_string(),
+            std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(
+                    *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS,
+                ))
+                .unwrap(),
+        );
+        manager.reconnect_clusters().await;
+        let fourth_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        assert_eq!(
+            fourth_uuid, third_uuid,
+            "second retry should require doubled backoff"
+        );
+        assert_eq!(
+            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            Some(2)
+        );
+
+        manager.last_reconnect_attempt.insert(
+            "cluster_b".to_string(),
+            std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(
+                    *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS * 2,
+                ))
+                .unwrap(),
+        );
+        manager.reconnect_clusters().await;
+        let fifth_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        assert_ne!(
+            fifth_uuid, fourth_uuid,
+            "retry should proceed after doubled backoff window"
+        );
+        assert_eq!(
+            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            Some(3)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_launch_ssh_connection_passes_token_via_stdin_not_env() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(vec![], db, Arc::new(DashMap::new()));
+
+        let temp_dir =
+            std::env::temp_dir().join(format!("adacs-keyclient-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let script_path = temp_dir.join("capture.sh");
+        let env_out = temp_dir.join("env.txt");
+        let stdin_out = temp_dir.join("stdin.txt");
+
+        std::fs::write(
+            &script_path,
+            format!(
+                "#!/bin/sh\nprintf '%s' \"${{SSH_TOKEN:-}}\" > \"{}\"\ncat > \"{}\"\n",
+                env_out.display(),
+                stdin_out.display()
+            ),
+        )
+        .unwrap();
+
+        let details = ClusterConfig {
+            name: "ssh-test".to_string(),
+            host: "example.com".to_string(),
+            username: "user".to_string(),
+            path: "/remote/path".to_string(),
+            key: "private-key".to_string(),
+            connection_type: "ssh".to_string(),
+            keytab: String::new(),
+            kerberos_principal: String::new(),
+            ltk: None,
+        };
+
+        let token = "super-secret-token";
+        manager.launch_ssh_connection_with_paths(&details, token, "/bin/sh", &script_path.to_string_lossy());
+
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        while (!env_out.exists() || !stdin_out.exists()) && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+
+        let exposed_env = std::fs::read_to_string(&env_out).unwrap();
+        let stdin_token = std::fs::read_to_string(&stdin_out).unwrap();
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        assert!(
+            exposed_env.is_empty(),
+            "SSH_TOKEN should not be set in child environment"
+        );
+        assert_eq!(stdin_token, token, "token should be delivered via stdin");
+    }
+
     // Integration tests would require a real or mock DB pool
     // The ClusterManagerTrait mock (from mockall) allows testing
     // consumers of ClusterManager without a real instance
     #[test]
     fn test_mock_cluster_manager_get_cluster() {
-        use crate::cluster::traits::MockClusterManagerTrait;
         let mut mock = MockClusterManagerTrait::new();
         mock.expect_get_cluster_by_name()
             .with(mockall::predicate::eq("test"))
@@ -611,18 +854,15 @@ mod tests {
 
     #[test]
     fn test_mock_cluster_manager_is_online() {
-        use crate::cluster::traits::MockClusterManagerTrait;
         let mut mock = MockClusterManagerTrait::new();
         mock.expect_is_cluster_online().returning(|_| false);
 
-        use crate::cluster::traits::MockClusterTrait;
         let cluster_mock = MockClusterTrait::new();
         assert!(!mock.is_cluster_online(&cluster_mock));
     }
 
     #[test]
     fn test_mock_cluster_manager_report_error() {
-        use crate::cluster::traits::MockClusterManagerTrait;
         let mut mock = MockClusterManagerTrait::new();
         mock.expect_report_websocket_error().returning(|_, _| ());
 
@@ -631,7 +871,6 @@ mod tests {
 
     #[test]
     fn test_mock_cluster_manager_file_download() {
-        use crate::cluster::traits::MockClusterManagerTrait;
         let mut mock = MockClusterManagerTrait::new();
         mock.expect_get_file_download().returning(|_| None);
 
@@ -640,7 +879,6 @@ mod tests {
 
     #[test]
     fn test_mock_cluster_manager_file_upload() {
-        use crate::cluster::traits::MockClusterManagerTrait;
         let mut mock = MockClusterManagerTrait::new();
         mock.expect_get_file_upload().returning(|_| None);
 
@@ -649,7 +887,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_cluster_manager_remove_connection() {
-        use crate::cluster::traits::MockClusterManagerTrait;
         let mut mock = MockClusterManagerTrait::new();
         mock.expect_remove_connection()
             .returning(|_, _| Box::pin(async {}));
@@ -661,7 +898,6 @@ mod tests {
 
     #[test]
     fn test_mock_cluster_manager_handle_pong() {
-        use crate::cluster::traits::MockClusterManagerTrait;
         let mut mock = MockClusterManagerTrait::new();
         mock.expect_handle_pong().returning(|_| ());
 

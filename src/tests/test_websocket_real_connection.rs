@@ -1,4 +1,5 @@
 //! Real integration tests matching C++ test coverage.
+#![allow(clippy::too_many_lines)]
 //!
 //! These tests use REAL external dependencies:
 //! - Real WebSocket connections with tokio-tungstenite
@@ -123,6 +124,24 @@ async fn recv_binary(
     timeout.ok().flatten()
 }
 
+fn create_online_cluster(name: &str) -> MockClusterTrait {
+    let mut cluster = MockClusterTrait::new();
+    let name = name.to_string();
+    cluster.expect_name().returning(move || name.clone());
+    cluster.expect_is_online().returning(|| true);
+    cluster.expect_role().returning(|| ClusterRole::Master);
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
+    cluster
+        .expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
+    cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
+    cluster
+}
+
 // ---------------------------------------------------------------------------
 // Test: Real WebSocket Connection and Authentication
 // ---------------------------------------------------------------------------
@@ -168,6 +187,7 @@ async fn test_real_websocket_connection_and_auth() {
         if let Some(tx) = tx_for_send.lock().unwrap().as_ref() {
             let _ = tx.send(WsOutbound::Binary(msg.into_data()));
         }
+        Box::pin(async {})
     });
     cluster
         .expect_handle_message()
@@ -330,23 +350,6 @@ async fn test_download_resume_after_interruption() {
 async fn test_multiple_clusters_concurrent_job_submission() {
     let db = setup_test_db().await;
 
-    // Create 3 online clusters
-    fn create_online_cluster(name: &str) -> MockClusterTrait {
-        let mut cluster = MockClusterTrait::new();
-        let name = name.to_string();
-        cluster.expect_name().returning(move || name.clone());
-        cluster.expect_is_online().returning(|| true);
-        cluster.expect_role().returning(|| ClusterRole::Master);
-        cluster
-            .expect_role_string()
-            .returning(|| "master".to_string());
-        cluster
-            .expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        cluster.expect_send_message().returning(|_| ());
-        cluster
-    }
-
     let ozstar = Arc::new(create_online_cluster("ozstar"));
     let nci = Arc::new(create_online_cluster("nci"));
     let gadi = Arc::new(create_online_cluster("gadi"));
@@ -485,8 +488,8 @@ async fn test_race_condition_message_during_disconnect() {
 
     // Mock send_message to simulate slow operation
     cluster.expect_send_message().returning(|_| {
-        // Simulate delay
         std::thread::sleep(Duration::from_millis(10));
+        Box::pin(async {})
     });
 
     let cluster_arc = Arc::new(cluster);

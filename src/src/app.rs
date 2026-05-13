@@ -16,7 +16,7 @@ pub struct AppState {
     pub db: sea_orm::DatabaseConnection,
     pub cluster_manager: Arc<dyn ClusterManagerTrait>,
     pub file_list_map: Arc<DashMap<String, Arc<Mutex<FileListState>>>>,
-    pub jwt_secrets: Vec<AccessSecret>,
+    pub jwt_secrets: Arc<Vec<AccessSecret>>,
 }
 
 /// Initialize all components and start HTTP + WebSocket servers.
@@ -66,7 +66,7 @@ pub async fn run() -> anyhow::Result<()> {
         db,
         cluster_manager: Arc::clone(&cluster_manager),
         file_list_map,
-        jwt_secrets,
+        jwt_secrets: Arc::new(jwt_secrets),
     };
 
     let http_router = crate::http::server::create_router(app_state.clone());

@@ -24,7 +24,11 @@
 
 mod common;
 
+use std::collections::VecDeque;
+use std::fs::File;
+use std::io::Read;
 use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
@@ -32,17 +36,21 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::Mutex as TokioMutex;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tower::ServiceExt;
 
+use adacs_job_controller::app::AppState;
 use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::file_download::FileDownloadState;
 use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{
     ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsConnectionSender, WsOutbound,
 };
+use adacs_job_controller::config::settings::{FILE_CHUNK_SIZE, MAX_FILE_BUFFER_SIZE};
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
@@ -53,7 +61,9 @@ use common::{
     encode_test_jwt, insert_test_job, make_test_state, setup_test_db, test_cluster_config,
 };
 
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+};
 
 // ===========================================================================
 // Helpers
@@ -67,7 +77,7 @@ fn online_cluster_no_messages() -> MockClusterTrait {
     c.expect_role_string().returning(|| "master".to_string());
     c.expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
-    c.expect_send_message().returning(|_| ());
+    c.expect_send_message().returning(|_| Box::pin(async {}));
     c
 }
 
@@ -174,6 +184,7 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
         if let Some(tx) = tx_for_send.lock().unwrap().as_ref() {
             let _ = tx.send(WsOutbound::Binary(msg.into_data()));
         }
+        Box::pin(async {})
     });
     cluster
         .expect_handle_message()
@@ -248,6 +259,7 @@ async fn test_upload_zero_byte_file_succeeds() {
             .returning(|| test_cluster_config("ozstar"));
         c.expect_send_message().returning(move |msg| {
             sent2.lock().unwrap().push(msg);
+            Box::pin(async {})
         });
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
@@ -361,7 +373,7 @@ async fn test_upload_truncated_body_returns_error() {
         c.expect_role_string().returning(|| "master".to_string());
         c.expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| ());
+        c.expect_send_message().returning(|_| Box::pin(async {}));
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
         Arc::new(c)
@@ -393,7 +405,6 @@ async fn test_upload_truncated_body_returns_error() {
         .await
         .unwrap();
 
-    use tokio::io::AsyncWriteExt;
     let request = format!(
         "PUT /file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt HTTP/1.1\r\n\
          Host: 127.0.0.1:{port}\r\n\
@@ -408,7 +419,6 @@ async fn test_upload_truncated_body_returns_error() {
     stream.shutdown().await.unwrap();
 
     // Read the response — should be an error (server should not panic/crash)
-    use tokio::io::AsyncReadExt;
     let mut buf = vec![0u8; 4096];
     // Give the server a moment to process
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -465,7 +475,6 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
     let db = setup_test_db().await;
 
     // Insert a download record
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     let uuid_val = "dl-drop-test".to_string();
     file_download::ActiveModel {
         user: Set(1),
@@ -527,7 +536,6 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
     let port = start_test_server(create_router(state)).await;
 
     // Start download, then disconnect after reading a few bytes
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
         .await
         .unwrap();
@@ -595,7 +603,6 @@ async fn test_download_timeout_when_cluster_never_responds() {
     };
     adacs_job_controller::db::schema::create_test_schema(&db).await;
 
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     let uuid_val = "timeout-uuid".to_string();
     file_download::ActiveModel {
         user: Set(1),
@@ -719,7 +726,7 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
         c.expect_role_string().returning(|| "master".to_string());
         c.expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| ());
+        c.expect_send_message().returning(|_| Box::pin(async {}));
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
         Arc::new(c)
@@ -812,7 +819,7 @@ async fn test_upload_queue_drain_timeout_returns_400() {
         c.expect_role_string().returning(|| "master".to_string());
         c.expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| ());
+        c.expect_send_message().returning(|_| Box::pin(async {}));
         // Queue drain always fails (timeout)
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { false }));
@@ -883,9 +890,6 @@ async fn test_upload_queue_drain_timeout_returns_400() {
 /// `FileDownloadState` has `error=true`, `data_ready=true`, and error details match the sent message.
 #[tokio::test]
 async fn test_download_file_error_from_cluster_propagates() {
-    use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
-    use dashmap::DashMap;
-
     let db = setup_test_db().await;
     let download_state = Arc::new(FileDownloadState::new());
     let pause_lock = Arc::new(tokio::sync::Mutex::new(()));
@@ -904,7 +908,7 @@ async fn test_download_file_error_from_cluster_propagates() {
     );
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx));
+    cluster.set_connection(Some(tx)).await;
     cluster.start_tasks();
 
     // Send FILE_ERROR message (round-trip through from_bytes so cursor is correct)
@@ -1020,6 +1024,7 @@ async fn test_rapid_ws_connect_disconnect_stress() {
             .returning(|| test_cluster_config("test"));
         cluster.expect_send_message().returning(move |msg| {
             let _ = ws_tx.send(WsOutbound::Binary(msg.into_data()));
+            Box::pin(async {})
         });
         cluster
             .expect_handle_message()
@@ -1124,7 +1129,6 @@ async fn test_upload_missing_content_length_returns_400() {
 async fn test_download_expired_records_are_cleaned_up() {
     let db = setup_test_db().await;
 
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
     // Insert an old download record (25 hours ago — FILE_DOWNLOAD_EXPIRY_TIME defaults to 86400s/24h)
     let old_timestamp = chrono::Utc::now().naive_utc() - chrono::Duration::try_hours(25).unwrap();
     file_download::ActiveModel {
@@ -1256,6 +1260,7 @@ async fn test_ws_truncated_binary_message_no_crash() {
         if let Some(tx) = fwd_tx_for_send.lock().unwrap().as_ref() {
             let _ = tx.send(WsOutbound::Binary(msg.into_data()));
         }
+        Box::pin(async {})
     });
     // handle_message should not panic on truncated data
     cluster
@@ -1338,7 +1343,6 @@ async fn test_ws_truncated_binary_message_no_crash() {
 async fn test_download_force_download_sets_attachment_disposition() {
     let db = setup_test_db().await;
 
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     let uuid_val = "force-dl-uuid".to_string();
     file_download::ActiveModel {
         user: Set(1),
@@ -1434,8 +1438,6 @@ async fn test_download_force_download_sets_attachment_disposition() {
 /// Exactly 3 `FILE_UPLOAD_CHUNK` messages and 1 `FILE_UPLOAD_COMPLETE` message are sent.
 #[tokio::test]
 async fn test_upload_large_body_is_chunked() {
-    use adacs_job_controller::config::settings::FILE_CHUNK_SIZE;
-
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
@@ -1465,6 +1467,7 @@ async fn test_upload_large_body_is_chunked() {
             .returning(|| test_cluster_config("ozstar"));
         c.expect_send_message().returning(move |msg| {
             sent2.lock().unwrap().push(msg);
+            Box::pin(async {})
         });
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
@@ -1553,8 +1556,6 @@ async fn test_upload_large_body_is_chunked() {
 /// All 50 messages are dispatched (`handle_message` count equals 50).
 #[tokio::test]
 async fn test_ws_concurrent_binary_messages() {
-    use std::sync::atomic::AtomicUsize;
-
     let db = setup_test_db().await;
     let msg_count = Arc::new(AtomicUsize::new(0));
     let mc = Arc::clone(&msg_count);
@@ -1569,7 +1570,9 @@ async fn test_ws_concurrent_binary_messages() {
     cluster
         .expect_cluster_details()
         .returning(|| test_cluster_config("test"));
-    cluster.expect_send_message().returning(|_| ());
+    cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
     cluster.expect_handle_message().returning(move |_| {
         mc.fetch_add(1, Ordering::Relaxed);
         Box::pin(async {})
@@ -1649,7 +1652,6 @@ async fn test_ws_concurrent_binary_messages() {
 async fn test_file_transfer_data_timeout_body_truncated() {
     let db = setup_test_db().await;
 
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     let uuid_val = "data-timeout-uuid".to_string();
     file_download::ActiveModel {
         user: Set(1),
@@ -1764,7 +1766,6 @@ async fn test_file_transfer_data_timeout_body_truncated() {
 async fn test_file_transfer_websocket_broken_truncates_download() {
     let db = setup_test_db().await;
 
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     let uuid_val = "ws-broken-uuid".to_string();
     file_download::ActiveModel {
         user: Set(1),
@@ -1882,7 +1883,6 @@ async fn test_file_transfer_websocket_broken_truncates_download() {
 async fn test_file_transfer_no_details_returns_503() {
     let db = setup_test_db().await;
 
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     let uuid_val = "no-details-uuid".to_string();
     file_download::ActiveModel {
         user: Set(1),
@@ -1973,8 +1973,6 @@ async fn test_file_transfer_no_details_returns_503() {
 /// Both responses are 200 OK with `status: "completed"`, and each has a unique `uploadId`.
 #[tokio::test]
 async fn test_continuous_file_uploads_sequential() {
-    use std::collections::VecDeque;
-
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
@@ -2013,7 +2011,7 @@ async fn test_continuous_file_uploads_sequential() {
         c.expect_role_string().returning(|| "master".to_string());
         c.expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| ());
+        c.expect_send_message().returning(|_| Box::pin(async {}));
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
         Arc::new(c)
@@ -2026,18 +2024,18 @@ async fn test_continuous_file_uploads_sequential() {
         c.expect_role_string().returning(|| "master".to_string());
         c.expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| ());
+        c.expect_send_message().returning(|_| Box::pin(async {}));
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
         Arc::new(c)
     };
 
-    let upload_clusters: Arc<StdMutex<VecDeque<Arc<dyn ClusterTrait>>>> =
+    let upload_cluster_queue: Arc<StdMutex<VecDeque<Arc<dyn ClusterTrait>>>> =
         Arc::new(StdMutex::new(VecDeque::from([
             upload_cluster1 as Arc<dyn ClusterTrait>,
             upload_cluster2 as Arc<dyn ClusterTrait>,
         ])));
-    let upload_clusters_for_mock = Arc::clone(&upload_clusters);
+    let upload_clusters_for_mock = Arc::clone(&upload_cluster_queue);
 
     let cm = Arc::clone(&cluster_main);
     let mut manager = MockClusterManagerTrait::new();
@@ -2149,6 +2147,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
             .returning(|| test_cluster_config("ozstar"));
         c.expect_send_message().returning(move |msg| {
             caps_for_main.lock().unwrap().push(msg);
+            Box::pin(async {})
         });
         Arc::new(c)
     };
@@ -2161,7 +2160,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
         c.expect_role_string().returning(|| "master".to_string());
         c.expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| ());
+        c.expect_send_message().returning(|_| Box::pin(async {}));
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));
         Arc::new(c)
@@ -2273,9 +2272,6 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
 /// mock cluster's `send_message` is never called (cache hit).
 #[tokio::test]
 async fn test_job_finished_update_populates_cache() {
-    use std::sync::atomic::AtomicBool;
-    use tokio::sync::Mutex as TokioMutex;
-
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
@@ -2294,7 +2290,7 @@ async fn test_job_finished_update_populates_cache() {
 
     // Give the cluster a WS sender so send_message_internal can deliver FILE_LIST.
     let (ws_tx, mut ws_rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster_obj.set_connection(Some(ws_tx));
+    cluster_obj.set_connection(Some(ws_tx)).await;
     cluster_obj.start_tasks();
 
     // Background: intercept the FILE_LIST message and synthesise a response
@@ -2396,6 +2392,7 @@ async fn test_job_finished_update_populates_cache() {
         // send_message should NOT be called (cache hit means no WS FILE_LIST request)
         c.expect_send_message().returning(move |_| {
             sc.fetch_add(1, Ordering::Relaxed);
+            Box::pin(async {})
         });
         Arc::new(c)
     };
@@ -2406,12 +2403,11 @@ async fn test_job_finished_update_populates_cache() {
         .expect_get_cluster_by_name()
         .returning(move |_| Some(mc.clone()));
 
-    use adacs_job_controller::app::AppState;
     let http_state = AppState {
         db: db.clone(),
         cluster_manager: Arc::new(http_manager),
         file_list_map: flmap_for_state,
-        jwt_secrets: common::test_jwt_secrets(),
+        jwt_secrets: std::sync::Arc::new(common::test_jwt_secrets()),
     };
 
     let app = create_router(http_state);
@@ -2494,9 +2490,6 @@ async fn test_job_finished_update_populates_cache() {
 
 /// Get current memory usage in KB (Linux: reads `VmRSS` from /proc/self/status)
 fn get_memory_usage_kb() -> u64 {
-    use std::fs::File;
-    use std::io::Read;
-
     if let Ok(mut file) = File::open("/proc/self/status") {
         let mut contents = String::new();
         if file.read_to_string(&mut contents).is_ok() {
@@ -2538,12 +2531,6 @@ fn get_memory_usage_kb() -> u64 {
 /// - Total bytes received matches file size
 #[tokio::test]
 async fn test_large_file_transfers() {
-    use adacs_job_controller::config::settings::MAX_FILE_BUFFER_SIZE;
-    use adacs_job_controller::db::entities::file_download;
-    use rand::Rng;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
     // Use extended DB timeout for long-running test
     let db = {
         let mut opts = sea_orm::ConnectOptions::new("sqlite::memory:");
@@ -2793,11 +2780,6 @@ async fn test_large_file_transfers() {
 /// - Data integrity verified (`UPLOAD_FILE` message contains correct fileSize)
 #[tokio::test]
 async fn test_large_file_uploads() {
-    use adacs_job_controller::cluster::file_upload::FileUploadState;
-    use adacs_job_controller::protocol::constants::FILE_UPLOAD_COMPLETE;
-    use rand::Rng;
-    use std::sync::atomic::Ordering;
-
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
@@ -2843,6 +2825,7 @@ async fn test_large_file_uploads() {
             .returning(|| test_cluster_config("ozstar"));
         c.expect_send_message().returning(move |msg| {
             sent2.lock().unwrap().push(msg);
+            Box::pin(async {})
         });
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { true }));

@@ -115,6 +115,12 @@ pub static CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
 
 // HTTP settings
 pub static HTTP_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("HTTP_PORT", 8000));
+// Disabled by default (set env var to enable). PeerIpKeyExtractor in tower_governor
+// fails on requests without a peer socket address (e.g., integration tests).
+pub static RATE_LIMIT_REQUESTS_PER_SECOND: LazyLock<u64> =
+    LazyLock::new(|| env_or_u64("RATE_LIMIT_REQUESTS_PER_SECOND", 0));
+pub static RATE_LIMIT_BURST_SIZE: LazyLock<u32> =
+    LazyLock::new(|| env_or_u32("RATE_LIMIT_BURST_SIZE", 50));
 #[allow(dead_code)]
 pub static HTTP_WORKER_POOL_SIZE: LazyLock<u32> =
     LazyLock::new(|| env_or_u32("HTTP_WORKER_POOL_SIZE", 1024));

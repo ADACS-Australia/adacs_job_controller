@@ -1,12 +1,21 @@
+use std::sync::Arc;
+
 use axum::Router;
 use axum::routing::{post, put};
+use tower_governor::GovernorLayer;
+use tower_governor::governor::GovernorConfigBuilder;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::app::AppState;
+use crate::config::settings::{RATE_LIMIT_BURST_SIZE, RATE_LIMIT_REQUESTS_PER_SECOND};
 use crate::http::{file, job};
 
 /// Create the HTTP API router with all routes and middleware.
+///
+/// # Panics
+///
+/// Panics if rate limiting is enabled but the configured governor parameters are invalid.
 pub fn create_router(state: AppState) -> Router {
     let job_routes = Router::new().route(
         "/job/apiv1/job/",
@@ -25,13 +34,28 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/file/apiv1/file/upload/", put(file::upload_file));
 
-    Router::new()
+    let mut router = Router::new()
         .merge(job_routes)
         .merge(file_routes)
-        .layer(axum::Extension(state.jwt_secrets.clone()))
+        .layer(axum::Extension(Arc::clone(&state.jwt_secrets)))
         .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .layer(TraceLayer::new_for_http());
+
+    // Rate limiting (disabled when RATE_LIMIT_REQUESTS_PER_SECOND is 0)
+    if *RATE_LIMIT_REQUESTS_PER_SECOND > 0 {
+        let interval_ms = (1000u64.saturating_div(*RATE_LIMIT_REQUESTS_PER_SECOND)).max(1);
+        let mut config_builder = GovernorConfigBuilder::default();
+        config_builder.per_millisecond(interval_ms);
+        config_builder.burst_size(*RATE_LIMIT_BURST_SIZE);
+        let governor_config = Arc::new(
+            config_builder
+                .finish()
+                .expect("rate limiter config: burst_size and period must be non-zero"),
+        );
+        router = router.layer(GovernorLayer::new(governor_config));
+    }
+
+    router.with_state(state)
 }
 
 #[cfg(test)]

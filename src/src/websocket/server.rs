@@ -71,13 +71,13 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
         );
         c
     } else {
-        tracing::warn!("WS: Invalid token used - {token}");
+        tracing::warn!("WS: Invalid token used (conn_id={})", conn_id);
         return;
     };
 
     // Send SERVER_READY
     let msg = Message::new(SERVER_READY, Priority::Highest, SYSTEM_SOURCE);
-    cluster.send_message(msg);
+    cluster.send_message(msg).await;
 
     // Spawn forwarder: channel -> WS sink
     let ws_sink = Arc::new(tokio::sync::Mutex::new(ws_sink));
