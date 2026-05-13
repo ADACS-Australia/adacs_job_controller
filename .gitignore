@@ -16,6 +16,11 @@ docker/logs/
 config/clusters.json
 config/access_secrets.json
 
+# Build artifacts and coverage reports
+src/target/
+src/cobertura.xml
+src/coverage.json
+
 # AI / Agent / Opencode tooling
 .agents/
 .claude/
