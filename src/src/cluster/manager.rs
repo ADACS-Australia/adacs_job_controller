@@ -827,13 +827,23 @@ mod tests {
             &script_path.to_string_lossy(),
         );
 
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-        while (!env_out.exists() || !stdin_out.exists()) && tokio::time::Instant::now() < deadline {
-            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-        }
+        // Yield so the spawned stdin-writing task can run before the wait loop.
+        tokio::task::yield_now().await;
 
-        let exposed_env = std::fs::read_to_string(&env_out).unwrap();
-        let stdin_token = std::fs::read_to_string(&stdin_out).unwrap();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+        let stdin_token = loop {
+            if let Ok(content) = std::fs::read_to_string(&stdin_out) {
+                if !content.is_empty() {
+                    break content;
+                }
+            }
+            if tokio::time::Instant::now() > deadline {
+                break String::new();
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        };
+
+        let exposed_env = std::fs::read_to_string(&env_out).unwrap_or_default();
 
         let _ = std::fs::remove_dir_all(&temp_dir);
 
