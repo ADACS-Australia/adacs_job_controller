@@ -27,6 +27,7 @@ docs/
 # AI / Agent / Opencode tooling
 .agents/
 .claude/
+.github/
 .opencode/
 .serena/
 AGENTS.md

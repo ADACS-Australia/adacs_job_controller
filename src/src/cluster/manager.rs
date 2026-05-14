@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 use crate::cluster::cluster::{AppContext, Cluster};
 use crate::cluster::file_download::FileDownloadState;
 use crate::cluster::file_upload::FileUploadState;
+use crate::cluster::ssh;
 use crate::cluster::traits::{ClusterManagerTrait, ClusterTrait, ConnectionId, WsConnectionSender};
 use crate::config::clusters::ClusterConfig;
 use crate::config::settings::{
@@ -228,74 +229,24 @@ impl ClusterManager {
                     );
                 }
                 _ => {
-                    // SSH or Kerberos: launch Python keyserver
+                    // SSH or Kerberos: launch remote client
                     self.launch_ssh_connection(&details, &uuid);
                 }
             }
         }
     }
 
-    /// Launch SSH connection via Python keyserver.
     #[allow(clippy::unused_self)]
     fn launch_ssh_connection(&self, details: &ClusterConfig, token: &str) {
-        let python_path = std::env::var("KEYCLIENT_PYTHON")
-            .unwrap_or_else(|_| "./utils/keyserver/venv/bin/python".to_string());
-        let script_path = std::env::var("KEYCLIENT_SCRIPT")
-            .unwrap_or_else(|_| "./utils/keyserver/keyserver.py".to_string());
-        self.launch_ssh_connection_with_paths(details, token, &python_path, &script_path);
-    }
-
-    #[allow(clippy::unused_self)]
-    fn launch_ssh_connection_with_paths(
-        &self,
-        details: &ClusterConfig,
-        token: &str,
-        python_path: &str,
-        script_path: &str,
-    ) {
-        let mut cmd = tokio::process::Command::new(python_path);
-        cmd.arg(script_path);
-        cmd.stdin(std::process::Stdio::piped());
-        cmd.env("SSH_HOST", &details.host);
-        cmd.env("SSH_USERNAME", &details.username);
-        cmd.env("SSH_KEY", &details.key);
-        cmd.env("SSH_PATH", &details.path);
-
-        if !details.keytab.is_empty() {
-            cmd.env("SSH_KEYTAB", &details.keytab);
-        }
-        if !details.kerberos_principal.is_empty() {
-            cmd.env("SSH_PRINCIPAL", &details.kerberos_principal);
-        }
-
-        let token_owned = token.to_string();
-        match cmd.spawn() {
-            Ok(mut child) => {
-                tokio::spawn(async move {
-                    // Write token to stdin (avoids /proc/<pid>/environ exposure)
-                    if let Some(stdin) = child.stdin.as_mut() {
-                        use tokio::io::AsyncWriteExt;
-                        let _ = stdin.write_all(token_owned.as_bytes()).await;
-                        let _ = stdin.shutdown().await;
-                    }
-                    match child.wait().await {
-                        Ok(status) => {
-                            if !status.success() {
-                                tracing::warn!("SSH keyserver exited with status: {}", status);
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to wait for SSH keyserver: {}", e);
-                        }
-                    }
-                });
+        let config = details.clone();
+        let token = token.to_string();
+        tokio::spawn(async move {
+            if let Err(e) = ssh::run_remote_client(&config, &token).await {
+                tracing::error!("SSH connection failed for {}: {e}", config.name);
+            } else {
+                tracing::info!("SSH connection launched for {}", config.name);
             }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to launch SSH keyserver (python={python_path}, script={script_path}): {e}"
-                );
-            }
-        }
+        });
     }
 
     /// Background task: periodically ping connected clusters.
@@ -783,75 +734,6 @@ mod tests {
             manager.reconnect_attempts.get("cluster_b").map(|v| *v),
             Some(3)
         );
-    }
-
-    #[tokio::test]
-    async fn test_launch_ssh_connection_passes_token_via_stdin_not_env() {
-        let db = make_db().await;
-        let manager = ClusterManager::new(vec![], db, Arc::new(DashMap::new()));
-
-        let temp_dir =
-            std::env::temp_dir().join(format!("adacs-keyclient-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-        let script_path = temp_dir.join("capture.sh");
-        let env_out = temp_dir.join("env.txt");
-        let stdin_out = temp_dir.join("stdin.txt");
-
-        std::fs::write(
-            &script_path,
-            format!(
-                "#!/bin/sh\nprintf '%s' \"${{SSH_TOKEN:-}}\" > \"{}\"\ncat > \"{}\"\n",
-                env_out.display(),
-                stdin_out.display()
-            ),
-        )
-        .unwrap();
-
-        let details = ClusterConfig {
-            name: "ssh-test".to_string(),
-            host: "example.com".to_string(),
-            username: "user".to_string(),
-            path: "/remote/path".to_string(),
-            key: "private-key".to_string(),
-            connection_type: "ssh".to_string(),
-            keytab: String::new(),
-            kerberos_principal: String::new(),
-            ltk: None,
-        };
-
-        let token = "super-secret-token";
-        manager.launch_ssh_connection_with_paths(
-            &details,
-            token,
-            "/bin/sh",
-            &script_path.to_string_lossy(),
-        );
-
-        // Yield so the spawned stdin-writing task can run before the wait loop.
-        tokio::task::yield_now().await;
-
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
-        let stdin_token = loop {
-            if let Ok(content) = std::fs::read_to_string(&stdin_out) {
-                if !content.is_empty() {
-                    break content;
-                }
-            }
-            if tokio::time::Instant::now() > deadline {
-                break String::new();
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-        };
-
-        let exposed_env = std::fs::read_to_string(&env_out).unwrap_or_default();
-
-        let _ = std::fs::remove_dir_all(&temp_dir);
-
-        assert!(
-            exposed_env.is_empty(),
-            "SSH_TOKEN should not be set in child environment"
-        );
-        assert_eq!(stdin_token, token, "token should be delivered via stdin");
     }
 
     // Integration tests would require a real or mock DB pool
