@@ -2,7 +2,7 @@ use sea_orm::entity::prelude::*;
 
 /// `SeaORM` entity for the `JobserverFiledownload` table.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
-#[sea_orm(table_name = "JobserverFiledownload")]
+#[sea_orm(table_name = "jobserver_filedownload")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,

@@ -29,7 +29,6 @@ pub async fn ws_handler(
     State(state): State<AppState>,
     request: Request,
 ) -> impl IntoResponse {
-    // Extract Authorization header
     let token = extract_token_from_headers(request.headers());
     ws.on_upgrade(move |socket| handle_socket(socket, token, state))
 }

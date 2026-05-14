@@ -21,6 +21,9 @@ src/target/
 src/cobertura.xml
 src/coverage.json
 
+# Project documentation (local design docs, plans, specs)
+docs/
+
 # AI / Agent / Opencode tooling
 .agents/
 .claude/

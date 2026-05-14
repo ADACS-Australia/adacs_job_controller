@@ -1,7 +1,7 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
-#[sea_orm(table_name = "JobserverClusteruuid")]
+#[sea_orm(table_name = "jobserver_clusteruuid")]
 #[allow(dead_code)]
 pub struct Model {
     #[sea_orm(primary_key)]

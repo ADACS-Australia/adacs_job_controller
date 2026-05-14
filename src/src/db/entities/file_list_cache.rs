@@ -2,7 +2,7 @@ use sea_orm::entity::prelude::*;
 
 /// `SeaORM` entity for the `JobserverFilelistcache` table.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
-#[sea_orm(table_name = "JobserverFilelistcache")]
+#[sea_orm(table_name = "jobserver_filelistcache")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
