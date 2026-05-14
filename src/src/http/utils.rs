@@ -65,7 +65,12 @@ pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec
     let mut matched = Vec::new();
 
     for file in files {
-        let path = PathBuf::from(&file.file_name);
+        let normalized_file_name = if file.file_name.starts_with('/') {
+            file.file_name.clone()
+        } else {
+            format!("/{}", file.file_name.trim_start_matches('/'))
+        };
+        let path = PathBuf::from(&normalized_file_name);
 
         if recursive {
             let parent_path = path
@@ -80,9 +85,9 @@ pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec
                 })
                 .unwrap_or_default();
 
-            if file.file_name == abs_path
+            if normalized_file_name == abs_path
                 || parent_path.starts_with(&abs_path)
-                || (file.file_name == abs_path_no_trail && file.is_directory)
+                || (normalized_file_name == abs_path_no_trail && file.is_directory)
             {
                 matched.push(file.clone());
             }
@@ -94,7 +99,7 @@ pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec
 
             if parent == abs_path
                 || parent == abs_path_no_trail
-                || (file.file_name == abs_path_no_trail && file.is_directory)
+                || (normalized_file_name == abs_path_no_trail && file.is_directory)
             {
                 matched.push(file.clone());
             }
@@ -203,6 +208,29 @@ mod tests {
         ]
     }
 
+    fn make_relative_files() -> Vec<FileInfo> {
+        vec![
+            FileInfo {
+                file_name: "job.sh".to_string(),
+                file_size: 100,
+                permissions: 0o644,
+                is_directory: false,
+            },
+            FileInfo {
+                file_name: "subdir".to_string(),
+                file_size: 0,
+                permissions: 0o755,
+                is_directory: true,
+            },
+            FileInfo {
+                file_name: "subdir/output.txt".to_string(),
+                file_size: 200,
+                permissions: 0o644,
+                is_directory: false,
+            },
+        ]
+    }
+
     /// Verifies that non-recursive filtering returns the target directory and its immediate
     /// children only, excluding nested descendants.
     #[test]
@@ -244,6 +272,31 @@ mod tests {
         let files = make_files();
         let result = filter_files(&files, "", true);
         assert_eq!(result.len(), files.len());
+    }
+
+    /// Verifies that recursive filtering from an empty path treats cached relative
+    /// file paths as rooted under `/`, returning the full completed-job cache.
+    #[test]
+    fn test_filter_files_empty_path_recursive_with_relative_paths() {
+        let files = make_relative_files();
+        let result = filter_files(&files, "", true);
+        let names: Vec<&str> = result.iter().map(|f| f.file_name.as_str()).collect();
+        assert!(names.contains(&"job.sh"));
+        assert!(names.contains(&"subdir"));
+        assert!(names.contains(&"subdir/output.txt"));
+        assert_eq!(result.len(), files.len());
+    }
+
+    /// Verifies that non-recursive filtering from an empty path returns only
+    /// top-level relative cached entries and excludes nested descendants.
+    #[test]
+    fn test_filter_files_empty_path_non_recursive_with_relative_paths() {
+        let files = make_relative_files();
+        let result = filter_files(&files, "", false);
+        let names: Vec<&str> = result.iter().map(|f| f.file_name.as_str()).collect();
+        assert!(names.contains(&"job.sh"));
+        assert!(names.contains(&"subdir"));
+        assert!(!names.contains(&"subdir/output.txt"));
     }
 
     /// Verifies that paths containing `..` are canonicalised before matching.

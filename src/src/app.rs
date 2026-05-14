@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use sea_orm_migration::MigratorTrait;
 use tokio::sync::Mutex;
 
 use crate::cluster::manager::ClusterManager;
@@ -50,7 +51,8 @@ pub async fn run() -> anyhow::Result<()> {
         &*crate::config::settings::DATABASE_SCHEMA,
     );
     let db = sea_orm::Database::connect(&db_url).await?;
-    tracing::info!("SeaORM connection established");
+    crate::db::migration::migrator::Migrator::up(&db, None).await?;
+    tracing::info!("SeaORM connection established and migrations applied");
 
     let file_list_map: Arc<DashMap<_, _>> = Arc::new(DashMap::new());
 
