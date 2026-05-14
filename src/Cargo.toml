@@ -62,6 +62,8 @@ async-trait = "0.1"
 async-stream = "0.3.6"
 mockall = { version = "0.13", optional = true }
 http-body-util = "0.1"
+russh = "0.60"
+tempfile = "3"
 
 [dev-dependencies]
 mockall = "0.13"

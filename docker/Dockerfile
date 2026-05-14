@@ -50,9 +50,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     netcat-openbsd \
-    python3 \
-    python3-pip \
-    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -65,9 +62,6 @@ COPY --from=builder /app/target/release/adacs_job_controller /app/adacs_job_cont
 
 # Copy runtime scripts
 COPY docker/scripts/ /app/docker/scripts/
-COPY legacy/utils/keyserver/keyserver.py /app/utils/keyserver/keyserver.py
-RUN python3 -m venv /app/utils/keyserver/venv && \
-    /app/utils/keyserver/venv/bin/pip install --no-cache-dir paramiko
 RUN chmod +x /app/docker/scripts/*.sh
 
 # Expose HTTP and WebSocket ports

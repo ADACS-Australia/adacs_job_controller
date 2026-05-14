@@ -5,9 +5,6 @@ src/cobertura.xml
 src/coverage.json
 src/CPP_TO_RUST_TEST_MIGRATION.md
 legacy/
-!legacy/utils/
-!legacy/utils/keyserver/
-!legacy/utils/keyserver/keyserver.py
 build/
 test_report/
 docker/db/
