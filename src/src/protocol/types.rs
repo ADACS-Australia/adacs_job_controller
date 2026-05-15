@@ -6,13 +6,13 @@ pub enum JobStatus {
     Submitted = 30,
     Queued = 40,
     Running = 50,
-    Cancelling = 75,
-    Cancelled = 80,
-    Deleting = 85,
+    Cancelling = 60,
+    Cancelled = 70,
+    Deleting = 80,
     Deleted = 90,
-    Error = 100,
-    WallTimeExceeded = 200,
-    OutOfMemory = 300,
+    Error = 400,
+    WallTimeExceeded = 401,
+    OutOfMemory = 402,
     Completed = 500,
 }
 
@@ -26,13 +26,13 @@ impl TryFrom<u32> for JobStatus {
             30 => Ok(JobStatus::Submitted),
             40 => Ok(JobStatus::Queued),
             50 => Ok(JobStatus::Running),
-            75 => Ok(JobStatus::Cancelling),
-            80 => Ok(JobStatus::Cancelled),
-            85 => Ok(JobStatus::Deleting),
+            60 => Ok(JobStatus::Cancelling),
+            70 => Ok(JobStatus::Cancelled),
+            80 => Ok(JobStatus::Deleting),
             90 => Ok(JobStatus::Deleted),
-            100 => Ok(JobStatus::Error),
-            200 => Ok(JobStatus::WallTimeExceeded),
-            300 => Ok(JobStatus::OutOfMemory),
+            400 => Ok(JobStatus::Error),
+            401 => Ok(JobStatus::WallTimeExceeded),
+            402 => Ok(JobStatus::OutOfMemory),
             500 => Ok(JobStatus::Completed),
             _ => Err(format!("Unknown JobStatus value: {value}")),
         }
@@ -143,16 +143,16 @@ mod tests {
         assert_eq!(JobStatus::try_from(30).unwrap(), JobStatus::Submitted);
         assert_eq!(JobStatus::try_from(40).unwrap(), JobStatus::Queued);
         assert_eq!(JobStatus::try_from(50).unwrap(), JobStatus::Running);
-        assert_eq!(JobStatus::try_from(75).unwrap(), JobStatus::Cancelling);
-        assert_eq!(JobStatus::try_from(80).unwrap(), JobStatus::Cancelled);
-        assert_eq!(JobStatus::try_from(85).unwrap(), JobStatus::Deleting);
+        assert_eq!(JobStatus::try_from(60).unwrap(), JobStatus::Cancelling);
+        assert_eq!(JobStatus::try_from(70).unwrap(), JobStatus::Cancelled);
+        assert_eq!(JobStatus::try_from(80).unwrap(), JobStatus::Deleting);
         assert_eq!(JobStatus::try_from(90).unwrap(), JobStatus::Deleted);
-        assert_eq!(JobStatus::try_from(100).unwrap(), JobStatus::Error);
+        assert_eq!(JobStatus::try_from(400).unwrap(), JobStatus::Error);
         assert_eq!(
-            JobStatus::try_from(200).unwrap(),
+            JobStatus::try_from(401).unwrap(),
             JobStatus::WallTimeExceeded
         );
-        assert_eq!(JobStatus::try_from(300).unwrap(), JobStatus::OutOfMemory);
+        assert_eq!(JobStatus::try_from(402).unwrap(), JobStatus::OutOfMemory);
         assert_eq!(JobStatus::try_from(500).unwrap(), JobStatus::Completed);
     }
 

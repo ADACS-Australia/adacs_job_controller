@@ -364,14 +364,14 @@ async fn test_check_unsubmitted_jobs_skips_offline_cluster() {
 }
 
 // ---------------------------------------------------------------------------
-// check_cancelling_jobs: old state=75 → CANCEL_JOB resent
+// check_cancelling_jobs: old state=60 → CANCEL_JOB resent
 // ---------------------------------------------------------------------------
 
 /// Verifies that `check_cancelling_jobs` re-sends a `CANCEL_JOB` message for a job
-/// stuck in CANCELLING state (state=75) with an old timestamp.
+/// stuck in CANCELLING state (state=60) with an old timestamp.
 ///
 /// # Setup
-/// A job and a history row with `state=75` and timestamp `2000-01-01` are inserted.
+/// A job and a history row with `state=60` and timestamp `2000-01-01` are inserted.
 /// The cluster is given a live WS sender and the scheduler is started.
 ///
 /// # Act
@@ -384,7 +384,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
     let db = make_db().await;
 
     insert_job(&db, 10, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 10, old_timestamp(), "cancel", 75).await;
+    insert_history(&db, 10, old_timestamp(), "cancel", 60).await;
 
     let ctx = make_app_context(db.clone());
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
@@ -414,10 +414,10 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
 }
 
 /// Verifies that `check_cancelling_jobs` does NOT re-send `CANCEL_JOB` for a job
-/// in CANCELLING state (state=75) with a recent timestamp.
+/// in CANCELLING state (state=60) with a recent timestamp.
 ///
 /// # Setup
-/// A job and a history row with `state=75` and `timestamp=NOW` are inserted.
+/// A job and a history row with `state=60` and `timestamp=NOW` are inserted.
 /// The cluster is given a live WS sender and the scheduler is started.
 ///
 /// # Act
@@ -430,7 +430,7 @@ async fn test_check_cancelling_jobs_ignores_recent() {
     let db = make_db().await;
 
     insert_job(&db, 11, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 11, now_timestamp(), "cancel", 75).await;
+    insert_history(&db, 11, now_timestamp(), "cancel", 60).await;
 
     let ctx = make_app_context(db.clone());
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
@@ -460,14 +460,14 @@ async fn test_check_cancelling_jobs_ignores_recent() {
 }
 
 // ---------------------------------------------------------------------------
-// check_deleting_jobs: old state=85 → DELETE_JOB resent
+// check_deleting_jobs: old state=80 → DELETE_JOB resent
 // ---------------------------------------------------------------------------
 
 /// Verifies that `check_deleting_jobs` re-sends a `DELETE_JOB` message for a job
-/// stuck in DELETING state (state=85) with an old timestamp.
+/// stuck in DELETING state (state=80) with an old timestamp.
 ///
 /// # Setup
-/// A job and a history row with `state=85` and timestamp `2000-01-01` are inserted.
+/// A job and a history row with `state=80` and timestamp `2000-01-01` are inserted.
 /// The cluster is given a live WS sender and the scheduler is started.
 ///
 /// # Act
@@ -480,7 +480,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
     let db = make_db().await;
 
     insert_job(&db, 20, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 20, old_timestamp(), "delete", 85).await;
+    insert_history(&db, 20, old_timestamp(), "delete", 80).await;
 
     let ctx = make_app_context(db.clone());
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
@@ -510,10 +510,10 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
 }
 
 /// Verifies that `check_deleting_jobs` does NOT re-send `DELETE_JOB` for a job
-/// in DELETING state (state=85) with a recent timestamp.
+/// in DELETING state (state=80) with a recent timestamp.
 ///
 /// # Setup
-/// A job and a history row with `state=85` and `timestamp=NOW` are inserted.
+/// A job and a history row with `state=80` and `timestamp=NOW` are inserted.
 /// The cluster is given a live WS sender and the scheduler is started.
 ///
 /// # Act
@@ -526,7 +526,7 @@ async fn test_check_deleting_jobs_ignores_recent() {
     let db = make_db().await;
 
     insert_job(&db, 21, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 21, now_timestamp(), "delete", 85).await;
+    insert_history(&db, 21, now_timestamp(), "delete", 80).await;
 
     let ctx = make_app_context(db.clone());
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
@@ -620,13 +620,13 @@ const UNSUBMITTED_NOOP_STATES: &[i32] = &[
     30,  // Submitted
     40,  // Queued
     50,  // Running
-    75,  // Cancelling
-    80,  // Cancelled
-    85,  // Deleting
+    60,  // Cancelling
+    70,  // Cancelled
+    80,  // Deleting
     90,  // Deleted
-    100, // Error
-    200, // WallTimeExceeded
-    300, // OutOfMemory
+    400, // Error
+    401, // WallTimeExceeded
+    402, // OutOfMemory
     500, // Completed
 ];
 
@@ -682,19 +682,19 @@ async fn test_check_unsubmitted_jobs_noop_for_non_matching_statuses() {
 }
 
 /// All `JobStatus` values that should NOT trigger `check_cancelling_jobs`.
-/// (Only CANCELLING=75 should trigger.)
+/// (Only CANCELLING=60 should trigger.)
 const CANCELLING_NOOP_STATES: &[i32] = &[
     10,  // Pending
     20,  // Submitting
     30,  // Submitted
     40,  // Queued
     50,  // Running
-    80,  // Cancelled
-    85,  // Deleting
+    70,  // Cancelled
+    80,  // Deleting
     90,  // Deleted
-    100, // Error
-    200, // WallTimeExceeded
-    300, // OutOfMemory
+    400, // Error
+    401, // WallTimeExceeded
+    402, // OutOfMemory
     500, // Completed
 ];
 
@@ -750,19 +750,19 @@ async fn test_check_cancelling_jobs_noop_for_non_matching_statuses() {
 }
 
 /// All `JobStatus` values that should NOT trigger `check_deleting_jobs`.
-/// (Only DELETING=85 should trigger.)
+/// (Only DELETING=80 should trigger.)
 const DELETING_NOOP_STATES: &[i32] = &[
     10,  // Pending
     20,  // Submitting
     30,  // Submitted
     40,  // Queued
     50,  // Running
-    75,  // Cancelling
-    80,  // Cancelled
+    60,  // Cancelling
+    70,  // Cancelled
     90,  // Deleted
-    100, // Error
-    200, // WallTimeExceeded
-    300, // OutOfMemory
+    400, // Error
+    401, // WallTimeExceeded
+    402, // OutOfMemory
     500, // Completed
 ];
 
