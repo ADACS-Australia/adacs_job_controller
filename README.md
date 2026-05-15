@@ -1,6 +1,6 @@
 # ADACS Job Controller Server (Rust)
 
-Rust port of the ADACS Job Controller Server. The original C++ implementation is in `legacy/`.
+Rust server for the ADACS Job Controller.
 
 A server that manages distributed job submissions to HPC/compute clusters via an HTTP REST API and WebSocket binary message protocol.
 

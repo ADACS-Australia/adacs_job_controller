@@ -2470,7 +2470,7 @@ async fn test_job_finished_update_populates_cache() {
 // ===========================================================================
 // 23. LARGE FILE TRANSFERS — full end-to-end with backpressure and memory monitoring
 //
-// Equivalent to C++ test: legacy/tests/test_file_transfer.cpp:test_large_file_transfers
+// Equivalent to the original C++ test for large file transfers
 //
 // Full end-to-end test with:
 // - Real HTTP server on random port
@@ -2502,8 +2502,7 @@ fn get_memory_usage_kb() -> u64 {
 /// Verifies that large file transfers with backpressure work correctly and memory stays bounded.
 ///
 /// This is a simplified end-to-end test that validates the core backpressure mechanism
-/// with large files. For a full WebSocket-integrated test, see the C++ equivalent:
-/// `legacy/tests/test_file_transfer.cpp:test_large_file_transfers`
+/// with large files.
 ///
 /// # Setup
 /// - Starts real HTTP server on random port
