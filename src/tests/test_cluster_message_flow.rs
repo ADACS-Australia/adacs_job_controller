@@ -896,7 +896,7 @@ async fn test_prune_sources_removes_empty_queues() {
 
 /// Verifies that the background source pruner removes empty sources after the configured interval.
 ///
-/// Equivalent to C++ test: `legacy/Cluster/tests/background_threads_tests.cpp:test_PruneSources`
+/// Equivalent to the original C++ test for background source pruning
 ///
 /// # Setup
 /// - Sets `QUEUE_SOURCE_PRUNE_MILLISECONDS=100` for fast test execution
