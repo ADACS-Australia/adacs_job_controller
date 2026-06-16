@@ -22,4 +22,5 @@ if [ -d "/app/migrations" ] && command -v sqlx &> /dev/null; then
 fi
 
 echo "Starting ADACS Job Controller..."
-exec su -s /bin/bash jobserver -c "/app/adacs_job_controller 2>&1 | tee /app/logs/logfile"
+export RUST_LOG="${RUST_LOG:-info}"
+exec su -s /bin/bash jobserver -c "stdbuf -oL -eL /app/adacs_job_controller 2>&1 | stdbuf -oL tee /app/logs/logfile"

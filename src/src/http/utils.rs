@@ -1,6 +1,55 @@
 use std::path::{Component, PathBuf};
 
 use crate::protocol::types::FileInfo;
+use axum::body::to_bytes;
+use axum::extract::{FromRequest, Request};
+use axum::http::StatusCode;
+use serde::de::DeserializeOwned;
+
+/// Lenient JSON extractor that accepts requests without Content-Type header.
+///
+/// # FIXME
+/// Temporary workaround for client compatibility - should be removed when all clients send proper Content-Type headers.
+///
+/// This extractor:
+/// - Parses body as JSON regardless of Content-Type header
+/// - Logs a warning when Content-Type is missing (for observability)
+/// - Still validates JSON structure (rejects invalid JSON)
+pub struct LenientJson<T>(pub T);
+
+impl<T, S> FromRequest<S> for LenientJson<T>
+where
+    T: DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request(req: Request, _state: &S) -> Result<Self, Self::Rejection> {
+        // Check Content-Type header and log warning if missing
+        let content_type = req
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok());
+
+        if content_type.is_none() {
+            tracing::warn!(
+                "HTTP: Request missing Content-Type header - method={}, uri={}",
+                req.method(),
+                req.uri()
+            );
+        }
+
+        // Parse body as JSON regardless of Content-Type
+        let bytes = to_bytes(req.into_body(), usize::MAX)
+            .await
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}")))?;
+
+        let value: T = serde_json::from_slice(&bytes)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid JSON: {e}")))?;
+
+        Ok(LenientJson(value))
+    }
+}
 
 /// Parse a comma-separated list of u64 values from a query parameter string.
 #[must_use]

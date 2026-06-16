@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use crate::http::utils::LenientJson;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Query, State};
@@ -60,7 +61,7 @@ pub struct FileListRequest {
     pub bundle: Option<String>,
 }
 
-// ---- POST /file/apiv1/file/ (Create file download records) ----
+// ---- POST /job/apiv1/file/ (Create file download records) ----
 
 /// Create file download records in the database.
 ///
@@ -74,8 +75,17 @@ pub struct FileListRequest {
 pub async fn create_file_download(
     auth: AuthResult,
     State(state): State<AppState>,
-    Json(body): Json<CreateFileDownloadRequest>,
+    // TODO: Content-Type tolerance - remove when client sends proper headers
+    LenientJson(body): LenientJson<CreateFileDownloadRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    tracing::debug!("HTTP: Create file download request received");
+    tracing::trace!(
+        "HTTP: Job ID: {:?}, paths: {:?}, cluster: {:?}",
+        body.job_id,
+        body.paths,
+        body.cluster
+    );
+
     let applications = get_applications(&auth.secret);
 
     let has_paths = body.paths.is_some();
@@ -84,13 +94,16 @@ pub async fn create_file_download(
     } else if let Some(path) = body.path {
         vec![path]
     } else {
+        tracing::warn!("HTTP: File download rejected - no path provided");
         return Err((StatusCode::BAD_REQUEST, "No path provided".to_string()));
     };
 
     if file_paths.is_empty() {
+        tracing::debug!("HTTP: Empty file paths list - returning empty response");
         return Ok(Json(serde_json::json!({ "fileIds": [] })));
     }
 
+    tracing::trace!("HTTP: Resolving cluster and bundle");
     let (s_cluster, s_bundle) = resolve_cluster_bundle(
         &state,
         &auth,
@@ -100,18 +113,30 @@ pub async fn create_file_download(
         body.bundle.as_deref(),
     )
     .await?;
+    tracing::debug!(
+        "HTTP: Resolved cluster='{}', bundle='{}'",
+        s_cluster,
+        s_bundle
+    );
 
     let user_id = auth
         .payload
         .get("userId")
         .and_then(sea_orm::JsonValue::as_i64)
-        .unwrap_or(0) as i32;
+        .unwrap_or(0);
+    tracing::trace!("HTTP: User ID: {}", user_id);
 
-    let job_id = body.job_id.unwrap_or(0) as i32;
+    let job_id = body.job_id.unwrap_or(0) as i64;
 
     let mut uuids = Vec::new();
-    for path in &file_paths {
+    for (i, path) in file_paths.iter().enumerate() {
         let uuid = generate_uuid();
+        tracing::trace!(
+            "HTTP: Creating file download record #{} - path='{}', uuid={}",
+            i + 1,
+            path,
+            uuid
+        );
         file_download::ActiveModel {
             user: Set(user_id),
             job: Set(job_id),
@@ -124,11 +149,15 @@ pub async fn create_file_download(
         }
         .insert(&state.db)
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
+        .map_err(|e| {
+            tracing::error!("HTTP: Database insert failed: {}", e);
+            (StatusCode::BAD_REQUEST, format!("DB error: {e}"))
+        })?;
 
         uuids.push(uuid);
     }
 
+    tracing::info!("HTTP: Created {} file download record(s)", uuids.len());
     if has_paths {
         Ok(Json(serde_json::json!({ "fileIds": uuids })))
     } else {
@@ -136,7 +165,7 @@ pub async fn create_file_download(
     }
 }
 
-// ---- GET /file/apiv1/file/ (Stream file download) ----
+// ---- GET /job/apiv1/file/ (Stream file download) ----
 
 /// Stream a file download from a remote cluster.
 ///
@@ -153,60 +182,90 @@ pub async fn download_file(
     State(state): State<AppState>,
     Query(params): Query<FileDownloadQuery>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
-    let original_uuid = params
-        .file_id
-        .filter(|s| !s.is_empty())
-        .ok_or((StatusCode::BAD_REQUEST, "Bad Request".to_string()))?;
+    let original_uuid = params.file_id.filter(|s| !s.is_empty()).ok_or_else(|| {
+        tracing::debug!("HTTP: File download rejected - missing fileId parameter");
+        (StatusCode::BAD_REQUEST, "Bad Request".to_string())
+    })?;
 
+    tracing::debug!("HTTP: File download request for UUID: {}", original_uuid);
     let force_download = params.force_download.is_some();
+    tracing::trace!("HTTP: Force download flag: {}", force_download);
 
     // Expire old download records
     let expiry_secs = *settings::FILE_DOWNLOAD_EXPIRY_TIME as i64;
     let expiry_dt = chrono::Utc::now().naive_utc()
         - chrono::Duration::try_seconds(expiry_secs).unwrap_or_default();
+    tracing::trace!("HTTP: Expiring old download records (before {})", expiry_dt);
     let _ = file_download::Entity::delete_many()
         .filter(file_download::Column::Timestamp.lte(expiry_dt))
         .exec(&state.db)
         .await;
 
     // Fetch the download record
+    tracing::trace!("HTTP: Fetching download record for UUID: {}", original_uuid);
     let dl = file_download::Entity::find()
         .filter(file_download::Column::Uuid.eq(&original_uuid))
         .one(&state.db)
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
-        .ok_or((StatusCode::BAD_REQUEST, "Bad Request".to_string()))?;
+        .map_err(|e| {
+            tracing::error!("HTTP: Database fetch failed: {}", e);
+            (StatusCode::BAD_REQUEST, format!("DB error: {e}"))
+        })?
+        .ok_or_else(|| {
+            tracing::debug!(
+                "HTTP: Download record not found for UUID: {}",
+                original_uuid
+            );
+            (StatusCode::BAD_REQUEST, "Bad Request".to_string())
+        })?;
 
     let s_cluster = dl.cluster;
     let s_bundle = dl.bundle;
     let s_file_path = dl.path.clone();
     let job_id = dl.job as u64;
+    tracing::debug!(
+        "HTTP: Download record found - cluster='{}', bundle='{}', path='{}', job_id={}",
+        s_cluster,
+        s_bundle,
+        s_file_path,
+        job_id
+    );
 
+    tracing::trace!("HTTP: Fetching cluster '{}'", s_cluster);
     let cluster = state
         .cluster_manager
         .get_cluster_by_name(&s_cluster)
-        .ok_or((StatusCode::BAD_REQUEST, "Invalid cluster".to_string()))?;
+        .ok_or_else(|| {
+            tracing::warn!("HTTP: Cluster '{}' not found", s_cluster);
+            (StatusCode::BAD_REQUEST, "Invalid cluster".to_string())
+        })?;
 
     if !cluster.is_online() {
+        tracing::warn!("HTTP: Cluster '{}' is offline", s_cluster);
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Remote Cluster Offline".to_string(),
         ));
     }
+    tracing::debug!("HTTP: Cluster '{}' is online", s_cluster);
 
     let uuid = generate_uuid();
+    tracing::trace!("HTTP: Generated download session UUID: {}", uuid);
 
     let fd_cluster = state
         .cluster_manager
         .create_file_download(&cluster, &uuid)
         .await;
+    tracing::debug!("HTTP: File download session created");
 
+    tracing::trace!("HTTP: Sending DOWNLOAD_FILE message to cluster");
     let mut msg = Message::new(DOWNLOAD_FILE, Priority::Highest, &uuid);
     msg.push_uint(job_id as u32);
     msg.push_string(&uuid);
     msg.push_string(&s_bundle);
     msg.push_string(&s_file_path);
     cluster.send_message(msg).await;
+    tracing::trace!("HTTP: DOWNLOAD_FILE message sent");
 
     let fd_state = state.cluster_manager.get_file_download(&uuid).ok_or((
         StatusCode::BAD_REQUEST,
@@ -329,7 +388,7 @@ pub async fn download_file(
     Ok(response)
 }
 
-// ---- PUT /file/apiv1/file/upload/ (Stream file upload) ----
+// ---- PUT /job/apiv1/file/upload/ (Stream file upload) ----
 
 /// Handle a file upload to a remote cluster.
 ///
@@ -353,23 +412,33 @@ pub async fn upload_file(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     use axum::body::to_bytes;
 
-    let target_path = params.target_path.ok_or((
-        StatusCode::BAD_REQUEST,
-        "targetPath parameter is required".to_string(),
-    ))?;
+    tracing::debug!("HTTP: File upload request received");
+    let target_path = params.target_path.ok_or_else(|| {
+        tracing::warn!("HTTP: File upload rejected - missing targetPath parameter");
+        (
+            StatusCode::BAD_REQUEST,
+            "targetPath parameter is required".to_string(),
+        )
+    })?;
+    tracing::trace!("HTTP: Target path: {}", target_path);
 
     let content_length: u64 = request
         .headers()
         .get("content-length")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
-        .ok_or((
-            StatusCode::BAD_REQUEST,
-            "Content-Length header is required".to_string(),
-        ))?;
+        .ok_or_else(|| {
+            tracing::warn!("HTTP: File upload rejected - missing Content-Length header");
+            (
+                StatusCode::BAD_REQUEST,
+                "Content-Length header is required".to_string(),
+            )
+        })?;
+    tracing::trace!("HTTP: Content-Length: {} bytes", content_length);
 
     let applications = get_applications(&auth.secret);
 
+    tracing::trace!("HTTP: Resolving cluster and bundle for upload");
     let (s_cluster, s_bundle) = resolve_cluster_bundle(
         &state,
         &auth,
@@ -379,26 +448,40 @@ pub async fn upload_file(
         params.bundle.as_deref(),
     )
     .await?;
+    tracing::debug!(
+        "HTTP: Resolved cluster='{}', bundle='{}'",
+        s_cluster,
+        s_bundle
+    );
 
+    tracing::trace!("HTTP: Fetching cluster '{}'", s_cluster);
     let cluster = state
         .cluster_manager
         .get_cluster_by_name(&s_cluster)
-        .ok_or((StatusCode::BAD_REQUEST, "Invalid cluster".to_string()))?;
+        .ok_or_else(|| {
+            tracing::warn!("HTTP: Cluster '{}' not found", s_cluster);
+            (StatusCode::BAD_REQUEST, "Invalid cluster".to_string())
+        })?;
 
     if !cluster.is_online() {
+        tracing::warn!("HTTP: Cluster '{}' is offline", s_cluster);
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Remote cluster is offline".to_string(),
         ));
     }
+    tracing::debug!("HTTP: Cluster '{}' is online", s_cluster);
 
     let uuid = generate_uuid();
+    tracing::trace!("HTTP: Generated upload session UUID: {}", uuid);
 
+    tracing::debug!("HTTP: Creating file upload session");
     let upload_cluster = state
         .cluster_manager
         .create_file_upload(&cluster, &uuid)
         .await;
 
+    tracing::trace!("HTTP: Sending UPLOAD_FILE message to cluster");
     let mut msg = Message::new(UPLOAD_FILE, Priority::Highest, &uuid);
     msg.push_uint(params.job_id.unwrap_or(0) as u32);
     msg.push_string(&s_bundle);
@@ -512,7 +595,7 @@ pub async fn upload_file(
     })))
 }
 
-// ---- PATCH /file/apiv1/file/ (List files) ----
+// ---- PATCH /job/apiv1/file/ (List files) ----
 
 /// List files on a remote cluster.
 ///
@@ -528,7 +611,8 @@ pub async fn upload_file(
 pub async fn list_files(
     auth: AuthResult,
     State(state): State<AppState>,
-    Json(body): Json<FileListRequest>,
+    // TODO: Content-Type tolerance - remove when client sends proper headers
+    LenientJson(body): LenientJson<FileListRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let applications = get_applications(&auth.secret);
     let job_id = body.job_id.unwrap_or(0);

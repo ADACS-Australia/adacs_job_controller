@@ -6,13 +6,10 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
-    #[sea_orm(column_name = "jobId")]
     pub job_id: i64,
     #[sea_orm(column_type = "Text")]
     pub path: String,
-    #[sea_orm(column_name = "isDir")]
     pub is_dir: bool,
-    #[sea_orm(column_name = "fileSize")]
     pub file_size: i64,
     pub permissions: i32,
 }

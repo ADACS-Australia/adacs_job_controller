@@ -293,7 +293,7 @@ async fn test_download_resume_after_interruption() {
     let uuid = "test-download-uuid-12345".to_string();
     let file_download_record = file_download::ActiveModel {
         user: Set(1),
-        job: Set(job_id as i32),
+        job: Set(job_id),
         cluster: Set("ozstar".to_string()),
         bundle: Set("b".to_string()),
         uuid: Set(uuid.clone()),

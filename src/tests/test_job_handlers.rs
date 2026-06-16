@@ -1482,3 +1482,178 @@ async fn test_get_jobs_start_time_gt_only_uses_system_source_entries() {
         "job1 system source is after cutoff=50"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Content-Type tolerance tests
+// ---------------------------------------------------------------------------
+
+/// Tests that POST /job/ succeeds even without Content-Type header.
+///
+/// # Setup
+/// Wires an online cluster.
+///
+/// # Act
+/// Sends POST /job/apiv1/job/ WITHOUT content-type header.
+///
+/// # Assert
+/// Verifies 200 OK (not 415 Unsupported Media Type).
+#[tokio::test]
+async fn test_create_job_works_without_content_type_header() {
+    let db = setup_test_db().await;
+    let sent = Arc::new(Mutex::new(vec![]));
+    let cluster = Arc::new(online_cluster_capturing_messages(
+        "ozstar",
+        Arc::clone(&sent),
+    ));
+
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+
+    let app = create_router(make_test_state(db.clone(), manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
+
+    // Send request WITHOUT Content-Type header
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/job/")
+                // NOTE: No content-type header
+                .header("authorization", &token)
+                .body(Body::from(
+                    r#"{"cluster":"ozstar","parameters":"{}","bundle":"mybundle"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Should return 200 OK, not 415
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let job_id = body["jobId"].as_i64().expect("jobId should be present");
+    assert!(job_id > 0);
+}
+
+/// Tests that PATCH /job/ (cancel) succeeds without Content-Type header.
+///
+/// # Setup
+/// Inserts a PENDING job.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/job/ WITHOUT content-type header.
+///
+/// # Assert
+/// Verifies 200 OK.
+#[tokio::test]
+async fn test_cancel_job_works_without_content_type_header() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+
+    let (manager, _) = manager_with_online_cluster();
+    let app = create_router(make_test_state(db.clone(), manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    // Send request WITHOUT Content-Type header
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/job/apiv1/job/")
+                // NOTE: No content-type header
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({ "jobId": job_id }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Tests that DELETE /job/ succeeds without Content-Type header.
+///
+/// # Setup
+/// Inserts a PENDING job.
+///
+/// # Act
+/// Sends DELETE /job/apiv1/job/ WITHOUT content-type header.
+///
+/// # Assert
+/// Verifies 200 OK.
+#[tokio::test]
+async fn test_delete_job_works_without_content_type_header() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+
+    let (manager, _) = manager_with_online_cluster();
+    let app = create_router(make_test_state(db.clone(), manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    // Send request WITHOUT Content-Type header
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/job/apiv1/job/")
+                // NOTE: No content-type header
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({ "jobId": job_id }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Tests that invalid JSON is still rejected even without Content-Type header.
+///
+/// # Setup
+/// Empty database.
+///
+/// # Act
+/// Sends POST /job/apiv1/job/ with invalid JSON and no Content-Type header.
+///
+/// # Assert
+/// Verifies 400 Bad Request (not 200 OK).
+#[tokio::test]
+async fn test_create_job_rejects_invalid_json_without_content_type() {
+    let db = setup_test_db().await;
+    let mut manager = MockClusterManagerTrait::new();
+    manager.expect_get_cluster_by_name().returning(|_| None);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    // Send request with invalid JSON and no Content-Type header
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/job/")
+                .header("authorization", &token)
+                .body(Body::from(r#"{"cluster":"ozstar", invalid json}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Should still reject invalid JSON
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}

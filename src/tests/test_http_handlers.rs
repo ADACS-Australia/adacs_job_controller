@@ -247,13 +247,13 @@ async fn test_create_job_cluster_not_found_returns_bad_request() {
 // File API: PATCH (list_files) tests
 // ---------------------------------------------------------------------------
 
-/// Tests that PATCH /file/apiv1/file/ with no auth returns 403 Forbidden.
+/// Tests that PATCH /job/apiv1/file/ with no auth returns 403 Forbidden.
 ///
 /// # Setup
 /// Creates a minimal router with a mock manager.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with no Authorization header.
+/// Sends PATCH /job/apiv1/file/ with no Authorization header.
 ///
 /// # Assert
 /// Verifies the response status is 403 Forbidden.
@@ -266,7 +266,7 @@ async fn test_list_files_no_auth_returns_forbidden() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     r#"{"path":"/project","recursive":true,"cluster":"ozstar","bundle":"test"}"#,
@@ -316,13 +316,13 @@ async fn test_get_jobs_no_auth_returns_forbidden() {
 // File API: PUT (upload) tests
 // ---------------------------------------------------------------------------
 
-/// Tests that PUT /file/apiv1/file/upload/ with no auth returns 403 Forbidden.
+/// Tests that PUT /job/apiv1/file/upload/ with no auth returns 403 Forbidden.
 ///
 /// # Setup
 /// Creates a minimal router with a mock manager.
 ///
 /// # Act
-/// Sends PUT /file/apiv1/file/upload/ with no Authorization header.
+/// Sends PUT /job/apiv1/file/upload/ with no Authorization header.
 ///
 /// # Assert
 /// Verifies the response status is 403 Forbidden.
@@ -334,7 +334,7 @@ async fn test_upload_file_no_auth_returns_forbidden() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/file/apiv1/file/upload/?jobId=1&cluster=ozstar&bundle=b&targetPath=/dest")
+                .uri("/job/apiv1/file/upload/?jobId=1&cluster=ozstar&bundle=b&targetPath=/dest")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -354,7 +354,7 @@ async fn test_upload_file_no_auth_returns_forbidden() {
 /// Creates a minimal router. The test JWT secret allows "ozstar" and "nci" only.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with a valid token but cluster "unknown".
+/// Sends PATCH /job/apiv1/file/ with a valid token but cluster "unknown".
 ///
 /// # Assert
 /// Verifies 400 Bad Request because "unknown" is not in the secret's cluster list.
@@ -370,7 +370,7 @@ async fn test_list_files_valid_auth_missing_cluster_returns_error() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -419,13 +419,13 @@ async fn test_routes_exist_for_job_api() {
     assert_ne!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-/// Tests that PATCH /file/apiv1/file/ is a registered route (returns non-404).
+/// Tests that PATCH /job/apiv1/file/ is a registered route (returns non-404).
 ///
 /// # Setup
 /// Creates a minimal router with a mock manager.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with no auth.
+/// Sends PATCH /job/apiv1/file/ with no auth.
 ///
 /// # Assert
 /// Verifies the response is not 404 (indicates the route exists).
@@ -438,7 +438,7 @@ async fn test_routes_exist_for_file_api() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"path":"/","recursive":false}"#))
                 .unwrap(),
@@ -449,13 +449,13 @@ async fn test_routes_exist_for_file_api() {
     assert_ne!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-/// Tests that PUT /file/apiv1/file/upload/ is a registered route (returns non-404).
+/// Tests that PUT /job/apiv1/file/upload/ is a registered route (returns non-404).
 ///
 /// # Setup
 /// Creates a minimal router with a mock manager.
 ///
 /// # Act
-/// Sends PUT /file/apiv1/file/upload/ with no auth.
+/// Sends PUT /job/apiv1/file/upload/ with no auth.
 ///
 /// # Assert
 /// Verifies the response is not 404 (indicates the route exists).
@@ -468,7 +468,7 @@ async fn test_upload_route_exists() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/file/apiv1/file/upload/")
+                .uri("/job/apiv1/file/upload/")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -649,4 +649,114 @@ async fn test_cluster_get_cluster_details() {
     assert_eq!(details.username, config.username);
     assert_eq!(details.path, config.path);
     assert_eq!(details.connection_type, config.connection_type);
+}
+
+// ===========================================================================
+// API Path Regression Tests
+// ===========================================================================
+
+/// Regression test: Verifies File API uses `/job/apiv1/file/` path (not `/job/apiv1/file/`).
+///
+/// This test ensures compatibility with the C++ original API path structure.
+/// If this test fails with 404, the API path has been incorrectly changed.
+///
+/// # Act
+/// Sends POST/GET/PATCH to `/job/apiv1/file/` with no auth.
+///
+/// # Assert
+/// Verifies response is NOT 404 (route exists).
+#[tokio::test]
+async fn test_file_api_path_regression() {
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
+
+    for method in ["POST", "GET", "PATCH"] {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri("/job/apiv1/file/")
+                    .header("content-type", "application/json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(
+            resp.status(),
+            StatusCode::NOT_FOUND,
+            "File API endpoint /job/apiv1/file/ must exist for {method} (C++ compatibility)"
+        );
+    }
+}
+
+/// Regression test: Verifies File Upload API uses `/job/apiv1/file/upload/` path.
+///
+/// This test ensures compatibility with the C++ original API path structure.
+/// If this test fails with 404, the API path has been incorrectly changed.
+///
+/// # Act
+/// Sends PUT to `/job/apiv1/file/upload/` with no auth.
+///
+/// # Assert
+/// Verifies response is NOT 404 (route exists).
+#[tokio::test]
+async fn test_file_upload_api_path_regression() {
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/job/apiv1/file/upload/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_ne!(
+        resp.status(),
+        StatusCode::NOT_FOUND,
+        "File Upload API endpoint /job/apiv1/file/upload/ must exist (C++ compatibility)"
+    );
+}
+
+/// Regression test: Verifies Job API uses `/job/apiv1/job/` path.
+///
+/// This test ensures the Job API path remains stable.
+///
+/// # Act
+/// Sends GET/POST/PATCH/DELETE to `/job/apiv1/job/` with no auth.
+///
+/// # Assert
+/// Verifies response is NOT 404 (route exists).
+#[tokio::test]
+async fn test_job_api_path_regression() {
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
+
+    for method in ["GET", "POST", "PATCH", "DELETE"] {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri("/job/apiv1/job/")
+                    .header("content-type", "application/json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(
+            resp.status(),
+            StatusCode::NOT_FOUND,
+            "Job API endpoint /job/apiv1/job/ must exist for {method}"
+        );
+    }
 }

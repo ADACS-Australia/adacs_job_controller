@@ -17,6 +17,7 @@ use crate::http::{file, job};
 ///
 /// Panics if rate limiting is enabled but the configured governor parameters are invalid.
 pub fn create_router(state: AppState) -> Router {
+    tracing::debug!("HTTP: Building job routes");
     let job_routes = Router::new().route(
         "/job/apiv1/job/",
         post(job::create_job)
@@ -25,15 +26,17 @@ pub fn create_router(state: AppState) -> Router {
             .delete(job::delete_job),
     );
 
+    tracing::debug!("HTTP: Building file routes");
     let file_routes = Router::new()
         .route(
-            "/file/apiv1/file/",
+            "/job/apiv1/file/",
             post(file::create_file_download)
                 .get(file::download_file)
                 .patch(file::list_files),
         )
-        .route("/file/apiv1/file/upload/", put(file::upload_file));
+        .route("/job/apiv1/file/upload/", put(file::upload_file));
 
+    tracing::debug!("HTTP: Creating base router with middleware");
     let mut router = Router::new()
         .merge(job_routes)
         .merge(file_routes)
@@ -44,6 +47,11 @@ pub fn create_router(state: AppState) -> Router {
     // Rate limiting (disabled when RATE_LIMIT_REQUESTS_PER_SECOND is 0)
     if *RATE_LIMIT_REQUESTS_PER_SECOND > 0 {
         let interval_ms = (1000u64.saturating_div(*RATE_LIMIT_REQUESTS_PER_SECOND)).max(1);
+        tracing::debug!(
+            "HTTP: Enabling rate limiting ({} req/s, burst {})",
+            *RATE_LIMIT_REQUESTS_PER_SECOND,
+            *RATE_LIMIT_BURST_SIZE
+        );
         let mut config_builder = GovernorConfigBuilder::default();
         config_builder.per_millisecond(interval_ms);
         config_builder.burst_size(*RATE_LIMIT_BURST_SIZE);
@@ -53,8 +61,15 @@ pub fn create_router(state: AppState) -> Router {
                 .expect("rate limiter config: burst_size and period must be non-zero"),
         );
         router = router.layer(GovernorLayer::new(governor_config));
+        tracing::trace!(
+            "HTTP: Rate limiter configured with {}ms interval",
+            interval_ms
+        );
+    } else {
+        tracing::debug!("HTTP: Rate limiting disabled");
     }
 
+    tracing::info!("HTTP: Router created with job and file routes");
     router.with_state(state)
 }
 

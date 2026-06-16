@@ -1,10 +1,10 @@
 //! Comprehensive tests for file HTTP handlers.
 //!
 //! Tests cover the full business logic for:
-//! - POST /file/apiv1/file/  (create download record)
-//! - GET  /file/apiv1/file/  (stream file download — WS→HTTP flow)
-//! - PUT  /file/apiv1/file/upload/ (file upload — HTTP→WS→HTTP flow)
-//! - PATCH /file/apiv1/file/ (list files — WS→HTTP with cache)
+//! - POST /job/apiv1/file/  (create download record)
+//! - GET  /job/apiv1/file/  (stream file download — WS→HTTP flow)
+//! - PUT  /job/apiv1/file/upload/ (file upload — HTTP→WS→HTTP flow)
+//! - PATCH /job/apiv1/file/ (list files — WS→HTTP with cache)
 
 mod common;
 
@@ -60,7 +60,7 @@ fn offline_cluster() -> MockClusterTrait {
 }
 
 // ---------------------------------------------------------------------------
-// POST /file/apiv1/file/ — create file download records
+// POST /job/apiv1/file/ — create file download records
 // ---------------------------------------------------------------------------
 
 /// Tests that POST /file/ with a single path creates a download record and returns a fileId.
@@ -69,7 +69,7 @@ fn offline_cluster() -> MockClusterTrait {
 /// Inserts a test job. Wires an online cluster.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with `{"jobId": ..., "path": "/result/output.txt"}`.
+/// Sends POST /job/apiv1/file/ with `{"jobId": ..., "path": "/result/output.txt"}`.
 ///
 /// # Assert
 /// Verifies 200 OK, non-empty `fileId`, and the DB record has the correct path, cluster,
@@ -93,7 +93,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -130,7 +130,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
     assert_eq!(record.path, "/result/output.txt");
     assert_eq!(record.cluster, "ozstar");
     assert_eq!(record.bundle, "b");
-    assert_eq!(record.job, job_id as i32);
+    assert_eq!(record.job, job_id);
 }
 
 /// Tests that POST /file/ with a paths array creates multiple download records.
@@ -139,7 +139,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
 /// Inserts a test job. Wires an online cluster.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with `{"jobId": ..., "paths": ["/a.txt", "/b.txt", "/c.txt"]}`.
+/// Sends POST /job/apiv1/file/ with `{"jobId": ..., "paths": ["/a.txt", "/b.txt", "/c.txt"]}`.
 ///
 /// # Assert
 /// Verifies 200 OK and a `fileIds` array containing 3 non-empty UUID strings.
@@ -160,7 +160,7 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -196,7 +196,7 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
 /// Inserts a test job.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with `{"jobId": ...}` (no path key).
+/// Sends POST /job/apiv1/file/ with `{"jobId": ...}` (no path key).
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -216,7 +216,7 @@ async fn test_create_file_download_no_path_returns_400() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -231,7 +231,7 @@ async fn test_create_file_download_no_path_returns_400() {
 }
 
 // ---------------------------------------------------------------------------
-// GET /file/apiv1/file/ — stream file download (WS→HTTP data flow)
+// GET /job/apiv1/file/ — stream file download (WS→HTTP data flow)
 // ---------------------------------------------------------------------------
 
 /// Tests that GET /file/ without a fileId query parameter returns 400.
@@ -240,7 +240,7 @@ async fn test_create_file_download_no_path_returns_400() {
 /// Wires a manager that returns nothing.
 ///
 /// # Act
-/// Sends GET /file/apiv1/file/ with no `fileId` query parameter.
+/// Sends GET /job/apiv1/file/ with no `fileId` query parameter.
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -257,7 +257,7 @@ async fn test_download_file_no_file_id_returns_400() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -273,7 +273,7 @@ async fn test_download_file_no_file_id_returns_400() {
 /// Empty DB (no download records). Wires a manager that returns nothing.
 ///
 /// # Act
-/// Sends GET /file/apiv1/file/?fileId=not-a-real-uuid.
+/// Sends GET /job/apiv1/file/?fileId=not-a-real-uuid.
 ///
 /// # Assert
 /// Verifies 400 Bad Request because the UUID is not found in the DB.
@@ -288,7 +288,7 @@ async fn test_download_file_unknown_uuid_returns_400() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/file/apiv1/file/?fileId=not-a-real-uuid")
+                .uri("/job/apiv1/file/?fileId=not-a-real-uuid")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -305,7 +305,7 @@ async fn test_download_file_unknown_uuid_returns_400() {
 /// Inserts a download record pointing at "ozstar". Wires an offline cluster.
 ///
 /// # Act
-/// Sends GET /file/apiv1/file/?fileId={uuid}.
+/// Sends GET /job/apiv1/file/?fileId={uuid}.
 ///
 /// # Assert
 /// Verifies 503 Service Unavailable.
@@ -342,7 +342,7 @@ async fn test_download_file_cluster_offline_returns_503() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/file/apiv1/file/?fileId={uuid}"))
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -359,7 +359,7 @@ async fn test_download_file_cluster_offline_returns_503() {
 /// a background task simulates `FILE_DETAILS` + chunks arriving via a fresh `FileDownloadState`.
 ///
 /// # Act
-/// Sends GET /file/apiv1/file/?fileId={uuid} **5 times** with different UUIDs (repeated downloads).
+/// Sends GET /job/apiv1/file/?fileId={uuid} **5 times** with different UUIDs (repeated downloads).
 ///
 /// # Assert
 /// Verifies 200 OK with correct `Content-Length`, `Content-Type: application/octet-stream`,
@@ -457,7 +457,7 @@ async fn test_download_file_streams_chunks() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/file/apiv1/file/?fileId={uuid}"))
+                    .uri(format!("/job/apiv1/file/?fileId={uuid}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -510,7 +510,7 @@ async fn test_download_file_streams_chunks() {
 /// in `FileDownloadState` after a short delay.
 ///
 /// # Act
-/// Sends GET /file/apiv1/file/?fileId={uuid}.
+/// Sends GET /job/apiv1/file/?fileId={uuid}.
 ///
 /// # Assert
 /// Verifies 400 Bad Request with body containing "File not found".
@@ -568,7 +568,7 @@ async fn test_download_file_error_from_cluster_returns_400() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/file/apiv1/file/?fileId={uuid}"))
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -587,7 +587,7 @@ async fn test_download_file_error_from_cluster_returns_400() {
 }
 
 // ---------------------------------------------------------------------------
-// PATCH /file/apiv1/file/ — list files (cache hit and miss)
+// PATCH /job/apiv1/file/ — list files (cache hit and miss)
 // ---------------------------------------------------------------------------
 
 /// Tests that PATCH /file/ returns cached files from DB when the job is complete.
@@ -596,7 +596,7 @@ async fn test_download_file_error_from_cluster_returns_400() {
 /// Inserts a completed job and pre-populates the `file_list_cache` table with 2 entries.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with the job ID.
+/// Sends PATCH /job/apiv1/file/ with the job ID.
 ///
 /// # Assert
 /// Verifies 200 OK with a `files` array containing the 2 cached entries,
@@ -641,7 +641,7 @@ async fn test_list_files_cache_hit_returns_cached_files() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -676,7 +676,7 @@ async fn test_list_files_cache_hit_returns_cached_files() {
 /// the `FILE_LIST` message, parses the UUID, and populates the `file_list_map` entry.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with the job ID.
+/// Sends PATCH /job/apiv1/file/ with the job ID.
 ///
 /// # Assert
 /// Verifies 200 OK with a `files` array containing "/output/result.txt".
@@ -750,7 +750,7 @@ async fn test_list_files_ws_response_populates_result() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -785,7 +785,7 @@ async fn test_list_files_ws_response_populates_result() {
 /// Inserts a Running job. Wires an offline cluster.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with the job ID.
+/// Sends PATCH /job/apiv1/file/ with the job ID.
 ///
 /// # Assert
 /// Verifies 503 Service Unavailable.
@@ -808,7 +808,7 @@ async fn test_list_files_cluster_offline_returns_503() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -833,7 +833,7 @@ async fn test_list_files_cluster_offline_returns_503() {
 /// Empty DB. Wires an online cluster.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with only `{"path": "", "recursive": false}` (no jobId, no cluster).
+/// Sends PATCH /job/apiv1/file/ with only `{"path": "", "recursive": false}` (no jobId, no cluster).
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -853,7 +853,7 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -873,7 +873,7 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
 /// Empty DB. Wires an online cluster.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with `{"cluster": "forbidden_cluster", "bundle": "b"}`
+/// Sends PATCH /job/apiv1/file/ with `{"cluster": "forbidden_cluster", "bundle": "b"}`
 /// for a token that does not allow that cluster.
 ///
 /// # Assert
@@ -893,7 +893,7 @@ async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
@@ -918,7 +918,7 @@ async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
 }
 
 // ---------------------------------------------------------------------------
-// PUT /file/apiv1/file/upload/ — file upload (HTTP→WS→HTTP flow)
+// PUT /job/apiv1/file/upload/ — file upload (HTTP→WS→HTTP flow)
 // ---------------------------------------------------------------------------
 
 /// Tests that PUT /file/upload/ without a targetPath query parameter returns 400.
@@ -927,7 +927,7 @@ async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
 /// Inserts a test job. Wires an online cluster.
 ///
 /// # Act
-/// Sends PUT /file/apiv1/file/upload/ without the `targetPath` parameter.
+/// Sends PUT /job/apiv1/file/upload/ without the `targetPath` parameter.
 ///
 /// # Assert
 /// Verifies 400 Bad Request with body mentioning "targetPath".
@@ -949,7 +949,7 @@ async fn test_upload_file_no_target_path_returns_400() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b"
                 ))
                 .header("authorization", &token)
                 .header("content-length", "10")
@@ -972,7 +972,7 @@ async fn test_upload_file_no_target_path_returns_400() {
 /// Inserts a test job. Wires an offline cluster.
 ///
 /// # Act
-/// Sends PUT /file/apiv1/file/upload/ with valid parameters.
+/// Sends PUT /job/apiv1/file/upload/ with valid parameters.
 ///
 /// # Assert
 /// Verifies 503 Service Unavailable.
@@ -995,7 +995,7 @@ async fn test_upload_file_cluster_offline_returns_503() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
                 ))
                 .header("authorization", &token)
                 .header("content-length", "5")
@@ -1015,7 +1015,7 @@ async fn test_upload_file_cluster_offline_returns_503() {
 /// arriving in the `FileUploadState`. Cluster captures sent WS messages.
 ///
 /// # Act
-/// Sends PUT /file/apiv1/file/upload/ with a 17-byte body.
+/// Sends PUT /job/apiv1/file/upload/ with a 17-byte body.
 ///
 /// # Assert
 /// Verifies 200 OK, body contains `status: "completed"` and a non-null `uploadId`.
@@ -1097,7 +1097,7 @@ async fn test_upload_file_success_full_flow() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest/file.txt"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest/file.txt"
                 ))
                 .header("authorization", &token)
                 .header("content-length", payload.len().to_string())
@@ -1125,7 +1125,7 @@ async fn test_upload_file_success_full_flow() {
 /// `SERVER_READY` arrives in the `FileUploadState`.
 ///
 /// # Act
-/// Sends PUT /file/apiv1/file/upload/ with a small body.
+/// Sends PUT /job/apiv1/file/upload/ with a small body.
 ///
 /// # Assert
 /// Verifies 400 Bad Request with body containing the cluster error message.
@@ -1182,7 +1182,7 @@ async fn test_upload_file_server_error_returns_400() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
                 ))
                 .header("authorization", &token)
                 .header("content-length", "5")
@@ -1238,7 +1238,7 @@ async fn test_create_download_app2_can_access_app1_job() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1265,7 +1265,7 @@ async fn test_create_download_app2_can_access_app1_job() {
 /// Inserts an app1 job. Uses the multi-secret configuration where secret[3] (app4) does NOT list app1.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with app4's token and the app1 job ID.
+/// Sends POST /job/apiv1/file/ with app4's token and the app1 job ID.
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -1289,7 +1289,7 @@ async fn test_create_download_app4_cannot_access_app1_job() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1304,7 +1304,7 @@ async fn test_create_download_app4_cannot_access_app1_job() {
 }
 
 // ---------------------------------------------------------------------------
-// POST /file/apiv1/file/ — no-jobId path
+// POST /job/apiv1/file/ — no-jobId path
 // ---------------------------------------------------------------------------
 
 /// Tests the no-jobId path: POST /file/ with cluster and bundle (no jobId) succeeds.
@@ -1313,7 +1313,7 @@ async fn test_create_download_app4_cannot_access_app1_job() {
 /// Empty DB. Uses multi-secret config. Wires an online cluster for app1's token.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with `{"cluster": "ozstar", "bundle": "...", "path": "/test/path"}`.
+/// Sends POST /job/apiv1/file/ with `{"cluster": "ozstar", "bundle": "...", "path": "/test/path"}`.
 ///
 /// # Assert
 /// Verifies 200 OK with a non-null `fileId`.
@@ -1337,7 +1337,7 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1369,7 +1369,7 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
 /// Empty DB. Uses multi-secret config. Wires an online cluster.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with `{"jobId": 0, "cluster": "ozstar", "bundle": "...", "path": "..."}`.
+/// Sends POST /job/apiv1/file/ with `{"jobId": 0, "cluster": "ozstar", "bundle": "...", "path": "..."}`.
 ///
 /// # Assert
 /// Verifies 200 OK with a non-null `fileId`.
@@ -1390,7 +1390,7 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1423,7 +1423,7 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
 /// Empty DB. Uses multi-secret config.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with only `{"bundle": "...", "path": "..."}`.
+/// Sends POST /job/apiv1/file/ with only `{"bundle": "...", "path": "..."}`.
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -1440,7 +1440,7 @@ async fn test_create_download_no_jobid_missing_cluster_returns_400() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1464,7 +1464,7 @@ async fn test_create_download_no_jobid_missing_cluster_returns_400() {
 /// Empty DB. Uses multi-secret config.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with only `{"cluster": "ozstar", "path": "..."}`.
+/// Sends POST /job/apiv1/file/ with only `{"cluster": "ozstar", "path": "..."}`.
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -1481,7 +1481,7 @@ async fn test_create_download_no_jobid_missing_bundle_returns_400() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1505,7 +1505,7 @@ async fn test_create_download_no_jobid_missing_bundle_returns_400() {
 /// Empty DB. Uses multi-secret config. secret[3] (app4) has no cluster access.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with app4's token and cluster+bundle.
+/// Sends POST /job/apiv1/file/ with app4's token and cluster+bundle.
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -1528,7 +1528,7 @@ async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1554,7 +1554,7 @@ async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
 /// Uses app4's token (which fails the cluster access check first).
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with `{"cluster": "not_a_real_cluster", "bundle": "...", "path": "..."}`.
+/// Sends POST /job/apiv1/file/ with `{"cluster": "not_a_real_cluster", "bundle": "...", "path": "..."}`.
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -1574,7 +1574,7 @@ async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1594,7 +1594,7 @@ async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
 }
 
 // ---------------------------------------------------------------------------
-// POST /file/apiv1/file/ — empty paths list
+// POST /job/apiv1/file/ — empty paths list
 // ---------------------------------------------------------------------------
 
 /// Tests that an empty paths array returns 200 with an empty fileIds array.
@@ -1603,7 +1603,7 @@ async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
 /// Inserts a test job. Wires an online cluster.
 ///
 /// # Act
-/// Sends POST /file/apiv1/file/ with `{"jobId": ..., "paths": []}`.
+/// Sends POST /job/apiv1/file/ with `{"jobId": ..., "paths": []}`.
 ///
 /// # Assert
 /// Verifies 200 OK with `fileIds` being an empty array.
@@ -1626,7 +1626,7 @@ async fn test_create_download_empty_path_list_returns_empty_file_ids() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1653,7 +1653,7 @@ async fn test_create_download_empty_path_list_returns_empty_file_ids() {
 }
 
 // ---------------------------------------------------------------------------
-// PATCH /file/apiv1/file/ — cross-app access
+// PATCH /job/apiv1/file/ — cross-app access
 // ---------------------------------------------------------------------------
 
 /// Tests that app2 can access an app1 job via PATCH /file/ and reaches the cluster check.
@@ -1662,7 +1662,7 @@ async fn test_create_download_empty_path_list_returns_empty_file_ids() {
 /// Inserts an app1 job. Wires an offline cluster. Uses secret[1] (app2) which lists app1.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with app2's token and the app1 job ID.
+/// Sends PATCH /job/apiv1/file/ with app2's token and the app1 job ID.
 ///
 /// # Assert
 /// Verifies 503 Service Unavailable (access granted but cluster is offline).
@@ -1691,7 +1691,7 @@ async fn test_list_files_app2_can_access_app1_job() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1717,7 +1717,7 @@ async fn test_list_files_app2_can_access_app1_job() {
 /// Inserts an app1 job. Wires an online cluster. Uses secret[3] (app4) which does NOT list app1.
 ///
 /// # Act
-/// Sends PATCH /file/apiv1/file/ with app4's token and the app1 job ID.
+/// Sends PATCH /job/apiv1/file/ with app4's token and the app1 job ID.
 ///
 /// # Assert
 /// Verifies 400 Bad Request.
@@ -1741,7 +1741,7 @@ async fn test_list_files_app4_cannot_access_app1_job() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -1758,5 +1758,169 @@ async fn test_list_files_app4_cannot_access_app1_job() {
         .unwrap();
 
     // app4 CANNOT access app1's job → 400
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+// ---------------------------------------------------------------------------
+// Content-Type tolerance tests
+// ---------------------------------------------------------------------------
+
+/// Tests that POST /file/ succeeds without Content-Type header.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ WITHOUT content-type header.
+///
+/// # Assert
+/// Verifies 200 OK (not 415 Unsupported Media Type).
+#[tokio::test]
+async fn test_create_file_download_works_without_content_type_header() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+
+    let app = create_router(make_test_state(db.clone(), manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 10}));
+
+    // Send request WITHOUT Content-Type header
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                // NOTE: No content-type header
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "path": "/result/output.txt"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Should return 200 OK, not 415
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    assert!(!file_id.is_empty());
+}
+
+/// Tests that PATCH /file/ (list files) succeeds without Content-Type header.
+///
+/// # Setup
+/// Inserts a completed job with cached files.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/file/ WITHOUT content-type header.
+///
+/// # Assert
+/// Verifies 200 OK.
+#[tokio::test]
+async fn test_list_files_works_without_content_type_header() {
+    let db = setup_test_db().await;
+
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+    insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
+
+    for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
+        file_list_cache::ActiveModel {
+            job_id: Set(job_id),
+            path: Set(name.to_string()),
+            is_dir: Set(is_dir),
+            file_size: Set(1024),
+            permissions: Set(0o644),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+    }
+
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+
+    let app = create_router(make_test_state(db.clone(), manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    // Send request WITHOUT Content-Type header
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/job/apiv1/file/")
+                // NOTE: No content-type header
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "path": "",
+                        "recursive": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Tests that invalid JSON is still rejected in file endpoints without Content-Type header.
+///
+/// # Setup
+/// Empty database.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with invalid JSON and no Content-Type header.
+///
+/// # Assert
+/// Verifies 400 Bad Request.
+#[tokio::test]
+async fn test_create_file_download_rejects_invalid_json_without_content_type() {
+    let db = setup_test_db().await;
+    let mut manager = MockClusterManagerTrait::new();
+    manager.expect_get_cluster_by_name().returning(|_| None);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    // Send request with invalid JSON and no Content-Type header
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header("authorization", &token)
+                .body(Body::from(r#"{"jobId": 1, invalid json}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Should still reject invalid JSON
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
