@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::http::utils::LenientJson;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -65,19 +66,45 @@ pub struct JobQueryParams {
 pub async fn create_job(
     auth: AuthResult,
     State(state): State<AppState>,
-    Json(body): Json<CreateJobRequest>,
+    // TODO: Content-Type tolerance - remove when client sends proper headers
+    LenientJson(body): LenientJson<CreateJobRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     const MAX_PARAMETERS_LEN: usize = 100_000;
     const MAX_BUNDLE_LEN: usize = 10_000;
 
+    tracing::debug!(
+        "HTTP: Create job request received for cluster '{}'",
+        body.cluster
+    );
+    tracing::trace!(
+        "HTTP: Job parameters length: {}, bundle length: {}",
+        body.parameters.len(),
+        body.bundle.len()
+    );
+
     if body.parameters.len() > MAX_PARAMETERS_LEN {
+        tracing::warn!(
+            "HTTP: Job creation rejected - parameters too long ({} > {})",
+            body.parameters.len(),
+            MAX_PARAMETERS_LEN
+        );
         return Err((StatusCode::BAD_REQUEST, "parameters too long".to_string()));
     }
     if body.bundle.len() > MAX_BUNDLE_LEN {
+        tracing::warn!(
+            "HTTP: Job creation rejected - bundle too long ({} > {})",
+            body.bundle.len(),
+            MAX_BUNDLE_LEN
+        );
         return Err((StatusCode::BAD_REQUEST, "bundle too long".to_string()));
     }
 
     if !auth.secret.clusters.contains(&body.cluster) {
+        tracing::warn!(
+            "HTTP: Job creation rejected - application '{}' lacks access to cluster '{}'",
+            auth.secret.name,
+            body.cluster
+        );
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
@@ -87,29 +114,38 @@ pub async fn create_job(
         ));
     }
 
+    tracing::trace!("HTTP: Fetching cluster '{}'", body.cluster);
     let cluster = state
         .cluster_manager
         .get_cluster_by_name(&body.cluster)
         .ok_or((StatusCode::BAD_REQUEST, "Invalid cluster".to_string()))?;
+    tracing::debug!(
+        "HTTP: Cluster '{}' found, online status: {}",
+        body.cluster,
+        cluster.is_online()
+    );
 
     let user_id = auth
         .payload
         .get("userId")
         .and_then(sea_orm::JsonValue::as_i64)
         .unwrap_or(0);
+    tracing::trace!("HTTP: User ID extracted from token: {}", user_id);
 
+    tracing::debug!("HTTP: Starting database transaction for job creation");
     let job_id: i64 = state
         .db
         .transaction::<_, _, sea_orm::DbErr>(|txn| {
             let parameters = body.parameters.clone();
-            let cluster = body.cluster.clone();
+            let cluster_name = body.cluster.clone();
             let bundle = body.bundle.clone();
             let app_name = auth.secret.name.clone();
             Box::pin(async move {
+                tracing::trace!("HTTP: Inserting job record");
                 let job_row = job::ActiveModel {
                     user: Set(user_id),
                     parameters: Set(parameters),
-                    cluster: Set(cluster),
+                    cluster: Set(cluster_name),
                     bundle: Set(bundle),
                     application: Set(app_name),
                     ..Default::default()
@@ -118,7 +154,9 @@ pub async fn create_job(
                 .await?;
 
                 let jid = job_row.id;
+                tracing::trace!("HTTP: Job record inserted with ID {}", jid);
 
+                tracing::trace!("HTTP: Inserting job history (Pending)");
                 job_history::ActiveModel {
                     job_id: Set(jid),
                     timestamp: Set(chrono::Utc::now().naive_utc()),
@@ -134,16 +172,31 @@ pub async fn create_job(
             })
         })
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
+        .map_err(|e| {
+            tracing::error!("HTTP: Database transaction failed: {}", e);
+            (StatusCode::BAD_REQUEST, format!("DB error: {e}"))
+        })?;
+    tracing::debug!("HTTP: Job {} created successfully", job_id);
 
     if cluster.is_online() {
+        tracing::debug!(
+            "HTTP: Cluster online - submitting job {} to cluster",
+            job_id
+        );
         let source = format!("{job_id}_{}", body.cluster);
         let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, &source);
         msg.push_uint(job_id as u32);
         msg.push_string(&body.bundle);
         msg.push_string(&body.parameters);
+        tracing::trace!(
+            "HTTP: Submit job message constructed (source: {}, priority: {:?})",
+            source,
+            msg.priority()
+        );
         cluster.send_message(msg).await;
+        tracing::trace!("HTTP: Submit job message queued");
 
+        tracing::trace!("HTTP: Updating job history to Submitting");
         let _ = job_history::ActiveModel {
             job_id: Set(job_id),
             timestamp: Set(chrono::Utc::now().naive_utc()),
@@ -154,8 +207,19 @@ pub async fn create_job(
         }
         .insert(&state.db)
         .await;
+    } else {
+        tracing::warn!(
+            "HTTP: Cluster '{}' is offline - job {} will be submitted when cluster reconnects",
+            body.cluster,
+            job_id
+        );
     }
 
+    tracing::info!(
+        "HTTP: Job creation complete - ID: {}, cluster: {}",
+        job_id,
+        body.cluster
+    );
     Ok(Json(serde_json::json!({ "jobId": job_id })))
 }
 
@@ -367,7 +431,8 @@ pub async fn get_jobs(
 pub async fn cancel_job(
     auth: AuthResult,
     State(state): State<AppState>,
-    Json(body): Json<JobIdRequest>,
+    // TODO: Content-Type tolerance - remove when client sends proper headers
+    LenientJson(body): LenientJson<JobIdRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let job = get_job_with_access_check(&state, &auth, body.job_id).await?;
 
@@ -460,7 +525,8 @@ pub async fn cancel_job(
 pub async fn delete_job(
     auth: AuthResult,
     State(state): State<AppState>,
-    Json(body): Json<JobIdRequest>,
+    // TODO: Content-Type tolerance - remove when client sends proper headers
+    LenientJson(body): LenientJson<JobIdRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let job = get_job_with_access_check(&state, &auth, body.job_id).await?;
 

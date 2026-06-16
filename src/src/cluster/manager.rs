@@ -113,41 +113,81 @@ impl ClusterManager {
     ///
     /// Panics if `RwLock` on clusters cannot be acquired for reading.
     pub fn start_tasks(self: &Arc<Self>) {
+        tracing::debug!("ClusterManager: Starting background tasks");
+
         // Start scheduler tasks for each cluster
         {
             match self.clusters.try_read() {
                 Ok(clusters) => {
-                    for cluster in clusters.values() {
+                    tracing::trace!(
+                        "ClusterManager: Acquired read lock, starting {} cluster schedulers",
+                        clusters.len()
+                    );
+                    for (name, cluster) in clusters.iter() {
+                        tracing::debug!("ClusterManager: Starting tasks for cluster '{}'", name);
                         cluster.start_tasks();
                     }
                 }
                 Err(e) => {
-                    eprintln!("WARNING: Failed to acquire read lock on clusters: {e}");
+                    tracing::warn!(
+                        "ClusterManager: Failed to acquire read lock on clusters: {}",
+                        e
+                    );
                 }
             }
         }
 
-        // Reconnection task
+        // Immediate reconnect attempt on startup
+        tracing::debug!("ClusterManager: Spawning immediate reconnect task");
+        let this = Arc::clone(self);
+        tokio::spawn(async move {
+            tracing::trace!("ClusterManager: Immediate reconnect task running");
+            this.reconnect_clusters().await;
+        });
+
+        // Periodic reconnection task
+        tracing::debug!(
+            "ClusterManager: Spawning periodic reconnect task (interval: {}s)",
+            *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS
+        );
         let this = Arc::clone(self);
         tokio::spawn(async move { this.run_reconnect().await });
 
         // Ping task
+        tracing::debug!(
+            "ClusterManager: Spawning ping task (interval: {}s)",
+            *CLUSTER_MANAGER_PING_INTERVAL_SECONDS
+        );
         let this = Arc::clone(self);
         tokio::spawn(async move { this.run_ping().await });
+
+        tracing::info!("ClusterManager: All background tasks started");
     }
 
     /// Background task: periodically reconnect offline clusters.
     async fn run_reconnect(self: Arc<Self>) {
+        tracing::debug!("ClusterManager: Reconnect task loop started");
+        let mut cycle = 0u64;
         while self.running.load(Ordering::Relaxed) {
+            cycle += 1;
+            tracing::trace!(
+                "ClusterManager: Reconnect cycle {} - sleeping for {}s",
+                cycle,
+                *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS
+            );
             tokio::time::sleep(std::time::Duration::from_secs(
                 *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS,
             ))
             .await;
             if !self.running.load(Ordering::Relaxed) {
+                tracing::debug!("ClusterManager: Reconnect task shutting down (running=false)");
                 break;
             }
+            tracing::trace!("ClusterManager: Starting reconnect cycle {}", cycle);
             self.reconnect_clusters().await;
+            tracing::trace!("ClusterManager: Reconnect cycle {} complete", cycle);
         }
+        tracing::debug!("ClusterManager: Reconnect task loop exited");
     }
 
     /// Try to reconnect all offline master clusters.
@@ -159,20 +199,30 @@ impl ClusterManager {
             ColumnTrait, EntityTrait, QueryFilter,
         };
 
+        tracing::trace!("ClusterManager: Scanning clusters for reconnection");
         let clusters = self.clusters.read().await;
+        let mut reconnected_count = 0;
+        let mut skipped_count = 0;
+
         for (name, cluster) in clusters.iter() {
             if cluster.is_online() {
+                tracing::trace!("ClusterManager: Cluster '{}' is online, skipping", name);
                 continue;
             }
 
+            tracing::debug!(
+                "ClusterManager: Cluster '{}' is offline, checking reconnection",
+                name
+            );
             let details = cluster.cluster_details();
 
             // Skip LTK clusters - they connect autonomously
             if details.ltk.is_some() {
-                tracing::info!(
-                    "Skipping LTK cluster {} - waits for autonomous connection",
+                tracing::debug!(
+                    "ClusterManager: Skipping LTK cluster '{}' - waits for autonomous connection",
                     name
                 );
+                skipped_count += 1;
                 continue;
             }
 
@@ -185,30 +235,52 @@ impl ClusterManager {
                 if let Some(last_attempt) = self.last_reconnect_attempt.get(name) {
                     let elapsed = last_attempt.elapsed().as_secs();
                     if elapsed < backoff_secs {
-                        tracing::info!(
-                            "Skipping reconnect for {} (attempt {}, backoff {}s, {}s elapsed)",
+                        tracing::debug!(
+                            "ClusterManager: Skipping reconnect for '{}' (attempt {}, backoff {}s, {}s elapsed)",
                             name,
                             attempt,
                             backoff_secs,
                             elapsed
                         );
+                        skipped_count += 1;
                         continue;
                     }
+                    tracing::trace!(
+                        "ClusterManager: Backoff period expired for '{}' ({}s >= {}s)",
+                        name,
+                        elapsed,
+                        backoff_secs
+                    );
                 }
             }
 
             self.reconnect_attempts.insert(name.clone(), attempt + 1);
             self.last_reconnect_attempt
                 .insert(name.clone(), std::time::Instant::now());
-            tracing::info!("Reconnecting cluster {} (attempt {})", name, attempt);
+            tracing::info!(
+                "ClusterManager: Reconnecting cluster '{}' (attempt {})",
+                name,
+                attempt + 1
+            );
 
             let uuid = uuid::Uuid::new_v4().to_string();
+            tracing::trace!(
+                "ClusterManager: Generated new UUID '{}' for cluster '{}'",
+                uuid,
+                name
+            );
 
             // Delete any existing UUIDs for this cluster before inserting a new one
+            tracing::trace!("ClusterManager: Deleting old UUIDs for cluster '{}'", name);
             let _ = cluster_uuid::Entity::delete_many()
                 .filter(cluster_uuid::Column::Cluster.eq(name.as_str()))
                 .exec(&self.db)
                 .await;
+
+            tracing::trace!(
+                "ClusterManager: Inserting new UUID record for cluster '{}'",
+                name
+            );
             let record = cluster_uuid::ActiveModel {
                 id: NotSet,
                 cluster: Set(name.clone()),
@@ -216,52 +288,123 @@ impl ClusterManager {
                 timestamp: Set(chrono::Utc::now().naive_utc()),
             };
             if let Err(e) = record.insert(&self.db).await {
-                tracing::warn!("Failed to insert cluster UUID for {}: {}", name, e);
+                tracing::warn!(
+                    "ClusterManager: Failed to insert cluster UUID for '{}': {}",
+                    name,
+                    e
+                );
                 continue;
             }
+            tracing::debug!(
+                "ClusterManager: UUID '{}' inserted for cluster '{}'",
+                uuid,
+                name
+            );
 
             match details.connection_type.as_str() {
                 "manual" => {
                     tracing::info!(
-                        "Cluster {} requires manual connection. Token: {}",
+                        "ClusterManager: Cluster '{}' requires manual connection. Token: {}",
                         name,
                         uuid
                     );
                 }
-                _ => {
-                    // SSH or Kerberos: launch remote client
+                "ssh" => {
+                    tracing::debug!(
+                        "ClusterManager: Initiating SSH connection for cluster '{}'",
+                        name
+                    );
+                    self.launch_ssh_connection(&details, &uuid);
+                }
+                "kerberos" => {
+                    tracing::debug!(
+                        "ClusterManager: Initiating Kerberos connection for cluster '{}'",
+                        name
+                    );
+                    self.launch_ssh_connection(&details, &uuid);
+                }
+                other => {
+                    tracing::warn!(
+                        "ClusterManager: Unknown connection type '{}' for cluster '{}', defaulting to SSH",
+                        other,
+                        name
+                    );
                     self.launch_ssh_connection(&details, &uuid);
                 }
             }
+            reconnected_count += 1;
         }
+
+        tracing::debug!(
+            "ClusterManager: Reconnect scan complete - {} reconnected, {} skipped",
+            reconnected_count,
+            skipped_count
+        );
     }
 
     #[allow(clippy::unused_self)]
     fn launch_ssh_connection(&self, details: &ClusterConfig, token: &str) {
         let config = details.clone();
         let token = token.to_string();
+        let cluster_name = config.name.clone();
+        tracing::debug!(
+            "ClusterManager: Launching SSH connection for cluster '{}' to {}@{}",
+            cluster_name,
+            config.username,
+            config.host
+        );
+
         tokio::spawn(async move {
-            if let Err(e) = ssh::run_remote_client(&config, &token).await {
-                tracing::error!("SSH connection failed for {}: {e}", config.name);
-            } else {
-                tracing::info!("SSH connection launched for {}", config.name);
+            tracing::trace!(
+                "ClusterManager: SSH task spawned for cluster '{}'",
+                cluster_name
+            );
+            match ssh::run_remote_client(&config, &token).await {
+                Ok(()) => {
+                    tracing::info!(
+                        "ClusterManager: SSH connection completed for cluster '{}'",
+                        cluster_name
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "ClusterManager: SSH connection failed for cluster '{}': {}",
+                        cluster_name,
+                        e
+                    );
+                }
             }
         });
     }
 
     /// Background task: periodically ping connected clusters.
     async fn run_ping(self: Arc<Self>) {
+        tracing::debug!(
+            "ClusterManager: Ping task started (interval: {}s)",
+            *CLUSTER_MANAGER_PING_INTERVAL_SECONDS
+        );
+        let mut ping_cycle = 0u64;
+
         while self.running.load(Ordering::Relaxed) {
+            ping_cycle += 1;
+            tracing::trace!("ClusterManager: Ping cycle {} - sleeping", ping_cycle);
             tokio::time::sleep(std::time::Duration::from_secs(
                 *CLUSTER_MANAGER_PING_INTERVAL_SECONDS,
             ))
             .await;
             if !self.running.load(Ordering::Relaxed) {
+                tracing::debug!("ClusterManager: Ping task shutting down (running=false)");
                 break;
             }
 
+            tracing::trace!("ClusterManager: Starting ping cycle {}", ping_cycle);
             self.check_pings().await;
+            tracing::trace!("ClusterManager: Ping cycle {} complete", ping_cycle);
         }
+        tracing::debug!(
+            "ClusterManager: Ping task exited after {} cycles",
+            ping_cycle
+        );
     }
 
     /// Check for dead connections and send fresh pings.
@@ -349,21 +492,37 @@ impl ClusterManagerTrait for ClusterManager {
         use crate::db::entities::cluster_uuid;
         use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
+        tracing::debug!(
+            "ClusterManager: New connection attempt (conn_id={}, token_len={})",
+            conn_id,
+            token.len()
+        );
+
         // Check file download map first
         if let Some(entry) = self.file_download_map.get(token) {
+            tracing::trace!("ClusterManager: Token matches file download session");
             let (_, cluster) = entry.value();
             let cluster = Arc::clone(cluster);
             cluster.set_connection(Some(ws_sender)).await;
             self.connection_map.insert(conn_id, cluster.clone());
+            tracing::info!(
+                "ClusterManager: File download cluster connected (conn_id={})",
+                conn_id
+            );
             return Some(cluster as Arc<dyn ClusterTrait>);
         }
 
         // Check file upload map
         if let Some(entry) = self.file_upload_map.get(token) {
+            tracing::trace!("ClusterManager: Token matches file upload session");
             let (_, cluster) = entry.value();
             let cluster = Arc::clone(cluster);
             cluster.set_connection(Some(ws_sender)).await;
             self.connection_map.insert(conn_id, cluster.clone());
+            tracing::info!(
+                "ClusterManager: File upload cluster connected (conn_id={})",
+                conn_id
+            );
             return Some(cluster as Arc<dyn ClusterTrait>);
         }
 
@@ -648,6 +807,29 @@ mod tests {
             .await
             .unwrap()
             .map(|model| model.uuid)
+    }
+
+    #[tokio::test]
+    async fn test_start_tasks_triggers_immediate_reconnect() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
+
+        let manager_arc = Arc::clone(&manager);
+        manager_arc.start_tasks();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert_eq!(
+            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            Some(1),
+            "start_tasks should trigger immediate reconnect attempt"
+        );
+
+        let uuid = get_uuid_for_cluster(&db, "cluster_b").await;
+        assert!(
+            uuid.is_some(),
+            "UUID should be inserted for offline cluster"
+        );
     }
 
     #[tokio::test]

@@ -290,7 +290,7 @@ async fn test_upload_zero_byte_file_succeeds() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/empty.txt"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/empty.txt"
                 ))
                 .header("authorization", &token)
                 .header("content-length", "0")
@@ -406,7 +406,7 @@ async fn test_upload_truncated_body_returns_error() {
         .unwrap();
 
     let request = format!(
-        "PUT /file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt HTTP/1.1\r\n\
+        "PUT /job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt HTTP/1.1\r\n\
          Host: 127.0.0.1:{port}\r\n\
          Authorization: {token}\r\n\
          Content-Length: 1000\r\n\
@@ -442,7 +442,7 @@ async fn test_upload_truncated_body_returns_error() {
     // Verify the server is still alive by making a normal request
     let client = reqwest::Client::new();
     let check = client
-        .get(format!("http://127.0.0.1:{port}/file/apiv1/file/"))
+        .get(format!("http://127.0.0.1:{port}/job/apiv1/file/"))
         .send()
         .await;
     assert!(
@@ -541,7 +541,7 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
         .unwrap();
 
     let request = format!(
-        "GET /file/apiv1/file/?fileId={uuid_val} HTTP/1.1\r\n\
+        "GET /job/apiv1/file/?fileId={uuid_val} HTTP/1.1\r\n\
          Host: 127.0.0.1:{port}\r\n\
          \r\n"
     );
@@ -559,7 +559,7 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
 
     let client = reqwest::Client::new();
     let check = client
-        .get(format!("http://127.0.0.1:{port}/file/apiv1/file/"))
+        .get(format!("http://127.0.0.1:{port}/job/apiv1/file/"))
         .send()
         .await;
     assert!(
@@ -650,7 +650,7 @@ async fn test_download_timeout_when_cluster_never_responds() {
 
     let req = Request::builder()
         .method("GET")
-        .uri(format!("/file/apiv1/file/?fileId={uuid_val}"))
+        .uri(format!("/job/apiv1/file/?fileId={uuid_val}"))
         .body(Body::empty())
         .unwrap();
 
@@ -749,7 +749,7 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.bin"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.bin"
                 ))
                 .header("authorization", &token)
                 .header("content-length", payload.len().to_string())
@@ -842,7 +842,7 @@ async fn test_upload_queue_drain_timeout_returns_400() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.bin"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.bin"
                 ))
                 .header("authorization", &token)
                 .header("content-length", "100")
@@ -1086,7 +1086,7 @@ async fn test_upload_missing_content_length_returns_400() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
                 ))
                 .header("authorization", &token)
                 // No content-length header
@@ -1184,7 +1184,7 @@ async fn test_download_expired_records_are_cleaned_up() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/file/apiv1/file/?fileId={fresh_uuid}"))
+                .uri(format!("/job/apiv1/file/?fileId={fresh_uuid}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1386,7 +1386,7 @@ async fn test_download_force_download_sets_attachment_disposition() {
             Request::builder()
                 .method("GET")
                 .uri(format!(
-                    "/file/apiv1/file/?fileId={uuid_val}&forceDownload=true"
+                    "/job/apiv1/file/?fileId={uuid_val}&forceDownload=true"
                 ))
                 .body(Body::empty())
                 .unwrap(),
@@ -1495,7 +1495,7 @@ async fn test_upload_large_body_is_chunked() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/big.bin"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/big.bin"
                 ))
                 .header("authorization", &token)
                 .header("content-length", body_size.to_string())
@@ -1701,7 +1701,7 @@ async fn test_file_transfer_data_timeout_body_truncated() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/file/apiv1/file/?fileId={uuid_val}"))
+                .uri(format!("/job/apiv1/file/?fileId={uuid_val}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1820,7 +1820,7 @@ async fn test_file_transfer_websocket_broken_truncates_download() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/file/apiv1/file/?fileId={uuid_val}"))
+                .uri(format!("/job/apiv1/file/?fileId={uuid_val}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1922,7 +1922,7 @@ async fn test_file_transfer_no_details_returns_503() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/file/apiv1/file/?fileId={uuid_val}"))
+                .uri(format!("/job/apiv1/file/?fileId={uuid_val}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2055,7 +2055,7 @@ async fn test_continuous_file_uploads_sequential() {
     // First upload
     let resp1 = client
         .put(format!(
-            "http://127.0.0.1:{port}/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/first.bin"
+            "http://127.0.0.1:{port}/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/first.bin"
         ))
         .header("authorization", &token)
         .header("content-length", "10")
@@ -2071,7 +2071,7 @@ async fn test_continuous_file_uploads_sequential() {
     // Second upload — immediately after (same server instance, different uuid)
     let resp2 = client
         .put(format!(
-            "http://127.0.0.1:{port}/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/second.bin"
+            "http://127.0.0.1:{port}/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/second.bin"
         ))
         .header("authorization", &token)
         .header("content-length", "10")
@@ -2181,7 +2181,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
             Request::builder()
                 .method("PUT")
                 // No jobId — use cluster+bundle instead
-                .uri("/file/apiv1/file/upload/?cluster=ozstar&bundle=test_bundle&targetPath=/data/cluster_upload.bin")
+                .uri("/job/apiv1/file/upload/?cluster=ozstar&bundle=test_bundle&targetPath=/data/cluster_upload.bin")
                 .header("authorization", &token)
                 .header("content-length", "512")
                 .body(Body::from(vec![0xABu8; 512]))
@@ -2410,7 +2410,7 @@ async fn test_job_finished_update_populates_cache() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri("/file/apiv1/file/")
+                .uri("/job/apiv1/file/")
                 .header("authorization", &token)
                 .header("content-type", "application/json")
                 .body(Body::from(
@@ -2658,7 +2658,7 @@ async fn test_large_file_transfers() {
         .unwrap();
 
     let request = format!(
-        "GET /file/apiv1/file/?fileId={uuid_val} HTTP/1.1\r\n\
+        "GET /job/apiv1/file/?fileId={uuid_val} HTTP/1.1\r\n\
          Host: 127.0.0.1:{port}\r\n\
          \r\n"
     );
@@ -2762,7 +2762,7 @@ async fn test_large_file_transfers() {
 /// - Mocks cluster to simulate `SERVER_READY` and `FILE_UPLOAD_COMPLETE`
 ///
 /// # Act
-/// - PUT request to /file/apiv1/file/upload/ with file data
+/// - PUT request to /job/apiv1/file/upload/ with file data
 /// - Cluster simulates upload flow (`SERVER_READY` → `FILE_UPLOAD_COMPLETE`)
 /// - Memory monitored throughout transfer
 ///
@@ -2856,7 +2856,7 @@ async fn test_large_file_uploads() {
             Request::builder()
                 .method("PUT")
                 .uri(format!(
-                    "/file/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/large_upload.bin"
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/large_upload.bin"
                 ))
                 .header("authorization", &token)
                 .header("content-length", file_size.to_string())

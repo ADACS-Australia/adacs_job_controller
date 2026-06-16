@@ -31,34 +31,55 @@ where
             .get::<Arc<Vec<AccessSecret>>>()
             .cloned()
             .unwrap_or_else(|| Arc::new(Vec::new()));
+        tracing::trace!("AUTH: Loaded {} JWT secrets for validation", secrets.len());
 
         // Get the authorization header
         let auth_header = parts
             .headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
-            .ok_or((StatusCode::FORBIDDEN, "Not authorized".to_string()))?;
+            .ok_or_else(|| {
+                tracing::debug!("AUTH: No authorization header present");
+                (StatusCode::FORBIDDEN, "Not authorized".to_string())
+            })?;
+        tracing::trace!(
+            "AUTH: Authorization header found (length: {})",
+            auth_header.len()
+        );
 
         // Accept both "Bearer <jwt>" and bare "<jwt>" for backwards compatibility
         let jwt_str = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header);
+        tracing::trace!("AUTH: JWT token extracted (length: {})", jwt_str.len());
 
         // Try each secret with HS256
         let mut validation = Validation::new(Algorithm::HS256);
         validation.required_spec_claims.clear();
         validation.validate_exp = false;
 
-        for secret in secrets.iter() {
+        for (i, secret) in secrets.iter().enumerate() {
+            tracing::trace!("AUTH: Trying secret #{} ('{}')", i + 1, secret.name);
             let key = DecodingKey::from_secret(secret.secret.as_bytes());
             if let Ok(token_data) =
                 jsonwebtoken::decode::<serde_json::Value>(jwt_str, &key, &validation)
             {
+                tracing::debug!(
+                    "AUTH: JWT validated successfully with secret '{}'",
+                    secret.name
+                );
+                tracing::trace!("AUTH: JWT payload: {:?}", token_data.claims);
                 return Ok(AuthResult {
                     payload: token_data.claims,
                     secret: secret.clone(),
                 });
             }
+            tracing::trace!(
+                "AUTH: Secret #{} ('{}') failed validation",
+                i + 1,
+                secret.name
+            );
         }
 
+        tracing::warn!("AUTH: JWT validation failed - no matching secret found");
         Err((StatusCode::FORBIDDEN, "Not authorized".to_string()))
     }
 }

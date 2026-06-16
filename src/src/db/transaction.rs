@@ -23,14 +23,21 @@ where
         &'c sea_orm::DatabaseTransaction,
     ) -> futures_util::future::LocalBoxFuture<'c, Result<T, DbErr>>,
 {
+    tracing::trace!("DB: Starting transaction");
     let txn = db.begin().await?;
+    tracing::trace!("DB: Transaction begun");
+
     match f(&txn).await {
         Ok(result) => {
+            tracing::trace!("DB: Committing transaction");
             txn.commit().await?;
+            tracing::debug!("DB: Transaction committed successfully");
             Ok(result)
         }
         Err(e) => {
+            tracing::warn!("DB: Transaction failed: {}, rolling back", e);
             txn.rollback().await?;
+            tracing::debug!("DB: Transaction rolled back");
             Err(e)
         }
     }

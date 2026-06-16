@@ -169,18 +169,38 @@ impl Cluster {
     /// Start background tasks (scheduler, prune, resend).
     /// Must be called after construction; pass the Arc to self.
     pub fn start_tasks(self: &Arc<Self>) {
+        let cluster_name = self.name();
+        tracing::debug!(
+            "Cluster[{}]: Starting background tasks (role: {:?})",
+            cluster_name,
+            self.role
+        );
+
         // Each spawned task gets its own watch receiver
         let scheduler_rx = self.connection_rx.clone();
         let this = Arc::clone(self);
+        tracing::trace!("Cluster[{}]: Spawning scheduler task", cluster_name);
         tokio::spawn(async move { this.run_scheduler(scheduler_rx).await });
 
         let this = Arc::clone(self);
+        tracing::trace!("Cluster[{}]: Spawning prune task", cluster_name);
         tokio::spawn(async move { this.run_prune().await });
 
         if self.role == ClusterRole::Master {
             let this = Arc::clone(self);
+            tracing::trace!(
+                "Cluster[{}]: Spawning resend task (master role)",
+                cluster_name
+            );
             tokio::spawn(async move { this.run_resend().await });
+        } else {
+            tracing::debug!(
+                "Cluster[{}]: Skipping resend task (not master role)",
+                cluster_name
+            );
         }
+
+        tracing::info!("Cluster[{}]: All background tasks started", cluster_name);
     }
 
     // ---- Scheduler ----
@@ -189,14 +209,33 @@ impl Cluster {
         self: Arc<Self>,
         connection_rx: tokio::sync::watch::Receiver<Option<WsConnectionSender>>,
     ) {
+        tracing::debug!("Cluster[{}]: Scheduler task started", self.name());
+        let mut cycle = 0u64;
+        let mut total_sent = 0u64;
+
         while self.running.load(Ordering::Relaxed) {
+            cycle += 1;
             // Wait for data
+            tracing::trace!(
+                "Cluster[{}]: Scheduler cycle {} - waiting for data notification",
+                self.name(),
+                cycle
+            );
             self.data_notify.notified().await;
             if !self.running.load(Ordering::Relaxed) {
+                tracing::debug!(
+                    "Cluster[{}]: Scheduler shutting down (running=false)",
+                    self.name()
+                );
                 break;
             }
 
             // Process queues with priority preemption
+            tracing::trace!(
+                "Cluster[{}]: Processing queues (cycle {})",
+                self.name(),
+                cycle
+            );
             'reset: loop {
                 let mut sent_anything = false;
                 for (&priority_val, rw_map) in &self.queue {
@@ -209,17 +248,29 @@ impl Cluster {
                             if let Some(queue) = map.get_mut(source)
                                 && let Some(data) = queue.pop_front()
                             {
+                                let data_len = data.len();
                                 self.queued_message_size
-                                    .fetch_sub(data.len(), Ordering::Relaxed);
+                                    .fetch_sub(data_len, Ordering::Relaxed);
                                 self.queue_size_notify.notify_waiters();
                                 drop(map);
 
                                 // Send via WS connection (non-blocking read of current state)
                                 if let Some(sender) = connection_rx.borrow().as_ref() {
+                                    tracing::trace!(
+                                        "Cluster[{}]: Sending message ({} bytes, priority {}, source {})",
+                                        self.name(),
+                                        data_len,
+                                        priority_val,
+                                        source
+                                    );
                                     let _ = sender.send(WsOutbound::Binary(data));
+                                    total_sent += 1;
                                 } else {
                                     tracing::warn!(
-                                        "SCHED: Discarding packet because connection is closed"
+                                        "Cluster[{}]: Discarding packet (source {}, priority {}) - connection closed",
+                                        self.name(),
+                                        source,
+                                        priority_val
                                     );
                                 }
 
@@ -228,6 +279,10 @@ impl Cluster {
 
                                 // Check for higher priority data
                                 if self.has_higher_priority_data(priority_val).await {
+                                    tracing::trace!(
+                                        "Cluster[{}]: Higher priority data detected - resetting loop",
+                                        self.name()
+                                    );
                                     continue 'reset;
                                 }
 
@@ -245,7 +300,18 @@ impl Cluster {
                 }
                 break; // All priorities processed without preemption
             }
+            tracing::trace!(
+                "Cluster[{}]: Scheduler cycle {} complete (sent total: {})",
+                self.name(),
+                cycle,
+                total_sent
+            );
         }
+        tracing::debug!(
+            "Cluster[{}]: Scheduler task exited (total messages sent: {})",
+            self.name(),
+            total_sent
+        );
     }
 
     async fn has_higher_priority_data(&self, max_priority: u8) -> bool {
@@ -315,10 +381,28 @@ impl Cluster {
         let status = message.pop_uint();
         let details = message.pop_string();
 
+        tracing::trace!(
+            "Cluster[{}]: Received UPDATE_JOB - job_id={}, what={}, status={}, details={}",
+            self.name(),
+            job_id,
+            what,
+            status,
+            details
+        );
+
         let Some(ctx) = &self.app_context else {
+            tracing::warn!(
+                "Cluster[{}]: No app context available - cannot process UPDATE_JOB",
+                self.name()
+            );
             return;
         };
 
+        tracing::trace!(
+            "Cluster[{}]: Inserting job history for job {}",
+            self.name(),
+            job_id
+        );
         let record = job_history::ActiveModel {
             id: sea_orm::ActiveValue::NotSet,
             job_id: Set(i64::from(job_id)),
@@ -329,10 +413,18 @@ impl Cluster {
         };
         if let Err(e) = record.insert(&ctx.db).await {
             tracing::warn!(
-                "DB: Failed to insert job history for job {} status {}: {}",
+                "Cluster[{}]: Failed to insert job history for job {} status {}: {}",
+                self.name(),
                 job_id,
                 status,
                 e
+            );
+        } else {
+            tracing::debug!(
+                "Cluster[{}]: Job history inserted for job {} (status {})",
+                self.name(),
+                job_id,
+                status
             );
         }
 
@@ -452,15 +544,28 @@ impl Cluster {
 
     async fn handle_file_chunk(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_CHUNK received but no file_download_state",
+                self.name()
+            );
             return;
         };
 
         let chunk = message.pop_bytes();
         let chunk_len = chunk.len() as u64;
+        tracing::trace!(
+            "Cluster[{}]: FILE_CHUNK received - {} bytes",
+            self.name(),
+            chunk_len
+        );
 
         state.received_bytes.fetch_add(chunk_len, Ordering::Relaxed);
         // If HTTP side has disconnected, the receiver is dropped and send fails
         if state.chunk_sender.send(chunk).is_err() {
+            tracing::error!(
+                "Cluster[{}]: FILE_CHUNK send failed - HTTP client disconnected",
+                self.name()
+            );
             state.error.store(true, Ordering::Release);
             *state.error_details.lock().await =
                 "Download aborted: HTTP client disconnected".to_string();
@@ -479,35 +584,69 @@ impl Cluster {
                 let uuid = self.uuid.as_deref().unwrap_or("");
                 let msg = Message::new(PAUSE_FILE_CHUNK_STREAM, Priority::Highest, uuid);
                 self.send_message_internal(msg).await;
+                tracing::info!(
+                    "Cluster[{}]: Sent PAUSE_FILE_CHUNK_STREAM (buffer full)",
+                    self.name()
+                );
             }
         }
 
         state.data_ready.store(true, Ordering::Release);
         state.data_notify.notify_waiters();
+        tracing::trace!(
+            "Cluster[{}]: FILE_CHUNK forwarded to HTTP handler",
+            self.name()
+        );
     }
 
     fn handle_file_details(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_DETAILS received but no file_download_state",
+                self.name()
+            );
             return;
         };
 
         let file_size = message.pop_ulong();
+        tracing::info!(
+            "Cluster[{}]: FILE_DETAILS received - file_size={} bytes",
+            self.name(),
+            file_size
+        );
         state.file_size.store(file_size, Ordering::Relaxed);
         state.received_data.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
         state.data_notify.notify_waiters();
+        tracing::info!(
+            "Cluster[{}]: FILE_DETAILS processed - data_ready set",
+            self.name()
+        );
     }
 
     async fn handle_file_error(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_ERROR received but no file_download_state",
+                self.name()
+            );
             return;
         };
 
         let details = message.pop_string();
+        tracing::error!(
+            "Cluster[{}]: FILE_ERROR received - {}",
+            self.name(),
+            details
+        );
         *state.error_details.lock().await = details;
         state.error.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
         state.data_notify.notify_waiters();
+        tracing::error!(
+            "Cluster[{}]: FILE_ERROR processed - error flag set",
+            self.name()
+        );
     }
 
     // ---- FileUpload message handling ----
@@ -607,22 +746,36 @@ impl Cluster {
             return;
         }
 
-        // Batch-fetch latest history entry per job (2 queries instead of N+1)
+        // Batch-fetch all relevant history entries per job (2 queries instead of N+1).
+        // `id DESC` breaks ties when multiple rows are written in the same millisecond
+        // (Pending + Submitting can be inserted back-to-back at job creation time).
         let job_ids: Vec<i64> = jobs.iter().map(|j| j.id).collect();
         let all_histories = job_history::Entity::find()
             .filter(job_history::Column::JobId.is_in(job_ids))
             .filter(job_history::Column::Timestamp.lte(cutoff))
             .order_by_desc(job_history::Column::Timestamp)
+            .order_by_desc(job_history::Column::Id)
             .all(db)
             .await
             .unwrap_or_default();
 
         let mut latest_per_job: HashMap<i64, &job_history::Model> = HashMap::new();
+        // Track the set of states a job has ever reached; if any state outside
+        // `states` has been seen, the job is in-flight or terminal and must not
+        // be re-triggered. Prevents failed jobs from being looped back into
+        // "Resubmitting" when their Submitting row sorts first under same-ms ties.
+        let mut seen_terminal_or_inflight: HashMap<i64, bool> = HashMap::new();
         for h in &all_histories {
             latest_per_job.entry(h.job_id).or_insert(h);
+            if !states.contains(&h.state) {
+                seen_terminal_or_inflight.insert(h.job_id, true);
+            }
         }
 
         for j in &jobs {
+            if seen_terminal_or_inflight.contains_key(&j.id) {
+                continue;
+            }
             if let Some(h) = latest_per_job.get(&j.id)
                 && states.contains(&h.state)
             {
@@ -727,13 +880,34 @@ impl ClusterTrait for Cluster {
 
     async fn queue_message(&self, source: String, data: Vec<u8>, priority: Priority) {
         let priority_val = priority as u8;
+        tracing::trace!(
+            "Cluster[{}]: Queueing message (source={}, priority={:?}, size={} bytes)",
+            self.name(),
+            source,
+            priority,
+            data.len()
+        );
+
         if let Some(rw_map) = self.queue.get(&priority_val) {
             let data_len = data.len();
             let mut map = rw_map.write().await;
             map.entry(source).or_default().push_back(data);
             self.queued_message_size
                 .fetch_add(data_len, Ordering::Relaxed);
+
+            let new_size = self.queued_message_size.load(Ordering::Relaxed);
+            tracing::trace!(
+                "Cluster[{}]: Message queued - queue size now {} bytes",
+                self.name(),
+                new_size
+            );
             self.data_notify.notify_one();
+        } else {
+            tracing::warn!(
+                "Cluster[{}]: Priority level {} not found in queue map",
+                self.name(),
+                priority_val
+            );
         }
     }
 

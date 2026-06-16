@@ -1,7 +1,9 @@
 /// Generate a new random UUID v4 string.
 #[must_use]
 pub fn generate_uuid() -> String {
-    uuid::Uuid::new_v4().to_string()
+    let uuid = uuid::Uuid::new_v4().to_string();
+    tracing::trace!("Generated UUID: {}", uuid);
+    uuid
 }
 
 #[cfg(test)]

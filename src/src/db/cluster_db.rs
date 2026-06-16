@@ -77,56 +77,106 @@ pub async fn maybe_handle_cluster_db_message(
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) -> bool {
+    let msg_id = message.id();
+    tracing::trace!(
+        "ClusterDB[{}]: Received DB message ID {}",
+        cluster.name(),
+        msg_id
+    );
+
     match message.id() {
         DB_JOB_GET_BY_JOB_ID => {
+            tracing::trace!(
+                "ClusterDB[{}]: Handling DB_JOB_GET_BY_JOB_ID",
+                cluster.name()
+            );
             handle_job_get_by_job_id(message, cluster, db).await;
             true
         }
         DB_JOB_GET_BY_ID => {
+            tracing::trace!("ClusterDB[{}]: Handling DB_JOB_GET_BY_ID", cluster.name());
             handle_job_get_by_id(message, cluster, db).await;
             true
         }
         DB_JOB_GET_RUNNING_JOBS => {
+            tracing::trace!(
+                "ClusterDB[{}]: Handling DB_JOB_GET_RUNNING_JOBS",
+                cluster.name()
+            );
             handle_job_get_running_jobs(message, cluster, db).await;
             true
         }
         DB_JOB_DELETE => {
+            tracing::trace!("ClusterDB[{}]: Handling DB_JOB_DELETE", cluster.name());
             handle_job_delete(message, cluster, db).await;
             true
         }
         DB_JOB_SAVE => {
+            tracing::trace!("ClusterDB[{}]: Handling DB_JOB_SAVE", cluster.name());
             handle_job_save(message, cluster, db).await;
             true
         }
         DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT => {
+            tracing::trace!(
+                "ClusterDB[{}]: Handling DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT",
+                cluster.name()
+            );
             handle_jobstatus_get_by_job_id_and_what(message, cluster, db).await;
             true
         }
         DB_JOBSTATUS_GET_BY_JOB_ID => {
+            tracing::trace!(
+                "ClusterDB[{}]: Handling DB_JOBSTATUS_GET_BY_JOB_ID",
+                cluster.name()
+            );
             handle_jobstatus_get_by_job_id(message, cluster, db).await;
             true
         }
         DB_JOBSTATUS_DELETE_BY_ID_LIST => {
+            tracing::trace!(
+                "ClusterDB[{}]: Handling DB_JOBSTATUS_DELETE_BY_ID_LIST",
+                cluster.name()
+            );
             handle_jobstatus_delete_by_id_list(message, cluster, db).await;
             true
         }
         DB_JOBSTATUS_SAVE => {
+            tracing::trace!("ClusterDB[{}]: Handling DB_JOBSTATUS_SAVE", cluster.name());
             handle_jobstatus_save(message, cluster, db).await;
             true
         }
         DB_BUNDLE_CREATE_OR_UPDATE_JOB => {
+            tracing::trace!(
+                "ClusterDB[{}]: Handling DB_BUNDLE_CREATE_OR_UPDATE_JOB",
+                cluster.name()
+            );
             handle_bundle_create_or_update(message, cluster, db).await;
             true
         }
         DB_BUNDLE_GET_JOB_BY_ID => {
+            tracing::trace!(
+                "ClusterDB[{}]: Handling DB_BUNDLE_GET_JOB_BY_ID",
+                cluster.name()
+            );
             handle_bundle_get_by_id(message, cluster, db).await;
             true
         }
         DB_BUNDLE_DELETE_JOB => {
+            tracing::trace!(
+                "ClusterDB[{}]: Handling DB_BUNDLE_DELETE_JOB",
+                cluster.name()
+            );
             handle_bundle_delete(message, cluster, db).await;
             true
         }
-        _ => false,
+        other => {
+            tracing::trace!(
+                "ClusterDB[{}]: Message ID {} not a DB message - not handled",
+                cluster.name(),
+                other
+            );
+            false
+        }
     }
 }
 

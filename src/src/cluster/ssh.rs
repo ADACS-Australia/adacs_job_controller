@@ -48,14 +48,48 @@ impl client::Handler for SshHandler {
 ///
 /// Returns `SshError` on connection, authentication, channel, or command failure.
 pub async fn run_remote_client(config: &ClusterConfig, token: &str) -> Result<(), SshError> {
+    tracing::info!(
+        "SSH: Initiating connection to cluster '{}' at {}@{} (type: {})",
+        config.name,
+        config.username,
+        config.host,
+        config.connection_type
+    );
+
     match config.connection_type.as_str() {
-        "kerberos" => run_via_kerberos(config, token).await,
-        _ => run_via_ssh(config, token).await,
+        "kerberos" => {
+            tracing::debug!(
+                "SSH: Using Kerberos authentication for cluster '{}'",
+                config.name
+            );
+            run_via_kerberos(config, token).await
+        }
+        "ssh" => {
+            tracing::debug!(
+                "SSH: Using SSH key authentication for cluster '{}'",
+                config.name
+            );
+            run_via_ssh(config, token).await
+        }
+        other => {
+            tracing::warn!(
+                "SSH: Unknown connection type '{}' for cluster '{}', defaulting to SSH",
+                other,
+                config.name
+            );
+            run_via_ssh(config, token).await
+        }
     }
 }
 
 async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError> {
+    tracing::debug!("SSH[{}]: Loading private key", config.name);
     let key_pair = load_private_key(&config.key).await?;
+    tracing::trace!(
+        "SSH[{}]: Private key loaded (algorithm: {:?})",
+        config.name,
+        key_pair.algorithm()
+    );
 
     // No inactivity timeout: the remote adacs_job_client is a daemon that may
     // not produce continuous channel output. A timeout would kill the session.
@@ -64,25 +98,50 @@ async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError
         ..<_>::default()
     });
 
+    tracing::debug!("SSH[{}]: Connecting to {}:22", config.name, config.host);
     let mut session = client::connect(cfg, (&config.host[..], 22u16), SshHandler).await?;
+    tracing::trace!("SSH[{}]: TCP connection established", config.name);
 
+    tracing::debug!(
+        "SSH[{}]: Authenticating user '{}' with public key",
+        config.name,
+        config.username
+    );
     authenticate_public_key(&mut session, &config.username, key_pair).await?;
+    tracing::info!("SSH[{}]: Authentication successful", config.name);
 
     let command = format!(
         "cd {} && source env.sh && ./adacs_job_client {}",
         config.path, token
     );
+    tracing::trace!(
+        "SSH[{}]: Executing remote command: cd {} && source env.sh && ./adacs_job_client [TOKEN]",
+        config.name,
+        config.path
+    );
 
     let exit_code = execute_command(&mut session, &command).await?;
+    tracing::debug!(
+        "SSH[{}]: Remote command completed with exit code {}",
+        config.name,
+        exit_code
+    );
 
+    tracing::debug!("SSH[{}]: Disconnecting session", config.name);
     let _ = session
         .disconnect(Disconnect::ByApplication, "", "en")
         .await;
 
     if exit_code != 0 {
+        tracing::error!(
+            "SSH[{}]: Command failed with exit code {}",
+            config.name,
+            exit_code
+        );
         return Err(SshError::CommandFailed(exit_code as i32));
     }
 
+    tracing::info!("SSH[{}]: Connection completed successfully", config.name);
     Ok(())
 }
 

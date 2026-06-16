@@ -8,7 +8,6 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub content: String,
     pub cluster: String,
-    #[sea_orm(column_name = "bundleHash")]
     pub bundle_hash: String,
 }
 

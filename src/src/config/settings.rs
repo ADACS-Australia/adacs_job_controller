@@ -2,35 +2,53 @@ use std::sync::LazyLock;
 
 #[allow(dead_code)]
 fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key).unwrap_or_else(|_| default.to_string())
+    let value = std::env::var(key).unwrap_or_else(|_| default.to_string());
+    tracing::trace!(
+        "Config: {} = {}",
+        key,
+        if key.contains("SECRET") || key.contains("PASSWORD") {
+            "***REDACTED***"
+        } else {
+            &value
+        }
+    );
+    value
 }
 
 fn env_or_u16(key: &str, default: u16) -> u16 {
-    std::env::var(key)
+    let value = std::env::var(key)
         .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default);
+    tracing::trace!("Config: {} = {}", key, value);
+    value
 }
 
 fn env_or_u32(key: &str, default: u32) -> u32 {
-    std::env::var(key)
+    let value = std::env::var(key)
         .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default);
+    tracing::trace!("Config: {} = {}", key, value);
+    value
 }
 
 fn env_or_u64(key: &str, default: u64) -> u64 {
-    std::env::var(key)
+    let value = std::env::var(key)
         .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default);
+    tracing::trace!("Config: {} = {}", key, value);
+    value
 }
 
-#[allow(dead_code)]
 fn env_or_bool(key: &str, default: bool) -> bool {
-    std::env::var(key).ok().map_or(default, |v| {
-        matches!(v.as_str(), "1" | "true" | "yes" | "on")
-    })
+    let value = std::env::var(key)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default);
+    tracing::trace!("Config: {} = {}", key, value);
+    value
 }
 
 // Database settings

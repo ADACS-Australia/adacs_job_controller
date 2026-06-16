@@ -8,6 +8,7 @@
 pub async fn create_test_schema(db: &sea_orm::DatabaseConnection) {
     use sea_orm::{ConnectionTrait, DbBackend, Schema};
 
+    tracing::trace!("DB: Creating test schema");
     let builder = DbBackend::Sqlite;
     let schema = Schema::new(builder);
 
