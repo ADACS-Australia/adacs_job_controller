@@ -505,7 +505,7 @@ impl ClusterManagerTrait for ClusterManager {
             let cluster = Arc::clone(cluster);
             cluster.set_connection(Some(ws_sender)).await;
             self.connection_map.insert(conn_id, cluster.clone());
-            tracing::info!(
+            tracing::debug!(
                 "ClusterManager: File download cluster connected (conn_id={})",
                 conn_id
             );
@@ -519,7 +519,7 @@ impl ClusterManagerTrait for ClusterManager {
             let cluster = Arc::clone(cluster);
             cluster.set_connection(Some(ws_sender)).await;
             self.connection_map.insert(conn_id, cluster.clone());
-            tracing::info!(
+            tracing::debug!(
                 "ClusterManager: File upload cluster connected (conn_id={})",
                 conn_id
             );
@@ -625,7 +625,7 @@ impl ClusterManagerTrait for ClusterManager {
 
             let role = cluster.role();
             let name = cluster.name();
-            tracing::info!("Connection removed for {} (role={:?})", name, role);
+            tracing::debug!("Connection removed for {} (role={:?})", name, role);
 
             // Clean up file download/upload entries if applicable
             if role == ClusterRole::FileDownload {
@@ -652,7 +652,7 @@ impl ClusterManagerTrait for ClusterManager {
                 .connection_map
                 .get(&conn_id)
                 .map_or_else(|| "unknown".to_string(), |c| c.name());
-            tracing::info!(
+            tracing::trace!(
                 "WS: Cluster {} had {}ms latency.",
                 cluster_name,
                 latency.as_millis()
