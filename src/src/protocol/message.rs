@@ -79,7 +79,7 @@ impl Message {
     fn check_remaining(&self, n: usize) -> bool {
         let remaining = self.data.len().saturating_sub(self.index);
         if remaining < n {
-            tracing::error!(
+            tracing::warn!(
                 "Message buffer underrun: expected {} bytes, but only {} bytes remaining (index={})",
                 n,
                 remaining,

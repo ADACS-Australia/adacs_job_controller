@@ -562,7 +562,7 @@ impl Cluster {
         state.received_bytes.fetch_add(chunk_len, Ordering::Relaxed);
         // If HTTP side has disconnected, the receiver is dropped and send fails
         if state.chunk_sender.send(chunk).is_err() {
-            tracing::error!(
+            tracing::debug!(
                 "Cluster[{}]: FILE_CHUNK send failed - HTTP client disconnected",
                 self.name()
             );
@@ -584,7 +584,7 @@ impl Cluster {
                 let uuid = self.uuid.as_deref().unwrap_or("");
                 let msg = Message::new(PAUSE_FILE_CHUNK_STREAM, Priority::Highest, uuid);
                 self.send_message_internal(msg).await;
-                tracing::info!(
+                tracing::debug!(
                     "Cluster[{}]: Sent PAUSE_FILE_CHUNK_STREAM (buffer full)",
                     self.name()
                 );
@@ -609,7 +609,7 @@ impl Cluster {
         };
 
         let file_size = message.pop_ulong();
-        tracing::info!(
+        tracing::debug!(
             "Cluster[{}]: FILE_DETAILS received - file_size={} bytes",
             self.name(),
             file_size
@@ -618,7 +618,7 @@ impl Cluster {
         state.received_data.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
         state.data_notify.notify_waiters();
-        tracing::info!(
+        tracing::debug!(
             "Cluster[{}]: FILE_DETAILS processed - data_ready set",
             self.name()
         );
@@ -634,7 +634,7 @@ impl Cluster {
         };
 
         let details = message.pop_string();
-        tracing::error!(
+        tracing::warn!(
             "Cluster[{}]: FILE_ERROR received - {}",
             self.name(),
             details
@@ -643,10 +643,6 @@ impl Cluster {
         state.error.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
         state.data_notify.notify_waiters();
-        tracing::error!(
-            "Cluster[{}]: FILE_ERROR processed - error flag set",
-            self.name()
-        );
     }
 
     // ---- FileUpload message handling ----
@@ -779,7 +775,7 @@ impl Cluster {
             if let Some(h) = latest_per_job.get(&j.id)
                 && states.contains(&h.state)
             {
-                tracing::info!("{}: {}", log_label, j.id);
+                tracing::debug!("{}: {}", log_label, j.id);
                 let mut msg = Message::new(
                     message_id,
                     Priority::Medium,

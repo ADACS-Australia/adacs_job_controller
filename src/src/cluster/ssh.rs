@@ -133,7 +133,7 @@ async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError
         .await;
 
     if exit_code != 0 {
-        tracing::error!(
+        tracing::warn!(
             "SSH[{}]: Command failed with exit code {}",
             config.name,
             exit_code
