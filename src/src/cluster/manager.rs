@@ -367,7 +367,7 @@ impl ClusterManager {
                     );
                 }
                 Err(e) => {
-                    tracing::error!(
+                    tracing::warn!(
                         "ClusterManager: SSH connection failed for cluster '{}': {}",
                         cluster_name,
                         e
@@ -717,9 +717,9 @@ impl ClusterManagerTrait for ClusterManager {
 
     fn report_websocket_error(&self, cluster_name: Option<String>, error: String) {
         if let Some(name) = cluster_name {
-            tracing::error!("WebSocket error for cluster {}: {}", name, error);
+            tracing::warn!("WebSocket error for cluster {}: {}", name, error);
         } else {
-            tracing::error!("WebSocket error (unknown cluster): {}", error);
+            tracing::warn!("WebSocket error (unknown cluster): {}", error);
         }
     }
 

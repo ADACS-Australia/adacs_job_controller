@@ -183,7 +183,7 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
                 // Axum automatically responds with pong
             }
             Err(e) => {
-                tracing::error!("WS: Error reading from connection {}: {}", conn_id, e);
+                tracing::warn!("WS: Error reading from connection {}: {}", conn_id, e);
                 state
                     .cluster_manager
                     .report_websocket_error(Some(cluster.name()), format!("{e}"));

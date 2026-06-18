@@ -562,7 +562,7 @@ impl Cluster {
         state.received_bytes.fetch_add(chunk_len, Ordering::Relaxed);
         // If HTTP side has disconnected, the receiver is dropped and send fails
         if state.chunk_sender.send(chunk).is_err() {
-            tracing::error!(
+            tracing::debug!(
                 "Cluster[{}]: FILE_CHUNK send failed - HTTP client disconnected",
                 self.name()
             );
