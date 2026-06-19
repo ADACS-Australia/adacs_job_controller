@@ -22,7 +22,7 @@ use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tower::ServiceExt;
 
 use adacs_job_controller::cluster::traits::{
-    MockClusterManagerTrait, MockClusterTrait, WsOutbound,
+    ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsOutbound,
 };
 use adacs_job_controller::db::entities::{file_download, job};
 use adacs_job_controller::http::server::create_router;
@@ -229,6 +229,194 @@ async fn test_real_websocket_connection_and_auth() {
     );
 
     // Cleanup
+    drop(sink);
+    server_handle.abort();
+}
+
+/// Regression test for the "stale WebSocket" bug.
+///
+/// When the server's `ClusterManager` decides to drop a connection
+/// (e.g. after a pong timeout caused by an institutional firewall
+/// interruption), it calls `cluster.close()`. Before the fix, this
+/// only cleared an internal watch channel; the WebSocket stayed
+/// open and axum kept auto-ponging the peer's pings, so the client
+/// had no way to learn the server had moved on and never reconnected.
+///
+/// This test wires a real `Cluster` into the WS handler, opens a
+/// real WebSocket from a tokio-tungstenite client, calls
+/// `cluster.close(false)`, and asserts the client receives a
+/// WebSocket Close frame within a short timeout.
+#[tokio::test]
+async fn test_server_initiated_close_sends_close_frame_to_client() {
+    use adacs_job_controller::cluster::cluster::Cluster;
+
+    let db = setup_test_db().await;
+
+    // Real cluster, so real `close()` is exercised.
+    // (Cluster::new returns Arc<Self>.)
+    let cluster: Arc<Cluster> = Cluster::new(test_cluster_config("ozstar"), None);
+    // Start the scheduler so SERVER_READY actually reaches the WS
+    // forwarder.
+    cluster.start_tasks();
+
+    let cluster_for_handler: Arc<dyn ClusterTrait> = Arc::clone(&cluster) as Arc<dyn ClusterTrait>;
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_handle_new_connection()
+        .returning(move |_conn_id, ws_tx, _token| {
+            let c: Arc<dyn ClusterTrait> = Arc::clone(&cluster_for_handler);
+            Box::pin(async move {
+                // Install the WS sender on the cluster so close() can
+                // route a WsOutbound::Close through it.
+                c.set_connection(Some(ws_tx)).await;
+                Some(c)
+            })
+        });
+    manager.expect_handle_pong().returning(|_| ());
+    manager
+        .expect_remove_connection()
+        .returning(|_, _| Box::pin(async {}));
+    manager.expect_report_websocket_error().returning(|_, _| ());
+
+    let (port, server_handle) = start_http_server(db.clone(), manager).await;
+    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+
+    let (sink, mut stream) = connect_websocket(port, &token).await;
+    // Drain SERVER_READY so the read loop is positioned to observe
+    // whatever comes next.
+    let ready = recv_binary(&mut stream).await;
+    assert!(ready.is_some(), "Server should send SERVER_READY first");
+
+    // Trigger the server-side disconnect path.
+    Cluster::close(&cluster, false).await;
+
+    // The client must see a WebSocket Close frame (or EOF) within
+    // a short window. Without the fix the client would happily keep
+    // pinging forever and this assertion would time out.
+    let observed_close = tokio::time::timeout(Duration::from_secs(3), async {
+        while let Some(msg) = stream.next().await {
+            match msg {
+                Ok(TungsteniteMsg::Close(_)) | Err(_) => return true,
+                Ok(_) => {}
+            }
+        }
+        false
+    })
+    .await
+    .unwrap_or(false);
+
+    assert!(
+        observed_close,
+        "Client should observe a WebSocket Close frame after server-initiated close"
+    );
+
+    drop(sink);
+    server_handle.abort();
+}
+
+/// Regression test for the "stale WebSocket, missing grace period" hole.
+///
+/// The companion test
+/// (`test_server_initiated_close_sends_close_frame_to_client`) proves
+/// the server now sends a Close frame. This test proves the *follow-up*:
+/// if the peer's Close ack is lost (or the peer is wedged and never
+/// sends one — the same institutional firewall scenario that triggered
+/// the original timeout), the server must still tear down the TCP
+/// connection within a bounded grace period. Otherwise `ws_sink`
+/// stays held by `handle_socket` and the socket lingers in `CLOSE_WAIT`.
+///
+/// The test deliberately *does not* respond with a Close ack on the
+/// client side, and keeps the client's sink alive so the server's
+/// read loop sees neither a Close frame nor EOF. The assertion is
+/// that the server force-closes the connection within the grace
+/// period + a small margin, observable from the client as a stream
+/// error or Close.
+///
+/// This test is marked `#[ignore]` because it inherently sleeps for
+/// the grace period (default 5s). Run it explicitly:
+///
+/// ```text
+/// cargo test test_close_handshake_timeout_forces_tcp_close -- --ignored
+/// ```
+#[tokio::test]
+#[ignore = "inherently slow (~grace period); run with --ignored"]
+async fn test_close_handshake_timeout_forces_tcp_close() {
+    use adacs_job_controller::cluster::cluster::Cluster;
+
+    let db = setup_test_db().await;
+    let cluster: Arc<Cluster> = Cluster::new(test_cluster_config("ozstar"), None);
+    cluster.start_tasks();
+
+    let cluster_for_handler: Arc<dyn ClusterTrait> = Arc::clone(&cluster) as Arc<dyn ClusterTrait>;
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_handle_new_connection()
+        .returning(move |_conn_id, ws_tx, _token| {
+            let c: Arc<dyn ClusterTrait> = Arc::clone(&cluster_for_handler);
+            Box::pin(async move {
+                c.set_connection(Some(ws_tx)).await;
+                Some(c)
+            })
+        });
+    manager.expect_handle_pong().returning(|_| ());
+    manager
+        .expect_remove_connection()
+        .returning(|_, _| Box::pin(async {}));
+    manager.expect_report_websocket_error().returning(|_, _| ());
+
+    let (port, server_handle) = start_http_server(db.clone(), manager).await;
+    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+
+    let (sink, mut stream) = connect_websocket(port, &token).await;
+    let ready = recv_binary(&mut stream).await;
+    assert!(ready.is_some(), "Server should send SERVER_READY first");
+
+    // Trigger server-side close.
+    let close_start = std::time::Instant::now();
+    Cluster::close(&cluster, false).await;
+
+    // Receive the Close frame but do NOT send a Close ack back,
+    // and keep `sink` alive so the TCP connection stays open
+    // from the client's side. This simulates a peer behind a
+    // firewall that blocks the Close ack.
+    let saw_close = tokio::time::timeout(Duration::from_secs(2), async {
+        while let Some(msg) = stream.next().await {
+            if matches!(msg, Ok(TungsteniteMsg::Close(_))) {
+                return true;
+            }
+        }
+        false
+    })
+    .await
+    .unwrap_or(false);
+    assert!(saw_close, "Server should send Close frame");
+
+    // The server should force-close within the grace period + a
+    // small margin. We detect this by observing the stream
+    // end (Err or None) on the client side, which happens when
+    // the server drops its sink.
+    let force_closed = tokio::time::timeout(Duration::from_secs(8), async {
+        while let Some(msg) = stream.next().await {
+            // Any error or further Close frame means the server
+            // has torn the connection down. Pong/Ping/etc are
+            // ignored — we just want the stream to end.
+            if msg.is_err() {
+                return true;
+            }
+        }
+        true
+    })
+    .await
+    .unwrap_or(false);
+
+    let elapsed = close_start.elapsed();
+    assert!(
+        force_closed,
+        "Server should force-close within ~{}s of cluster.close() (elapsed: {:?})",
+        adacs_job_controller::websocket::server::WS_CLOSE_HANDSHAKE_GRACE_SECONDS,
+        elapsed
+    );
+
     drop(sink);
     server_handle.abort();
 }

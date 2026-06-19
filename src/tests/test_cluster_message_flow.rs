@@ -450,6 +450,75 @@ async fn test_cluster_close_disconnects() {
     assert!(!cluster.is_online());
 }
 
+/// Verifies that `close` delivers a `WsOutbound::Close` to the WS forwarder.
+///
+/// This is the regression test for the "stale WebSocket" bug where the
+/// server's `Cluster::close()` only cleared an internal watch channel and
+/// left the underlying WebSocket open. The client then believed the
+/// connection was still alive (axum auto-ponged its pings) and never
+/// reconnected, even though the server had removed the cluster from
+/// its connection map — typically after a pong timeout caused by an
+/// institutional network partition (e.g. firewall maintenance between
+/// the server and the cluster's login node).
+///
+/// # Setup
+/// A `Cluster` is created and a connection is set with a real
+/// `mpsc::UnboundedReceiver`, so we can observe the outbound traffic.
+///
+/// # Act
+/// `cluster.close(false)` is called.
+///
+/// # Assert
+/// - `is_online()` returns `false`.
+/// - The receiver observes a `WsOutbound::Close` before the channel
+///   closes (i.e. the close signal was actually sent, not just the
+///   watch channel updated).
+#[tokio::test]
+async fn test_cluster_close_sends_ws_outbound_close() {
+    use std::sync::Mutex as StdMutex;
+
+    let cluster = Cluster::new(test_config(), None);
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster.set_connection(Some(tx)).await;
+    assert!(cluster.is_online());
+
+    // Capture observed outbound frames. Wrapped in Mutex so the
+    // spawned drain task can append and the test can read after
+    // close() resolves.
+    let observed: Arc<StdMutex<Vec<WsOutbound>>> = Arc::new(StdMutex::new(Vec::new()));
+    let observed_for_drain = Arc::clone(&observed);
+
+    // Drain the channel on a background task. Stop only after we see
+    // a Close frame so the test doesn't hang if close() regresses to
+    // dropping the sender without emitting one.
+    let drain = tokio::spawn(async move {
+        let mut rx = rx;
+        while let Some(msg) = rx.recv().await {
+            let is_close = matches!(msg, WsOutbound::Close);
+            observed_for_drain.lock().unwrap().push(msg);
+            if is_close {
+                break;
+            }
+        }
+    });
+
+    cluster.close(false).await;
+
+    // Give the drain task a brief window to record the Close.
+    let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
+
+    let saw_close = {
+        let guard = observed.lock().unwrap();
+        guard.iter().any(|m| matches!(m, WsOutbound::Close))
+    };
+    assert!(
+        saw_close,
+        "cluster.close() must emit a WsOutbound::Close to the WS forwarder (saw {:?})",
+        *observed.lock().unwrap()
+    );
+    assert!(!cluster.is_online());
+}
+
 // ===========================================================================
 // Constructor and initialization tests
 // ===========================================================================
