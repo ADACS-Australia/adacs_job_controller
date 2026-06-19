@@ -15,6 +15,14 @@ pub enum WsOutbound {
     Binary(Vec<u8>),
     /// A WebSocket-level Ping frame (for keep-alive / latency checks).
     Ping,
+    /// A WebSocket-level Close frame. The forwarder sends a Close
+    /// to the peer and then exits its send loop so the read loop
+    /// can observe the peer's Close ack and clean up. This is the
+    /// only reliable way to signal a server-initiated disconnect
+    /// across institutional boundaries (firewall/NAT/partition)
+    /// where TCP keep-alive and the application's own ping/pong
+    /// are the only liveness signals.
+    Close,
 }
 
 /// Channel sender for writing data to a WebSocket connection.

@@ -1,11 +1,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, header::AUTHORIZATION};
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
+use tokio::sync::Notify;
 
 use crate::app::AppState;
 use crate::cluster::traits::ConnectionId;
@@ -17,6 +19,20 @@ use crate::cluster::traits::WsOutbound;
 
 /// Global connection ID counter.
 static NEXT_CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
+
+/// How long to wait for the peer's Close ack after the forwarder
+/// sends a server-initiated `WsOutbound::Close`. If the peer
+/// doesn't ack within this window — typically because the same
+/// network partition that triggered the disconnect is also
+/// blocking the ack — the read loop drops the WebSocket sink
+/// (via `handle_socket` returning) so the TCP connection is
+/// actually torn down instead of lingering in `CLOSE_WAIT`.
+///
+/// Set comfortably above the worst-case intercontinental RTT
+/// observed in production (Swinburne ↔ Caltech ≈ 200 ms) so a
+/// healthy peer always acks in time, but short enough that
+/// stuck half-open sockets don't accumulate on the server.
+pub const WS_CLOSE_HANDSHAKE_GRACE_SECONDS: u64 = 5;
 
 /// Generate a unique connection ID.
 fn generate_connection_id() -> ConnectionId {
@@ -99,9 +115,20 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
     // Spawn forwarder: channel -> WS sink
     let ws_sink = Arc::new(tokio::sync::Mutex::new(ws_sink));
     let ws_sink_clone = Arc::clone(&ws_sink);
+
+    // Signaled by the forwarder when it sends a server-initiated
+    // Close frame, so the read loop can enter its grace-period
+    // sub-loop. Without this, the read loop would wait forever for
+    // the peer's Close ack (which may never arrive across a
+    // broken institutional link), and `ws_sink` would never be
+    // dropped — the TCP connection would stay in CLOSE_WAIT.
+    let close_initiated = Arc::new(Notify::new());
+    let close_initiated_for_forwarder = Arc::clone(&close_initiated);
+
     tracing::debug!("WS: Spawning forwarder task for connection {}", conn_id);
     let forwarder = tokio::spawn(async move {
         let mut message_count = 0u64;
+        let mut should_exit = false;
         while let Some(outbound) = rx.recv().await {
             message_count += 1;
             let mut sink = ws_sink_clone.lock().await;
@@ -118,6 +145,14 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
                     tracing::trace!("WS: Sending ping to connection {}", conn_id);
                     WsMessage::Ping(vec![].into())
                 }
+                WsOutbound::Close => {
+                    tracing::debug!(
+                        "WS: Sending close frame to connection {} (server-initiated)",
+                        conn_id
+                    );
+                    should_exit = true;
+                    WsMessage::Close(None)
+                }
             };
             if sink.send(ws_msg).await.is_err() {
                 tracing::debug!(
@@ -125,6 +160,17 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
                     conn_id,
                     message_count
                 );
+                break;
+            }
+            if should_exit {
+                tracing::debug!(
+                    "WS: Forwarder exiting after server-initiated close for connection {} (sent {} messages)",
+                    conn_id,
+                    message_count
+                );
+                // Wake the read loop so it can start the grace
+                // period timer.
+                close_initiated_for_forwarder.notify_one();
                 break;
             }
         }
@@ -138,56 +184,129 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
     // Read from WS stream
     tracing::debug!("WS: Starting read loop for connection {}", conn_id);
     let mut received_count = 0u64;
-    while let Some(msg_result) = ws_stream.next().await {
-        received_count += 1;
-        match msg_result {
-            Ok(WsMessage::Binary(data)) => {
-                tracing::trace!(
-                    "WS: Received binary message ({} bytes) from connection {}",
-                    data.len(),
+    let mut server_close_initiated = false;
+    loop {
+        if server_close_initiated {
+            // Enter grace-period sub-loop: wait for the peer's
+            // Close ack OR the timeout, whichever comes first.
+            // We continue to drain any pongs/pings/stragglers
+            // from the stream but only break on Close, EOF, or
+            // timeout. Other message types are ignored.
+            tracing::debug!(
+                "WS: Server-initiated close in progress, waiting up to {}s for peer Close (conn_id={})",
+                WS_CLOSE_HANDSHAKE_GRACE_SECONDS,
+                conn_id
+            );
+            let grace = tokio::time::sleep(Duration::from_secs(WS_CLOSE_HANDSHAKE_GRACE_SECONDS));
+            tokio::pin!(grace);
+            let mut handshake_completed = false;
+            loop {
+                tokio::select! {
+                    msg = ws_stream.next() => {
+                        match msg {
+                            Some(Ok(WsMessage::Close(frame))) => {
+                                tracing::debug!(
+                                    "WS: Received peer Close during grace period for conn_id={}: {:?}",
+                                    conn_id, frame
+                                );
+                                handshake_completed = true;
+                                break;
+                            }
+                            None | Some(Err(_)) => {
+                                tracing::debug!(
+                                    "WS: Stream ended during grace period (conn_id={})",
+                                    conn_id
+                                );
+                                handshake_completed = true;
+                                break;
+                            }
+                            Some(Ok(_)) => {}
+                        }
+                    }
+                    () = &mut grace => {
+                        tracing::warn!(
+                            "WS: Close handshake timed out after {}s, forcing TCP close (conn_id={})",
+                            WS_CLOSE_HANDSHAKE_GRACE_SECONDS,
+                            conn_id
+                        );
+                        break;
+                    }
+                }
+            }
+            if !handshake_completed {
+                tracing::warn!(
+                    "WS: Dropping ws_sink to force TCP close after grace period (conn_id={})",
                     conn_id
                 );
-                let message = Message::from_bytes(data.to_vec());
-                tracing::trace!(
-                    "WS: Parsed message - ID: {}, Source: {}, Priority: {:?}",
-                    message.id(),
-                    message.source(),
-                    message.priority()
-                );
-                cluster.handle_message(message).await;
+                // The local Arc clone is dropped at scope exit;
+                // if the forwarder has already exited (it has,
+                // because the only way we got here is via the
+                // close signal from the forwarder), then the
+                // underlying sink is dropped here and the TCP
+                // connection is torn down.
             }
-            Ok(WsMessage::Pong(_)) => {
-                tracing::trace!("WS: Received pong from connection {}", conn_id);
-                state.cluster_manager.handle_pong(conn_id);
+            break;
+        }
+
+        tokio::select! {
+            () = close_initiated.notified() => {
+                server_close_initiated = true;
             }
-            Ok(WsMessage::Close(frame)) => {
-                tracing::debug!(
-                    "WS: Received close frame from connection {:?} - exiting read loop",
-                    frame
-                );
-                break;
-            }
-            Ok(WsMessage::Text(text)) => {
-                tracing::warn!(
-                    "WS: Received unexpected text message from connection {}: {}",
-                    conn_id,
-                    text
-                );
-            }
-            Ok(WsMessage::Ping(data)) => {
-                tracing::trace!(
-                    "WS: Received ping from connection {} ({} bytes)",
-                    conn_id,
-                    data.len()
-                );
-                // Axum automatically responds with pong
-            }
-            Err(e) => {
-                tracing::warn!("WS: Error reading from connection {}: {}", conn_id, e);
-                state
-                    .cluster_manager
-                    .report_websocket_error(Some(cluster.name()), format!("{e}"));
-                break;
+            msg_result = ws_stream.next() => {
+                let Some(msg_result) = msg_result else {
+                    break;
+                };
+                received_count += 1;
+                match msg_result {
+                    Ok(WsMessage::Binary(data)) => {
+                        tracing::trace!(
+                            "WS: Received binary message ({} bytes) from connection {}",
+                            data.len(),
+                            conn_id
+                        );
+                        let message = Message::from_bytes(data.to_vec());
+                        tracing::trace!(
+                            "WS: Parsed message - ID: {}, Source: {}, Priority: {:?}",
+                            message.id(),
+                            message.source(),
+                            message.priority()
+                        );
+                        cluster.handle_message(message).await;
+                    }
+                    Ok(WsMessage::Pong(_)) => {
+                        tracing::trace!("WS: Received pong from connection {}", conn_id);
+                        state.cluster_manager.handle_pong(conn_id);
+                    }
+                    Ok(WsMessage::Close(frame)) => {
+                        tracing::debug!(
+                            "WS: Received close frame from connection {:?} - exiting read loop",
+                            frame
+                        );
+                        break;
+                    }
+                    Ok(WsMessage::Text(text)) => {
+                        tracing::warn!(
+                            "WS: Received unexpected text message from connection {}: {}",
+                            conn_id,
+                            text
+                        );
+                    }
+                    Ok(WsMessage::Ping(data)) => {
+                        tracing::trace!(
+                            "WS: Received ping from connection {} ({} bytes)",
+                            conn_id,
+                            data.len()
+                        );
+                        // Axum automatically responds with pong
+                    }
+                    Err(e) => {
+                        tracing::warn!("WS: Error reading from connection {}: {}", conn_id, e);
+                        state
+                            .cluster_manager
+                            .report_websocket_error(Some(cluster.name()), format!("{e}"));
+                        break;
+                    }
+                }
             }
         }
     }

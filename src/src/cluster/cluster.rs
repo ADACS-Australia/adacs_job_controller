@@ -963,6 +963,16 @@ impl ClusterTrait for Cluster {
     }
 
     async fn close(&self, _force: bool) {
+        // Signal the WS forwarder to send a Close frame to the peer
+        // BEFORE clearing the watch channel. We must borrow the
+        // current sender first; if we cleared the watch first the
+        // sender would be dropped and the close signal lost. The
+        // peer then sees a real WebSocket Close (and EOF on the
+        // TCP read) and can reconnect, instead of being stranded
+        // on a half-open socket that still pongs.
+        if let Some(sender) = self.connection_rx.borrow().as_ref() {
+            let _ = sender.send(WsOutbound::Close);
+        }
         let _ = self.connection_tx.send(None);
     }
 
