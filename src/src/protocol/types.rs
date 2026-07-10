@@ -92,13 +92,21 @@ pub enum Priority {
     Lowest = 19,
 }
 
+/// Metadata for a single file in a directory listing.
+///
+/// Serialized with specific field names (`path`, `fileSize`, `isDir`)
+/// for compatibility with the HTTP API response format.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FileInfo {
+    /// File name (including relative path from the job directory).
     #[serde(rename = "path")]
     pub file_name: String,
+    /// File size in bytes.
     #[serde(rename = "fileSize")]
     pub file_size: u64,
+    /// Unix permission bits (e.g., `0o644`).
     pub permissions: u32,
+    /// Whether this entry is a directory.
     #[serde(rename = "isDir")]
     pub is_directory: bool,
 }
