@@ -79,21 +79,32 @@ impl ClusterJobStatus {
     }
 }
 
+/// A job bundle record (wire format only — DB ops use `SeaORM` entities).
+///
+/// Bundles hold serialized job definitions keyed by `bundle_hash`. The wire
+/// protocol transfers only `id` and `content`; `cluster` and `bundle_hash`
+/// are populated when converting from database rows.
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
 pub struct BundleJob {
+    /// Internal row ID.
     pub id: i64,
+    /// Serialized bundle payload (typically JSON).
     pub content: String,
+    /// Owning cluster name (DB-only; not sent on the wire).
     pub cluster: String,
+    /// Content hash used for deduplication (DB-only; not sent on the wire).
     pub bundle_hash: String,
 }
 
 impl BundleJob {
+    /// Serialize this bundle into a binary message body (id + content).
     pub fn to_message(&self, msg: &mut Message) {
         msg.push_ulong(self.id.cast_unsigned());
         msg.push_string(&self.content);
     }
 
+    /// Deserialize a bundle from a binary message body (id + content).
     pub fn from_message(msg: &mut Message) -> Self {
         Self {
             id: msg.pop_ulong().cast_signed(),
