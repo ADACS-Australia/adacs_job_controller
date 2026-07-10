@@ -1,5 +1,6 @@
 use sea_orm::entity::prelude::*;
 
+/// `SeaORM` entity for the `JobserverBundlejob` table.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "jobserver_bundlejob")]
 pub struct Model {
