@@ -861,9 +861,23 @@ impl ClusterTrait for Cluster {
             SERVER_READY if self.role == ClusterRole::FileUpload => {
                 self.handle_server_ready().await;
             }
+            SERVER_READY => {
+                tracing::warn!(
+                    "Cluster[{}]: SERVER_READY received but role is {}, expected file upload",
+                    self.name(),
+                    self.role
+                );
+            }
             FILE_UPLOAD_ERROR => self.handle_file_upload_error(&mut message).await,
             FILE_UPLOAD_COMPLETE if self.role == ClusterRole::FileUpload => {
                 self.handle_file_upload_complete();
+            }
+            FILE_UPLOAD_COMPLETE => {
+                tracing::warn!(
+                    "Cluster[{}]: FILE_UPLOAD_COMPLETE received but role is {}, expected file upload",
+                    self.name(),
+                    self.role
+                );
             }
 
             other => {
