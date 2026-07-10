@@ -635,6 +635,7 @@ impl Cluster {
         );
     }
 
+    /// Records the total file size from `FILE_DETAILS` and notifies the HTTP download client.
     fn handle_file_details(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
             tracing::warn!(
