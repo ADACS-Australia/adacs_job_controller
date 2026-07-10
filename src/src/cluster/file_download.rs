@@ -6,23 +6,25 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 pub struct FileDownloadState {
     /// Channel for receiving file chunks from the WS handler
     pub chunk_sender: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    /// Mutex-protected receiver for file chunks consumed by the HTTP handler.
     pub chunk_receiver: tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
-
-    /// File metadata
+    /// Total file size in bytes (set by `FILE_DETAILS`).
     pub file_size: AtomicU64,
+    /// Whether `FILE_DETAILS` has been received.
     pub received_data: AtomicBool,
-
-    /// Error state
+    /// Whether the download failed (cluster error or HTTP client disconnect).
     pub error: AtomicBool,
+    /// Human-readable error message when `error` is set.
     pub error_details: tokio::sync::Mutex<String>,
-
-    /// Byte counters for backpressure
+    /// Total bytes received from the cluster (including buffered chunks).
     pub received_bytes: AtomicU64,
+    /// Total bytes sent to the HTTP client.
     pub sent_bytes: AtomicU64,
+    /// Whether the cluster stream is paused due to backpressure.
     pub client_paused: AtomicBool,
-
-    /// Notification for data readiness (file details or error received)
+    /// Notifies the HTTP handler when new data, errors, or file details arrive.
     pub data_notify: tokio::sync::Notify,
+    /// Whether file details, a chunk, or an error is ready for the HTTP handler.
     pub data_ready: AtomicBool,
 }
 
