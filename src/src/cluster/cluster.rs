@@ -674,6 +674,7 @@ impl Cluster {
         state.data_notify.notify_waiters();
     }
 
+    /// Marks the file upload as complete and notifies any waiting readers.
     fn handle_file_upload_complete(&self) {
         let Some(state) = &self.file_upload_state else {
             return;
