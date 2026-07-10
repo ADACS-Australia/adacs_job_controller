@@ -261,7 +261,12 @@ pub async fn download_file(
 
     tracing::trace!("HTTP: Sending DOWNLOAD_FILE message to cluster");
     let mut msg = Message::new(DOWNLOAD_FILE, Priority::Highest, &uuid);
-    msg.push_uint(u32::try_from(job_id).unwrap());
+    msg.push_uint(u32::try_from(job_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Job ID {job_id} exceeds maximum supported value"),
+        )
+    })?);
     msg.push_string(&uuid);
     msg.push_string(&s_bundle);
     msg.push_string(&s_file_path);
@@ -703,7 +708,12 @@ pub async fn list_files(
         .insert(uuid.clone(), Arc::clone(&fl_state));
 
     let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-    msg.push_uint(u32::try_from(job_id).unwrap());
+    msg.push_uint(u32::try_from(job_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Job ID {job_id} exceeds maximum supported value"),
+        )
+    })?);
     msg.push_string(&uuid);
     msg.push_string(&s_bundle);
     msg.push_string(&body.path);
@@ -798,7 +808,9 @@ async fn spawn_background_cache(
         .insert(uuid.clone(), Arc::clone(&fl_state));
 
     let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-    msg.push_uint(u32::try_from(job_id).unwrap());
+    let job_id_u32 = u32::try_from(job_id)
+        .map_err(|_| format!("Job ID {job_id} exceeds maximum supported value"))?;
+    msg.push_uint(job_id_u32);
     msg.push_string(&uuid);
     msg.push_string(&bundle);
     msg.push_string("");
