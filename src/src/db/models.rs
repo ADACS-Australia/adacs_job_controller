@@ -79,6 +79,11 @@ impl ClusterJobStatus {
     }
 }
 
+/// A cluster bundle job record (wire format only — DB ops use `SeaORM` entities).
+///
+/// Bundles group related job definitions; the cluster stores content and a hash
+/// for deduplication. Serialized over the binary protocol via `to_message` /
+/// `from_message`.
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
 pub struct BundleJob {
