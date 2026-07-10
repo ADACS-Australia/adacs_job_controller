@@ -655,6 +655,7 @@ impl Cluster {
 
     // ---- FileUpload message handling ----
 
+    /// Signals that the file-upload server is ready and unblocks waiting upload readers.
     #[allow(clippy::unused_async)]
     async fn handle_server_ready(&self) {
         if let Some(state) = &self.file_upload_state {
