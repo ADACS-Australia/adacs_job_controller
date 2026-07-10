@@ -68,14 +68,18 @@ pub static DATABASE_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("DATABASE_
 pub static DATABASE_DEBUG: LazyLock<bool> = LazyLock::new(|| env_or_bool("DATABASE_DEBUG", false));
 
 // File download expiry
+/// Seconds before an unused file-download record expires (`FILE_DOWNLOAD_EXPIRY_TIME` env var).
 pub static FILE_DOWNLOAD_EXPIRY_TIME: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("FILE_DOWNLOAD_EXPIRY_TIME", 86400));
 
 // Config file environment variable names
+/// Environment variable for the cluster configuration JSON file path.
 pub const CLUSTER_CONFIG_FILE_ENV_VARIABLE: &str = "CLUSTER_CONFIG_FILE";
+/// Environment variable for the JWT access-secrets JSON file path.
 pub const ACCESS_SECRET_CONFIG_FILE_ENV_VARIABLE: &str = "ACCESS_SECRET_CONFIG_FILE";
 
 // LTK security settings
+/// Milliseconds to wait for an LTK WebSocket handshake before timing out (`LTK_CONNECTION_TIMEOUT_MS`).
 pub static LTK_CONNECTION_TIMEOUT_MS: LazyLock<u32> = LazyLock::new(|| {
     #[cfg(test)]
     {
@@ -94,32 +98,42 @@ pub static LTK_CONNECTION_TIMEOUT_MS: LazyLock<u32> = LazyLock::new(|| {
 });
 
 // File buffer sizes (bytes)
+/// Maximum in-memory buffer for streaming file transfers (`MAX_FILE_BUFFER_SIZE`).
 pub static MAX_FILE_BUFFER_SIZE: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("MAX_FILE_BUFFER_SIZE", 50 * 1024 * 1024));
+/// Minimum buffer size before a file chunk is flushed (`MIN_FILE_BUFFER_SIZE`).
 pub static MIN_FILE_BUFFER_SIZE: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("MIN_FILE_BUFFER_SIZE", 10 * 1024 * 1024));
+/// Size of each file chunk sent over the WebSocket protocol (`FILE_CHUNK_SIZE`).
 pub static FILE_CHUNK_SIZE: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("FILE_CHUNK_SIZE", 64 * 1024));
 
 // Queue and cluster timing
+/// Interval between pruning stale message-queue sources (`QUEUE_SOURCE_PRUNE_MILLISECONDS`).
 pub static QUEUE_SOURCE_PRUNE_MILLISECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("QUEUE_SOURCE_PRUNE_MILLISECONDS", 60000));
+/// Interval for resending unacknowledged cluster messages (`CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS`).
 pub static CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS", 60000));
+/// HTTP client timeout for waiting on cluster responses (`CLIENT_TIMEOUT_SECONDS`).
 pub static CLIENT_TIMEOUT_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLIENT_TIMEOUT_SECONDS", 30));
 
 // Message settings
+/// Initial capacity for binary `Message` buffers (`MESSAGE_INITIAL_VECTOR_SIZE`).
 pub static MESSAGE_INITIAL_VECTOR_SIZE: LazyLock<u32> =
     LazyLock::new(|| env_or_u32("MESSAGE_INITIAL_VECTOR_SIZE", 65536));
 
 // Cluster state
+/// Grace period before re-applying recent job-state updates from a reconnecting cluster (`CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS`).
 pub static CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS", 60));
 
 // Cluster manager settings
+/// Seconds between SSH reconnect attempts for offline clusters (`CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS`).
 pub static CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS", 60));
+/// Seconds between WebSocket keep-alive pings to connected clusters (`CLUSTER_MANAGER_PING_INTERVAL_SECONDS`).
 pub static CLUSTER_MANAGER_PING_INTERVAL_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_PING_INTERVAL_SECONDS", 10));
 #[allow(dead_code)]
@@ -132,11 +146,14 @@ pub static CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS", 600));
 
 // HTTP settings
+/// TCP port for the HTTP REST API (`HTTP_PORT`).
 pub static HTTP_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("HTTP_PORT", 8000));
 // Disabled by default (set env var to enable). PeerIpKeyExtractor in tower_governor
 // fails on requests without a peer socket address (e.g., integration tests).
+/// Sustained request rate limit; `0` disables rate limiting (`RATE_LIMIT_REQUESTS_PER_SECOND`).
 pub static RATE_LIMIT_REQUESTS_PER_SECOND: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("RATE_LIMIT_REQUESTS_PER_SECOND", 0));
+/// Burst allowance above the sustained rate (`RATE_LIMIT_BURST_SIZE`).
 pub static RATE_LIMIT_BURST_SIZE: LazyLock<u32> =
     LazyLock::new(|| env_or_u32("RATE_LIMIT_BURST_SIZE", 50));
 #[allow(dead_code)]
@@ -147,6 +164,7 @@ pub static HTTP_CONTENT_TIMEOUT_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("HTTP_CONTENT_TIMEOUT_SECONDS", 86400));
 
 // WebSocket settings
+/// TCP port for cluster WebSocket connections (`WEBSOCKET_PORT`).
 pub static WEBSOCKET_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("WEBSOCKET_PORT", 8001));
 #[allow(dead_code)]
 pub static WEBSOCKET_WORKER_POOL_SIZE: LazyLock<u32> =
