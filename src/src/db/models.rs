@@ -53,15 +53,24 @@ impl ClusterJob {
     }
 }
 
+/// A cluster job status record (wire format only — DB ops use `SeaORM` entities).
+///
+/// Tracks per-job status keyed by a free-form `what` field (e.g. `"scheduler_id"`)
+/// and an integer `state` value whose meaning depends on the cluster scheduler.
 #[derive(Debug, Clone, Default)]
 pub struct ClusterJobStatus {
+    /// Primary key in the cluster job status table.
     pub id: i64,
+    /// Foreign key to the parent job.
     pub job_id: i64,
+    /// Status category label (scheduler-specific).
     pub what: String,
+    /// Status value for the given `what` category.
     pub state: i32,
 }
 
 impl ClusterJobStatus {
+    /// Serialize this record into a binary protocol message payload.
     pub fn to_message(&self, msg: &mut Message) {
         msg.push_ulong(self.id.cast_unsigned());
         msg.push_ulong(self.job_id.cast_unsigned());
@@ -69,6 +78,7 @@ impl ClusterJobStatus {
         msg.push_uint(self.state.cast_unsigned());
     }
 
+    /// Deserialize a record from a binary protocol message payload.
     pub fn from_message(msg: &mut Message) -> Self {
         Self {
             id: msg.pop_ulong().cast_signed(),
