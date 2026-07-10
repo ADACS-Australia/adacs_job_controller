@@ -506,6 +506,7 @@ impl Cluster {
         }
     }
 
+    /// Parses a `FILE_LIST` response payload into file entries and updates the matching [`FileListState`].
     async fn handle_file_list_response(&self, message: &mut Message) {
         let uuid = message.pop_string();
         let num_files = message.pop_uint();
