@@ -28,6 +28,7 @@ use crate::protocol::types::Priority;
 
 // Conversions from SeaORM models to wire structs
 
+/// Convert a persisted `cluster_job` row into the wire-format [`ClusterJob`].
 impl From<cluster_job::Model> for ClusterJob {
     fn from(m: cluster_job::Model) -> Self {
         Self {
@@ -46,6 +47,7 @@ impl From<cluster_job::Model> for ClusterJob {
     }
 }
 
+/// Convert a persisted `cluster_job_status` row into the wire-format [`ClusterJobStatus`].
 impl From<cluster_job_status::Model> for ClusterJobStatus {
     fn from(m: cluster_job_status::Model) -> Self {
         Self {
@@ -57,6 +59,7 @@ impl From<cluster_job_status::Model> for ClusterJobStatus {
     }
 }
 
+/// Convert a persisted `bundle_job` row into the wire-format [`BundleJob`].
 impl From<bundle_job::Model> for BundleJob {
     fn from(m: bundle_job::Model) -> Self {
         Self {
