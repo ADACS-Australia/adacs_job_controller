@@ -8,16 +8,27 @@ use crate::protocol::message::Message;
 /// A cluster job record (wire format only — DB ops use `SeaORM` entities).
 #[derive(Debug, Clone, Default)]
 pub struct ClusterJob {
+    /// Primary key in the cluster-side job table.
     pub id: i64,
+    /// Controller-assigned job identifier shared with HTTP clients.
     pub job_id: i64,
+    /// Scheduler-specific job ID on the remote cluster.
     pub scheduler_id: i64,
+    /// Whether the job is currently being submitted to the scheduler.
     pub submitting: bool,
+    /// Number of in-flight submit attempts (used for retry tracking).
     pub submitting_count: i32,
+    /// Content hash of the job bundle payload.
     pub bundle_hash: String,
+    /// Working directory on the cluster where the job runs.
     pub working_directory: String,
+    /// Whether the job is actively running on the cluster.
     pub running: bool,
+    /// Whether a delete/cancel operation is in progress.
     pub deleting: bool,
+    /// Whether the job record has been marked deleted on the cluster.
     pub deleted: bool,
+    /// Cluster name (populated locally; not serialized on the wire).
     #[allow(dead_code)]
     pub cluster: String,
 }
