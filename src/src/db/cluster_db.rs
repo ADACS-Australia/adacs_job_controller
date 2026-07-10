@@ -410,6 +410,7 @@ async fn handle_jobstatus_delete_by_id_list(
     cluster.send_message(response).await;
 }
 
+/// Inserts or updates a cluster job status row and sends a `DB_RESPONSE` with the row ID.
 async fn handle_jobstatus_save(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
