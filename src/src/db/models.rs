@@ -53,6 +53,7 @@ impl ClusterJob {
     }
 }
 
+/// A cluster job status record (wire format only — DB ops use `SeaORM` entities).
 #[derive(Debug, Clone, Default)]
 pub struct ClusterJobStatus {
     pub id: i64,
