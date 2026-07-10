@@ -70,14 +70,21 @@ pub struct Cluster {
     file_download_pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
+type PriorityQueue = BTreeMap<u8, RwLock<HashMap<String, VecDeque<Vec<u8>>>>>;
+
+fn empty_priority_queues() -> PriorityQueue {
+    let mut queue = BTreeMap::new();
+    for priority in [Priority::Highest, Priority::Medium, Priority::Lowest] {
+        queue.insert(priority as u8, RwLock::new(HashMap::new()));
+    }
+    queue
+}
+
 impl Cluster {
     /// Create a new master cluster.
     #[must_use]
     pub fn new(details: ClusterConfig, app_context: Option<Arc<AppContext>>) -> Arc<Self> {
-        let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
+        let queue = empty_priority_queues();
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
@@ -107,10 +114,7 @@ impl Cluster {
         app_context: Option<Arc<AppContext>>,
         pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
     ) -> Arc<Self> {
-        let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
+        let queue = empty_priority_queues();
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
@@ -139,10 +143,7 @@ impl Cluster {
         upload_state: Arc<FileUploadState>,
         app_context: Option<Arc<AppContext>>,
     ) -> Arc<Self> {
-        let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
+        let queue = empty_priority_queues();
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
