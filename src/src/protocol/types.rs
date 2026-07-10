@@ -114,10 +114,15 @@ pub struct FileInfo {
 /// Shared state for a file list request.
 /// Used to coordinate between HTTP handler (waiting) and WebSocket handler (providing data).
 pub struct FileListState {
+    /// Collected file entries returned by the cluster.
     pub files: Vec<FileInfo>,
+    /// Whether the file list request failed.
     pub error: bool,
+    /// Human-readable error details when `error` is true.
     pub error_details: String,
+    /// Whether the cluster response (success or error) is available.
     pub data_ready: bool,
+    /// Notifies the HTTP handler when `data_ready` becomes true.
     pub notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
