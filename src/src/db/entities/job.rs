@@ -2,23 +2,24 @@ use sea_orm::entity::prelude::*;
 
 /// `SeaORM` entity for the `JobserverJob` table.
 ///
-/// Stores the core job record — one row per job submitted to any cluster.
+/// Stores the controller-side job record created when a client submits a job via HTTP.
+/// The row is inserted in the same transaction as the initial `Pending` history entry.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "jobserver_job")]
 pub struct Model {
-    /// Surrogate primary key.
+    /// Auto-increment primary key; also used as the client-visible job ID.
     #[sea_orm(primary_key)]
     pub id: i64,
-    /// Foreign key referencing the submitting user.
+    /// Submitting user ID from the JWT `userId` claim (0 if absent).
     pub user: i64,
-    /// Scheduler parameters string passed through to the cluster.
+    /// Opaque job parameters forwarded to the remote cluster scheduler.
     #[sea_orm(column_type = "Text")]
     pub parameters: String,
-    /// Name of the target cluster.
+    /// Target cluster name; must match a configured cluster and JWT access list.
     pub cluster: String,
-    /// Bundle identifier or hash for the job's executable bundle.
+    /// Bundle identifier or payload reference passed to the cluster on submit.
     pub bundle: String,
-    /// Application name that submitted the job.
+    /// JWT application name that created the job (from `AccessSecret::name`).
     pub application: String,
 }
 
