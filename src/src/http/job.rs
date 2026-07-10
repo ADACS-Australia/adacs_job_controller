@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 use std::collections::HashMap;
 
 use crate::http::utils::LenientJson;
@@ -266,7 +267,7 @@ pub async fn get_jobs(
     if let Some(ref ids_str) = params.job_ids {
         let ids = parse_csv_u64(ids_str);
         if !ids.is_empty() {
-            let ids_i64: Vec<i64> = ids.iter().map(|&id| id as i64).collect();
+            let ids_i64: Vec<i64> = ids.iter().map(|&id| id.cast_signed()).collect();
             job_query = job_query.filter(job::Column::Id.is_in(ids_i64));
         }
     }
@@ -344,7 +345,7 @@ pub async fn get_jobs(
                 step_cond = step_cond.add(
                     Condition::all()
                         .add(job_history::Column::What.eq(what.clone()))
-                        .add(job_history::Column::State.eq(*sv as i32)),
+                        .add(job_history::Column::State.eq((*sv).cast_signed())),
                 );
             }
             let subq = Query::select()
@@ -616,7 +617,7 @@ pub async fn get_job_with_access_check(
     auth: &AuthResult,
     job_id: u64,
 ) -> Result<job::Model, (StatusCode, String)> {
-    let j = job::Entity::find_by_id(job_id as i64)
+    let j = job::Entity::find_by_id(job_id.cast_signed())
         .one(&state.db)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?

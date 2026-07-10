@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -568,8 +569,10 @@ impl ClusterManagerTrait for ClusterManager {
 
         // First clean up any expired UUIDs
         let cutoff = chrono::Utc::now().naive_utc()
-            - chrono::Duration::try_seconds(*CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS as i64)
-                .unwrap_or_default();
+            - chrono::Duration::try_seconds(
+                (*CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS).cast_signed(),
+            )
+            .unwrap_or_default();
         let _ = cluster_uuid::Entity::delete_many()
             .filter(cluster_uuid::Column::Timestamp.lte(cutoff))
             .exec(&self.db)

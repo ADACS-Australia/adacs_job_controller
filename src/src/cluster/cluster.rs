@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -15,7 +16,6 @@ use crate::config::settings::{
     CLUSTER_RESEND_MESSAGE_INTERVAL_MILLISECONDS, MAX_FILE_BUFFER_SIZE, MIN_FILE_BUFFER_SIZE,
     QUEUE_SOURCE_PRUNE_MILLISECONDS,
 };
-use crate::db::entities::file_list_cache;
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, FILE_CHUNK, FILE_DETAILS, FILE_ERROR, FILE_LIST, FILE_LIST_ERROR,
     FILE_UPLOAD_COMPLETE, FILE_UPLOAD_ERROR, JOB_COMPLETION_SOURCE, PAUSE_FILE_CHUNK_STREAM,
@@ -373,8 +373,8 @@ impl Cluster {
     // ---- Message handling ----
 
     async fn handle_update_job(&self, message: &mut Message) {
-        use crate::db::entities::{job, job_history};
-        use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+        use crate::db::entities::job_history;
+        use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
         let job_id = message.pop_uint();
         let what = message.pop_string();
@@ -408,7 +408,7 @@ impl Cluster {
             job_id: Set(i64::from(job_id)),
             timestamp: Set(chrono::Utc::now().naive_utc()),
             what: Set(what.clone()),
-            state: Set(status as i32),
+            state: Set(status.cast_signed()),
             details: Set(details.clone()),
         };
         if let Err(e) = record.insert(&ctx.db).await {
@@ -430,71 +430,79 @@ impl Cluster {
 
         // On job completion, proactively cache the file list in the background.
         if what == JOB_COMPLETION_SOURCE {
-            let model = job::Entity::find_by_id(i64::from(job_id))
-                .one(&ctx.db)
-                .await
-                .ok()
-                .flatten();
+            self.cache_file_list_on_completion(ctx, job_id).await;
+        }
+    }
 
-            if let Some(m) = model {
-                let bundle = m.bundle;
-                let uuid = generate_uuid();
-                let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
-                ctx.file_list_map
-                    .insert(uuid.clone(), Arc::clone(&fl_state));
+    /// Cache the file list for a completed job in the background.
+    async fn cache_file_list_on_completion(&self, ctx: &AppContext, job_id: u32) {
+        use crate::db::entities::{file_list_cache, job};
+        use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 
-                // Send FILE_LIST request through this cluster's WS connection
-                let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-                msg.push_uint(job_id);
-                msg.push_string(&uuid);
-                msg.push_string(&bundle);
-                msg.push_string("");
-                msg.push_bool(true);
-                self.send_message_internal(msg).await;
+        let model = job::Entity::find_by_id(i64::from(job_id))
+            .one(&ctx.db)
+            .await
+            .ok()
+            .flatten();
 
-                // Background: wait for FILE_LIST_RESPONSE and persist to cache
-                let db = ctx.db.clone();
-                let file_list_map = ctx.file_list_map.clone();
-                let uuid_bg = uuid.clone();
-                tokio::spawn(async move {
-                    let timeout = std::time::Duration::from_secs(*CLIENT_TIMEOUT_SECONDS);
-                    let fl_clone = Arc::clone(&fl_state);
-                    let _ = tokio::time::timeout(timeout, async {
-                        loop {
-                            let notify = {
-                                let locked = fl_clone.lock().await;
-                                if locked.data_ready {
-                                    return;
-                                }
-                                Arc::clone(&locked.notify)
-                            };
-                            notify.notified().await;
-                        }
-                    })
-                    .await;
+        if let Some(m) = model {
+            let bundle = m.bundle;
+            let uuid = generate_uuid();
+            let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+            ctx.file_list_map
+                .insert(uuid.clone(), Arc::clone(&fl_state));
 
-                    let locked = fl_state.lock().await;
-                    if !locked.error {
-                        let _ = file_list_cache::Entity::delete_many()
-                            .filter(file_list_cache::Column::JobId.eq(i64::from(job_id)))
-                            .exec(&db)
-                            .await;
-                        for file in &locked.files {
-                            let _ = file_list_cache::ActiveModel {
-                                job_id: Set(i64::from(job_id)),
-                                path: Set(file.file_name.clone()),
-                                is_dir: Set(file.is_directory),
-                                file_size: Set(file.file_size as i64),
-                                permissions: Set(file.permissions as i32),
-                                ..Default::default()
+            // Send FILE_LIST request through this cluster's WS connection
+            let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
+            msg.push_uint(job_id);
+            msg.push_string(&uuid);
+            msg.push_string(&bundle);
+            msg.push_string("");
+            msg.push_bool(true);
+            self.send_message_internal(msg).await;
+
+            // Background: wait for FILE_LIST_RESPONSE and persist to cache
+            let db = ctx.db.clone();
+            let file_list_map = ctx.file_list_map.clone();
+            let uuid_bg = uuid.clone();
+            tokio::spawn(async move {
+                let timeout = std::time::Duration::from_secs(*CLIENT_TIMEOUT_SECONDS);
+                let fl_clone = Arc::clone(&fl_state);
+                let _ = tokio::time::timeout(timeout, async {
+                    loop {
+                        let notify = {
+                            let locked = fl_clone.lock().await;
+                            if locked.data_ready {
+                                return;
                             }
-                            .insert(&db)
-                            .await;
-                        }
+                            Arc::clone(&locked.notify)
+                        };
+                        notify.notified().await;
                     }
-                    file_list_map.remove(&uuid_bg);
-                });
-            }
+                })
+                .await;
+
+                let locked = fl_state.lock().await;
+                if !locked.error {
+                    let _ = file_list_cache::Entity::delete_many()
+                        .filter(file_list_cache::Column::JobId.eq(i64::from(job_id)))
+                        .exec(&db)
+                        .await;
+                    for file in &locked.files {
+                        let _ = file_list_cache::ActiveModel {
+                            job_id: Set(i64::from(job_id)),
+                            path: Set(file.file_name.clone()),
+                            is_dir: Set(file.is_directory),
+                            file_size: Set(file.file_size.cast_signed()),
+                            permissions: Set(file.permissions.cast_signed()),
+                            ..Default::default()
+                        }
+                        .insert(&db)
+                        .await;
+                    }
+                }
+                file_list_map.remove(&uuid_bg);
+            });
         }
     }
 
@@ -727,7 +735,7 @@ impl Cluster {
         };
         let db = &ctx.db;
         let cluster_name = &self.details.name;
-        let ignore_secs = *CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS as i64;
+        let ignore_secs = (*CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS).cast_signed();
         let cutoff = chrono::Utc::now().naive_utc()
             - chrono::Duration::try_seconds(ignore_secs).unwrap_or_default();
 
@@ -781,7 +789,7 @@ impl Cluster {
                     Priority::Medium,
                     &format!("{}_{}", j.id, cluster_name),
                 );
-                msg.push_uint(j.id as u32);
+                msg.push_uint(u32::try_from(j.id).unwrap());
                 if push_bundle_and_params {
                     msg.push_string(&j.bundle);
                     msg.push_string(&j.parameters);
@@ -929,7 +937,7 @@ impl ClusterTrait for Cluster {
                 }
             }
         } else {
-            if current <= *MAX_FILE_BUFFER_SIZE as usize {
+            if current <= (*MAX_FILE_BUFFER_SIZE) as usize {
                 return true;
             }
             let timeout = std::time::Duration::from_secs(*CLIENT_TIMEOUT_SECONDS);
@@ -945,7 +953,7 @@ impl ClusterTrait for Cluster {
                     }
                     () = tokio::time::sleep_until(deadline) => {
                         return self.queued_message_size.load(Ordering::Relaxed)
-                            <= *MIN_FILE_BUFFER_SIZE as usize;
+                            <= (*MIN_FILE_BUFFER_SIZE) as usize;
                     }
                 }
             }

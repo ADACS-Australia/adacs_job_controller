@@ -284,7 +284,7 @@ async fn test_handle_new_connection_expire_uuids() {
     let mgr = make_manager(three_cluster_configs(), db.clone());
 
     // Insert an expired UUID (timestamp older than MAX_TOKEN_EXPIRY_SECONDS)
-    let expiry = *CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS as i64;
+    let expiry = (*CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS).cast_signed();
     let expired_ts =
         chrono::Utc::now().naive_utc() - chrono::Duration::try_seconds(expiry).unwrap();
     cluster_uuid::ActiveModel {

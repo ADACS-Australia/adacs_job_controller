@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -126,7 +127,7 @@ pub async fn create_file_download(
         .unwrap_or(0);
     tracing::trace!("HTTP: User ID: {}", user_id);
 
-    let job_id = body.job_id.unwrap_or(0) as i64;
+    let job_id = body.job_id.unwrap_or(0).cast_signed();
 
     let mut uuids = Vec::new();
     for (i, path) in file_paths.iter().enumerate() {
@@ -192,7 +193,7 @@ pub async fn download_file(
     tracing::trace!("HTTP: Force download flag: {}", force_download);
 
     // Expire old download records
-    let expiry_secs = *settings::FILE_DOWNLOAD_EXPIRY_TIME as i64;
+    let expiry_secs = (*settings::FILE_DOWNLOAD_EXPIRY_TIME).cast_signed();
     let expiry_dt = chrono::Utc::now().naive_utc()
         - chrono::Duration::try_seconds(expiry_secs).unwrap_or_default();
     tracing::trace!("HTTP: Expiring old download records (before {})", expiry_dt);
@@ -222,7 +223,7 @@ pub async fn download_file(
     let s_cluster = dl.cluster;
     let s_bundle = dl.bundle;
     let s_file_path = dl.path.clone();
-    let job_id = dl.job as u64;
+    let job_id = dl.job.cast_unsigned();
     tracing::debug!(
         "HTTP: Download record found - cluster='{}', bundle='{}', path='{}', job_id={}",
         s_cluster,
@@ -260,7 +261,7 @@ pub async fn download_file(
 
     tracing::trace!("HTTP: Sending DOWNLOAD_FILE message to cluster");
     let mut msg = Message::new(DOWNLOAD_FILE, Priority::Highest, &uuid);
-    msg.push_uint(job_id as u32);
+    msg.push_uint(u32::try_from(job_id).unwrap());
     msg.push_string(&uuid);
     msg.push_string(&s_bundle);
     msg.push_string(&s_file_path);
@@ -520,7 +521,7 @@ pub async fn upload_file(
         return Err((StatusCode::BAD_REQUEST, details));
     }
 
-    let chunk_size = *settings::FILE_CHUNK_SIZE as usize;
+    let chunk_size = (*settings::FILE_CHUNK_SIZE) as usize;
     let mut total_read: u64 = 0;
 
     let body_bytes = to_bytes(request.into_body(), content_length as usize + 1)
@@ -660,7 +661,7 @@ pub async fn list_files(
     // Check if job is complete (enables caching)
     let job_complete = if job_id != 0 {
         job_history::Entity::find()
-            .filter(job_history::Column::JobId.eq(job_id as i64))
+            .filter(job_history::Column::JobId.eq(job_id.cast_signed()))
             .filter(job_history::Column::What.eq(JOB_COMPLETION_SOURCE))
             .one(&state.db)
             .await
@@ -673,7 +674,7 @@ pub async fn list_files(
     // Cache hit?
     if job_id != 0 && job_complete {
         let cached = file_list_cache::Entity::find()
-            .filter(file_list_cache::Column::JobId.eq(job_id as i64))
+            .filter(file_list_cache::Column::JobId.eq(job_id.cast_signed()))
             .all(&state.db)
             .await
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
@@ -683,8 +684,8 @@ pub async fn list_files(
                 .iter()
                 .map(|c| FileInfo {
                     file_name: c.path.clone(),
-                    file_size: c.file_size as u64,
-                    permissions: c.permissions as u32,
+                    file_size: c.file_size.cast_unsigned(),
+                    permissions: c.permissions.cast_unsigned(),
                     is_directory: c.is_dir,
                 })
                 .collect();
@@ -702,7 +703,7 @@ pub async fn list_files(
         .insert(uuid.clone(), Arc::clone(&fl_state));
 
     let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-    msg.push_uint(job_id as u32);
+    msg.push_uint(u32::try_from(job_id).unwrap());
     msg.push_string(&uuid);
     msg.push_string(&s_bundle);
     msg.push_string(&body.path);
@@ -797,7 +798,7 @@ async fn spawn_background_cache(
         .insert(uuid.clone(), Arc::clone(&fl_state));
 
     let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-    msg.push_uint(job_id as u32);
+    msg.push_uint(u32::try_from(job_id).unwrap());
     msg.push_string(&uuid);
     msg.push_string(&bundle);
     msg.push_string("");
@@ -891,7 +892,7 @@ pub async fn resolve_cluster_bundle_for_file_list(
     app_name: &str,
     job_id: u64,
 ) -> Result<(String, String), (StatusCode, String)> {
-    let j = job::Entity::find_by_id(job_id as i64)
+    let j = job::Entity::find_by_id(job_id.cast_signed())
         .filter(job::Column::Application.is_in(applications.to_vec()))
         .one(&state.db)
         .await

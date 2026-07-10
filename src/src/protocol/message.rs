@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 /// Binary message format compatible with the orchestrator wire protocol.
 ///
 /// All numeric types use little-endian byte order (`x86_64` native).

@@ -151,7 +151,7 @@ fn test_file_list_response_with_multiple_entries() {
 
     let mut msg = Message::new(FILE_LIST, Priority::Medium, "test_cluster");
     msg.push_string(uuid);
-    msg.push_uint(files.len() as u32);
+    msg.push_uint(files.len().try_into().unwrap());
     for f in &files {
         msg.push_string(&f.file_name);
         msg.push_bool(f.is_directory);
