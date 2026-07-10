@@ -216,6 +216,7 @@ async fn handle_job_get_by_job_id(
     cluster.send_message(response).await;
 }
 
+/// Looks up a cluster job by its primary key and returns zero or one row.
 async fn handle_job_get_by_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
