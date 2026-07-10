@@ -523,29 +523,51 @@ impl Cluster {
             });
         }
 
-        if let Some(ctx) = &self.app_context
-            && let Some(fl_state) = ctx.file_list_map.get(&uuid)
-        {
-            let mut state = fl_state.lock().await;
-            state.files = files;
-            state.data_ready = true;
-            state.notify.notify_waiters();
-        }
+        let Some(ctx) = &self.app_context else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_LIST received but no app_context (uuid={uuid})",
+                self.name()
+            );
+            return;
+        };
+        let Some(fl_state) = ctx.file_list_map.get(&uuid) else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_LIST received for unknown uuid={uuid}",
+                self.name()
+            );
+            return;
+        };
+
+        let mut state = fl_state.lock().await;
+        state.files = files;
+        state.data_ready = true;
+        state.notify.notify_waiters();
     }
 
     async fn handle_file_list_error(&self, message: &mut Message) {
         let uuid = message.pop_string();
         let detail = message.pop_string();
 
-        if let Some(ctx) = &self.app_context
-            && let Some(fl_state) = ctx.file_list_map.get(&uuid)
-        {
-            let mut state = fl_state.lock().await;
-            state.error = true;
-            state.error_details = detail;
-            state.data_ready = true;
-            state.notify.notify_waiters();
-        }
+        let Some(ctx) = &self.app_context else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_LIST_ERROR received but no app_context (uuid={uuid})",
+                self.name()
+            );
+            return;
+        };
+        let Some(fl_state) = ctx.file_list_map.get(&uuid) else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_LIST_ERROR received for unknown uuid={uuid}",
+                self.name()
+            );
+            return;
+        };
+
+        let mut state = fl_state.lock().await;
+        state.error = true;
+        state.error_details = detail;
+        state.data_ready = true;
+        state.notify.notify_waiters();
     }
 
     // ---- FileDownload message handling ----
