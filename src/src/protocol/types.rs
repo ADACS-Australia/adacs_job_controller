@@ -39,9 +39,10 @@ impl TryFrom<u32> for JobStatus {
     }
 }
 
-impl std::fmt::Display for JobStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl JobStatus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
             JobStatus::Pending => "Pending",
             JobStatus::Submitting => "Submitting",
             JobStatus::Submitted => "Submitted",
@@ -55,8 +56,13 @@ impl std::fmt::Display for JobStatus {
             JobStatus::WallTimeExceeded => "Wall Time Exceeded",
             JobStatus::OutOfMemory => "Out of Memory",
             JobStatus::Completed => "Completed",
-        };
-        write!(f, "{s}")
+        }
+    }
+}
+
+impl std::fmt::Display for JobStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -180,13 +186,20 @@ mod tests {
     }
 
     #[test]
+    fn test_job_status_as_str() {
+        assert_eq!(JobStatus::Pending.as_str(), "Pending");
+        assert_eq!(JobStatus::WallTimeExceeded.as_str(), "Wall Time Exceeded");
+        assert_eq!(JobStatus::Completed.as_str(), "Completed");
+    }
+
+    #[test]
     fn test_job_status_display() {
-        assert_eq!(format!("{}", JobStatus::Pending), "Pending");
+        assert_eq!(JobStatus::Pending.to_string(), "Pending");
         assert_eq!(
-            format!("{}", JobStatus::WallTimeExceeded),
+            JobStatus::WallTimeExceeded.to_string(),
             "Wall Time Exceeded"
         );
-        assert_eq!(format!("{}", JobStatus::Completed), "Completed");
+        assert_eq!(JobStatus::Completed.to_string(), "Completed");
     }
 
     #[test]
