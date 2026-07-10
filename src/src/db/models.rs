@@ -53,11 +53,18 @@ impl ClusterJob {
     }
 }
 
+/// A cluster job status record (wire format only — DB ops use `SeaORM` entities).
+///
+/// Tracks keyed status values (`what` / `state`) for a [`ClusterJob`].
 #[derive(Debug, Clone, Default)]
 pub struct ClusterJobStatus {
+    /// Row id in `jobserver_clusterjobstatus` (0 on insert).
     pub id: i64,
+    /// Parent cluster job id.
     pub job_id: i64,
+    /// Status category key (e.g. `"scheduler_id"`).
     pub what: String,
+    /// Status value for `what`.
     pub state: i32,
 }
 
