@@ -138,7 +138,7 @@ async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError
             config.name,
             exit_code
         );
-        return Err(SshError::CommandFailed(exit_code as i32));
+        return Err(SshError::CommandFailed(exit_code.cast_signed()));
     }
 
     tracing::info!("SSH[{}]: Connection completed successfully", config.name);

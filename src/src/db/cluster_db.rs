@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 /// `ClusterDB` message dispatcher.
 ///
 /// Handles database operation messages from remote cluster clients.
@@ -194,7 +195,7 @@ async fn handle_job_get_by_job_id(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
-    let job_id = message.pop_ulong() as i64;
+    let job_id = message.pop_ulong().cast_signed();
     let cluster_name = cluster.name();
 
     let rows: Vec<ClusterJob> = cluster_job::Entity::find()
@@ -208,7 +209,7 @@ async fn handle_job_get_by_job_id(
         .collect();
 
     let mut response = prepare_response(db_request_id);
-    response.push_uint(rows.len() as u32);
+    response.push_uint(rows.len().try_into().unwrap());
     for row in &rows {
         row.to_message(&mut response);
     }
@@ -221,7 +222,7 @@ async fn handle_job_get_by_id(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
-    let id = message.pop_ulong() as i64;
+    let id = message.pop_ulong().cast_signed();
 
     let row: Option<ClusterJob> = cluster_job::Entity::find_by_id(id)
         .one(db)
@@ -261,7 +262,7 @@ async fn handle_job_get_running_jobs(
         .collect();
 
     let mut response = prepare_response(db_request_id);
-    response.push_uint(rows.len() as u32);
+    response.push_uint(rows.len().try_into().unwrap());
     for row in &rows {
         row.to_message(&mut response);
     }
@@ -274,7 +275,7 @@ async fn handle_job_delete(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
-    let id = message.pop_ulong() as i64;
+    let id = message.pop_ulong().cast_signed();
 
     let _ = cluster_job::Entity::delete_by_id(id).exec(db).await;
 
@@ -311,7 +312,7 @@ async fn handle_job_save(
 
         let mut response = prepare_response(db_request_id);
         match result {
-            Ok(model) => response.push_ulong(model.id as u64),
+            Ok(model) => response.push_ulong(model.id.cast_unsigned()),
             Err(_) => response.push_ulong(0),
         }
         cluster.send_message(response).await;
@@ -333,7 +334,7 @@ async fn handle_job_save(
         let _ = active.update(db).await;
 
         let mut response = prepare_response(db_request_id);
-        response.push_ulong(job.id as u64);
+        response.push_ulong(job.id.cast_unsigned());
         cluster.send_message(response).await;
     }
 }
@@ -346,7 +347,7 @@ async fn handle_jobstatus_get_by_job_id_and_what(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
-    let job_id = message.pop_ulong() as i64;
+    let job_id = message.pop_ulong().cast_signed();
     let what = message.pop_string();
 
     let rows: Vec<ClusterJobStatus> = cluster_job_status::Entity::find()
@@ -360,7 +361,7 @@ async fn handle_jobstatus_get_by_job_id_and_what(
         .collect();
 
     let mut response = prepare_response(db_request_id);
-    response.push_uint(rows.len() as u32);
+    response.push_uint(rows.len().try_into().unwrap());
     for row in &rows {
         row.to_message(&mut response);
     }
@@ -373,7 +374,7 @@ async fn handle_jobstatus_get_by_job_id(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
-    let job_id = message.pop_ulong() as i64;
+    let job_id = message.pop_ulong().cast_signed();
 
     let rows: Vec<ClusterJobStatus> = cluster_job_status::Entity::find()
         .filter(cluster_job_status::Column::JobId.eq(job_id))
@@ -385,7 +386,7 @@ async fn handle_jobstatus_get_by_job_id(
         .collect();
 
     let mut response = prepare_response(db_request_id);
-    response.push_uint(rows.len() as u32);
+    response.push_uint(rows.len().try_into().unwrap());
     for row in &rows {
         row.to_message(&mut response);
     }
@@ -401,7 +402,7 @@ async fn handle_jobstatus_delete_by_id_list(
     let count = message.pop_uint();
 
     for _ in 0..count {
-        let id = message.pop_ulong() as i64;
+        let id = message.pop_ulong().cast_signed();
         let _ = cluster_job_status::Entity::delete_by_id(id).exec(db).await;
     }
 
@@ -430,7 +431,7 @@ async fn handle_jobstatus_save(
 
         let mut response = prepare_response(db_request_id);
         match result {
-            Ok(model) => response.push_ulong(model.id as u64),
+            Ok(model) => response.push_ulong(model.id.cast_unsigned()),
             Err(_) => response.push_ulong(0),
         }
         cluster.send_message(response).await;
@@ -445,7 +446,7 @@ async fn handle_jobstatus_save(
         let _ = active.update(db).await;
 
         let mut response = prepare_response(db_request_id);
-        response.push_ulong(status.id as u64);
+        response.push_ulong(status.id.cast_unsigned());
         cluster.send_message(response).await;
     }
 }
@@ -488,7 +489,7 @@ async fn handle_bundle_create_or_update(
             let _ = active.update(db).await;
 
             let mut response = prepare_response(db_request_id);
-            response.push_ulong(model.id as u64);
+            response.push_ulong(model.id.cast_unsigned());
             cluster.send_message(response).await;
         } else {
             // Bundle ID not found - insert new
@@ -503,7 +504,7 @@ async fn handle_bundle_create_or_update(
 
             let mut response = prepare_response(db_request_id);
             match result {
-                Ok(model) => response.push_ulong(model.id as u64),
+                Ok(model) => response.push_ulong(model.id.cast_unsigned()),
                 Err(_) => response.push_ulong(0),
             }
             cluster.send_message(response).await;
@@ -528,7 +529,7 @@ async fn handle_bundle_create_or_update(
             let _ = active.update(db).await;
 
             let mut response = prepare_response(db_request_id);
-            response.push_ulong(model.id as u64);
+            response.push_ulong(model.id.cast_unsigned());
             cluster.send_message(response).await;
         } else {
             // Insert
@@ -543,7 +544,7 @@ async fn handle_bundle_create_or_update(
 
             let mut response = prepare_response(db_request_id);
             match result {
-                Ok(model) => response.push_ulong(model.id as u64),
+                Ok(model) => response.push_ulong(model.id.cast_unsigned()),
                 Err(_) => response.push_ulong(0),
             }
             cluster.send_message(response).await;
@@ -557,7 +558,7 @@ async fn handle_bundle_get_by_id(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
-    let id = message.pop_ulong() as i64;
+    let id = message.pop_ulong().cast_signed();
 
     let row: Option<BundleJob> = bundle_job::Entity::find_by_id(id)
         .one(db)
@@ -584,7 +585,7 @@ async fn handle_bundle_delete(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
-    let id = message.pop_ulong() as i64;
+    let id = message.pop_ulong().cast_signed();
 
     let _ = bundle_job::Entity::delete_by_id(id).exec(db).await;
 

@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
@@ -18,6 +19,9 @@ pub struct Model {
     pub deleted: bool,
     pub cluster: String,
 }
+
+#[allow(clippy::struct_excessive_bools)]
+impl Model {}
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}

@@ -149,7 +149,7 @@ async fn test_handle_job_save_insert() {
     let returned_id = body.pop_ulong();
     // SeaORM with SQLite returns the real id
     assert!(
-        returned_id == 0 || returned_id == db_id as u64,
+        returned_id == 0 || returned_id == db_id.cast_unsigned(),
         "returned_id should be 0 (SQLite) or db_id, got {returned_id}"
     );
 }
@@ -235,7 +235,7 @@ async fn test_handle_job_save_update() {
     assert_eq!(captured.len(), 1);
     let (req_id, mut body) = parse_response(captured[0].clone());
     assert_eq!(req_id, 200);
-    assert_eq!(body.pop_ulong(), existing_id as u64);
+    assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +280,7 @@ async fn test_handle_job_get_by_id_found() {
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_JOB_GET_BY_ID, |m| {
         m.push_uint(301);
-        m.push_ulong(row_id as u64);
+        m.push_ulong(row_id.cast_unsigned());
     });
 
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
@@ -495,7 +495,7 @@ async fn test_handle_job_delete() {
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_JOB_DELETE, |m| {
         m.push_uint(600);
-        m.push_ulong(row_id as u64);
+        m.push_ulong(row_id.cast_unsigned());
     });
 
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
@@ -572,7 +572,10 @@ async fn test_handle_jobstatus_save_insert() {
         .await
         .unwrap()
         .unwrap();
-    assert!(new_id == 0 || new_id == actual.id as u64, "new_id={new_id}");
+    assert!(
+        new_id == 0 || new_id == actual.id.cast_unsigned(),
+        "new_id={new_id}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -636,7 +639,7 @@ async fn test_handle_jobstatus_save_update() {
     let captured = sent.lock().unwrap();
     let (req_id, mut body) = parse_response(captured[0].clone());
     assert_eq!(req_id, 701);
-    assert_eq!(body.pop_ulong(), existing_id as u64);
+    assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
 
 // ---------------------------------------------------------------------------
@@ -788,7 +791,7 @@ async fn test_handle_jobstatus_delete_by_id_list() {
         .insert(&db)
         .await
         .unwrap();
-        ids.push(inserted.id as u64);
+        ids.push(inserted.id.cast_unsigned());
     }
 
     let to_delete = [ids[0], ids[2]]; // delete "a" and "c"
@@ -878,7 +881,10 @@ async fn test_handle_bundle_create_or_update_new() {
         .await
         .unwrap()
         .unwrap();
-    assert!(new_id == 0 || new_id == actual.id as u64, "new_id={new_id}");
+    assert!(
+        new_id == 0 || new_id == actual.id.cast_unsigned(),
+        "new_id={new_id}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -946,7 +952,7 @@ async fn test_handle_bundle_create_or_update_existing() {
     let captured = sent.lock().unwrap();
     let (req_id, mut body) = parse_response(captured[0].clone());
     assert_eq!(req_id, 1101);
-    assert_eq!(body.pop_ulong(), existing_id as u64);
+    assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
 
 // ---------------------------------------------------------------------------
@@ -984,7 +990,7 @@ async fn test_handle_bundle_get_by_id_found() {
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_BUNDLE_GET_JOB_BY_ID, |m| {
         m.push_uint(1200);
-        m.push_ulong(bundle_id as u64);
+        m.push_ulong(bundle_id.cast_unsigned());
     });
 
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
@@ -1067,7 +1073,7 @@ async fn test_handle_bundle_delete() {
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_BUNDLE_DELETE_JOB, |m| {
         m.push_uint(1300);
-        m.push_ulong(bundle_id as u64);
+        m.push_ulong(bundle_id.cast_unsigned());
     });
 
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
@@ -1170,7 +1176,7 @@ async fn test_handle_jobstatus_get_by_job_id_nonexistent_job() {
     let job_row_id = inserted.id;
 
     // Request statuses for a job ID that doesn't exist
-    let invalid_job_id = (job_row_id + 100) as u64;
+    let invalid_job_id = (job_row_id + 100).cast_unsigned();
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID, |m| {
         m.push_uint(5001);
@@ -1239,7 +1245,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
     .unwrap();
 
     // Query with a non-existent job ID
-    let invalid_job_id = (job_row_id + 100) as u64;
+    let invalid_job_id = (job_row_id + 100).cast_unsigned();
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT, |m| {
         m.push_uint(5002);

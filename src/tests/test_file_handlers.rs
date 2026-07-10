@@ -366,6 +366,7 @@ async fn test_download_file_cluster_offline_returns_503() {
 /// and the exact chunk bytes in the response body for **each of the 5 downloads**,
 /// matching the C++ `test_file_transfer` behavior with `BOOST_CHECK_EQUAL_COLLECTIONS`.
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_download_file_streams_chunks() {
     let db = setup_test_db().await;
     // Generate random file data like the C++ test (0 to 1MB range)

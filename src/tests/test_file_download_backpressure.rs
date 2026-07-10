@@ -234,7 +234,7 @@ async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
 
     // Set received_bytes >> sent_bytes to exceed the buffer limit
     let max_buf = *MAX_FILE_BUFFER_SIZE;
-    let large_data = vec![0u8; (max_buf + 1024) as usize];
+    let large_data = vec![0u8; usize::try_from(max_buf + 1024).unwrap()];
     let msg = make_file_chunk_message(&large_data);
     cluster.handle_message(msg).await;
 
@@ -316,7 +316,7 @@ async fn test_backpressure_pause_not_resent_when_already_paused() {
 
     // Send large chunk — should not send another PAUSE
     let max_buf = *MAX_FILE_BUFFER_SIZE;
-    let large_data = vec![0u8; (max_buf + 1024) as usize];
+    let large_data = vec![0u8; usize::try_from(max_buf + 1024).unwrap()];
     let msg = make_file_chunk_message(&large_data);
     cluster.handle_message(msg).await;
 
@@ -364,7 +364,7 @@ async fn test_resume_logic_via_sent_bytes_update() {
 
     // 1. Simulate large incoming data → triggers PAUSE
     let max_buf = *MAX_FILE_BUFFER_SIZE;
-    let large_data = vec![0u8; (max_buf + 1024) as usize];
+    let large_data = vec![0u8; usize::try_from(max_buf + 1024).unwrap()];
     let received_total = large_data.len() as u64;
     download_state
         .received_bytes

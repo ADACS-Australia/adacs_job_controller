@@ -1485,7 +1485,7 @@ async fn test_upload_large_body_is_chunked() {
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
-    let chunk_size = *FILE_CHUNK_SIZE as usize;
+    let chunk_size: usize = (*FILE_CHUNK_SIZE).try_into().unwrap();
     // Create a body that's 2.5x the chunk size
     let body_size = chunk_size * 2 + chunk_size / 2;
     let payload = vec![0xABu8; body_size];
@@ -1964,6 +1964,7 @@ async fn test_file_transfer_no_details_returns_503() {
 /// # Assert
 /// Both responses are 200 OK with `status: "completed"`, and each has a unique `uploadId`.
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_continuous_file_uploads_sequential() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
@@ -2110,6 +2111,7 @@ async fn test_continuous_file_uploads_sequential() {
 ///
 /// # Assert
 /// Response is 200 OK; `UPLOAD_FILE` message has jobId=0, correct bundle, path, and file size.
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_file_upload_with_cluster_bundle_no_job_id() {
     let db = setup_test_db().await;
@@ -2261,6 +2263,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
 ///
 /// # Assert
 /// DB cache contains 2 files; PATCH response returns the 2 cached files;
+#[allow(clippy::too_many_lines)]
 /// mock cluster's `send_message` is never called (cache hit).
 #[tokio::test]
 async fn test_job_finished_update_populates_cache() {
@@ -2326,7 +2329,7 @@ async fn test_job_finished_update_populates_cache() {
 
     // Send UPDATE_JOB with what="_job_completion_" to trigger the cache population.
     let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
-    msg.push_uint(job_id as u32);
+    msg.push_uint(job_id.try_into().unwrap());
     msg.push_string(JOB_COMPLETION_SOURCE);
     msg.push_uint(90u32); // ERROR status — triggers the completion path regardless
     msg.push_string("Job completed with errors");
@@ -2519,6 +2522,7 @@ fn get_memory_usage_kb() -> u64 {
 ///
 /// # Assert
 /// - Memory growth stays under 200MB throughout transfer
+#[allow(clippy::too_many_lines)]
 /// - Backpressure triggered (`received_bytes` - `sent_bytes` exceeded buffer)
 /// - Total bytes received matches file size
 #[tokio::test]
@@ -2636,7 +2640,7 @@ async fn test_large_file_transfers() {
             }
 
             let remaining = file_size - bytes_sent;
-            let this_chunk_size = std::cmp::min(chunk_size as u64, remaining) as usize;
+            let this_chunk_size = std::cmp::min(chunk_size, usize::try_from(remaining).unwrap());
 
             // Generate random chunk data
             let mut chunk_data: Vec<u8> = vec![0; this_chunk_size];
@@ -2767,6 +2771,7 @@ async fn test_large_file_transfers() {
 /// - Memory monitored throughout transfer
 ///
 /// # Assert
+#[allow(clippy::too_many_lines)]
 /// - Memory growth stays under 50MB throughout upload
 /// - Upload completes successfully (status: "completed")
 /// - Data integrity verified (`UPLOAD_FILE` message contains correct fileSize)

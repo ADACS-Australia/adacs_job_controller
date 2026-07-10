@@ -1,3 +1,4 @@
+#![allow(clippy::pedantic)]
 use crate::protocol::message::Message;
 
 // ============================================================
@@ -23,11 +24,11 @@ pub struct ClusterJob {
 
 impl ClusterJob {
     pub fn to_message(&self, msg: &mut Message) {
-        msg.push_ulong(self.id as u64);
-        msg.push_ulong(self.job_id as u64);
-        msg.push_ulong(self.scheduler_id as u64);
+        msg.push_ulong(self.id.cast_unsigned());
+        msg.push_ulong(self.job_id.cast_unsigned());
+        msg.push_ulong(self.scheduler_id.cast_unsigned());
         msg.push_bool(self.submitting);
-        msg.push_uint(self.submitting_count as u32);
+        msg.push_uint(self.submitting_count.cast_unsigned());
         msg.push_string(&self.bundle_hash);
         msg.push_string(&self.working_directory);
         msg.push_bool(self.running);
@@ -37,11 +38,11 @@ impl ClusterJob {
 
     pub fn from_message(msg: &mut Message) -> Self {
         Self {
-            id: msg.pop_ulong() as i64,
-            job_id: msg.pop_ulong() as i64,
-            scheduler_id: msg.pop_ulong() as i64,
+            id: msg.pop_ulong().cast_signed(),
+            job_id: msg.pop_ulong().cast_signed(),
+            scheduler_id: msg.pop_ulong().cast_signed(),
             submitting: msg.pop_bool(),
-            submitting_count: msg.pop_uint() as i32,
+            submitting_count: msg.pop_uint().cast_signed(),
             bundle_hash: msg.pop_string(),
             working_directory: msg.pop_string(),
             running: msg.pop_bool(),
@@ -62,18 +63,18 @@ pub struct ClusterJobStatus {
 
 impl ClusterJobStatus {
     pub fn to_message(&self, msg: &mut Message) {
-        msg.push_ulong(self.id as u64);
-        msg.push_ulong(self.job_id as u64);
+        msg.push_ulong(self.id.cast_unsigned());
+        msg.push_ulong(self.job_id.cast_unsigned());
         msg.push_string(&self.what);
-        msg.push_uint(self.state as u32);
+        msg.push_uint(self.state.cast_unsigned());
     }
 
     pub fn from_message(msg: &mut Message) -> Self {
         Self {
-            id: msg.pop_ulong() as i64,
-            job_id: msg.pop_ulong() as i64,
+            id: msg.pop_ulong().cast_signed(),
+            job_id: msg.pop_ulong().cast_signed(),
             what: msg.pop_string(),
-            state: msg.pop_uint() as i32,
+            state: msg.pop_uint().cast_signed(),
         }
     }
 }
@@ -89,13 +90,13 @@ pub struct BundleJob {
 
 impl BundleJob {
     pub fn to_message(&self, msg: &mut Message) {
-        msg.push_ulong(self.id as u64);
+        msg.push_ulong(self.id.cast_unsigned());
         msg.push_string(&self.content);
     }
 
     pub fn from_message(msg: &mut Message) -> Self {
         Self {
-            id: msg.pop_ulong() as i64,
+            id: msg.pop_ulong().cast_signed(),
             content: msg.pop_string(),
             cluster: String::new(),
             bundle_hash: String::new(),
