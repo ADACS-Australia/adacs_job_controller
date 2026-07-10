@@ -86,6 +86,11 @@ where
 
 /// Build the applications list from the secret (the secret's own name + its applications).
 #[must_use]
+/// Return application names authorized by this access secret.
+///
+/// Always includes the secret's own `name` plus any additional entries from
+/// `applications` (one JWT secret may serve multiple client apps).
+#[must_use]
 pub fn get_applications(secret: &AccessSecret) -> Vec<String> {
     let mut apps = vec![secret.name.clone()];
     apps.extend(secret.applications.iter().cloned());
