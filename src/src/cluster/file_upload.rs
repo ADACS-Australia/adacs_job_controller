@@ -6,14 +6,17 @@ use std::sync::atomic::AtomicBool;
 pub struct FileUploadState {
     /// Error state (set by WS handler if remote reports error)
     pub error: AtomicBool,
+    /// Human-readable error message from the remote cluster
     pub error_details: tokio::sync::Mutex<String>,
 
-    /// Completion state
+    /// Set when the remote cluster reports upload completion
     pub complete: AtomicBool,
+    /// Set when at least one chunk of upload data has been received
     pub received_data: AtomicBool,
 
-    /// Notification for readiness/error/completion
+    /// Notifies HTTP handler when data is ready, an error occurs, or upload completes
     pub data_notify: tokio::sync::Notify,
+    /// Set when file metadata or an error is available for the HTTP handler to read
     pub data_ready: AtomicBool,
 }
 
