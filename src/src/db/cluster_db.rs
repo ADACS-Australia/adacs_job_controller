@@ -28,6 +28,7 @@ use crate::protocol::types::Priority;
 
 // Conversions from SeaORM models to wire structs
 
+/// Map a persisted `cluster_job` row to the binary-protocol [`ClusterJob`] wire struct.
 impl From<cluster_job::Model> for ClusterJob {
     fn from(m: cluster_job::Model) -> Self {
         Self {
@@ -46,6 +47,7 @@ impl From<cluster_job::Model> for ClusterJob {
     }
 }
 
+/// Map a persisted `cluster_job_status` row to the binary-protocol [`ClusterJobStatus`] wire struct.
 impl From<cluster_job_status::Model> for ClusterJobStatus {
     fn from(m: cluster_job_status::Model) -> Self {
         Self {
@@ -57,6 +59,7 @@ impl From<cluster_job_status::Model> for ClusterJobStatus {
     }
 }
 
+/// Map a persisted `bundle_job` row to the binary-protocol [`BundleJob`] wire struct.
 impl From<bundle_job::Model> for BundleJob {
     fn from(m: bundle_job::Model) -> Self {
         Self {
