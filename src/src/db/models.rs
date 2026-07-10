@@ -23,6 +23,9 @@ pub struct ClusterJob {
 }
 
 impl ClusterJob {
+    /// Serialize this job record into a binary protocol message body.
+    ///
+    /// Field order matches the C++ cluster client wire format.
     pub fn to_message(&self, msg: &mut Message) {
         msg.push_ulong(self.id.cast_unsigned());
         msg.push_ulong(self.job_id.cast_unsigned());
@@ -36,6 +39,9 @@ impl ClusterJob {
         msg.push_bool(self.deleted);
     }
 
+    /// Deserialize a cluster job record from a binary protocol message body.
+    ///
+    /// The `cluster` field is not present on the wire and defaults to empty.
     pub fn from_message(msg: &mut Message) -> Self {
         Self {
             id: msg.pop_ulong().cast_signed(),
