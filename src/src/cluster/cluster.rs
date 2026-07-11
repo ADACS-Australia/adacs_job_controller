@@ -645,6 +645,7 @@ impl Cluster {
         );
     }
 
+    /// Handles FILE_DETAILS messages by extracting the file size and notifying waiting readers.
     fn handle_file_details(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
             tracing::warn!(
