@@ -24,41 +24,61 @@ use crate::utils::uuid::generate_uuid;
 
 // ---- Request/Response types ----
 
+/// JSON body for `POST /job/apiv1/file/` — create file download records.
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateFileDownloadRequest {
+    /// Job ID used to resolve cluster and bundle (alternative to explicit `cluster`/`bundle`).
     #[serde(rename = "jobId")]
     pub job_id: Option<u64>,
+    /// Single file path to download (alternative to `paths`).
     pub path: Option<String>,
+    /// Multiple file paths to download in one request.
     pub paths: Option<Vec<String>>,
+    /// Target cluster name when not resolving via `jobId`.
     pub cluster: Option<String>,
+    /// Bundle identifier when not resolving via `jobId`.
     pub bundle: Option<String>,
 }
 
+/// Query parameters for `GET /job/apiv1/file/` — stream a file download.
 #[derive(Debug, serde::Deserialize)]
 pub struct FileDownloadQuery {
+    /// UUID of the file download record to stream.
     #[serde(rename = "fileId")]
     pub file_id: Option<String>,
+    /// When set, forces `Content-Disposition: attachment` instead of inline display.
     #[serde(rename = "forceDownload")]
     pub force_download: Option<String>,
 }
 
+/// Query parameters for `PUT /job/apiv1/file/upload/` — upload a file to a cluster.
 #[derive(Debug, serde::Deserialize)]
 pub struct FileUploadQuery {
+    /// Job ID used to resolve cluster and bundle (alternative to explicit `cluster`/`bundle`).
     #[serde(rename = "jobId")]
     pub job_id: Option<u64>,
+    /// Target cluster name when not resolving via `jobId`.
     pub cluster: Option<String>,
+    /// Bundle identifier when not resolving via `jobId`.
     pub bundle: Option<String>,
+    /// Destination path on the remote cluster for the uploaded file.
     #[serde(rename = "targetPath")]
     pub target_path: Option<String>,
 }
 
+/// JSON body for `PATCH /job/apiv1/file/` — list files on a remote cluster.
 #[derive(Debug, serde::Deserialize)]
 pub struct FileListRequest {
+    /// Job ID used to resolve cluster and bundle (alternative to explicit `cluster`/`bundle`).
     #[serde(rename = "jobId")]
     pub job_id: Option<u64>,
+    /// When true, include files in subdirectories recursively.
     pub recursive: bool,
+    /// Directory path on the remote cluster to list.
     pub path: String,
+    /// Target cluster name when not resolving via `jobId`.
     pub cluster: Option<String>,
+    /// Bundle identifier when not resolving via `jobId`.
     pub bundle: Option<String>,
 }
 
