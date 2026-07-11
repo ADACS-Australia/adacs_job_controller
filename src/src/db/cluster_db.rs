@@ -401,6 +401,7 @@ async fn handle_jobstatus_get_by_job_id(
     cluster.send_message(response).await;
 }
 
+/// Deletes cluster job status rows by primary key list and sends an empty DB response.
 async fn handle_jobstatus_delete_by_id_list(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
