@@ -349,6 +349,7 @@ async fn handle_job_save(
 
 // ---- DB_JOBSTATUS_* handlers ----
 
+/// Looks up cluster job status rows by job ID and status type, then sends a `DB_RESPONSE` with matching rows.
 async fn handle_jobstatus_get_by_job_id_and_what(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
