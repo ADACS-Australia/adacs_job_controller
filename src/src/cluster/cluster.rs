@@ -27,7 +27,9 @@ use crate::utils::uuid::generate_uuid;
 
 /// Shared application context needed by Cluster for DB and file-list coordination.
 pub struct AppContext {
+    /// `SeaORM` connection for cluster-side database operations (token lookups, job persistence).
     pub db: sea_orm::DatabaseConnection,
+    /// In-flight file list requests keyed by request UUID, shared with HTTP handlers.
     pub file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
 }
 
