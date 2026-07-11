@@ -553,6 +553,7 @@ impl Cluster {
 
     // ---- FileDownload message handling ----
 
+    /// Forwards a file chunk to the HTTP download handler and sends `PAUSE_FILE_CHUNK_STREAM` when buffered bytes exceed the limit.
     async fn handle_file_chunk(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
             tracing::warn!(
