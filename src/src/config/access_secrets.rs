@@ -1,11 +1,19 @@
 use serde::Deserialize;
 use std::path::Path;
 
+/// JWT access configuration for an application or group of applications.
+///
+/// Loaded from `access_secrets.json` and used to validate HTTP `Authorization` tokens
+/// (HS256) and to enforce cluster and application permissions.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AccessSecret {
+    /// Primary application identifier; also included in the authorized applications list.
     pub name: String,
+    /// Shared secret for HS256 JWT validation.
     pub secret: String,
+    /// Additional application names that may use this JWT secret.
     pub applications: Vec<String>,
+    /// Cluster names this secret is permitted to access.
     pub clusters: Vec<String>,
 }
 
