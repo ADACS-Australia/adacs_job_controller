@@ -1,18 +1,34 @@
+/// Lifecycle state of a job on a cluster.
+///
+/// Wire-compatible `u32` values shared with the C++ orchestrator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum JobStatus {
+    /// Job accepted but not yet submitted to the scheduler (= 10).
     Pending = 10,
+    /// Job is being submitted to the cluster scheduler (= 20).
     Submitting = 20,
+    /// Job has been submitted to the scheduler (= 30).
     Submitted = 30,
+    /// Job is queued on the cluster, awaiting execution (= 40).
     Queued = 40,
+    /// Job is actively running on the cluster (= 50).
     Running = 50,
+    /// Cancellation has been requested but not yet confirmed (= 60).
     Cancelling = 60,
+    /// Job was cancelled before completion (= 70).
     Cancelled = 70,
+    /// Job artifacts are being deleted from the cluster (= 80).
     Deleting = 80,
+    /// Job and its artifacts have been removed (= 90).
     Deleted = 90,
+    /// Job failed with a generic error (= 400).
     Error = 400,
+    /// Job exceeded its allocated wall-clock time (= 401).
     WallTimeExceeded = 401,
+    /// Job terminated due to out-of-memory (= 402).
     OutOfMemory = 402,
+    /// Job finished successfully (= 500).
     Completed = 500,
 }
 
@@ -60,10 +76,17 @@ impl std::fmt::Display for JobStatus {
     }
 }
 
+/// Role of a cluster WebSocket connection.
+///
+/// Determines which message handlers are active and how the connection
+/// is labelled in logs (`as_str()`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClusterRole {
+    /// Primary scheduler connection for job submission and updates.
     Master,
+    /// Dedicated connection for streaming file downloads to clients.
     FileDownload,
+    /// Dedicated connection for receiving file uploads from clients.
     FileUpload,
 }
 
@@ -84,11 +107,18 @@ impl std::fmt::Display for ClusterRole {
     }
 }
 
+/// Message queue priority for outbound WebSocket traffic.
+///
+/// Wire-compatible `u8` values shared with the C++ orchestrator.
+/// Lower numeric values indicate higher scheduling priority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum Priority {
+    /// Highest priority (= 0).
     Highest = 0,
+    /// Normal priority (= 10).
     Medium = 10,
+    /// Lowest priority (= 19).
     Lowest = 19,
 }
 
