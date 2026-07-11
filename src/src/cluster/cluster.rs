@@ -372,6 +372,7 @@ impl Cluster {
 
     // ---- Message handling ----
 
+    /// Processes an `UPDATE_JOB` message by recording job history and caching the file list on completion.
     async fn handle_update_job(&self, message: &mut Message) {
         use crate::db::entities::job_history;
         use sea_orm::{ActiveModelTrait, ActiveValue::Set};
