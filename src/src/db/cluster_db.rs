@@ -584,6 +584,7 @@ async fn handle_bundle_get_by_id(
     cluster.send_message(response).await;
 }
 
+/// Deletes a bundle job by ID and sends an empty `DB_RESPONSE`.
 async fn handle_bundle_delete(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
