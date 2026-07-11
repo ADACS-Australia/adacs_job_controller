@@ -665,9 +665,18 @@ impl Cluster {
 
     async fn handle_file_upload_error(&self, message: &mut Message) {
         let Some(state) = &self.file_upload_state else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_UPLOAD_ERROR received but no file_upload_state",
+                self.name()
+            );
             return;
         };
         let details = message.pop_string();
+        tracing::warn!(
+            "Cluster[{}]: FILE_UPLOAD_ERROR received - {}",
+            self.name(),
+            details
+        );
         *state.error_details.lock().await = details;
         state.error.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
