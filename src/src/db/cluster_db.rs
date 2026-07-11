@@ -189,6 +189,7 @@ fn prepare_response(db_request_id: u32) -> Message {
 
 // ---- DB_JOB_* handlers ----
 
+/// Looks up cluster jobs by external job ID and sends a `DB_RESPONSE` with matching rows.
 async fn handle_job_get_by_job_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
