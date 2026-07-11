@@ -732,6 +732,11 @@ impl Cluster {
             return;
         }
         let Some(ctx) = &self.app_context else {
+            tracing::warn!(
+                "Cluster[{}]: {} skipped - no app context available",
+                self.name(),
+                log_label
+            );
             return;
         };
         let db = &ctx.db;
