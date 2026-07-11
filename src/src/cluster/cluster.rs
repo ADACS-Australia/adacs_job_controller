@@ -685,10 +685,15 @@ impl Cluster {
     /// Signals that the file-upload server is ready and unblocks waiting upload readers.
     #[allow(clippy::unused_async)]
     async fn handle_server_ready(&self) {
-        if let Some(state) = &self.file_upload_state {
-            state.data_ready.store(true, Ordering::Release);
-            state.data_notify.notify_waiters();
-        }
+        let Some(state) = &self.file_upload_state else {
+            tracing::warn!(
+                "Cluster[{}]: SERVER_READY received but no file_upload_state",
+                self.name()
+            );
+            return;
+        };
+        state.data_ready.store(true, Ordering::Release);
+        state.data_notify.notify_waiters();
     }
 
     /// Stores the file upload error details and notifies any waiting readers.
@@ -715,6 +720,10 @@ impl Cluster {
     /// Marks the file upload as complete and notifies any waiting readers.
     fn handle_file_upload_complete(&self) {
         let Some(state) = &self.file_upload_state else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_UPLOAD_COMPLETE received but no file_upload_state",
+                self.name()
+            );
             return;
         };
         state.complete.store(true, Ordering::Release);
