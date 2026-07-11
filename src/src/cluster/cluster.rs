@@ -73,9 +73,9 @@ impl Cluster {
     #[must_use]
     pub fn new(details: ClusterConfig, app_context: Option<Arc<AppContext>>) -> Arc<Self> {
         let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
@@ -106,9 +106,9 @@ impl Cluster {
         pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
     ) -> Arc<Self> {
         let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
@@ -138,9 +138,9 @@ impl Cluster {
         app_context: Option<Arc<AppContext>>,
     ) -> Arc<Self> {
         let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
@@ -1090,7 +1090,7 @@ mod tests {
         {
             let map = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1119,19 +1119,19 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let m = cluster
                 .queue
-                .get(&(Priority::Medium as u8))
+                .get(&(Priority::Medium.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1144,19 +1144,19 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let m = cluster
                 .queue
-                .get(&(Priority::Medium as u8))
+                .get(&(Priority::Medium.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1169,13 +1169,13 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1187,7 +1187,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1199,7 +1199,7 @@ mod tests {
         {
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1220,7 +1220,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1231,7 +1231,7 @@ mod tests {
         {
             let mut h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1263,7 +1263,7 @@ mod tests {
         {
             let mut l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1311,7 +1311,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1320,7 +1320,7 @@ mod tests {
         {
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1332,7 +1332,7 @@ mod tests {
         {
             let mut l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1345,7 +1345,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1354,7 +1354,7 @@ mod tests {
         {
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1366,7 +1366,7 @@ mod tests {
         {
             let mut h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1375,7 +1375,7 @@ mod tests {
         {
             let mut l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1388,7 +1388,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1398,7 +1398,7 @@ mod tests {
         {
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1423,12 +1423,12 @@ mod tests {
         // No data -> no higher priority data at any level
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1438,17 +1438,17 @@ mod tests {
             .await;
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1458,17 +1458,17 @@ mod tests {
             .await;
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1478,17 +1478,17 @@ mod tests {
             .await;
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1501,17 +1501,17 @@ mod tests {
             .await;
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1519,7 +1519,7 @@ mod tests {
         {
             let mut h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1529,17 +1529,17 @@ mod tests {
         }
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1547,7 +1547,7 @@ mod tests {
         {
             let mut m = cluster
                 .queue
-                .get(&(Priority::Medium as u8))
+                .get(&(Priority::Medium.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1556,7 +1556,7 @@ mod tests {
         {
             let mut l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1564,24 +1564,24 @@ mod tests {
         }
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
         // Testing a priority value beyond Lowest should return false
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Lowest as u8 + 1)
+                .has_higher_priority_data(Priority::Lowest.as_u8() + 1)
                 .await
         );
     }
