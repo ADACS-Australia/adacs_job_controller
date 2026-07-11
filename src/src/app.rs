@@ -15,8 +15,11 @@ pub struct AppState {
     /// `SeaORM` connection for HTTP handler database operations.
     /// Backed by `MySQL` in production, `SQLite` in tests.
     pub db: sea_orm::DatabaseConnection,
+    /// Cluster lifecycle manager for WebSocket connections and file transfer sessions.
     pub cluster_manager: Arc<dyn ClusterManagerTrait>,
+    /// In-flight file list requests keyed by cache UUID.
     pub file_list_map: Arc<DashMap<String, Arc<Mutex<FileListState>>>>,
+    /// JWT signing secrets loaded from `access_secrets.json`.
     pub jwt_secrets: Arc<Vec<AccessSecret>>,
     /// Override for client timeout seconds. `None` uses the static default.
     pub client_timeout_seconds: Option<u64>,
