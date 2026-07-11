@@ -534,6 +534,7 @@ impl Cluster {
         }
     }
 
+    /// Handles a `FILE_LIST_ERROR` response by recording the error details and waking waiters.
     async fn handle_file_list_error(&self, message: &mut Message) {
         let uuid = message.pop_string();
         let detail = message.pop_string();
