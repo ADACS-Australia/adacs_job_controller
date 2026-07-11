@@ -28,6 +28,7 @@ use crate::protocol::types::Priority;
 
 // Conversions from SeaORM models to wire structs
 
+/// Convert a persisted `cluster_job` row into the wire-format [`ClusterJob`].
 impl From<cluster_job::Model> for ClusterJob {
     fn from(m: cluster_job::Model) -> Self {
         Self {
@@ -46,6 +47,7 @@ impl From<cluster_job::Model> for ClusterJob {
     }
 }
 
+/// Convert a persisted `cluster_job_status` row into the wire-format [`ClusterJobStatus`].
 impl From<cluster_job_status::Model> for ClusterJobStatus {
     fn from(m: cluster_job_status::Model) -> Self {
         Self {
@@ -57,6 +59,7 @@ impl From<cluster_job_status::Model> for ClusterJobStatus {
     }
 }
 
+/// Convert a persisted `bundle_job` row into the wire-format [`BundleJob`].
 impl From<bundle_job::Model> for BundleJob {
     fn from(m: bundle_job::Model) -> Self {
         Self {
@@ -181,6 +184,7 @@ pub async fn maybe_handle_cluster_db_message(
     }
 }
 
+/// Builds a `DB_RESPONSE` message tagged with the originating request ID.
 fn prepare_response(db_request_id: u32) -> Message {
     let mut msg = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
     msg.push_uint(db_request_id);
@@ -189,6 +193,7 @@ fn prepare_response(db_request_id: u32) -> Message {
 
 // ---- DB_JOB_* handlers ----
 
+/// Looks up cluster jobs by external job ID and sends a `DB_RESPONSE` with matching rows.
 async fn handle_job_get_by_job_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -216,6 +221,7 @@ async fn handle_job_get_by_job_id(
     cluster.send_message(response).await;
 }
 
+/// Looks up a cluster job by its primary key and returns zero or one row.
 async fn handle_job_get_by_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -269,6 +275,7 @@ async fn handle_job_get_running_jobs(
     cluster.send_message(response).await;
 }
 
+/// Deletes a cluster job row by primary key and sends an empty DB response.
 async fn handle_job_delete(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -283,6 +290,7 @@ async fn handle_job_delete(
     cluster.send_message(response).await;
 }
 
+/// Inserts or updates a cluster job row and sends a `DB_RESPONSE` with the row ID.
 async fn handle_job_save(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -341,6 +349,7 @@ async fn handle_job_save(
 
 // ---- DB_JOBSTATUS_* handlers ----
 
+/// Looks up cluster job status rows by job ID and status type, then sends a `DB_RESPONSE` with matching rows.
 async fn handle_jobstatus_get_by_job_id_and_what(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -368,6 +377,7 @@ async fn handle_jobstatus_get_by_job_id_and_what(
     cluster.send_message(response).await;
 }
 
+/// Looks up cluster job status rows by job ID and sends a `DB_RESPONSE` with matching rows.
 async fn handle_jobstatus_get_by_job_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -393,6 +403,7 @@ async fn handle_jobstatus_get_by_job_id(
     cluster.send_message(response).await;
 }
 
+/// Deletes cluster job status rows by primary key list and sends an empty DB response.
 async fn handle_jobstatus_delete_by_id_list(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -410,6 +421,7 @@ async fn handle_jobstatus_delete_by_id_list(
     cluster.send_message(response).await;
 }
 
+/// Inserts or updates a cluster job status row and sends a `DB_RESPONSE` with the row ID.
 async fn handle_jobstatus_save(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -453,6 +465,7 @@ async fn handle_jobstatus_save(
 
 // ---- DB_BUNDLE_* handlers ----
 
+/// Inserts or updates a bundle job row and sends a `DB_RESPONSE` with the row ID.
 async fn handle_bundle_create_or_update(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -552,6 +565,7 @@ async fn handle_bundle_create_or_update(
     }
 }
 
+/// Fetches a bundle job by ID and sends a `DB_RESPONSE` with the row or count=0.
 async fn handle_bundle_get_by_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
@@ -579,6 +593,7 @@ async fn handle_bundle_get_by_id(
     cluster.send_message(response).await;
 }
 
+/// Deletes a bundle job by ID and sends an empty `DB_RESPONSE`.
 async fn handle_bundle_delete(
     message: &mut Message,
     cluster: &dyn ClusterTrait,

@@ -1,18 +1,34 @@
+/// Lifecycle state of a job on a cluster.
+///
+/// Wire-compatible `u32` values shared with the C++ orchestrator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum JobStatus {
+    /// Job accepted but not yet submitted to the scheduler (= 10).
     Pending = 10,
+    /// Job is being submitted to the cluster scheduler (= 20).
     Submitting = 20,
+    /// Job has been submitted to the scheduler (= 30).
     Submitted = 30,
+    /// Job is queued on the cluster, awaiting execution (= 40).
     Queued = 40,
+    /// Job is actively running on the cluster (= 50).
     Running = 50,
+    /// Cancellation has been requested but not yet confirmed (= 60).
     Cancelling = 60,
+    /// Job was cancelled before completion (= 70).
     Cancelled = 70,
+    /// Job artifacts are being deleted from the cluster (= 80).
     Deleting = 80,
+    /// Job and its artifacts have been removed (= 90).
     Deleted = 90,
+    /// Job failed with a generic error (= 400).
     Error = 400,
+    /// Job exceeded its allocated wall-clock time (= 401).
     WallTimeExceeded = 401,
+    /// Job terminated due to out-of-memory (= 402).
     OutOfMemory = 402,
+    /// Job finished successfully (= 500).
     Completed = 500,
 }
 
@@ -39,9 +55,10 @@ impl TryFrom<u32> for JobStatus {
     }
 }
 
-impl std::fmt::Display for JobStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl JobStatus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
             JobStatus::Pending => "Pending",
             JobStatus::Submitting => "Submitting",
             JobStatus::Submitted => "Submitted",
@@ -55,15 +72,27 @@ impl std::fmt::Display for JobStatus {
             JobStatus::WallTimeExceeded => "Wall Time Exceeded",
             JobStatus::OutOfMemory => "Out of Memory",
             JobStatus::Completed => "Completed",
-        };
-        write!(f, "{s}")
+        }
     }
 }
 
+impl std::fmt::Display for JobStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Role of a cluster WebSocket connection.
+///
+/// Determines which message handlers are active and how the connection
+/// is labelled in logs (`as_str()`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClusterRole {
+    /// Primary scheduler connection for job submission and updates.
     Master,
+    /// Dedicated connection for streaming file downloads to clients.
     FileDownload,
+    /// Dedicated connection for receiving file uploads from clients.
     FileUpload,
 }
 
@@ -144,10 +173,15 @@ pub struct FileInfo {
 /// Shared state for a file list request.
 /// Used to coordinate between HTTP handler (waiting) and WebSocket handler (providing data).
 pub struct FileListState {
+    /// Collected file entries from the remote cluster (empty until the list completes).
     pub files: Vec<FileInfo>,
+    /// Whether the remote cluster reported an error for this list request.
     pub error: bool,
+    /// Human-readable error message when `error` is true.
     pub error_details: String,
+    /// Whether the WebSocket handler has finished populating `files` or set `error`.
     pub data_ready: bool,
+    /// Wakes the HTTP handler when `data_ready` becomes true.
     pub notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
@@ -210,13 +244,20 @@ mod tests {
     }
 
     #[test]
+    fn test_job_status_as_str() {
+        assert_eq!(JobStatus::Pending.as_str(), "Pending");
+        assert_eq!(JobStatus::WallTimeExceeded.as_str(), "Wall Time Exceeded");
+        assert_eq!(JobStatus::Completed.as_str(), "Completed");
+    }
+
+    #[test]
     fn test_job_status_display() {
-        assert_eq!(format!("{}", JobStatus::Pending), "Pending");
+        assert_eq!(JobStatus::Pending.to_string(), "Pending");
         assert_eq!(
-            format!("{}", JobStatus::WallTimeExceeded),
+            JobStatus::WallTimeExceeded.to_string(),
             "Wall Time Exceeded"
         );
-        assert_eq!(format!("{}", JobStatus::Completed), "Completed");
+        assert_eq!(JobStatus::Completed.to_string(), "Completed");
     }
 
     #[test]

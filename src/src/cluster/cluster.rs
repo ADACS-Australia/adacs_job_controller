@@ -27,7 +27,9 @@ use crate::utils::uuid::generate_uuid;
 
 /// Shared application context needed by Cluster for DB and file-list coordination.
 pub struct AppContext {
+    /// `SeaORM` connection for cluster-side database operations (token lookups, job persistence).
     pub db: sea_orm::DatabaseConnection,
+    /// In-flight file list requests keyed by request UUID, shared with HTTP handlers.
     pub file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
 }
 
@@ -37,34 +39,44 @@ pub struct AppContext {
 /// Background tasks handle scheduling (dequeue + send), source pruning, and
 /// message resend for stale jobs.
 pub struct Cluster {
+    /// Static cluster configuration from `clusters.json`.
     details: ClusterConfig,
+    /// WebSocket role (master, file download, or file upload).
     role: ClusterRole,
+    /// Human-readable role label used in logs and metrics.
     role_string: String,
 
-    // WebSocket connection state (None = offline)
+    /// WebSocket send channel; `None` when the cluster is offline.
     connection_tx: tokio::sync::watch::Sender<Option<WsConnectionSender>>,
+    /// Receiver side of the connection watch channel for scheduler tasks.
     connection_rx: tokio::sync::watch::Receiver<Option<WsConnectionSender>>,
 
-    // Priority queue: BTreeMap ensures iteration in priority order (lowest enum value = highest priority)
-    // Each priority maps source-strings to their per-source queues.
+    /// Priority-ordered outbound message queues keyed by source string.
+    /// Lower priority enum values are dequeued first.
     #[allow(clippy::type_complexity)]
     queue: BTreeMap<u8, RwLock<HashMap<String, VecDeque<Vec<u8>>>>>,
 
+    /// Total bytes currently buffered across all queued messages.
     queued_message_size: AtomicUsize,
 
-    // Notifications
+    /// Wakes the scheduler when new data is enqueued.
     data_notify: Notify,
+    /// Wakes waiters when queued byte volume crosses backpressure thresholds.
     queue_size_notify: Notify,
 
+    /// Whether background scheduler/prune/resend tasks should keep running.
     running: AtomicBool,
+    /// Shared DB and file-list state; absent for auxiliary cluster roles in tests.
     app_context: Option<Arc<AppContext>>,
 
-    // File transfer state (only populated for file download/upload roles)
+    /// Active download session state for file-download role clusters.
     file_download_state: Option<Arc<FileDownloadState>>,
+    /// Active upload session state for file-upload role clusters.
     file_upload_state: Option<Arc<FileUploadState>>,
+    /// Session UUID for the current file transfer, if any.
     uuid: Option<String>,
 
-    // Backpressure mutex shared with HTTP download handlers
+    /// Mutex coordinating HTTP download backpressure with chunk streaming.
     file_download_pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
@@ -73,9 +85,9 @@ impl Cluster {
     #[must_use]
     pub fn new(details: ClusterConfig, app_context: Option<Arc<AppContext>>) -> Arc<Self> {
         let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
@@ -106,9 +118,9 @@ impl Cluster {
         pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
     ) -> Arc<Self> {
         let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
@@ -138,9 +150,9 @@ impl Cluster {
         app_context: Option<Arc<AppContext>>,
     ) -> Arc<Self> {
         let mut queue = BTreeMap::new();
-        queue.insert(Priority::Highest as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Medium as u8, RwLock::new(HashMap::new()));
-        queue.insert(Priority::Lowest as u8, RwLock::new(HashMap::new()));
+        queue.insert(Priority::Highest.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Medium.as_u8(), RwLock::new(HashMap::new()));
+        queue.insert(Priority::Lowest.as_u8(), RwLock::new(HashMap::new()));
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
@@ -372,6 +384,7 @@ impl Cluster {
 
     // ---- Message handling ----
 
+    /// Processes an `UPDATE_JOB` message by recording job history and caching the file list on completion.
     async fn handle_update_job(&self, message: &mut Message) {
         use crate::db::entities::job_history;
         use sea_orm::{ActiveModelTrait, ActiveValue::Set};
@@ -506,6 +519,7 @@ impl Cluster {
         }
     }
 
+    /// Parses a `FILE_LIST` response payload into file entries and updates the matching [`FileListState`].
     async fn handle_file_list_response(&self, message: &mut Message) {
         let uuid = message.pop_string();
         let num_files = message.pop_uint();
@@ -523,33 +537,57 @@ impl Cluster {
             });
         }
 
-        if let Some(ctx) = &self.app_context
-            && let Some(fl_state) = ctx.file_list_map.get(&uuid)
-        {
-            let mut state = fl_state.lock().await;
-            state.files = files;
-            state.data_ready = true;
-            state.notify.notify_waiters();
-        }
+        let Some(ctx) = &self.app_context else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_LIST received but no app_context (uuid={uuid})",
+                self.name()
+            );
+            return;
+        };
+        let Some(fl_state) = ctx.file_list_map.get(&uuid) else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_LIST received for unknown uuid={uuid}",
+                self.name()
+            );
+            return;
+        };
+
+        let mut state = fl_state.lock().await;
+        state.files = files;
+        state.data_ready = true;
+        state.notify.notify_waiters();
     }
 
+    /// Handles a `FILE_LIST_ERROR` response by recording the error details and waking waiters.
     async fn handle_file_list_error(&self, message: &mut Message) {
         let uuid = message.pop_string();
         let detail = message.pop_string();
 
-        if let Some(ctx) = &self.app_context
-            && let Some(fl_state) = ctx.file_list_map.get(&uuid)
-        {
-            let mut state = fl_state.lock().await;
-            state.error = true;
-            state.error_details = detail;
-            state.data_ready = true;
-            state.notify.notify_waiters();
-        }
+        let Some(ctx) = &self.app_context else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_LIST_ERROR received but no app_context (uuid={uuid})",
+                self.name()
+            );
+            return;
+        };
+        let Some(fl_state) = ctx.file_list_map.get(&uuid) else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_LIST_ERROR received for unknown uuid={uuid}",
+                self.name()
+            );
+            return;
+        };
+
+        let mut state = fl_state.lock().await;
+        state.error = true;
+        state.error_details = detail;
+        state.data_ready = true;
+        state.notify.notify_waiters();
     }
 
     // ---- FileDownload message handling ----
 
+    /// Forwards a file chunk to the HTTP download handler and sends `PAUSE_FILE_CHUNK_STREAM` when buffered bytes exceed the limit.
     async fn handle_file_chunk(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
             tracing::warn!(
@@ -632,6 +670,7 @@ impl Cluster {
         );
     }
 
+    /// Records a file download error from the cluster and notifies waiting HTTP clients.
     async fn handle_file_error(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
             tracing::warn!(
@@ -655,19 +694,35 @@ impl Cluster {
 
     // ---- FileUpload message handling ----
 
+    /// Signals that the file-upload server is ready and unblocks waiting upload readers.
     #[allow(clippy::unused_async)]
     async fn handle_server_ready(&self) {
-        if let Some(state) = &self.file_upload_state {
-            state.data_ready.store(true, Ordering::Release);
-            state.data_notify.notify_waiters();
-        }
+        let Some(state) = &self.file_upload_state else {
+            tracing::warn!(
+                "Cluster[{}]: SERVER_READY received but no file_upload_state",
+                self.name()
+            );
+            return;
+        };
+        state.data_ready.store(true, Ordering::Release);
+        state.data_notify.notify_waiters();
     }
 
+    /// Stores the file upload error details and notifies any waiting readers.
     async fn handle_file_upload_error(&self, message: &mut Message) {
         let Some(state) = &self.file_upload_state else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_UPLOAD_ERROR received but no file_upload_state",
+                self.name()
+            );
             return;
         };
         let details = message.pop_string();
+        tracing::warn!(
+            "Cluster[{}]: FILE_UPLOAD_ERROR received - {}",
+            self.name(),
+            details
+        );
         *state.error_details.lock().await = details;
         state.error.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
@@ -677,6 +732,10 @@ impl Cluster {
     /// Marks the file upload as complete and notifies any waiting readers.
     fn handle_file_upload_complete(&self) {
         let Some(state) = &self.file_upload_state else {
+            tracing::warn!(
+                "Cluster[{}]: FILE_UPLOAD_COMPLETE received but no file_upload_state",
+                self.name()
+            );
             return;
         };
         state.complete.store(true, Ordering::Release);
@@ -732,6 +791,11 @@ impl Cluster {
             return;
         }
         let Some(ctx) = &self.app_context else {
+            tracing::warn!(
+                "Cluster[{}]: {} skipped - no app context available",
+                self.name(),
+                log_label
+            );
             return;
         };
         let db = &ctx.db;
@@ -836,6 +900,11 @@ impl ClusterTrait for Cluster {
         self.details.clone()
     }
 
+    /// Dispatches an incoming WebSocket message to the appropriate handler.
+    ///
+    /// Master clusters first route `DB_*` messages to `ClusterDB`. Remaining messages
+    /// are matched by ID to job, file-list, file-download, or file-upload handlers
+    /// based on the cluster role.
     async fn handle_message(&self, mut message: Message) {
         // Try ClusterDB first (for master clusters)
         if self.role == ClusterRole::Master
@@ -1090,7 +1159,7 @@ mod tests {
         {
             let map = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1119,19 +1188,19 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let m = cluster
                 .queue
-                .get(&(Priority::Medium as u8))
+                .get(&(Priority::Medium.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1144,19 +1213,19 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let m = cluster
                 .queue
-                .get(&(Priority::Medium as u8))
+                .get(&(Priority::Medium.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1169,13 +1238,13 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1187,7 +1256,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1199,7 +1268,7 @@ mod tests {
         {
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1220,7 +1289,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1231,7 +1300,7 @@ mod tests {
         {
             let mut h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1263,7 +1332,7 @@ mod tests {
         {
             let mut l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1311,7 +1380,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1320,7 +1389,7 @@ mod tests {
         {
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1332,7 +1401,7 @@ mod tests {
         {
             let mut l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1345,7 +1414,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1354,7 +1423,7 @@ mod tests {
         {
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1366,7 +1435,7 @@ mod tests {
         {
             let mut h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1375,7 +1444,7 @@ mod tests {
         {
             let mut l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1388,7 +1457,7 @@ mod tests {
         {
             let h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1398,7 +1467,7 @@ mod tests {
         {
             let l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .read()
                 .await;
@@ -1423,12 +1492,12 @@ mod tests {
         // No data -> no higher priority data at any level
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1438,17 +1507,17 @@ mod tests {
             .await;
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1458,17 +1527,17 @@ mod tests {
             .await;
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1478,17 +1547,17 @@ mod tests {
             .await;
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1501,17 +1570,17 @@ mod tests {
             .await;
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1519,7 +1588,7 @@ mod tests {
         {
             let mut h = cluster
                 .queue
-                .get(&(Priority::Highest as u8))
+                .get(&(Priority::Highest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1529,17 +1598,17 @@ mod tests {
         }
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
@@ -1547,7 +1616,7 @@ mod tests {
         {
             let mut m = cluster
                 .queue
-                .get(&(Priority::Medium as u8))
+                .get(&(Priority::Medium.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1556,7 +1625,7 @@ mod tests {
         {
             let mut l = cluster
                 .queue
-                .get(&(Priority::Lowest as u8))
+                .get(&(Priority::Lowest.as_u8()))
                 .unwrap()
                 .write()
                 .await;
@@ -1564,24 +1633,24 @@ mod tests {
         }
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Highest as u8)
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Medium as u8)
+                .has_higher_priority_data(Priority::Medium.as_u8())
                 .await
         );
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Lowest as u8)
+                .has_higher_priority_data(Priority::Lowest.as_u8())
                 .await
         );
 
         // Testing a priority value beyond Lowest should return false
         assert!(
             !cluster
-                .has_higher_priority_data(Priority::Lowest as u8 + 1)
+                .has_higher_priority_data(Priority::Lowest.as_u8() + 1)
                 .await
         );
     }

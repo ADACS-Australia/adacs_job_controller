@@ -5,10 +5,15 @@
 /// Strings and byte arrays are length-prefixed with a u64 (little-endian).
 #[derive(Debug, Clone)]
 pub struct Message {
+    /// Serialised payload bytes and read cursor backing store.
     data: Vec<u8>,
+    /// Current read offset within `data` for `pop_*` operations.
     index: usize,
+    /// Wire protocol message identifier parsed from the header.
     id: u32,
+    /// Originating cluster or client name parsed from the header.
     source: String,
+    /// Queue priority assigned at construction (not re-read from wire bytes).
     priority: super::types::Priority,
 }
 

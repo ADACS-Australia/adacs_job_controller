@@ -23,6 +23,9 @@ pub struct ClusterJob {
 }
 
 impl ClusterJob {
+    /// Serialize this job record into a binary protocol message body.
+    ///
+    /// Field order matches the C++ cluster client wire format.
     pub fn to_message(&self, msg: &mut Message) {
         msg.push_ulong(self.id.cast_unsigned());
         msg.push_ulong(self.job_id.cast_unsigned());
@@ -36,6 +39,9 @@ impl ClusterJob {
         msg.push_bool(self.deleted);
     }
 
+    /// Deserialize a cluster job record from a binary protocol message body.
+    ///
+    /// The `cluster` field is not present on the wire and defaults to empty.
     pub fn from_message(msg: &mut Message) -> Self {
         Self {
             id: msg.pop_ulong().cast_signed(),
@@ -53,11 +59,19 @@ impl ClusterJob {
     }
 }
 
+/// Cluster job status record (wire format only — DB ops use `SeaORM` entities).
+///
+/// Represents scheduler-specific status metadata for a job, keyed by
+/// `(job_id, what)` where `what` names the status dimension (e.g. `"scheduler_id"`).
 #[derive(Debug, Clone, Default)]
 pub struct ClusterJobStatus {
+    /// Primary key in the cluster job status table.
     pub id: i64,
+    /// Foreign key to the parent cluster job.
     pub job_id: i64,
+    /// Status dimension name (e.g. `"scheduler_id"`).
     pub what: String,
+    /// Numeric status value for the given dimension.
     pub state: i32,
 }
 
@@ -79,6 +93,11 @@ impl ClusterJobStatus {
     }
 }
 
+/// A cluster bundle job record (wire format only — DB ops use `SeaORM` entities).
+///
+/// Bundles group related job definitions; the cluster stores content and a hash
+/// for deduplication. Serialized over the binary protocol via `to_message` /
+/// `from_message`.
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
 pub struct BundleJob {
