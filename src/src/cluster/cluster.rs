@@ -836,6 +836,11 @@ impl ClusterTrait for Cluster {
         self.details.clone()
     }
 
+    /// Dispatches an incoming WebSocket message to the appropriate handler.
+    ///
+    /// Master clusters first route `DB_*` messages to `ClusterDB`. Remaining messages
+    /// are matched by ID to job, file-list, file-download, or file-upload handlers
+    /// based on the cluster role.
     async fn handle_message(&self, mut message: Message) {
         // Try ClusterDB first (for master clusters)
         if self.role == ClusterRole::Master
