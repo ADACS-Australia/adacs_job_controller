@@ -1,6 +1,7 @@
 use sea_orm::{ConnectionTrait, Schema};
 use sea_orm_migration::prelude::*;
 
+/// Migration to create the `jobserver_filedownload` table.
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 

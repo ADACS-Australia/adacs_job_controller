@@ -1,3 +1,7 @@
+//! Database migration definitions for the ADACS Job Controller.
+//!
+//! Each module defines a single `SeaORM` migration that creates one table.
+
 pub mod migrator;
 
 pub mod m20250514_000001_create_job;
