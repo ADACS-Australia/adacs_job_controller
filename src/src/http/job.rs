@@ -23,31 +23,44 @@ use crate::protocol::types::{JobStatus, Priority};
 
 // ---- Request/Response types ----
 
+/// JSON body for `POST /job/apiv1/job/` — submit a new job to a cluster.
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateJobRequest {
+    /// Target cluster name (must match a configured cluster).
     pub cluster: String,
+    /// Opaque job parameters passed to the cluster scheduler.
     pub parameters: String,
+    /// Bundle identifier or hash for the job's executable bundle.
     pub bundle: String,
 }
 
+/// JSON body for job cancel/delete endpoints that accept a single job ID.
 #[derive(Debug, serde::Deserialize)]
 pub struct JobIdRequest {
+    /// Internal job ID to cancel or delete.
     #[serde(rename = "jobId")]
     pub job_id: u64,
 }
 
+/// Query parameters for `GET /job/apiv1/job/` — filter the job list.
 #[derive(Debug, serde::Deserialize)]
 pub struct JobQueryParams {
+    /// Comma-separated list of job IDs to restrict results to.
     #[serde(rename = "jobIds")]
     pub job_ids: Option<String>,
+    /// Return jobs with `start_time` strictly greater than this Unix timestamp.
     #[serde(rename = "startTimeGt")]
     pub start_time_gt: Option<i64>,
+    /// Return jobs with `start_time` strictly less than this Unix timestamp.
     #[serde(rename = "startTimeLt")]
     pub start_time_lt: Option<i64>,
+    /// Return jobs with `end_time` strictly greater than this Unix timestamp.
     #[serde(rename = "endTimeGt")]
     pub end_time_gt: Option<i64>,
+    /// Return jobs with `end_time` strictly less than this Unix timestamp.
     #[serde(rename = "endTimeLt")]
     pub end_time_lt: Option<i64>,
+    /// CSV-encoded job-step filter: `what1,state1,what2,state2,...`.
     #[serde(rename = "jobSteps")]
     pub job_steps: Option<String>,
 }
