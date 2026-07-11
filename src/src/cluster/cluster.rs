@@ -663,6 +663,7 @@ impl Cluster {
         }
     }
 
+    /// Stores the file upload error details and notifies any waiting readers.
     async fn handle_file_upload_error(&self, message: &mut Message) {
         let Some(state) = &self.file_upload_state else {
             tracing::warn!(
