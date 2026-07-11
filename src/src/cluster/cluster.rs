@@ -37,34 +37,44 @@ pub struct AppContext {
 /// Background tasks handle scheduling (dequeue + send), source pruning, and
 /// message resend for stale jobs.
 pub struct Cluster {
+    /// Static cluster configuration from `clusters.json`.
     details: ClusterConfig,
+    /// WebSocket role (master, file download, or file upload).
     role: ClusterRole,
+    /// Human-readable role label used in logs and metrics.
     role_string: String,
 
-    // WebSocket connection state (None = offline)
+    /// WebSocket send channel; `None` when the cluster is offline.
     connection_tx: tokio::sync::watch::Sender<Option<WsConnectionSender>>,
+    /// Receiver side of the connection watch channel for scheduler tasks.
     connection_rx: tokio::sync::watch::Receiver<Option<WsConnectionSender>>,
 
-    // Priority queue: BTreeMap ensures iteration in priority order (lowest enum value = highest priority)
-    // Each priority maps source-strings to their per-source queues.
+    /// Priority-ordered outbound message queues keyed by source string.
+    /// Lower priority enum values are dequeued first.
     #[allow(clippy::type_complexity)]
     queue: BTreeMap<u8, RwLock<HashMap<String, VecDeque<Vec<u8>>>>>,
 
+    /// Total bytes currently buffered across all queued messages.
     queued_message_size: AtomicUsize,
 
-    // Notifications
+    /// Wakes the scheduler when new data is enqueued.
     data_notify: Notify,
+    /// Wakes waiters when queued byte volume crosses backpressure thresholds.
     queue_size_notify: Notify,
 
+    /// Whether background scheduler/prune/resend tasks should keep running.
     running: AtomicBool,
+    /// Shared DB and file-list state; absent for auxiliary cluster roles in tests.
     app_context: Option<Arc<AppContext>>,
 
-    // File transfer state (only populated for file download/upload roles)
+    /// Active download session state for file-download role clusters.
     file_download_state: Option<Arc<FileDownloadState>>,
+    /// Active upload session state for file-upload role clusters.
     file_upload_state: Option<Arc<FileUploadState>>,
+    /// Session UUID for the current file transfer, if any.
     uuid: Option<String>,
 
-    // Backpressure mutex shared with HTTP download handlers
+    /// Mutex coordinating HTTP download backpressure with chunk streaming.
     file_download_pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
