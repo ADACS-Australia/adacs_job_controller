@@ -376,6 +376,7 @@ async fn handle_jobstatus_get_by_job_id_and_what(
     cluster.send_message(response).await;
 }
 
+/// Looks up cluster job status rows by job ID and sends a `DB_RESPONSE` with matching rows.
 async fn handle_jobstatus_get_by_job_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
