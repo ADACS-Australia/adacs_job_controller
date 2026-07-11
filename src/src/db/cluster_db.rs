@@ -184,6 +184,7 @@ pub async fn maybe_handle_cluster_db_message(
     }
 }
 
+/// Builds a `DB_RESPONSE` message tagged with the originating request ID.
 fn prepare_response(db_request_id: u32) -> Message {
     let mut msg = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
     msg.push_uint(db_request_id);
