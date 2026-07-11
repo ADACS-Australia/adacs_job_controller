@@ -53,11 +53,19 @@ impl ClusterJob {
     }
 }
 
+/// Cluster job status record (wire format only — DB ops use `SeaORM` entities).
+///
+/// Represents scheduler-specific status metadata for a job, keyed by
+/// `(job_id, what)` where `what` names the status dimension (e.g. `"scheduler_id"`).
 #[derive(Debug, Clone, Default)]
 pub struct ClusterJobStatus {
+    /// Primary key in the cluster job status table.
     pub id: i64,
+    /// Foreign key to the parent cluster job.
     pub job_id: i64,
+    /// Status dimension name (e.g. `"scheduler_id"`).
     pub what: String,
+    /// Numeric status value for the given dimension.
     pub state: i32,
 }
 
