@@ -275,6 +275,7 @@ async fn handle_job_get_running_jobs(
     cluster.send_message(response).await;
 }
 
+/// Deletes a cluster job row by primary key and sends an empty DB response.
 async fn handle_job_delete(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
