@@ -636,6 +636,7 @@ impl Cluster {
         );
     }
 
+    /// Records a file download error from the cluster and notifies waiting HTTP clients.
     async fn handle_file_error(&self, message: &mut Message) {
         let Some(state) = &self.file_download_state else {
             tracing::warn!(
