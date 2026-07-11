@@ -461,6 +461,7 @@ async fn handle_jobstatus_save(
 
 // ---- DB_BUNDLE_* handlers ----
 
+/// Inserts or updates a bundle job row and sends a `DB_RESPONSE` with the row ID.
 async fn handle_bundle_create_or_update(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
