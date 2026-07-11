@@ -557,6 +557,7 @@ async fn handle_bundle_create_or_update(
     }
 }
 
+/// Fetches a bundle job by ID and sends a `DB_RESPONSE` with the row or count=0.
 async fn handle_bundle_get_by_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
