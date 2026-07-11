@@ -668,6 +668,11 @@ impl Cluster {
             return;
         };
         let details = message.pop_string();
+        tracing::warn!(
+            "Cluster[{}]: FILE_UPLOAD_ERROR received - {}",
+            self.name(),
+            details
+        );
         *state.error_details.lock().await = details;
         state.error.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
