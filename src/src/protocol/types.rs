@@ -122,6 +122,14 @@ pub enum Priority {
     Lowest = 19,
 }
 
+impl Priority {
+    /// Wire-protocol queue key for this priority level.
+    #[must_use]
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
 /// Metadata for a single file in a directory listing.
 ///
 /// Serialized with specific field names (`path`, `fileSize`, `isDir`)
@@ -228,6 +236,13 @@ mod tests {
     fn test_priority_ordering() {
         assert!(Priority::Highest < Priority::Medium);
         assert!(Priority::Medium < Priority::Lowest);
+    }
+
+    #[test]
+    fn test_priority_as_u8() {
+        assert_eq!(Priority::Highest.as_u8(), 0);
+        assert_eq!(Priority::Medium.as_u8(), 10);
+        assert_eq!(Priority::Lowest.as_u8(), 19);
     }
 
     #[test]
