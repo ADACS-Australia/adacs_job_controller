@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 /// State for an active file download session.
 /// Shared between the HTTP GET handler (consumer) and the WebSocket handler (producer).
 pub struct FileDownloadState {
-    /// Channel for receiving file chunks from the WS handler
+    /// Channel sender for forwarding file chunks from the WS handler to the HTTP consumer.
     pub chunk_sender: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
     /// Mutex-protected receiver for file chunks consumed by the HTTP handler.
     pub chunk_receiver: tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
