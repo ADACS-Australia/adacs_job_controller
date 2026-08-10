@@ -140,7 +140,8 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if there are fewer than 2 bytes remaining in the buffer.
+    /// This method does not panic. If there are fewer than 2 bytes remaining
+    /// in the buffer, a warning is logged and `0` is returned.
     pub fn pop_ushort(&mut self) -> u16 {
         if !self.check_remaining(2) {
             return 0;
@@ -158,7 +159,8 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if there are fewer than 2 bytes remaining in the buffer.
+    /// This method does not panic. If there are fewer than 2 bytes remaining
+    /// in the buffer, a warning is logged and `0` is returned.
     pub fn pop_short(&mut self) -> i16 {
         if !self.check_remaining(2) {
             return 0;
@@ -178,7 +180,8 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if there are fewer than 4 bytes remaining in the buffer.
+    /// This method does not panic. If there are fewer than 4 bytes remaining
+    /// in the buffer, a warning is logged and `0` is returned.
     pub fn pop_uint(&mut self) -> u32 {
         if !self.check_remaining(4) {
             return 0;
@@ -196,7 +199,8 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if there are fewer than 4 bytes remaining in the buffer.
+    /// This method does not panic. If there are fewer than 4 bytes remaining
+    /// in the buffer, a warning is logged and `0` is returned.
     pub fn pop_int(&mut self) -> i32 {
         if !self.check_remaining(4) {
             return 0;
@@ -216,7 +220,8 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if there are fewer than 8 bytes remaining in the buffer.
+    /// This method does not panic. If there are fewer than 8 bytes remaining
+    /// in the buffer, a warning is logged and `0` is returned.
     pub fn pop_ulong(&mut self) -> u64 {
         if !self.check_remaining(8) {
             return 0;
@@ -234,7 +239,8 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if there are fewer than 8 bytes remaining in the buffer.
+    /// This method does not panic. If there are fewer than 8 bytes remaining
+    /// in the buffer, a warning is logged and `0` is returned.
     pub fn pop_long(&mut self) -> i64 {
         if !self.check_remaining(8) {
             return 0;
@@ -254,7 +260,8 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if there are fewer than 4 bytes remaining in the buffer.
+    /// This method does not panic. If there are fewer than 4 bytes remaining
+    /// in the buffer, a warning is logged and `0.0` is returned.
     pub fn pop_float(&mut self) -> f32 {
         if !self.check_remaining(4) {
             return 0.0;
@@ -272,7 +279,8 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if there are fewer than 8 bytes remaining in the buffer.
+    /// This method does not panic. If there are fewer than 8 bytes remaining
+    /// in the buffer, a warning is logged and `0.0` is returned.
     pub fn pop_double(&mut self) -> f64 {
         if !self.check_remaining(8) {
             return 0.0;
@@ -293,9 +301,10 @@ impl Message {
     ///
     /// # Panics
     ///
-    /// Panics if:
-    /// - There are insufficient bytes remaining to read the string length
-    /// - The bytes do not form valid UTF-8
+    /// This method does not panic. If there are insufficient bytes remaining
+    /// to read the string length, a warning is logged and an empty string is
+    /// returned. If the bytes do not form valid UTF-8, an empty string is
+    /// returned.
     pub fn pop_string(&mut self) -> String {
         let bytes = self.pop_bytes();
         String::from_utf8(bytes).unwrap_or_default()
