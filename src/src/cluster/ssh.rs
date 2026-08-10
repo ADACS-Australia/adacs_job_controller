@@ -9,16 +9,22 @@ use russh::{ChannelMsg, Disconnect};
 
 use crate::config::clusters::ClusterConfig;
 
+/// Errors from SSH or Kerberos remote-client connections to cluster hosts.
 #[derive(Debug, thiserror::Error)]
 pub enum SshError {
+    /// TCP/SSH handshake or session setup failed before authentication.
     #[error("Connection failed: {0}")]
     ConnectionFailed(String),
+    /// SSH key or Kerberos credentials were rejected by the remote host.
     #[error("Authentication failed: {0}")]
     AuthenticationFailed(String),
+    /// Opening or using an SSH exec/shell channel failed.
     #[error("Channel failed: {0}")]
     ChannelFailed(String),
+    /// The remote `adacs_job_client` command exited with a non-zero status.
     #[error("Command exited with status {0}")]
     CommandFailed(i32),
+    /// Local I/O error while reading keys or streaming channel data.
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }
