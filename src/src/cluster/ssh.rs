@@ -235,11 +235,6 @@ async fn run_via_kerberos(config: &ClusterConfig, token: &str) -> Result<(), Ssh
         std::fs::set_permissions(&keytab_path, std::fs::Permissions::from_mode(0o600))?;
     }
 
-    // SAFETY: This is a controlled single-threaded context during startup.
-    unsafe {
-        std::env::set_var("KRB5_CLIENT_KTNAME", keytab_path.to_str().unwrap());
-    }
-
     let principal = if config.kerberos_principal.is_empty() {
         &config.username
     } else {
@@ -266,6 +261,7 @@ async fn run_via_kerberos(config: &ClusterConfig, token: &str) -> Result<(), Ssh
             &config.host,
             &remote_cmd,
         ])
+        .env("KRB5_CLIENT_KTNAME", &keytab_path)
         .output()
         .await?;
 
