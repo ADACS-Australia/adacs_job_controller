@@ -936,3 +936,60 @@ async fn test_check_unsubmitted_jobs_resends_all_stale_jobs_in_batch() {
     resent_ids.sort_unstable();
     assert_eq!(resent_ids, vec![1, 2, 3]);
 }
+
+/// Verifies that `check_unsubmitted_jobs` skips a stale PENDING job whose id exceeds
+/// the `u32` range instead of panicking on the `u32::try_from` conversion.
+///
+/// # Setup
+/// A job with `id = u32::MAX + 1` and an old PENDING history row are inserted.
+/// The cluster is given a live WS sender and the scheduler is started.
+///
+/// # Act
+/// `cluster.check_unsubmitted_jobs().await` is called, then the channel is drained.
+///
+/// # Assert
+/// No `SUBMIT_JOB` message is emitted for the out-of-range job.
+#[tokio::test]
+async fn test_check_unsubmitted_jobs_skips_job_id_exceeding_u32_range() {
+    let db = make_db().await;
+
+    let oversized_id = i64::from(u32::MAX) + 1;
+    insert_job(&db, oversized_id, "ozstar", "mybundle", "myapp", "{}").await;
+    insert_history(&db, oversized_id, old_timestamp(), "submit", 10).await;
+
+    let ctx = make_app_context(db.clone());
+    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster.set_connection(Some(tx)).await;
+    cluster.start_tasks();
+
+    cluster.check_unsubmitted_jobs().await;
+    cluster.wait_for_queue_drain(true).await;
+
+    let mut messages = Vec::new();
+    while let Ok(outbound) = rx.try_recv() {
+        let WsOutbound::Binary(data) = outbound else {
+            continue;
+        };
+        messages.push(data);
+    }
+
+    let submit_msgs: Vec<_> = messages
+        .iter()
+        .filter_map(|data| {
+            let msg = Message::from_bytes(data.clone());
+            if msg.id() == SUBMIT_JOB {
+                Some(msg)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    assert!(
+        submit_msgs.is_empty(),
+        "Job id exceeding u32 range should be skipped, not resubmitted"
+    );
+    cluster.stop();
+}
