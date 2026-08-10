@@ -61,6 +61,29 @@ fn offline_cluster() -> MockClusterTrait {
     c
 }
 
+/// Insert a job with an explicit ID (used to exercise the `u32::MAX` conversion guard).
+async fn insert_test_job_with_id(
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+    cluster: &str,
+    bundle: &str,
+    application: &str,
+) -> i64 {
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+    job::ActiveModel {
+        id: Set(id),
+        user: Set(1),
+        parameters: Set("{}".to_string()),
+        cluster: Set(cluster.to_string()),
+        bundle: Set(bundle.to_string()),
+        application: Set(application.to_string()),
+    }
+    .insert(db)
+    .await
+    .expect("insert test job with id failed")
+    .id
+}
+
 // ---------------------------------------------------------------------------
 // create_job tests
 // ---------------------------------------------------------------------------
@@ -247,6 +270,65 @@ async fn test_create_job_cluster_not_in_secret_returns_400() {
         .await
         .unwrap();
     assert!(String::from_utf8_lossy(&body).contains("does not have access"));
+}
+
+/// Tests that creating a job whose auto-assigned ID exceeds `u32::MAX` returns 400
+/// instead of silently truncating the job ID in the `SUBMIT_JOB` message.
+///
+/// # Setup
+/// Pre-inserts a job with ID = `u32::MAX` so the next auto-assigned ID is `u32::MAX + 1`.
+/// Wires an online cluster that captures sent WS messages.
+///
+/// # Act
+/// Sends POST /job/apiv1/job/ with valid auth.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "exceeds maximum supported value",
+/// and no `SUBMIT_JOB` WS message was sent.
+#[tokio::test]
+async fn test_create_job_job_id_exceeding_u32_returns_400() {
+    let db = setup_test_db().await;
+    insert_test_job_with_id(&db, i64::from(u32::MAX), "ozstar", "b", "testapp").await;
+
+    let sent = Arc::new(Mutex::new(vec![]));
+    let cluster = Arc::new(online_cluster_capturing_messages(
+        "ozstar",
+        Arc::clone(&sent),
+    ));
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/job/")
+                .header("content-type", "application/json")
+                .header("authorization", &token)
+                .body(Body::from(
+                    r#"{"cluster":"ozstar","parameters":"{}","bundle":"mybundle"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("exceeds maximum supported value"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+    assert!(sent.lock().unwrap().is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -580,6 +662,34 @@ async fn test_cancel_job_not_found_returns_400() {
     assert!(body.contains("did not exist"), "body: {body}");
 }
 
+/// Tests that cancelling a job whose ID exceeds `u32::MAX` returns 400 instead of
+/// silently truncating the job ID in the `CANCEL_JOB` message.
+///
+/// # Setup
+/// Inserts a job with ID = `u32::MAX + 1` and a RUNNING history entry. Wires an online cluster.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "exceeds maximum supported value".
+#[tokio::test]
+async fn test_cancel_job_job_id_exceeding_u32_returns_400() {
+    let db = setup_test_db().await;
+    let huge: i64 = i64::from(u32::MAX) + 1;
+    let job_id = insert_test_job_with_id(&db, huge, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
+
+    let (manager, _) = manager_with_online_cluster();
+    let (status, body) = run_cancel(job_id, &db, manager).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body.contains("exceeds maximum supported value"),
+        "body: {body}"
+    );
+}
+
 /// Tests that cancelling a job whose cluster is not found by the manager returns 400.
 ///
 /// # Setup
@@ -903,6 +1013,34 @@ async fn test_delete_job_already_deleted_returns_400() {
     insert_job_history(&db, job_id, JobStatus::Deleted as i32, "system").await;
     let (status, _) = run_delete(job_id, &db, manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+/// Tests that deleting a job whose ID exceeds `u32::MAX` returns 400 instead of
+/// silently truncating the job ID in the `DELETE_JOB` message.
+///
+/// # Setup
+/// Inserts a job with ID = `u32::MAX + 1` and a COMPLETED history entry. Wires an online cluster.
+///
+/// # Act
+/// Sends DELETE /job/apiv1/job/ with the job ID.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "exceeds maximum supported value".
+#[tokio::test]
+async fn test_delete_job_job_id_exceeding_u32_returns_400() {
+    let db = setup_test_db().await;
+    let huge: i64 = i64::from(u32::MAX) + 1;
+    let job_id = insert_test_job_with_id(&db, huge, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Completed as i32, "system").await;
+
+    let (manager, _) = manager_with_online_cluster();
+    let (status, body) = run_delete(job_id, &db, manager).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body.contains("exceeds maximum supported value"),
+        "body: {body}"
+    );
 }
 
 // ---------------------------------------------------------------------------
