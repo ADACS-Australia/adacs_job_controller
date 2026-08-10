@@ -816,15 +816,26 @@ mod tests {
         let manager_arc = Arc::clone(&manager);
         manager_arc.start_tasks();
 
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // The reconnect task runs asynchronously and sets reconnect_attempts
+        // before inserting the UUID, so poll for both under a deadline instead
+        // of sleeping a fixed duration (flaky under parallel test execution).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut attempts = None;
+        let mut uuid = None;
+        while std::time::Instant::now() < deadline {
+            attempts = manager.reconnect_attempts.get("cluster_b").map(|v| *v);
+            uuid = get_uuid_for_cluster(&db, "cluster_b").await;
+            if attempts == Some(1) && uuid.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
 
         assert_eq!(
-            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            attempts,
             Some(1),
             "start_tasks should trigger immediate reconnect attempt"
         );
-
-        let uuid = get_uuid_for_cluster(&db, "cluster_b").await;
         assert!(
             uuid.is_some(),
             "UUID should be inserted for offline cluster"

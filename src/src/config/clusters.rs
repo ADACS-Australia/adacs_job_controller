@@ -1,20 +1,30 @@
 use serde::Deserialize;
 use std::path::Path;
 
+/// Connection settings for a single HPC cluster, loaded from `clusters.json`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ClusterConfig {
+    /// Short identifier used in API routes and logs (e.g. `"ozstar"`).
     pub name: String,
+    /// Hostname or IP address of the cluster gateway.
     pub host: String,
+    /// SSH or Kerberos username for remote connections.
     pub username: String,
+    /// Remote path to the job-controller client binary directory.
     pub path: String,
+    /// Path to the SSH private key file (empty when using Kerberos or LTK auth).
     #[serde(default)]
     pub key: String,
+    /// Connection mode: `"ssh"`, `"kerberos"`, `"manual"`, or `"ltk"`.
     #[serde(default = "default_connection_type")]
     pub connection_type: String,
+    /// Kerberos keytab path (used when `connection_type` is `"kerberos"`).
     #[serde(default)]
     pub keytab: String,
+    /// Kerberos principal (used when `connection_type` is `"kerberos"`).
     #[serde(default)]
     pub kerberos_principal: String,
+    /// Long-term key for LTK-authenticated manual connections.
     #[serde(default)]
     pub ltk: Option<String>,
 }
