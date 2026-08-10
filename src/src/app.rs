@@ -50,10 +50,11 @@ pub async fn run() -> anyhow::Result<()> {
 
     tracing::debug!("Connecting to database");
     let db_url = format!(
-        "mysql://{}:{}@{}/{}?ssl-mode=disabled",
+        "mysql://{}:{}@{}:{}/{}?ssl-mode=disabled",
         &*crate::config::settings::DATABASE_USER,
         &*crate::config::settings::DATABASE_PASSWORD,
         &*crate::config::settings::DATABASE_HOST,
+        &*crate::config::settings::DATABASE_PORT,
         &*crate::config::settings::DATABASE_SCHEMA,
     );
     tracing::trace!("Database URL constructed (credentials hidden)");
