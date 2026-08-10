@@ -76,7 +76,9 @@ pub const CLUSTER_CONFIG_FILE_ENV_VARIABLE: &str = "CLUSTER_CONFIG_FILE";
 pub const ACCESS_SECRET_CONFIG_FILE_ENV_VARIABLE: &str = "ACCESS_SECRET_CONFIG_FILE";
 
 // LTK security settings
-pub static LTK_CONNECTION_TIMEOUT_MS: LazyLock<u32> = LazyLock::new(|| {
+// Read on each use so tests can toggle the value between invocations.
+#[must_use]
+pub fn ltk_connection_timeout_ms() -> u32 {
     #[cfg(test)]
     {
         std::env::var("LTK_CONNECTION_TIMEOUT_MS")
@@ -91,7 +93,7 @@ pub static LTK_CONNECTION_TIMEOUT_MS: LazyLock<u32> = LazyLock::new(|| {
             .and_then(|v| v.parse().ok())
             .unwrap_or(1000)
     }
-});
+}
 
 // File buffer sizes (bytes)
 pub static MAX_FILE_BUFFER_SIZE: LazyLock<u64> =

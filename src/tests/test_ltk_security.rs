@@ -11,6 +11,10 @@ use adacs_job_controller::protocol::types::ClusterRole;
 
 use common::{make_test_state, setup_test_db, test_cluster_config_with_ltk};
 
+// The rate-limit tests below mutate the process-global LTK_CONNECTION_TIMEOUT_MS
+// env var, so they must not run concurrently or they race on shared state.
+static LTK_TIMEOUT_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 // ---------------------------------------------------------------------------
 // Test: Duplicate LTK connection rejected
 // ---------------------------------------------------------------------------
@@ -91,6 +95,7 @@ async fn test_duplicate_ltk_connection_rejected() {
 
 #[tokio::test]
 async fn test_rate_limiting_applies() {
+    let _guard = LTK_TIMEOUT_TEST_LOCK.lock().await;
     unsafe {
         std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "100");
     }
@@ -153,6 +158,7 @@ async fn test_rate_limiting_applies() {
 
 #[tokio::test]
 async fn test_rate_limiting_disabled_in_test() {
+    let _guard = LTK_TIMEOUT_TEST_LOCK.lock().await;
     unsafe {
         std::env::remove_var("LTK_CONNECTION_TIMEOUT_MS");
     }
