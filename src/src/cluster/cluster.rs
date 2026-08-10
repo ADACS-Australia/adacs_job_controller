@@ -851,7 +851,16 @@ impl Cluster {
                     Priority::Medium,
                     &format!("{}_{}", j.id, cluster_name),
                 );
-                msg.push_uint(u32::try_from(j.id).unwrap());
+                let Ok(job_id_u32) = u32::try_from(j.id) else {
+                    tracing::warn!(
+                        "Cluster[{}]: {} skipped - job id {} exceeds u32 range",
+                        self.name(),
+                        log_label,
+                        j.id
+                    );
+                    continue;
+                };
+                msg.push_uint(job_id_u32);
                 if push_bundle_and_params {
                     msg.push_string(&j.bundle);
                     msg.push_string(&j.parameters);
