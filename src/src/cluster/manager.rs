@@ -109,10 +109,6 @@ impl ClusterManager {
     }
 
     /// Start background tasks (reconnection, ping).
-    ///
-    /// # Panics
-    ///
-    /// Panics if `RwLock` on clusters cannot be acquired for reading.
     pub fn start_tasks(self: &Arc<Self>) {
         tracing::debug!("ClusterManager: Starting background tasks");
 
