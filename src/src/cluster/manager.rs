@@ -544,7 +544,7 @@ impl ClusterManagerTrait for ClusterManager {
                 }
 
                 // Apply rate limiting timeout
-                let timeout = *crate::config::settings::LTK_CONNECTION_TIMEOUT_MS;
+                let timeout = crate::config::settings::ltk_connection_timeout_ms();
                 if timeout > 0 {
                     tokio::time::sleep(std::time::Duration::from_millis(u64::from(timeout))).await;
                 }
