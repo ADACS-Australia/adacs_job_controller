@@ -113,26 +113,41 @@ impl std::fmt::Display for ClusterRole {
     }
 }
 
-/// Message queue priority for outbound WebSocket traffic.
+/// Message priority for the binary protocol outbound queue.
 ///
-/// Wire-compatible `u8` values shared with the C++ orchestrator.
-/// Lower numeric values indicate higher scheduling priority.
+/// Lower numeric values indicate higher priority. Encoded as a single byte on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum Priority {
-    /// Highest priority (= 0).
+    /// Highest priority — system control messages (e.g. `SERVER_READY`).
     Highest = 0,
-    /// Normal priority (= 10).
+    /// Default priority for job and file operations.
     Medium = 10,
-    /// Lowest priority (= 19).
+    /// Lowest priority — background or bulk traffic.
     Lowest = 19,
 }
 
 impl Priority {
-    /// Wire-protocol queue key for this priority level.
+    /// Wire-format byte value for this priority.
     #[must_use]
     pub const fn as_u8(self) -> u8 {
         self as u8
+    }
+
+    /// Human-readable label for logging.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Priority::Highest => "highest",
+            Priority::Medium => "medium",
+            Priority::Lowest => "lowest",
+        }
+    }
+}
+
+impl std::fmt::Display for Priority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -256,6 +271,13 @@ mod tests {
         assert_eq!(Priority::Highest.as_u8(), 0);
         assert_eq!(Priority::Medium.as_u8(), 10);
         assert_eq!(Priority::Lowest.as_u8(), 19);
+    }
+
+    #[test]
+    fn test_priority_display() {
+        assert_eq!(Priority::Highest.to_string(), "highest");
+        assert_eq!(Priority::Medium.to_string(), "medium");
+        assert_eq!(Priority::Lowest.to_string(), "lowest");
     }
 
     #[test]
