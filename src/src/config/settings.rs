@@ -62,7 +62,6 @@ pub static DATABASE_SCHEMA: LazyLock<String> =
     LazyLock::new(|| env_or("MYSQL_DATABASE", "jobserver"));
 #[allow(dead_code)]
 pub static DATABASE_HOST: LazyLock<String> = LazyLock::new(|| env_or("DATABASE_HOST", "localhost"));
-#[allow(dead_code)]
 pub static DATABASE_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("DATABASE_PORT", 3306));
 #[allow(dead_code)]
 pub static DATABASE_DEBUG: LazyLock<bool> = LazyLock::new(|| env_or_bool("DATABASE_DEBUG", false));
