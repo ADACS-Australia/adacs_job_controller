@@ -250,7 +250,6 @@ impl Cluster {
                 cycle
             );
             'reset: loop {
-                let mut sent_anything = false;
                 for (&priority_val, rw_map) in &self.queue {
                     let mut had_data_this_round;
                     loop {
@@ -288,7 +287,6 @@ impl Cluster {
                                 }
 
                                 had_data_this_round = true;
-                                sent_anything = true;
 
                                 // Check for higher priority data
                                 if self.has_higher_priority_data(priority_val).await {
@@ -307,9 +305,6 @@ impl Cluster {
                             break;
                         }
                     }
-                }
-                if !sent_anything {
-                    break;
                 }
                 break; // All priorities processed without preemption
             }
