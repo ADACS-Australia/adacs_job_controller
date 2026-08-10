@@ -82,17 +82,14 @@ impl std::fmt::Display for JobStatus {
     }
 }
 
-/// Role of a cluster WebSocket connection.
-///
-/// Determines which message handlers are active and how the connection
-/// is labelled in logs (`as_str()`).
+/// Role of a cluster WebSocket connection, determining which messages it handles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClusterRole {
-    /// Primary scheduler connection for job submission and updates.
+    /// Primary cluster connection: job submission, DB proxy, and file-list coordination.
     Master,
-    /// Dedicated connection for streaming file downloads to clients.
+    /// Dedicated connection for streaming file downloads to HTTP clients.
     FileDownload,
-    /// Dedicated connection for receiving file uploads from clients.
+    /// Dedicated connection for receiving file uploads from HTTP clients.
     FileUpload,
 }
 
@@ -113,17 +110,17 @@ impl std::fmt::Display for ClusterRole {
     }
 }
 
-/// Message priority for the binary protocol outbound queue.
+/// Message queue priority for outbound cluster traffic.
 ///
-/// Lower numeric values indicate higher priority. Encoded as a single byte on the wire.
+/// Lower numeric values are dequeued first (`Highest` before `Medium` before `Lowest`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum Priority {
-    /// Highest priority — system control messages (e.g. `SERVER_READY`).
+    /// Job control and backpressure signals (e.g. cancel, pause/resume chunk stream).
     Highest = 0,
-    /// Default priority for job and file operations.
+    /// Routine operational messages.
     Medium = 10,
-    /// Lowest priority — background or bulk traffic.
+    /// Bulk or background traffic (e.g. file chunks).
     Lowest = 19,
 }
 
