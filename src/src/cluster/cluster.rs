@@ -85,7 +85,7 @@ type PriorityQueue = BTreeMap<u8, RwLock<HashMap<String, VecDeque<Vec<u8>>>>>;
 fn empty_priority_queues() -> PriorityQueue {
     let mut queue = BTreeMap::new();
     for priority in [Priority::Highest, Priority::Medium, Priority::Lowest] {
-        queue.insert(priority as u8, RwLock::new(HashMap::new()));
+        queue.insert(priority.as_u8(), RwLock::new(HashMap::new()));
     }
     queue
 }
@@ -969,7 +969,7 @@ impl ClusterTrait for Cluster {
     }
 
     async fn queue_message(&self, source: String, data: Vec<u8>, priority: Priority) {
-        let priority_val = priority as u8;
+        let priority_val = priority.as_u8();
         tracing::trace!(
             "Cluster[{}]: Queueing message (source={}, priority={:?}, size={} bytes)",
             self.name(),
