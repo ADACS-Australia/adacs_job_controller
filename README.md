@@ -273,7 +273,7 @@ Fetch status and/or filter jobs.
 
 **Example:**
 ```
-/job/apiv1/job/?jobIDs=50,51,52&startTimeLt=1589838778&jobSteps=jid0,500,jid1,500
+/job/apiv1/job/?jobIds=50,51,52&startTimeLt=1589838778&jobSteps=jid0,500,jid1,500
 ```
 
 **Response:**
