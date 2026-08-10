@@ -12,10 +12,6 @@ use crate::config::settings::{RATE_LIMIT_BURST_SIZE, RATE_LIMIT_REQUESTS_PER_SEC
 use crate::http::{file, job};
 
 /// Create the HTTP API router with all routes and middleware.
-///
-/// # Panics
-///
-/// Panics if rate limiting is enabled but the configured governor parameters are invalid.
 pub fn create_router(state: AppState) -> Router {
     tracing::debug!("HTTP: Building job routes");
     let job_routes = Router::new().route(
@@ -55,16 +51,19 @@ pub fn create_router(state: AppState) -> Router {
         let mut config_builder = GovernorConfigBuilder::default();
         config_builder.per_millisecond(interval_ms);
         config_builder.burst_size(*RATE_LIMIT_BURST_SIZE);
-        let governor_config = Arc::new(
-            config_builder
-                .finish()
-                .expect("rate limiter config: burst_size and period must be non-zero"),
-        );
-        router = router.layer(GovernorLayer::new(governor_config));
-        tracing::trace!(
-            "HTTP: Rate limiter configured with {}ms interval",
-            interval_ms
-        );
+        if let Some(governor_config) = config_builder.finish() {
+            router = router.layer(GovernorLayer::new(Arc::new(governor_config)));
+            tracing::trace!(
+                "HTTP: Rate limiter configured with {}ms interval",
+                interval_ms
+            );
+        } else {
+            tracing::warn!(
+                "HTTP: Invalid rate limiter config (burst_size {}, interval {}ms); rate limiting disabled",
+                *RATE_LIMIT_BURST_SIZE,
+                interval_ms
+            );
+        }
     } else {
         tracing::debug!("HTTP: Rate limiting disabled");
     }
