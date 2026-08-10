@@ -789,7 +789,7 @@ impl Cluster {
         use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
         use std::collections::HashMap;
 
-        if !self.is_online_internal() {
+        if !self.is_online() {
             return;
         }
         let Some(ctx) = &self.app_context else {
@@ -867,10 +867,6 @@ impl Cluster {
     }
 
     // Internal helpers
-
-    fn is_online_internal(&self) -> bool {
-        self.connection_rx.borrow().is_some()
-    }
 
     async fn send_message_internal(&self, message: Message) {
         let priority = message.priority();
