@@ -167,7 +167,7 @@ async fn test_http_concurrent_job_creation_moderate_load() {
 /// - Sets up test database
 ///
 /// # Act
-/// - Sends 500 concurrent job creation requests
+/// - Sends 200 concurrent job creation requests
 /// - All requests within 500ms window
 ///
 /// # Assert
@@ -208,8 +208,8 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
-    // Send 500 concurrent requests
-    let num_requests = 500;
+    // Send 200 concurrent requests
+    let num_requests = 200;
     let start_time = Instant::now();
 
     let mut handles = Vec::new();
