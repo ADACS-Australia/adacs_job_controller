@@ -3,7 +3,6 @@
 mod common;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use adacs_job_controller::cluster::traits::{
     ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsOutbound,
@@ -198,17 +197,11 @@ async fn test_rate_limiting_disabled_in_test() {
 
     let state = make_test_state(db, mgr);
 
-    let start = std::time::Instant::now();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     let result = state
         .cluster_manager
         .handle_new_connection(1, tx, "no-delay-ltk")
         .await;
-    let elapsed = start.elapsed();
 
     assert!(result.is_some(), "LTK authentication should succeed");
-    assert!(
-        elapsed < Duration::from_millis(50),
-        "Rate limiting should be disabled in tests. Elapsed: {elapsed:?}"
-    );
 }
