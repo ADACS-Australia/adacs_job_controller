@@ -1,5 +1,6 @@
 use sea_orm_migration::prelude::*;
 
+/// Top-level migrator that registers all table-creation migrations.
 pub struct Migrator;
 
 #[async_trait::async_trait]
