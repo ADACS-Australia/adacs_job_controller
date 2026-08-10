@@ -509,7 +509,15 @@ pub async fn upload_file(
 
     tracing::trace!("HTTP: Sending UPLOAD_FILE message to cluster");
     let mut msg = Message::new(UPLOAD_FILE, Priority::Highest, &uuid);
-    msg.push_uint(params.job_id.unwrap_or(0) as u32);
+    msg.push_uint(u32::try_from(params.job_id.unwrap_or(0)).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Job ID {} exceeds maximum supported value",
+                params.job_id.unwrap_or(0)
+            ),
+        )
+    })?);
     msg.push_string(&s_bundle);
     msg.push_string(&target_path);
     msg.push_ulong(content_length);

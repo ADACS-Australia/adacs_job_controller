@@ -199,7 +199,12 @@ pub async fn create_job(
         );
         let source = format!("{job_id}_{}", body.cluster);
         let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, &source);
-        msg.push_uint(job_id as u32);
+        msg.push_uint(u32::try_from(job_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Job ID {job_id} exceeds maximum supported value"),
+            )
+        })?);
         msg.push_string(&body.bundle);
         msg.push_string(&body.parameters);
         tracing::trace!(
@@ -515,7 +520,12 @@ pub async fn cancel_job(
         if cluster_obj.is_online() {
             let source = format!("{}_{}", body.job_id, job.cluster);
             let mut msg = Message::new(CANCEL_JOB, Priority::Medium, &source);
-            msg.push_uint(body.job_id as u32);
+            msg.push_uint(u32::try_from(body.job_id).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Job ID {} exceeds maximum supported value", body.job_id),
+                )
+            })?);
             cluster_obj.send_message(msg).await;
         }
     }
@@ -608,7 +618,12 @@ pub async fn delete_job(
         if cluster_obj.is_online() {
             let source = format!("{}_{}", body.job_id, job.cluster);
             let mut msg = Message::new(DELETE_JOB, Priority::Medium, &source);
-            msg.push_uint(body.job_id as u32);
+            msg.push_uint(u32::try_from(body.job_id).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Job ID {} exceeds maximum supported value", body.job_id),
+                )
+            })?);
             cluster_obj.send_message(msg).await;
         }
     }
