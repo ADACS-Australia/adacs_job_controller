@@ -250,7 +250,6 @@ async fn handle_job_get_by_id(
 }
 
 /// Returns all running jobs for this cluster and sends them in a `DB_RESPONSE`.
-/// Returns all running cluster jobs for this cluster and sends them in a `DB_RESPONSE`.
 async fn handle_job_get_running_jobs(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
