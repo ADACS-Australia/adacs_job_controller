@@ -413,7 +413,11 @@ async fn handle_jobstatus_delete_by_id_list(
     let db_request_id = message.pop_uint();
     let count = message.pop_uint();
 
-    for _ in 0..count {
+    // Bound the delete loop to the IDs actually present in the message (8 bytes
+    // per ulong) rather than trusting the wire-supplied count, which can be
+    // arbitrarily large on a truncated or malicious message.
+    let ids_to_delete = (count as usize).min(message.remaining() / 8);
+    for _ in 0..ids_to_delete {
         let id = message.pop_ulong().cast_signed();
         let _ = cluster_job_status::Entity::delete_by_id(id).exec(db).await;
     }
