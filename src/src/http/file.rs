@@ -557,9 +557,24 @@ pub async fn upload_file(
     let chunk_size = (*settings::FILE_CHUNK_SIZE) as usize;
     let mut total_read: u64 = 0;
 
-    let body_bytes = to_bytes(request.into_body(), content_length as usize + 1)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}")))?;
+    let body_bytes = to_bytes(
+        request.into_body(),
+        (content_length as usize).saturating_add(1),
+    )
+    .await
+    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}")))?;
+
+    if body_bytes.len() as u64 != content_length {
+        tracing::warn!(
+            "HTTP: File upload rejected - body length {} does not match Content-Length {}",
+            body_bytes.len(),
+            content_length
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Request body length does not match Content-Length header".to_string(),
+        ));
+    }
 
     while total_read < content_length {
         if !upload_cluster.wait_for_queue_drain(false).await {
