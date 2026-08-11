@@ -452,7 +452,7 @@ pub async fn cancel_job(
     let job = get_job_with_access_check(&state, &auth, body.job_id).await?;
 
     let latest = job_history::Entity::find()
-        .filter(job_history::Column::JobId.eq(body.job_id as i64))
+        .filter(job_history::Column::JobId.eq(job.id))
         .order_by_desc(job_history::Column::Timestamp)
         .one(&state.db)
         .await
@@ -490,7 +490,7 @@ pub async fn cancel_job(
 
     if current_state == JobStatus::Pending as i32 {
         job_history::ActiveModel {
-            job_id: Set(body.job_id as i64),
+            job_id: Set(job.id),
             timestamp: Set(chrono::Utc::now().naive_utc()),
             what: Set(SYSTEM_SOURCE.to_string()),
             state: Set(JobStatus::Cancelled as i32),
@@ -502,7 +502,7 @@ pub async fn cancel_job(
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
     } else {
         job_history::ActiveModel {
-            job_id: Set(body.job_id as i64),
+            job_id: Set(job.id),
             timestamp: Set(chrono::Utc::now().naive_utc()),
             what: Set(SYSTEM_SOURCE.to_string()),
             state: Set(JobStatus::Cancelling as i32),
@@ -551,7 +551,7 @@ pub async fn delete_job(
     let job = get_job_with_access_check(&state, &auth, body.job_id).await?;
 
     let latest = job_history::Entity::find()
-        .filter(job_history::Column::JobId.eq(body.job_id as i64))
+        .filter(job_history::Column::JobId.eq(job.id))
         .order_by_desc(job_history::Column::Timestamp)
         .one(&state.db)
         .await
@@ -588,7 +588,7 @@ pub async fn delete_job(
 
     if current_state == JobStatus::Pending as i32 {
         job_history::ActiveModel {
-            job_id: Set(body.job_id as i64),
+            job_id: Set(job.id),
             timestamp: Set(chrono::Utc::now().naive_utc()),
             what: Set(SYSTEM_SOURCE.to_string()),
             state: Set(JobStatus::Deleted as i32),
@@ -600,7 +600,7 @@ pub async fn delete_job(
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
     } else {
         job_history::ActiveModel {
-            job_id: Set(body.job_id as i64),
+            job_id: Set(job.id),
             timestamp: Set(chrono::Utc::now().naive_utc()),
             what: Set(SYSTEM_SOURCE.to_string()),
             state: Set(JobStatus::Deleting as i32),
