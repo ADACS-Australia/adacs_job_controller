@@ -517,11 +517,16 @@ impl Cluster {
 
     /// Parses a `FILE_LIST` response payload into file entries and updates the matching [`FileListState`].
     async fn handle_file_list_response(&self, message: &mut Message) {
+        const MIN_FILE_LIST_ENTRY_BYTES: usize = 17;
+
         let uuid = message.pop_string();
         let num_files = message.pop_uint();
 
-        let mut files = Vec::with_capacity(num_files as usize);
+        let mut files = Vec::new();
         for _ in 0..num_files {
+            if message.remaining() < MIN_FILE_LIST_ENTRY_BYTES {
+                break;
+            }
             let file_name = message.pop_string();
             let is_directory = message.pop_bool();
             let file_size = message.pop_ulong();
@@ -2095,5 +2100,48 @@ mod tests {
         assert!(!state.data_ready.load(Ordering::Relaxed));
         assert!(!state.received_data.load(Ordering::Relaxed));
         assert!(!state.complete.load(Ordering::Relaxed));
+    }
+
+    // -----------------------------------------------------------------------
+    // FILE_LIST response handling
+    // -----------------------------------------------------------------------
+
+    /// Verifies that a `FILE_LIST` response claiming a huge file count with a
+    /// short payload yields only the entries actually present in the buffer.
+    #[tokio::test]
+    async fn test_file_list_response_huge_count_short_payload() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+        let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+            Arc::new(DashMap::new());
+        let app_context = Arc::new(AppContext {
+            db,
+            file_list_map: Arc::clone(&file_list_map),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        let uuid = "file-list-uuid-1";
+        let state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+        file_list_map.insert(uuid.to_string(), Arc::clone(&state));
+
+        let mut msg = Message::new(FILE_LIST, Priority::Lowest, "test_cluster");
+        msg.push_string(uuid);
+        msg.push_uint(u32::MAX);
+        msg.push_string("file_a.txt");
+        msg.push_bool(false);
+        msg.push_ulong(1024);
+        msg.push_string("dir_b");
+        msg.push_bool(true);
+        msg.push_ulong(0);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_response(&mut msg).await;
+
+        let locked = state.lock().await;
+        assert_eq!(locked.files.len(), 2);
+        assert_eq!(locked.files[0].file_name, "file_a.txt");
+        assert_eq!(locked.files[1].file_name, "dir_b");
+        assert!(locked.data_ready);
     }
 }
