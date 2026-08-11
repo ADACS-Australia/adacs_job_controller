@@ -971,4 +971,64 @@ mod tests {
         assert_eq!(msg2.pop_string(), "");
         assert_eq!(msg2.pop_bytes(), Vec::<u8>::new());
     }
+
+    // ---- Buffer underrun defaults ----
+
+    /// Verifies that all `pop_*` methods return their documented safe defaults
+    /// when the buffer is empty (no bytes remaining).
+    ///
+    /// # Setup
+    /// Parse a message from an empty byte vector.
+    ///
+    /// # Act
+    /// Call every `pop_*` method on the empty buffer.
+    ///
+    /// # Assert
+    /// Each method returns its documented default (`false`, `0`, `0.0`, `""`,
+    /// or an empty `Vec<u8>`) instead of panicking.
+    #[allow(clippy::float_cmp)]
+    #[test]
+    fn test_pop_defaults_on_empty_buffer() {
+        let mut msg = Message::from_bytes(Vec::new());
+        assert!(!msg.pop_bool());
+        assert_eq!(msg.pop_ubyte(), 0);
+        assert_eq!(msg.pop_byte(), 0);
+        assert_eq!(msg.pop_ushort(), 0);
+        assert_eq!(msg.pop_short(), 0);
+        assert_eq!(msg.pop_uint(), 0);
+        assert_eq!(msg.pop_int(), 0);
+        assert_eq!(msg.pop_ulong(), 0);
+        assert_eq!(msg.pop_long(), 0);
+        assert_eq!(msg.pop_float(), 0.0);
+        assert_eq!(msg.pop_double(), 0.0);
+        assert_eq!(msg.pop_string(), "");
+        assert_eq!(msg.pop_bytes(), Vec::<u8>::new());
+    }
+
+    /// Verifies that multi-byte `pop_*` methods return their documented safe
+    /// defaults on a truncated buffer holding only one partial byte.
+    ///
+    /// # Setup
+    /// Parse a message from a 1-byte vector `[0x01]`.
+    ///
+    /// # Act
+    /// Call every multi-byte `pop_*` method on the truncated buffer.
+    ///
+    /// # Assert
+    /// Each method returns its documented default instead of panicking.
+    #[allow(clippy::float_cmp)]
+    #[test]
+    fn test_pop_defaults_on_partial_buffer() {
+        let mut msg = Message::from_bytes(vec![0x01]);
+        assert_eq!(msg.pop_ushort(), 0);
+        assert_eq!(msg.pop_short(), 0);
+        assert_eq!(msg.pop_uint(), 0);
+        assert_eq!(msg.pop_int(), 0);
+        assert_eq!(msg.pop_ulong(), 0);
+        assert_eq!(msg.pop_long(), 0);
+        assert_eq!(msg.pop_float(), 0.0);
+        assert_eq!(msg.pop_double(), 0.0);
+        assert_eq!(msg.pop_string(), "");
+        assert_eq!(msg.pop_bytes(), Vec::<u8>::new());
+    }
 }
