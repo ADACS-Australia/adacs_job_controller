@@ -36,7 +36,6 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && \
 
 # Copy actual source
 COPY src/src/ src/
-COPY src/tests/ tests/
 
 # Build release binary
 RUN cargo build --release
