@@ -808,11 +808,11 @@ pub async fn list_files(
     if job_complete && body.path.is_empty() && body.recursive {
         for file in &files {
             let _ = file_list_cache::ActiveModel {
-                job_id: Set(job_id as i64),
+                job_id: Set(job_id.cast_signed()),
                 path: Set(file.file_name.clone()),
                 is_dir: Set(file.is_directory),
-                file_size: Set(file.file_size as i64),
-                permissions: Set(file.permissions as i32),
+                file_size: Set(file.file_size.cast_signed()),
+                permissions: Set(file.permissions.cast_signed()),
                 ..Default::default()
             }
             .insert(&state.db)
@@ -884,11 +884,11 @@ async fn spawn_background_cache(
     if !locked.error {
         for file in &locked.files {
             let _ = file_list_cache::ActiveModel {
-                job_id: Set(job_id as i64),
+                job_id: Set(job_id.cast_signed()),
                 path: Set(file.file_name.clone()),
                 is_dir: Set(file.is_directory),
-                file_size: Set(file.file_size as i64),
-                permissions: Set(file.permissions as i32),
+                file_size: Set(file.file_size.cast_signed()),
+                permissions: Set(file.permissions.cast_signed()),
                 ..Default::default()
             }
             .insert(&state.db)
