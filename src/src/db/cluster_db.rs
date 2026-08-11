@@ -640,6 +640,21 @@ mod tests {
     }
 
     #[test]
+    fn test_wire_row_count_in_range() {
+        assert_eq!(wire_row_count("test-cluster", 0), 0);
+        assert_eq!(wire_row_count("test-cluster", 42), 42);
+        assert_eq!(wire_row_count("test-cluster", u32::MAX as usize), u32::MAX);
+    }
+
+    #[test]
+    fn test_wire_row_count_clamps_overflow() {
+        assert_eq!(
+            wire_row_count("test-cluster", u32::MAX as usize + 1),
+            u32::MAX
+        );
+    }
+
+    #[test]
     fn test_unhandled_message_returns_false() {
         // This test doesn't need async since we test the ID matching
         // We verify that non-DB message IDs return false
