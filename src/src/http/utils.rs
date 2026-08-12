@@ -1,10 +1,18 @@
+use std::error::Error as _;
 use std::path::{Component, PathBuf};
 
 use crate::protocol::types::FileInfo;
 use axum::body::to_bytes;
 use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
+use http_body_util::LengthLimitError;
 use serde::de::DeserializeOwned;
+
+/// Maximum accepted JSON request body size (10 MiB).
+///
+/// Bounds memory usage for the `LenientJson` extractor; oversized bodies are
+/// rejected with HTTP 413 instead of being buffered in full.
+const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
@@ -40,9 +48,20 @@ where
         }
 
         // Parse body as JSON regardless of Content-Type
-        let bytes = to_bytes(req.into_body(), usize::MAX)
+        let bytes = to_bytes(req.into_body(), MAX_JSON_BODY_BYTES)
             .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}")))?;
+            .map_err(|e| {
+                if e.source()
+                    .is_some_and(<dyn std::error::Error>::is::<LengthLimitError>)
+                {
+                    (
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        "Request body too large".to_string(),
+                    )
+                } else {
+                    (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}"))
+                }
+            })?;
 
         let value: T = serde_json::from_slice(&bytes)
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid JSON: {e}")))?;
@@ -161,6 +180,28 @@ pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Verifies that an oversized JSON body is rejected with HTTP 413 rather than
+    /// being buffered in full.
+    #[tokio::test]
+    async fn test_lenient_json_rejects_oversized_body() {
+        let body = vec![b' '; MAX_JSON_BODY_BYTES + 1];
+        let req = Request::builder()
+            .body(axum::body::Body::from(body))
+            .expect("request should build");
+        let result = LenientJson::<serde_json::Value>::from_request(req, &()).await;
+        assert!(matches!(result, Err((StatusCode::PAYLOAD_TOO_LARGE, _))));
+    }
+
+    /// Verifies that a valid JSON body is accepted by the `LenientJson` extractor.
+    #[tokio::test]
+    async fn test_lenient_json_accepts_valid_body() {
+        let req = Request::builder()
+            .body(axum::body::Body::from(r#"{"job_id": 1}"#))
+            .expect("request should build");
+        let result = LenientJson::<serde_json::Value>::from_request(req, &()).await;
+        assert!(result.is_ok());
+    }
 
     /// Verifies that `parse_csv_u64` correctly splits a comma-separated string into a vector of
     /// u64 values, ignoring empty segments and non-numeric tokens.
