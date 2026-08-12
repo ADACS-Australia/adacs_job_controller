@@ -11,6 +11,19 @@ use crate::app::AppState;
 use crate::config::settings::{RATE_LIMIT_BURST_SIZE, RATE_LIMIT_REQUESTS_PER_SECOND};
 use crate::http::{file, job};
 
+/// Compute the rate-limiter replenish interval in milliseconds when rate limiting
+/// is enabled and the governor parameters are valid.
+///
+/// Returns `None` when rate limiting is disabled (`requests_per_second == 0`) or
+/// when the governor parameters are invalid (e.g. a zero burst size), so callers
+/// can fall back to serving without rate limiting instead of panicking.
+fn rate_limiter_interval_ms(requests_per_second: u64, burst_size: u32) -> Option<u64> {
+    if requests_per_second == 0 || burst_size == 0 {
+        return None;
+    }
+    Some((1000u64.saturating_div(requests_per_second)).max(1))
+}
+
 /// Create the HTTP API router with all routes and middleware.
 pub fn create_router(state: AppState) -> Router {
     tracing::debug!("HTTP: Building job routes");
@@ -41,16 +54,19 @@ pub fn create_router(state: AppState) -> Router {
         .layer(TraceLayer::new_for_http());
 
     // Rate limiting (disabled when RATE_LIMIT_REQUESTS_PER_SECOND is 0)
-    if *RATE_LIMIT_REQUESTS_PER_SECOND > 0 {
-        let interval_ms = (1000u64.saturating_div(*RATE_LIMIT_REQUESTS_PER_SECOND)).max(1);
+    let requests_per_second = *RATE_LIMIT_REQUESTS_PER_SECOND;
+    let burst_size = *RATE_LIMIT_BURST_SIZE;
+    if requests_per_second > 0 {
         tracing::debug!(
             "HTTP: Enabling rate limiting ({} req/s, burst {})",
-            *RATE_LIMIT_REQUESTS_PER_SECOND,
-            *RATE_LIMIT_BURST_SIZE
+            requests_per_second,
+            burst_size
         );
+    }
+    if let Some(interval_ms) = rate_limiter_interval_ms(requests_per_second, burst_size) {
         let mut config_builder = GovernorConfigBuilder::default();
         config_builder.per_millisecond(interval_ms);
-        config_builder.burst_size(*RATE_LIMIT_BURST_SIZE);
+        config_builder.burst_size(burst_size);
         if let Some(governor_config) = config_builder.finish() {
             router = router.layer(GovernorLayer::new(Arc::new(governor_config)));
             tracing::trace!(
@@ -60,10 +76,16 @@ pub fn create_router(state: AppState) -> Router {
         } else {
             tracing::warn!(
                 "HTTP: Invalid rate limiter config (burst_size {}, interval {}ms); rate limiting disabled",
-                *RATE_LIMIT_BURST_SIZE,
+                burst_size,
                 interval_ms
             );
         }
+    } else if requests_per_second > 0 {
+        tracing::warn!(
+            "HTTP: Invalid rate limiter config (burst_size {}, interval {}ms); rate limiting disabled",
+            burst_size,
+            (1000u64.saturating_div(requests_per_second)).max(1)
+        );
     } else {
         tracing::debug!("HTTP: Rate limiting disabled");
     }
@@ -84,5 +106,33 @@ mod tests {
         fn _assert_router_fn_exists() {
             let _: fn(AppState) -> Router = create_router;
         }
+    }
+
+    #[test]
+    fn rate_limiter_interval_ms_is_none_when_rate_limiting_disabled() {
+        // A zero requests-per-second value disables rate limiting entirely.
+        assert_eq!(rate_limiter_interval_ms(0, 50), None);
+    }
+
+    #[test]
+    fn rate_limiter_interval_ms_is_none_for_zero_burst_size() {
+        // A zero burst size is invalid for governor; the router must fall back
+        // to serving without rate limiting instead of panicking.
+        assert_eq!(rate_limiter_interval_ms(10, 0), None);
+    }
+
+    #[test]
+    fn rate_limiter_interval_ms_computes_interval_from_requests_per_second() {
+        // 10 req/s replenishes one element every 100ms.
+        assert_eq!(rate_limiter_interval_ms(10, 50), Some(100));
+        // 500 req/s replenishes one element every 2ms.
+        assert_eq!(rate_limiter_interval_ms(500, 50), Some(2));
+    }
+
+    #[test]
+    fn rate_limiter_interval_ms_floors_interval_at_one_millisecond() {
+        // Very high request rates cannot go below a 1ms replenish interval.
+        assert_eq!(rate_limiter_interval_ms(1000, 50), Some(1));
+        assert_eq!(rate_limiter_interval_ms(1_000_000, 50), Some(1));
     }
 }
