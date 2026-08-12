@@ -78,12 +78,18 @@ impl Message {
         self.data
     }
 
+    /// Number of unread bytes remaining in the message buffer.
+    #[must_use]
+    pub fn remaining(&self) -> usize {
+        self.data.len().saturating_sub(self.index)
+    }
+
     // --- Private helper: bounds checking ---
 
     /// Check if at least `n` bytes remain in the buffer.
     /// Logs error and returns false if not enough data.
     fn check_remaining(&self, n: usize) -> bool {
-        let remaining = self.data.len().saturating_sub(self.index);
+        let remaining = self.remaining();
         if remaining < n {
             tracing::warn!(
                 "Message buffer underrun: expected {} bytes, but only {} bytes remaining (index={})",
