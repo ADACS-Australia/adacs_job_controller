@@ -57,7 +57,7 @@ test-and-coverage:
   script:
     - cd src
     # Run tests once with coverage instrumentation (collect raw data only)
-    - cargo llvm-cov --no-report
+    - cargo llvm-cov --no-report -- --test-threads=1
     # Generate cobertura XML for GitLab coverage report
     - cargo llvm-cov report --cobertura --output-path cobertura.xml
     # Generate JSON for parsing coverage percentage
