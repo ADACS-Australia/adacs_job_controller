@@ -340,7 +340,7 @@ pub async fn download_file(
     let content_disposition = if force_download {
         format!("attachment; filename=\"{filename}\"")
     } else {
-        format!("filename=\"{filename}\"")
+        format!("inline; filename=\"{filename}\"")
     };
 
     let fd_state_stream = Arc::clone(&fd_state);
