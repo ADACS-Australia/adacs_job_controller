@@ -551,7 +551,7 @@ impl Cluster {
         let mut state = fl_state.lock().await;
         state.files = files;
         state.data_ready = true;
-        state.notify.notify_waiters();
+        state.notify.notify_one();
     }
 
     /// Handles a `FILE_LIST_ERROR` response by recording the error details and waking waiters.
@@ -578,7 +578,7 @@ impl Cluster {
         state.error = true;
         state.error_details = detail;
         state.data_ready = true;
-        state.notify.notify_waiters();
+        state.notify.notify_one();
     }
 
     // ---- FileDownload message handling ----
@@ -612,7 +612,7 @@ impl Cluster {
             *state.error_details.lock().await =
                 "Download aborted: HTTP client disconnected".to_string();
             state.data_ready.store(true, Ordering::Release);
-            state.data_notify.notify_waiters();
+            state.data_notify.notify_one();
             return;
         }
 
@@ -634,7 +634,7 @@ impl Cluster {
         }
 
         state.data_ready.store(true, Ordering::Release);
-        state.data_notify.notify_waiters();
+        state.data_notify.notify_one();
         tracing::trace!(
             "Cluster[{}]: FILE_CHUNK forwarded to HTTP handler",
             self.name()
@@ -660,7 +660,7 @@ impl Cluster {
         state.file_size.store(file_size, Ordering::Relaxed);
         state.received_data.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
-        state.data_notify.notify_waiters();
+        state.data_notify.notify_one();
         tracing::debug!(
             "Cluster[{}]: FILE_DETAILS processed - data_ready set",
             self.name()
@@ -686,7 +686,7 @@ impl Cluster {
         *state.error_details.lock().await = details;
         state.error.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
-        state.data_notify.notify_waiters();
+        state.data_notify.notify_one();
     }
 
     // ---- FileUpload message handling ----
@@ -702,7 +702,7 @@ impl Cluster {
             return;
         };
         state.data_ready.store(true, Ordering::Release);
-        state.data_notify.notify_waiters();
+        state.data_notify.notify_one();
     }
 
     /// Stores the file upload error details and notifies any waiting readers.
@@ -723,7 +723,7 @@ impl Cluster {
         *state.error_details.lock().await = details;
         state.error.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
-        state.data_notify.notify_waiters();
+        state.data_notify.notify_one();
     }
 
     /// Marks the file upload as complete and notifies any waiting readers.
@@ -738,7 +738,7 @@ impl Cluster {
         state.complete.store(true, Ordering::Release);
         state.received_data.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
-        state.data_notify.notify_waiters();
+        state.data_notify.notify_one();
     }
 
     // ---- Resend helpers ----
