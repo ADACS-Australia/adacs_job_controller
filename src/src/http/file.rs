@@ -905,7 +905,7 @@ async fn resolve_cluster_bundle(
             .filter(|s| !s.is_empty())
             .ok_or((StatusCode::BAD_REQUEST, "Bad request".to_string()))?;
 
-        if !auth.secret.clusters.contains(&cluster.to_string()) {
+        if !auth.secret.clusters.iter().any(|c| c == cluster) {
             return Err((StatusCode::BAD_REQUEST, "Bad request".to_string()));
         }
 
