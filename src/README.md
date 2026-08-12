@@ -75,7 +75,7 @@ All HTTP endpoints require JWT (HS256) authentication via `Authorization: Bearer
 
 - **tokio** — async runtime
 - **axum** — HTTP/WebSocket server
-- **sqlx** — async MySQL driver
+- **sea-orm** — async MySQL ORM (built on sqlx)
 - **dashmap** — concurrent hash map
 - **jsonwebtoken** — JWT authentication
 - **serde** / **serde_json** — serialization
