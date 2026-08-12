@@ -820,6 +820,64 @@ async fn test_handle_jobstatus_delete_by_id_list() {
     assert_eq!(req_id, 1000);
 }
 
+/// Verifies that a truncated/malicious `DB_JOBSTATUS_DELETE_BY_ID_LIST` with an
+/// inflated `count` only deletes the IDs actually present in the message.
+///
+/// # Setup
+/// In-memory DB with four status rows (what: "a", "b", "c", "d") all for `job_id=1`.
+///
+/// # Act
+/// Dispatch `DB_JOBSTATUS_DELETE_BY_ID_LIST` with `db_request_id=1000`, a wire-supplied
+/// `count` of `u32::MAX`, but only two actual id payloads (rows "a" and "c").
+///
+/// # Assert
+/// Only rows "b" and "d" remain; the handler does not spin on `delete_by_id(0)` for the
+/// missing ids, and the `DB_RESPONSE` echoes `db_request_id=1000`.
+#[tokio::test]
+async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
+    let db = make_db().await;
+    setup_cluster_db(&db).await;
+
+    let mut ids = Vec::new();
+    for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
+        let inserted = cluster_job_status::ActiveModel {
+            job_id: Set(1),
+            what: Set(what.to_string()),
+            state: Set(state),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        ids.push(inserted.id.cast_unsigned());
+    }
+
+    let to_delete = [ids[0], ids[2]]; // delete "a" and "c"
+
+    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let mut msg = dispatch_message(DB_JOBSTATUS_DELETE_BY_ID_LIST, |m| {
+        m.push_uint(1000);
+        m.push_uint(u32::MAX); // inflated count — only 2 ids follow
+        m.push_ulong(to_delete[0]);
+        m.push_ulong(to_delete[1]);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let remaining = cluster_job_status::Entity::find()
+        .order_by_asc(cluster_job_status::Column::What)
+        .all(&db)
+        .await
+        .unwrap();
+    let whats: Vec<String> = remaining.iter().map(|m| m.what.clone()).collect();
+    assert_eq!(whats, vec!["b", "d"]);
+
+    let captured = sent.lock().unwrap();
+    let (req_id, _) = parse_response(captured[0].clone());
+    assert_eq!(req_id, 1000);
+}
+
 // ---------------------------------------------------------------------------
 // DB_BUNDLE_CREATE_OR_UPDATE_JOB — new bundle
 // ---------------------------------------------------------------------------
