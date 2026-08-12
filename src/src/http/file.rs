@@ -844,7 +844,11 @@ pub async fn list_files(
 }
 
 /// Spawn a background file-list request to populate the cache for a completed job.
-async fn spawn_background_cache(
+///
+/// # Errors
+///
+/// Returns an error string if the cluster is offline.
+pub async fn spawn_background_cache(
     state: AppState,
     cluster: Arc<dyn crate::cluster::traits::ClusterTrait>,
     bundle: String,

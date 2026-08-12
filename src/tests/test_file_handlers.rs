@@ -780,31 +780,35 @@ async fn test_list_files_ws_response_populates_result() {
     assert_eq!(files[0]["path"].as_str().unwrap(), "/output/result.txt");
 }
 
-/// Tests that a completed job's root recursive listing is written to the `file_list_cache`.
+/// Tests that a root recursive listing of a completed job populates the `file_list_cache`
+/// with the files returned by the cluster.
 ///
 /// # Setup
-/// Inserts a Completed job (no pre-existing cache). Wires a cluster whose `send_message`
-/// mock populates the `file_list_map` entry with files.
+/// Inserts a completed job (no pre-existing cache). Wires a cluster whose `send_message`
+/// mock inserts a stale cache row while the request is in flight, then populates the
+/// `FileListState` with a single fresh file.
 ///
 /// # Act
-/// Sends PATCH /job/apiv1/file/ with the job ID, empty path, and recursive=true.
+/// Sends PATCH /job/apiv1/file/ with `{"jobId": ..., "path": "", "recursive": true}`.
 ///
 /// # Assert
-/// Verifies 200 OK and that the `file_list_cache` table holds one row per returned file
-/// with the correct `job_id`, path, `is_dir`, `file_size`, and `permissions`.
+/// Verifies 200 OK with the file in the response, and that the cache table now contains
+/// exactly that file — the stale row is deleted before the fresh rows are inserted, so
+/// no duplicate cache rows remain.
 #[tokio::test]
-async fn test_list_files_completed_job_populates_file_list_cache() {
+async fn test_list_files_completed_job_populates_cache() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    // Mark as complete — enables the caching path
+    // Mark as complete
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
     insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
 
-    // The fl_state will be populated by a background task simulating the WS handler
     let file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
         Arc::new(dashmap::DashMap::new());
     let file_list_map_clone = Arc::clone(&file_list_map);
 
+    let db_for_mock = db.clone();
+    let job_id_for_mock = job_id;
     let cluster = {
         let flm = Arc::clone(&file_list_map_clone);
         let mut c = MockClusterTrait::new();
@@ -815,31 +819,35 @@ async fn test_list_files_completed_job_populates_file_list_cache() {
         c.expect_cluster_details()
             .returning(|| test_cluster_config("ozstar"));
         c.expect_send_message().returning(move |msg| {
-            // Parse the UUID from the FILE_LIST message, then signal it
             let mut m =
                 adacs_job_controller::protocol::message::Message::from_bytes(msg.into_data());
             let _job_id = m.pop_uint();
             let uuid = m.pop_string();
 
             let flm2 = Arc::clone(&flm);
+            let db2 = db_for_mock.clone();
+            let jid = job_id_for_mock;
             tokio::spawn(async move {
+                // Simulate a stale cache row appearing while the request is in flight
+                let _ = file_list_cache::ActiveModel {
+                    job_id: Set(jid),
+                    path: Set("/stale/old.txt".to_string()),
+                    is_dir: Set(false),
+                    file_size: Set(1024),
+                    permissions: Set(0o644),
+                    ..Default::default()
+                }
+                .insert(&db2)
+                .await;
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 if let Some(state_arc) = flm2.get(&uuid) {
                     let mut locked = state_arc.lock().await;
-                    locked.files = vec![
-                        FileInfo {
-                            file_name: "/out/results.txt".to_string(),
-                            file_size: 1024,
-                            permissions: 0o644,
-                            is_directory: false,
-                        },
-                        FileInfo {
-                            file_name: "/out/".to_string(),
-                            file_size: 0,
-                            permissions: 0o755,
-                            is_directory: true,
-                        },
-                    ];
+                    locked.files = vec![FileInfo {
+                        file_name: "/output/result.txt".to_string(),
+                        file_size: 512,
+                        permissions: 0o644,
+                        is_directory: false,
+                    }];
                     locked.data_ready = true;
                     locked.notify.notify_waiters();
                 }
@@ -855,7 +863,6 @@ async fn test_list_files_completed_job_populates_file_list_cache() {
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
 
-    // Build AppState with the shared file_list_map
     let state = adacs_job_controller::app::AppState {
         db: db.clone(),
         cluster_manager: Arc::new(manager),
@@ -896,31 +903,125 @@ async fn test_list_files_completed_job_populates_file_list_cache() {
     .unwrap();
 
     let files = body["files"].as_array().unwrap();
-    assert_eq!(
-        files.len(),
-        2,
-        "should return the 2 files from the WS response"
-    );
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0]["path"].as_str().unwrap(), "/output/result.txt");
 
-    // The completed-job root recursive listing must have been written to the cache
+    // Cache should contain exactly the fresh file — the stale row was deleted first
     let cached = file_list_cache::Entity::find()
         .filter(file_list_cache::Column::JobId.eq(job_id))
         .all(&db)
         .await
         .unwrap();
-    assert_eq!(cached.len(), 2, "should have cached 2 file entries");
+    assert_eq!(
+        cached.len(),
+        1,
+        "stale row should be deleted, no duplicate rows"
+    );
+    assert_eq!(cached[0].path, "/output/result.txt");
+}
 
-    let by_path: std::collections::HashMap<&str, &file_list_cache::Model> =
-        cached.iter().map(|c| (c.path.as_str(), c)).collect();
-    let file = by_path.get("/out/results.txt").expect("file cached");
-    assert_eq!(file.file_size, 1024);
-    assert_eq!(file.permissions, 0o644);
-    assert!(!file.is_dir);
+/// Tests that `spawn_background_cache` replaces (rather than duplicates) existing
+/// `file_list_cache` rows for a completed job.
+///
+/// # Setup
+/// Inserts a completed job and pre-populates the `file_list_cache` table with 2 stale
+/// entries for that job. Wires a cluster whose `send_message` mock populates the
+/// `FileListState` with a single fresh file.
+///
+/// # Act
+/// Calls `spawn_background_cache` directly.
+///
+/// # Assert
+/// Verifies the cache now contains exactly the fresh file — the stale rows are deleted
+/// before the new rows are inserted, so no duplicate cache rows remain.
+#[tokio::test]
+async fn test_spawn_background_cache_replaces_stale_rows() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
-    let dir = by_path.get("/out/").expect("dir cached");
-    assert_eq!(dir.file_size, 0);
-    assert_eq!(dir.permissions, 0o755);
-    assert!(dir.is_dir);
+    // Pre-seed stale cache rows for the job
+    for (name, is_dir) in [("/stale/old.txt", false), ("/stale/", true)] {
+        file_list_cache::ActiveModel {
+            job_id: Set(job_id),
+            path: Set(name.to_string()),
+            is_dir: Set(is_dir),
+            file_size: Set(1024),
+            permissions: Set(0o644),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+    }
+
+    let file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+        Arc::new(dashmap::DashMap::new());
+    let file_list_map_clone = Arc::clone(&file_list_map);
+
+    let cluster = {
+        let flm = Arc::clone(&file_list_map_clone);
+        let mut c = MockClusterTrait::new();
+        c.expect_name().returning(|| "ozstar".to_string());
+        c.expect_is_online().returning(|| true);
+        c.expect_role().returning(|| ClusterRole::Master);
+        c.expect_role_string().returning(|| "master".to_string());
+        c.expect_cluster_details()
+            .returning(|| test_cluster_config("ozstar"));
+        c.expect_send_message().returning(move |msg| {
+            let mut m =
+                adacs_job_controller::protocol::message::Message::from_bytes(msg.into_data());
+            let _job_id = m.pop_uint();
+            let uuid = m.pop_string();
+
+            let flm2 = Arc::clone(&flm);
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                if let Some(state_arc) = flm2.get(&uuid) {
+                    let mut locked = state_arc.lock().await;
+                    locked.files = vec![FileInfo {
+                        file_name: "/output/result.txt".to_string(),
+                        file_size: 512,
+                        permissions: 0o644,
+                        is_directory: false,
+                    }];
+                    locked.data_ready = true;
+                    locked.notify.notify_waiters();
+                }
+            });
+            Box::pin(async {})
+        });
+        Arc::new(c)
+    };
+
+    let state = adacs_job_controller::app::AppState {
+        db: db.clone(),
+        cluster_manager: Arc::new(MockClusterManagerTrait::new()),
+        file_list_map,
+        jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: None,
+    };
+
+    adacs_job_controller::http::file::spawn_background_cache(
+        state,
+        cluster,
+        "b".to_string(),
+        job_id as u64,
+    )
+    .await
+    .unwrap();
+
+    // Stale rows must be gone; only the fresh file remains (no duplicates)
+    let cached = file_list_cache::Entity::find()
+        .filter(file_list_cache::Column::JobId.eq(job_id))
+        .all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        cached.len(),
+        1,
+        "stale cache rows should be replaced, not duplicated"
+    );
+    assert_eq!(cached[0].path, "/output/result.txt");
 }
 
 /// Tests that PATCH /file/ returns 503 when the cluster is offline.
