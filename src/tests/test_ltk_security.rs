@@ -99,9 +99,6 @@ async fn test_rate_limiting_applies() {
     unsafe {
         std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "100");
     }
-    unsafe {
-        std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "100");
-    }
 
     let db = setup_test_db().await;
 
