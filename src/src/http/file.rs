@@ -812,6 +812,10 @@ pub async fn list_files(
 
     // Cache if job is complete and this was a root recursive listing
     if job_complete && body.path.is_empty() && body.recursive {
+        let _ = file_list_cache::Entity::delete_many()
+            .filter(file_list_cache::Column::JobId.eq(job_id as i64))
+            .exec(&state.db)
+            .await;
         for file in &files {
             let _ = file_list_cache::ActiveModel {
                 job_id: Set(job_id.cast_signed()),
@@ -888,6 +892,10 @@ async fn spawn_background_cache(
 
     let locked = fl_state.lock().await;
     if !locked.error {
+        let _ = file_list_cache::Entity::delete_many()
+            .filter(file_list_cache::Column::JobId.eq(job_id as i64))
+            .exec(&state.db)
+            .await;
         for file in &locked.files {
             let _ = file_list_cache::ActiveModel {
                 job_id: Set(job_id.cast_signed()),
