@@ -191,6 +191,22 @@ fn prepare_response(db_request_id: u32) -> Message {
     msg
 }
 
+/// Converts a row count into a wire `u32`, logging a warning and clamping to
+/// `u32::MAX` if the result set is too large to represent.
+fn wire_row_count(cluster_name: &str, rows: usize) -> u32 {
+    match u32::try_from(rows) {
+        Ok(count) => count,
+        Err(_) => {
+            tracing::warn!(
+                "ClusterDB[{}]: result set of {} rows exceeds u32::MAX; clamping wire count",
+                cluster_name,
+                rows
+            );
+            u32::MAX
+        }
+    }
+}
+
 // ---- DB_JOB_* handlers ----
 
 /// Looks up cluster jobs by external job ID and sends a `DB_RESPONSE` with matching rows.
@@ -214,7 +230,7 @@ async fn handle_job_get_by_job_id(
         .collect();
 
     let mut response = prepare_response(db_request_id);
-    response.push_uint(rows.len().try_into().unwrap());
+    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
     for row in &rows {
         row.to_message(&mut response);
     }
@@ -269,7 +285,7 @@ async fn handle_job_get_running_jobs(
         .collect();
 
     let mut response = prepare_response(db_request_id);
-    response.push_uint(rows.len().try_into().unwrap());
+    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
     for row in &rows {
         row.to_message(&mut response);
     }
@@ -371,7 +387,7 @@ async fn handle_jobstatus_get_by_job_id_and_what(
         .collect();
 
     let mut response = prepare_response(db_request_id);
-    response.push_uint(rows.len().try_into().unwrap());
+    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
     for row in &rows {
         row.to_message(&mut response);
     }
@@ -397,7 +413,7 @@ async fn handle_jobstatus_get_by_job_id(
         .collect();
 
     let mut response = prepare_response(db_request_id);
-    response.push_uint(rows.len().try_into().unwrap());
+    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
     for row in &rows {
         row.to_message(&mut response);
     }
@@ -621,6 +637,21 @@ mod tests {
 
         let mut parsed = Message::from_bytes(response.into_data());
         assert_eq!(parsed.pop_uint(), 42); // db_request_id
+    }
+
+    #[test]
+    fn test_wire_row_count_in_range() {
+        assert_eq!(wire_row_count("test-cluster", 0), 0);
+        assert_eq!(wire_row_count("test-cluster", 42), 42);
+        assert_eq!(wire_row_count("test-cluster", u32::MAX as usize), u32::MAX);
+    }
+
+    #[test]
+    fn test_wire_row_count_clamps_overflow() {
+        assert_eq!(
+            wire_row_count("test-cluster", u32::MAX as usize + 1),
+            u32::MAX
+        );
     }
 
     #[test]
