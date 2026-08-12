@@ -3,13 +3,13 @@
 # Test runner script for ADACS Job Controller (Rust)
 #
 # Usage:
-#   ./run_tests.sh                              # Run all tests
+#   ./run_tests.sh                              # Run all tests sequentially
 #   ./run_tests.sh --verbose                    # Run with verbose output
 #   ./run_tests.sh tests::job_tests             # Run specific test suite
 #   ./run_tests.sh -- --nocapture               # Pass through to cargo test
 #   ./run_tests.sh --coverage                   # Generate coverage report
 #   ./run_tests.sh --coverage --open            # Generate and open coverage report
-#   ./run_tests.sh -- --test-threads=1          # Run sequentially (if needed)
+#   ./run_tests.sh -- --test-threads=4          # Override the thread count
 
 set -e
 
@@ -32,6 +32,16 @@ for arg in "$@"; do
     fi
 done
 
+# Tests share global state and must run sequentially, so enforce
+# --test-threads=1 unless the caller explicitly passes their own.
+TEST_THREADS_SET=false
+for arg in "$@"; do
+    if [[ "$arg" == *"--test-threads"* ]]; then
+        TEST_THREADS_SET=true
+        break
+    fi
+done
+
 if [[ "$COVERAGE" == true ]]; then
     # Generate coverage report using cargo-llvm-cov
     echo "Running tests with coverage..."
@@ -50,6 +60,27 @@ if [[ "$COVERAGE" == true ]]; then
 
     exec $COVERAGE_CMD
 else
-    # Run tests - user can pass --test-threads=1 if needed
-    exec cargo test "$@"
+    # Run tests sequentially by default; respect an explicit --test-threads.
+    if [[ "$TEST_THREADS_SET" == true ]]; then
+        exec cargo test "$@"
+    else
+        ARGS=()
+        DASH_DASH_SEEN=false
+        INSERTED=false
+        for arg in "$@"; do
+            if [[ "$DASH_DASH_SEEN" == false && "$arg" == "--" ]]; then
+                DASH_DASH_SEEN=true
+                ARGS+=("$arg")
+                ARGS+=("--test-threads=1")
+                INSERTED=true
+            else
+                ARGS+=("$arg")
+            fi
+        done
+        if [[ "$INSERTED" == false ]]; then
+            ARGS+=("--")
+            ARGS+=("--test-threads=1")
+        fi
+        exec cargo test "${ARGS[@]}"
+    fi
 fi
