@@ -581,4 +581,41 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
             "KRB5_CLIENT_KTNAME must not leak into the global process environment"
         );
     }
+
+    #[test]
+    fn kerberos_ssh_command_includes_gssapi_flags_and_target() {
+        let keytab_path = Path::new("/tmp/fake-krb5.keytab");
+        let cmd = build_kerberos_ssh_command(
+            "alice",
+            "cluster.example.com",
+            "cd /srv && ./adacs_job_client",
+            keytab_path,
+        );
+
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        for expected in [
+            "-o",
+            "GSSAPIAuthentication=yes",
+            "-o",
+            "GSSAPIKeyExchange=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "GSSAPIDelegateCredentials=no",
+            "-l",
+            "alice",
+            "cluster.example.com",
+            "cd /srv && ./adacs_job_client",
+        ] {
+            assert!(
+                args.iter().any(|a| a == expected),
+                "expected {expected:?} in args {args:?}"
+            );
+        }
+    }
 }
