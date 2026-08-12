@@ -146,7 +146,8 @@ impl Message {
         if !self.check_remaining(2) {
             return 0;
         }
-        let bytes: [u8; 2] = self.data[self.index..self.index + 2].try_into().unwrap();
+        let mut bytes = [0u8; 2];
+        bytes.copy_from_slice(&self.data[self.index..self.index + 2]);
         self.index += 2;
         u16::from_le_bytes(bytes)
     }
@@ -165,7 +166,8 @@ impl Message {
         if !self.check_remaining(2) {
             return 0;
         }
-        let bytes: [u8; 2] = self.data[self.index..self.index + 2].try_into().unwrap();
+        let mut bytes = [0u8; 2];
+        bytes.copy_from_slice(&self.data[self.index..self.index + 2]);
         self.index += 2;
         i16::from_le_bytes(bytes)
     }
@@ -186,7 +188,8 @@ impl Message {
         if !self.check_remaining(4) {
             return 0;
         }
-        let bytes: [u8; 4] = self.data[self.index..self.index + 4].try_into().unwrap();
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(&self.data[self.index..self.index + 4]);
         self.index += 4;
         u32::from_le_bytes(bytes)
     }
@@ -205,7 +208,8 @@ impl Message {
         if !self.check_remaining(4) {
             return 0;
         }
-        let bytes: [u8; 4] = self.data[self.index..self.index + 4].try_into().unwrap();
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(&self.data[self.index..self.index + 4]);
         self.index += 4;
         i32::from_le_bytes(bytes)
     }
@@ -226,7 +230,8 @@ impl Message {
         if !self.check_remaining(8) {
             return 0;
         }
-        let bytes: [u8; 8] = self.data[self.index..self.index + 8].try_into().unwrap();
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(&self.data[self.index..self.index + 8]);
         self.index += 8;
         u64::from_le_bytes(bytes)
     }
@@ -245,7 +250,8 @@ impl Message {
         if !self.check_remaining(8) {
             return 0;
         }
-        let bytes: [u8; 8] = self.data[self.index..self.index + 8].try_into().unwrap();
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(&self.data[self.index..self.index + 8]);
         self.index += 8;
         i64::from_le_bytes(bytes)
     }
@@ -266,7 +272,8 @@ impl Message {
         if !self.check_remaining(4) {
             return 0.0;
         }
-        let bytes: [u8; 4] = self.data[self.index..self.index + 4].try_into().unwrap();
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(&self.data[self.index..self.index + 4]);
         self.index += 4;
         f32::from_le_bytes(bytes)
     }
@@ -285,7 +292,8 @@ impl Message {
         if !self.check_remaining(8) {
             return 0.0;
         }
-        let bytes: [u8; 8] = self.data[self.index..self.index + 8].try_into().unwrap();
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(&self.data[self.index..self.index + 8]);
         self.index += 8;
         f64::from_le_bytes(bytes)
     }
