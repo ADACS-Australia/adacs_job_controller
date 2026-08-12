@@ -263,7 +263,7 @@ impl Cluster {
                                 let data_len = data.len();
                                 self.queued_message_size
                                     .fetch_sub(data_len, Ordering::Relaxed);
-                                self.queue_size_notify.notify_waiters();
+                                self.queue_size_notify.notify_one();
                                 drop(map);
 
                                 // Send via WS connection (non-blocking read of current state)
