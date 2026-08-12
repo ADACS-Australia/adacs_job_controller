@@ -1100,6 +1100,92 @@ async fn test_upload_missing_content_length_returns_400() {
 }
 
 // ===========================================================================
+// 10b. FILE UPLOAD ERROR — oversized Content-Length
+//
+// Verifies the handler rejects an oversized Content-Length (u64::MAX) with
+// 400 instead of panicking on an out-of-bounds body slice.
+// ===========================================================================
+
+/// Verifies the upload handler rejects `Content-Length: u64::MAX` with 400
+/// instead of panicking on an out-of-bounds body slice.
+///
+/// # Setup
+/// Inserts a test job; mocks the cluster manager to return an online cluster
+/// and an upload session whose `data_ready` flag is set shortly after start.
+///
+/// # Act
+/// Sends a PUT upload request with `Content-Length: 18446744073709551615`
+/// (`u64::MAX`) and a small body.
+///
+/// # Assert
+/// Response is 400 Bad Request; the server does not panic.
+#[tokio::test]
+async fn test_upload_oversized_content_length_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let upload_cluster = {
+        let mut c = MockClusterTrait::new();
+        c.expect_name().returning(|| "ozstar-up".to_string());
+        c.expect_is_online().returning(|| true);
+        c.expect_role().returning(|| ClusterRole::Master);
+        c.expect_role_string().returning(|| "master".to_string());
+        c.expect_cluster_details()
+            .returning(|| test_cluster_config("ozstar"));
+        c.expect_send_message().returning(|_| Box::pin(async {}));
+        c.expect_wait_for_queue_drain()
+            .returning(|_| Box::pin(async { true }));
+        Arc::new(c)
+    };
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let uc = Arc::clone(&upload_cluster);
+
+    let mut manager = MockClusterManagerTrait::new();
+    let cm = Arc::clone(&cluster_main);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(cm.clone()));
+    manager.expect_create_file_upload().returning(move |_, _| {
+        let c = Arc::clone(&uc);
+        Box::pin(async move { c as Arc<dyn ClusterTrait> })
+    });
+    manager
+        .expect_get_file_upload()
+        .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                ))
+                .header("authorization", &token)
+                .header("content-length", u64::MAX.to_string())
+                .body(Body::from("some data"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+// ===========================================================================
 // 11. FILE DOWNLOAD — expired download record cleanup
 //
 // Verifies that old download records are cleaned up when a new download
