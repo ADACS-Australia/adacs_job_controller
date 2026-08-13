@@ -749,6 +749,7 @@ impl Cluster {
             SUBMIT_JOB,
             "Resubmitting",
             true,
+            true,
         )
         .await;
     }
@@ -758,6 +759,7 @@ impl Cluster {
             &[JobStatus::Cancelling as i32],
             CANCEL_JOB,
             "Recancelling",
+            false,
             false,
         )
         .await;
@@ -769,6 +771,7 @@ impl Cluster {
             DELETE_JOB,
             "Redeleting",
             false,
+            false,
         )
         .await;
     }
@@ -779,6 +782,7 @@ impl Cluster {
         message_id: u32,
         log_label: &'static str,
         push_bundle_and_params: bool,
+        guard_terminal_states: bool,
     ) {
         use crate::db::entities::{job, job_history};
         use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -830,16 +834,19 @@ impl Cluster {
         // `states` has been seen, the job is in-flight or terminal and must not
         // be re-triggered. Prevents failed jobs from being looped back into
         // "Resubmitting" when their Submitting row sorts first under same-ms ties.
+        // This guard only applies to `check_unsubmitted_jobs`: every job has a
+        // Pending(10) creation row, so applying it to cancel/delete resends would
+        // permanently skip stuck Cancelling/Deleting jobs.
         let mut seen_terminal_or_inflight: HashMap<i64, bool> = HashMap::new();
         for h in &all_histories {
             latest_per_job.entry(h.job_id).or_insert(h);
-            if !states.contains(&h.state) {
+            if guard_terminal_states && !states.contains(&h.state) {
                 seen_terminal_or_inflight.insert(h.job_id, true);
             }
         }
 
         for j in &jobs {
-            if seen_terminal_or_inflight.contains_key(&j.id) {
+            if guard_terminal_states && seen_terminal_or_inflight.contains_key(&j.id) {
                 continue;
             }
             if let Some(h) = latest_per_job.get(&j.id)
