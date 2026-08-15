@@ -183,7 +183,7 @@ Custom binary format (little-endian) for server↔cluster communication:
 | PUT | `/job/apiv1/file/upload/` | Upload file to cluster |
 | PATCH | `/job/apiv1/file/` | List remote files |
 
-All HTTP endpoints require JWT (HS256) authentication via `Authorization: Bearer <token>` header.
+All HTTP endpoints require JWT (HS256) authentication via `Authorization: Bearer <token>` header, except GET `/job/apiv1/file/`, which authorizes via the file download ID instead.
 
 ## Configuration
 
