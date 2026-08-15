@@ -77,9 +77,9 @@ The test suite (500+ tests) uses in-memory SQLite and must run sequentially to a
 ./run_tests.sh
 
 # Run specific test module
-./run_tests.sh cluster_tests
-./run_tests.sh http_tests
-./run_tests.sh db_tests
+./run_tests.sh test_cluster_logic
+./run_tests.sh test_http_handlers
+./run_tests.sh test_cluster_db_dispatch
 
 # Run with verbose output
 ./run_tests.sh --verbose
