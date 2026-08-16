@@ -554,7 +554,7 @@ pub async fn upload_file(
         return Err((StatusCode::BAD_REQUEST, details));
     }
 
-    let chunk_size = (*settings::FILE_CHUNK_SIZE) as usize;
+    let chunk_size = (*settings::FILE_CHUNK_SIZE).max(1) as usize;
     let mut total_read: u64 = 0;
 
     let body_bytes = to_bytes(
