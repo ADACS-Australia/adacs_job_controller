@@ -5,7 +5,7 @@
 # Usage:
 #   ./run_tests.sh                              # Run all tests sequentially
 #   ./run_tests.sh --verbose                    # Run with verbose output
-#   ./run_tests.sh tests::job_tests             # Run specific test suite
+#   ./run_tests.sh test_job_handlers            # Run specific test suite
 #   ./run_tests.sh -- --nocapture               # Pass through to cargo test
 #   ./run_tests.sh --coverage                   # Generate coverage report
 #   ./run_tests.sh --coverage --open            # Generate and open coverage report
