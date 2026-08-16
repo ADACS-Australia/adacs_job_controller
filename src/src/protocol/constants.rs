@@ -93,13 +93,3 @@ pub const DB_BUNDLE_GET_JOB_BY_ID: u32 = 8001;
 
 /// Message ID for deleting a job bundle.
 pub const DB_BUNDLE_DELETE_JOB: u32 = 8002;
-
-/// Minimum message ID reserved for test messages.
-#[cfg(feature = "test-support")]
-#[allow(dead_code)]
-pub const TEST_MESSAGE_ID_MIN: u32 = 1_000_000;
-
-/// Maximum message ID reserved for test messages.
-#[cfg(feature = "test-support")]
-#[allow(dead_code)]
-pub const TEST_MESSAGE_ID_MAX: u32 = 1_001_000;
