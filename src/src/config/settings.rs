@@ -1,6 +1,5 @@
 use std::sync::LazyLock;
 
-#[allow(dead_code)]
 fn env_or(key: &str, default: &str) -> String {
     let value = std::env::var(key).unwrap_or_else(|_| default.to_string());
     tracing::trace!(
@@ -52,15 +51,11 @@ fn env_or_bool(key: &str, default: bool) -> bool {
 }
 
 // Database settings
-#[allow(dead_code)]
 pub static DATABASE_USER: LazyLock<String> = LazyLock::new(|| env_or("MYSQL_USER", "jobserver"));
-#[allow(dead_code)]
 pub static DATABASE_PASSWORD: LazyLock<String> =
     LazyLock::new(|| env_or("MYSQL_PASSWORD", "jobserver"));
-#[allow(dead_code)]
 pub static DATABASE_SCHEMA: LazyLock<String> =
     LazyLock::new(|| env_or("MYSQL_DATABASE", "jobserver"));
-#[allow(dead_code)]
 pub static DATABASE_HOST: LazyLock<String> = LazyLock::new(|| env_or("DATABASE_HOST", "localhost"));
 pub static DATABASE_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("DATABASE_PORT", 3306));
 #[allow(dead_code)]
