@@ -26,6 +26,7 @@ tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
+http-body-util = "0.1"
 
 # Database
 sea-orm = { version = "1", features = ["sqlx-mysql", "sqlx-sqlite", "runtime-tokio-rustls", "macros", "with-chrono"] }
