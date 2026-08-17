@@ -280,6 +280,10 @@ pub async fn get_jobs(
     // Filter by explicit job_ids
     if let Some(ref ids_str) = params.job_ids {
         let ids = parse_csv_u64(ids_str);
+        if ids.is_empty() && !ids_str.trim().is_empty() {
+            // A malformed filter (e.g. all non-numeric) must not widen the result set.
+            return Ok(Json(serde_json::json!([])));
+        }
         if !ids.is_empty() {
             let ids_i64: Vec<i64> = ids.iter().map(|&id| id.cast_signed()).collect();
             job_query = job_query.filter(job::Column::Id.is_in(ids_i64));
