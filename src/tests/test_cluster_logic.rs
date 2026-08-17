@@ -459,6 +459,56 @@ async fn test_check_cancelling_jobs_ignores_recent() {
     cluster.stop();
 }
 
+/// Verifies that `check_cancelling_jobs` re-sends a `CANCEL_JOB` message for a job
+/// stuck in CANCELLING state even when it also has a Pending(10) creation row.
+///
+/// # Setup
+/// A job and two history rows with old timestamps are inserted: state=10 (Pending,
+/// written at job creation) and state=60 (Cancelling).
+///
+/// # Act
+/// `cluster.check_cancelling_jobs().await` is called, then the channel is drained after a short wait.
+///
+/// # Assert
+/// At least one `CANCEL_JOB` message is present in the output.
+#[tokio::test]
+async fn test_check_cancelling_jobs_resends_with_pending_history() {
+    let db = make_db().await;
+
+    insert_job(&db, 12, "ozstar", "b", "app", "{}").await;
+    insert_history(&db, 12, old_timestamp(), "created", 10).await;
+    insert_history(&db, 12, old_timestamp(), "cancel", 60).await;
+
+    let ctx = make_app_context(db.clone());
+    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster.set_connection(Some(tx)).await;
+    cluster.start_tasks();
+
+    cluster.check_cancelling_jobs().await;
+    cluster.wait_for_queue_drain(true).await;
+
+    let mut messages = Vec::new();
+    while let Ok(outbound) = rx.try_recv() {
+        let WsOutbound::Binary(data) = outbound else {
+            continue;
+        };
+        messages.push(data);
+    }
+
+    let cancel_msgs: Vec<_> = messages
+        .iter()
+        .filter(|data| Message::from_bytes((*data).clone()).id() == CANCEL_JOB)
+        .collect();
+
+    assert!(
+        !cancel_msgs.is_empty(),
+        "Expected CANCEL_JOB despite Pending history row"
+    );
+    cluster.stop();
+}
+
 // ---------------------------------------------------------------------------
 // check_deleting_jobs: old state=80 → DELETE_JOB resent
 // ---------------------------------------------------------------------------
