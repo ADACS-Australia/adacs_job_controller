@@ -340,7 +340,18 @@ pub async fn download_file(
 
     let filename = std::path::Path::new(&s_file_path).file_name().map_or_else(
         || "download".to_string(),
-        |n| n.to_string_lossy().to_string(),
+        |n| {
+            n.to_string_lossy()
+                .chars()
+                .map(|c| {
+                    if c == '"' || c == '\\' || c.is_control() {
+                        '_'
+                    } else {
+                        c
+                    }
+                })
+                .collect()
+        },
     );
 
     let content_disposition = if force_download {
