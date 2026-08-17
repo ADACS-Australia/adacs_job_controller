@@ -1,11 +1,9 @@
-use std::error::Error as _;
 use std::path::{Component, PathBuf};
 
 use crate::protocol::types::FileInfo;
-use axum::body::to_bytes;
 use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
-use http_body_util::LengthLimitError;
+use futures_util::StreamExt;
 use serde::de::DeserializeOwned;
 
 /// Maximum accepted JSON request body size (10 MiB).
@@ -48,26 +46,35 @@ where
         }
 
         // Parse body as JSON regardless of Content-Type
-        let bytes = to_bytes(req.into_body(), MAX_JSON_BODY_BYTES)
-            .await
-            .map_err(|e| {
-                if e.source()
-                    .is_some_and(<dyn std::error::Error>::is::<LengthLimitError>)
-                {
-                    (
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        "Request body too large".to_string(),
-                    )
-                } else {
-                    (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}"))
-                }
-            })?;
+        let bytes = read_body_limited(req.into_body(), MAX_JSON_BODY_BYTES).await?;
 
         let value: T = serde_json::from_slice(&bytes)
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid JSON: {e}")))?;
 
         Ok(LenientJson(value))
     }
+}
+
+/// Read a request body into memory, rejecting bodies larger than `limit` bytes
+/// with HTTP 413 instead of buffering them in full.
+async fn read_body_limited(
+    body: axum::body::Body,
+    limit: usize,
+) -> Result<Vec<u8>, (StatusCode, String)> {
+    let mut stream = body.into_data_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk =
+            chunk.map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}")))?;
+        if bytes.len() + chunk.len() > limit {
+            return Err((
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "Request body too large".to_string(),
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
 }
 
 /// Parse a comma-separated list of u64 values from a query parameter string.
