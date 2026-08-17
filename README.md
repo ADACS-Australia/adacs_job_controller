@@ -288,7 +288,7 @@ Fetch status and/or filter jobs.
     "history": [
       {
         "jobId": 5,
-        "timestamp": 34233,
+        "timestamp": "2026-08-14 12:34:56.123456 UTC",
         "what": "jid0",
         "state": 500
       }
