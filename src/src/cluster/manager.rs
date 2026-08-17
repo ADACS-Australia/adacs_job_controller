@@ -227,8 +227,8 @@ impl ClusterManager {
             // First attempt (attempt == 0) is always allowed; retries back off exponentially
             let attempt = self.reconnect_attempts.get(name).map_or(0, |r| *r);
             if attempt > 0 {
-                let backoff_secs =
-                    *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS * 2u64.saturating_pow(attempt - 1);
+                let backoff_secs = (*CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS)
+                    .saturating_mul(2u64.saturating_pow(attempt - 1));
                 if let Some(last_attempt) = self.last_reconnect_attempt.get(name) {
                     let elapsed = last_attempt.elapsed().as_secs();
                     if elapsed < backoff_secs {
