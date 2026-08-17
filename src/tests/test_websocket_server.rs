@@ -257,7 +257,7 @@ async fn test_ws_no_token_disconnects() {
 /// Start a test server with a forwarding cluster manager that accepts all connections.
 ///
 /// # Act
-/// Connect a WebSocket client with a valid token.
+/// Connect a WebSocket client with a valid `Authorization: Bearer` token.
 ///
 /// # Assert
 /// The first binary message received has id `SERVER_READY` and source `SYSTEM_SOURCE`.
@@ -269,8 +269,19 @@ async fn test_ws_valid_token_receives_server_ready() {
     let server = start_test_server(state).await;
     let port = server.port;
 
-    let (_, mut stream) =
-        connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid_token")).await;
+    // Connect with Authorization: Bearer header
+    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", "Bearer valid-token".parse().unwrap());
+
+    let (_, mut stream) = tokio_tungstenite::connect_async(request)
+        .await
+        .unwrap()
+        .0
+        .split();
 
     // The server should send SERVER_READY after accepting the connection
     let data = recv_binary(&mut stream)
@@ -295,7 +306,8 @@ async fn test_ws_valid_token_receives_server_ready() {
 /// Start a test server with a forwarding cluster manager that accepts all connections.
 ///
 /// # Act
-/// Connect a client, receive `SERVER_READY`, then close the connection from the client side.
+/// Connect a client via `Authorization: Bearer` header, receive `SERVER_READY`,
+/// then close the connection from the client side.
 ///
 /// # Assert
 /// No panic or timeout occurs within 100 ms after the client disconnects.
@@ -307,8 +319,19 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
     let server = start_test_server(state).await;
     let port = server.port;
 
-    let (mut sink, mut stream) =
-        connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
+    // Connect with Authorization: Bearer header
+    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", "Bearer valid-token".parse().unwrap());
+
+    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
+        .await
+        .unwrap()
+        .0
+        .split();
 
     // Receive SERVER_READY
     recv_binary(&mut stream).await;
@@ -330,7 +353,8 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
 /// Start a test server with a mock cluster that captures every handled message id.
 ///
 /// # Act
-/// Connect a client, wait for `SERVER_READY`, then send an `UPDATE_JOB` binary message.
+/// Connect a client via `Authorization: Bearer` header, wait for `SERVER_READY`,
+/// then send an `UPDATE_JOB` binary message.
 ///
 /// # Assert
 /// The `UPDATE_JOB` message id appears in the list of messages received by the cluster.
@@ -385,8 +409,19 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
     let server = start_test_server(state).await;
     let port = server.port;
 
-    let (mut sink, mut stream) =
-        connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
+    // Connect with Authorization: Bearer header
+    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", "Bearer valid-token".parse().unwrap());
+
+    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
+        .await
+        .unwrap()
+        .0
+        .split();
 
     // Wait for SERVER_READY
     recv_binary(&mut stream).await;
@@ -429,7 +464,8 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
 /// Start a test server with a forwarding cluster manager that accepts all connections.
 ///
 /// # Act
-/// Connect a client, receive `SERVER_READY`, then send a Pong frame.
+/// Connect a client via `Authorization: Bearer` header, receive `SERVER_READY`,
+/// then send a Pong frame.
 ///
 /// # Assert
 /// No panic or error occurs within 50 ms after the Pong is sent.
@@ -442,8 +478,19 @@ async fn test_ws_pong_handled() {
     let server = start_test_server(state).await;
     let port = server.port;
 
-    let (mut sink, mut stream) =
-        connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
+    // Connect with Authorization: Bearer header
+    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", "Bearer valid-token".parse().unwrap());
+
+    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
+        .await
+        .unwrap()
+        .0
+        .split();
 
     // Receive SERVER_READY
     recv_binary(&mut stream).await;
