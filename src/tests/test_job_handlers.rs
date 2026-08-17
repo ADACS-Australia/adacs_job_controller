@@ -1479,6 +1479,118 @@ async fn test_get_jobs_end_time_lt_includes_jobs_completed_before_cutoff() {
     assert_eq!(jobs[0]["id"].as_i64().unwrap(), job1);
 }
 
+/// Tests that startTimeGt uses strict `>` semantics: a job whose first `SYSTEM_SOURCE`
+/// entry is exactly at the cutoff is excluded.
+#[tokio::test]
+async fn test_get_jobs_start_time_gt_excludes_job_at_exact_boundary() {
+    let db = setup_test_db().await;
+    let job1 = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    insert_job_history_at(&db, job1, JobStatus::Pending as i32, "system", ts_secs(500)).await;
+    let job2 = insert_test_job(&db, "ozstar", "b2", "testapp").await;
+    insert_job_history_at(&db, job2, JobStatus::Pending as i32, "system", ts_secs(501)).await;
+
+    let jobs = get_jobs_with_query(db, "?startTimeGt=500").await;
+    let jobs = jobs.as_array().unwrap();
+    assert_eq!(
+        jobs.len(),
+        1,
+        "job at exact boundary must be excluded (strict >)"
+    );
+    assert_eq!(jobs[0]["id"].as_i64().unwrap(), job2);
+}
+
+/// Tests that startTimeLt uses strict `<` semantics: a job whose first `SYSTEM_SOURCE`
+/// entry is exactly at the cutoff is excluded.
+#[tokio::test]
+async fn test_get_jobs_start_time_lt_excludes_job_at_exact_boundary() {
+    let db = setup_test_db().await;
+    let job1 = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    insert_job_history_at(&db, job1, JobStatus::Pending as i32, "system", ts_secs(499)).await;
+    let job2 = insert_test_job(&db, "ozstar", "b2", "testapp").await;
+    insert_job_history_at(&db, job2, JobStatus::Pending as i32, "system", ts_secs(500)).await;
+
+    let jobs = get_jobs_with_query(db, "?startTimeLt=500").await;
+    let jobs = jobs.as_array().unwrap();
+    assert_eq!(
+        jobs.len(),
+        1,
+        "job at exact boundary must be excluded (strict <)"
+    );
+    assert_eq!(jobs[0]["id"].as_i64().unwrap(), job1);
+}
+
+/// Tests that endTimeGt uses strict `>` semantics: a job whose completion entry
+/// is exactly at the cutoff is excluded.
+#[tokio::test]
+async fn test_get_jobs_end_time_gt_excludes_job_at_exact_boundary() {
+    let db = setup_test_db().await;
+    let job1 = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    insert_job_history_at(&db, job1, JobStatus::Pending as i32, "system", ts_secs(400)).await;
+    insert_job_history_at(
+        &db,
+        job1,
+        JobStatus::Completed as i32,
+        "_job_completion_",
+        ts_secs(500),
+    )
+    .await;
+    let job2 = insert_test_job(&db, "ozstar", "b2", "testapp").await;
+    insert_job_history_at(&db, job2, JobStatus::Pending as i32, "system", ts_secs(400)).await;
+    insert_job_history_at(
+        &db,
+        job2,
+        JobStatus::Completed as i32,
+        "_job_completion_",
+        ts_secs(501),
+    )
+    .await;
+
+    let jobs = get_jobs_with_query(db, "?endTimeGt=500").await;
+    let jobs = jobs.as_array().unwrap();
+    assert_eq!(
+        jobs.len(),
+        1,
+        "job at exact boundary must be excluded (strict >)"
+    );
+    assert_eq!(jobs[0]["id"].as_i64().unwrap(), job2);
+}
+
+/// Tests that endTimeLt uses strict `<` semantics: a job whose completion entry
+/// is exactly at the cutoff is excluded.
+#[tokio::test]
+async fn test_get_jobs_end_time_lt_excludes_job_at_exact_boundary() {
+    let db = setup_test_db().await;
+    let job1 = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    insert_job_history_at(&db, job1, JobStatus::Pending as i32, "system", ts_secs(400)).await;
+    insert_job_history_at(
+        &db,
+        job1,
+        JobStatus::Completed as i32,
+        "_job_completion_",
+        ts_secs(499),
+    )
+    .await;
+    let job2 = insert_test_job(&db, "ozstar", "b2", "testapp").await;
+    insert_job_history_at(&db, job2, JobStatus::Pending as i32, "system", ts_secs(400)).await;
+    insert_job_history_at(
+        &db,
+        job2,
+        JobStatus::Completed as i32,
+        "_job_completion_",
+        ts_secs(500),
+    )
+    .await;
+
+    let jobs = get_jobs_with_query(db, "?endTimeLt=500").await;
+    let jobs = jobs.as_array().unwrap();
+    assert_eq!(
+        jobs.len(),
+        1,
+        "job at exact boundary must be excluded (strict <)"
+    );
+    assert_eq!(jobs[0]["id"].as_i64().unwrap(), job1);
+}
+
 /// Tests that jobSteps filter matches jobs that have a history entry with the given (what, state).
 ///
 /// # Setup
