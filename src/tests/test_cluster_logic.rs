@@ -336,6 +336,60 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
     cluster.stop();
 }
 
+/// Verifies that `check_unsubmitted_jobs` does NOT re-send `SUBMIT_JOB` for a job
+/// whose most recent history row is a terminal state (Completed) written within
+/// the ignore window, even when an older stale PENDING row exists.
+///
+/// # Setup
+/// A job with an old PENDING history row and a recent COMPLETED history row is inserted.
+/// The cluster is given a live WS sender and the scheduler is started.
+///
+/// # Act
+/// `cluster.check_unsubmitted_jobs().await` is called, then the channel is drained after a short wait.
+///
+/// # Assert
+/// No `SUBMIT_JOB` messages appear in the output.
+#[tokio::test]
+async fn test_check_unsubmitted_jobs_ignores_recent_terminal_state() {
+    let db = make_db().await;
+
+    insert_job(&db, 5, "ozstar", "mybundle", "myapp", "{}").await;
+
+    // Old PENDING row (would trigger resubmit on its own) ...
+    insert_history(&db, 5, old_timestamp(), "submit", 10).await;
+    // ... followed by a recent COMPLETED row within the ignore window.
+    insert_history(&db, 5, now_timestamp(), "complete", 500).await;
+
+    let ctx = make_app_context(db.clone());
+    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster.set_connection(Some(tx)).await;
+    cluster.start_tasks();
+
+    cluster.check_unsubmitted_jobs().await;
+    cluster.wait_for_queue_drain(true).await;
+
+    let mut messages = Vec::new();
+    while let Ok(outbound) = rx.try_recv() {
+        let WsOutbound::Binary(data) = outbound else {
+            continue;
+        };
+        messages.push(data);
+    }
+
+    let submit_msgs: Vec<_> = messages
+        .iter()
+        .filter(|data| Message::from_bytes((*data).clone()).id() == SUBMIT_JOB)
+        .collect();
+
+    assert!(
+        submit_msgs.is_empty(),
+        "Job with recent terminal state should NOT trigger SUBMIT_JOB"
+    );
+    cluster.stop();
+}
+
 /// Verifies that `check_unsubmitted_jobs` returns early without panicking
 /// when the cluster is offline (no WS connection set).
 ///

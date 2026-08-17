@@ -754,7 +754,6 @@ impl Cluster {
             SUBMIT_JOB,
             "Resubmitting",
             true,
-            true,
         )
         .await;
     }
@@ -764,7 +763,6 @@ impl Cluster {
             &[JobStatus::Cancelling as i32],
             CANCEL_JOB,
             "Recancelling",
-            false,
             false,
         )
         .await;
@@ -776,7 +774,6 @@ impl Cluster {
             DELETE_JOB,
             "Redeleting",
             false,
-            false,
         )
         .await;
     }
@@ -787,7 +784,6 @@ impl Cluster {
         message_id: u32,
         log_label: &'static str,
         push_bundle_and_params: bool,
-        guard_terminal_states: bool,
     ) {
         use crate::db::entities::{job, job_history};
         use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -821,13 +817,14 @@ impl Cluster {
             return;
         }
 
-        // Batch-fetch all relevant history entries per job (2 queries instead of N+1).
+        // Batch-fetch all history entries per job (2 queries instead of N+1).
         // `id DESC` breaks ties when multiple rows are written in the same millisecond
         // (Pending + Submitting can be inserted back-to-back at job creation time).
+        // No timestamp cutoff here: the true latest row per job must be used so a
+        // recent terminal state (e.g. Completed) is not hidden by an older stale row.
         let job_ids: Vec<i64> = jobs.iter().map(|j| j.id).collect();
         let all_histories = job_history::Entity::find()
             .filter(job_history::Column::JobId.is_in(job_ids))
-            .filter(job_history::Column::Timestamp.lte(cutoff))
             .order_by_desc(job_history::Column::Timestamp)
             .order_by_desc(job_history::Column::Id)
             .all(db)
@@ -835,26 +832,13 @@ impl Cluster {
             .unwrap_or_default();
 
         let mut latest_per_job: HashMap<i64, &job_history::Model> = HashMap::new();
-        // Track the set of states a job has ever reached; if any state outside
-        // `states` has been seen, the job is in-flight or terminal and must not
-        // be re-triggered. Prevents failed jobs from being looped back into
-        // "Resubmitting" when their Submitting row sorts first under same-ms ties.
-        // This guard only applies to `check_unsubmitted_jobs`: every job has a
-        // Pending(10) creation row, so applying it to cancel/delete resends would
-        // permanently skip stuck Cancelling/Deleting jobs.
-        let mut seen_terminal_or_inflight: HashMap<i64, bool> = HashMap::new();
         for h in &all_histories {
             latest_per_job.entry(h.job_id).or_insert(h);
-            if guard_terminal_states && !states.contains(&h.state) {
-                seen_terminal_or_inflight.insert(h.job_id, true);
-            }
         }
 
         for j in &jobs {
-            if guard_terminal_states && seen_terminal_or_inflight.contains_key(&j.id) {
-                continue;
-            }
             if let Some(h) = latest_per_job.get(&j.id)
+                && h.timestamp <= cutoff
                 && states.contains(&h.state)
             {
                 tracing::debug!("{}: {}", log_label, j.id);
