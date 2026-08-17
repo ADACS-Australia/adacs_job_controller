@@ -141,29 +141,6 @@ async fn recv_binary(
     .unwrap_or(None)
 }
 
-/// Check whether the WS connection was closed within a timeout.
-#[allow(dead_code)]
-async fn connection_closes(
-    stream: &mut futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-    >,
-    timeout_ms: u64,
-) -> bool {
-    tokio::time::timeout(Duration::from_millis(timeout_ms), async {
-        while let Some(msg) = stream.next().await {
-            match msg {
-                Ok(TungsteniteMsg::Close(_)) | Err(_) => return true,
-                _ => {}
-            }
-        }
-        true // stream ended
-    })
-    .await
-    .unwrap_or(false)
-}
-
 /// Manager that accepts connections, captures the WS sender, and forwards via it.
 fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
