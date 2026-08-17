@@ -94,6 +94,20 @@ fn make_manager(configs: Vec<ClusterConfig>, db: DatabaseConnection) -> Arc<Clus
     ClusterManager::new(configs, db, file_list_map)
 }
 
+fn ltk_cluster_configs() -> Vec<ClusterConfig> {
+    vec![ClusterConfig {
+        name: "ltk_cluster".to_string(),
+        host: "ltk.example.com".to_string(),
+        username: "ltkuser".to_string(),
+        path: "/ltk/path/".to_string(),
+        key: String::new(),
+        connection_type: "ltk".to_string(),
+        keytab: String::new(),
+        kerberos_principal: String::new(),
+        ltk: Some("super-secret-ltk".to_string()),
+    }]
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1021,4 +1035,79 @@ async fn test_check_pings_evicts_dead_connection() {
 
     // Connection map should be empty
     assert!(mgr.get_cluster_by_connection(1).is_none());
+}
+
+/// Verifies that `handle_new_connection` authenticates a cluster via a matching LTK token.
+///
+/// # Setup
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with a single LTK-configured cluster.
+///
+/// # Act
+/// Call `handle_new_connection` with the configured LTK token.
+///
+/// # Assert
+/// Returns `Some`, the cluster comes online, and it is findable by connection ID.
+#[tokio::test]
+async fn test_handle_new_connection_ltk_authenticates() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(ltk_cluster_configs(), db.clone());
+
+    // Cluster is offline before connecting
+    let cluster = mgr.get_cluster_by_name("ltk_cluster").unwrap();
+    assert!(!mgr.is_cluster_online(cluster.as_ref()));
+
+    // Connect using the LTK token
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let result = mgr.handle_new_connection(1, tx, "super-secret-ltk").await;
+    assert!(
+        result.is_some(),
+        "LTK token match should authenticate the cluster"
+    );
+    assert_eq!(result.unwrap().name(), "ltk_cluster");
+
+    // Cluster should now be online and findable by connection ID
+    let cluster = mgr.get_cluster_by_name("ltk_cluster").unwrap();
+    assert!(mgr.is_cluster_online(cluster.as_ref()));
+    let found = mgr.get_cluster_by_connection(1);
+    assert!(found.is_some());
+    assert_eq!(found.unwrap().name(), "ltk_cluster");
+}
+
+/// Verifies that a duplicate LTK connection for an already-online cluster is rejected.
+///
+/// # Setup
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with a single LTK-configured cluster.
+///
+/// # Act
+/// Call `handle_new_connection` twice with the same LTK token.
+///
+/// # Assert
+/// The first call returns `Some` and brings the cluster online; the second call returns `None` and does not register a new connection.
+#[tokio::test]
+async fn test_handle_new_connection_ltk_duplicate_rejected() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(ltk_cluster_configs(), db.clone());
+
+    // First LTK connection authenticates
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let result = mgr.handle_new_connection(1, tx, "super-secret-ltk").await;
+    assert!(result.is_some());
+
+    // Cluster is now online
+    let cluster = mgr.get_cluster_by_name("ltk_cluster").unwrap();
+    assert!(mgr.is_cluster_online(cluster.as_ref()));
+
+    // Second LTK connection with the same token must be rejected
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let result = mgr.handle_new_connection(2, tx, "super-secret-ltk").await;
+    assert!(
+        result.is_none(),
+        "duplicate LTK connection should be rejected while cluster is online"
+    );
+
+    // Original connection remains active; the new one is not registered
+    assert!(mgr.get_cluster_by_connection(1).is_some());
+    assert!(mgr.get_cluster_by_connection(2).is_none());
 }
