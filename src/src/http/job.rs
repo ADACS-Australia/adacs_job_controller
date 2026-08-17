@@ -383,10 +383,14 @@ pub async fn get_jobs(
 
     let filtered_ids: Vec<i64> = filtered_jobs.iter().map(|j| j.id).collect();
 
-    // Fetch histories for filtered jobs, most recent first
+    // Fetch histories for filtered jobs, most recent first.
+    // `id DESC` breaks ties when multiple rows are written in the same
+    // microsecond (Pending + Submitting can be inserted back-to-back at job
+    // creation time), matching check_resend_jobs.
     let histories = job_history::Entity::find()
         .filter(job_history::Column::JobId.is_in(filtered_ids))
         .order_by_desc(job_history::Column::Timestamp)
+        .order_by_desc(job_history::Column::Id)
         .all(&state.db)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;

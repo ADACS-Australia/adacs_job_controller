@@ -21,8 +21,8 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
 
 use common::{
-    encode_test_jwt, insert_job_history, insert_test_job, make_test_state, setup_test_db,
-    test_cluster_config,
+    encode_test_jwt, insert_job_history, insert_job_history_at, insert_test_job, make_test_state,
+    setup_test_db, test_cluster_config,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -1247,11 +1247,48 @@ async fn test_get_jobs_history_in_response() {
     );
 }
 
+/// Regression: history entries sharing the same microsecond timestamp must be
+/// returned in deterministic Id-DESC order (tiebreaker), matching
+/// `check_resend_jobs`. Without the `id DESC` tiebreaker, GET /job/ ordering is
+/// non-deterministic when Pending + Submitting are written back-to-back at job
+/// creation time.
+///
+/// # Setup
+/// Inserts a job with two history entries at the SAME timestamp: Pending then
+/// Submitting (higher Id).
+///
+/// # Act
+/// Sends GET /job/apiv1/job/.
+///
+/// # Assert
+/// Verifies the Submitting entry (higher Id) is listed before the Pending entry.
+#[tokio::test]
+async fn test_get_jobs_history_same_timestamp_ordered_by_id_desc() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    let ts = ts_secs(100);
+    insert_job_history_at(&db, job_id, JobStatus::Pending as i32, "system", ts).await;
+    insert_job_history_at(&db, job_id, JobStatus::Submitting as i32, "system", ts).await;
+
+    let body = get_jobs_with_query(db, "").await;
+    let jobs = body.as_array().unwrap();
+    assert_eq!(jobs.len(), 1);
+    let history = jobs[0]["history"].as_array().unwrap();
+    assert_eq!(history.len(), 2);
+    // Same timestamp, so the Id-DESC tiebreaker decides: Submitting (higher Id) first.
+    assert_eq!(
+        history[0]["state"].as_i64().unwrap(),
+        JobStatus::Submitting as i64
+    );
+    assert_eq!(
+        history[1]["state"].as_i64().unwrap(),
+        JobStatus::Pending as i64
+    );
+}
+
 // ---------------------------------------------------------------------------
 // get_jobs filter tests — all filtering happens at database level via subqueries
 // ---------------------------------------------------------------------------
-
-use common::insert_job_history_at;
 
 /// Helper: make a UTC timestamp N seconds from epoch (for deterministic test data)
 fn ts_secs(secs: i64) -> chrono::NaiveDateTime {
