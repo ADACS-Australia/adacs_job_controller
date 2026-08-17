@@ -1675,6 +1675,97 @@ async fn test_download_force_download_false_sets_inline_disposition() {
     );
 }
 
+/// Verifies that a download path whose basename contains characters that would break the
+/// `Content-Disposition` quoted-string (a double quote) or make `HeaderValue` construction fail
+/// (CR/LF control characters) is sanitized, so the response stays 200 OK with a well-formed header.
+///
+/// # Setup
+/// Inserts a download record for `/path/to/evil"name\r\n.pdf`; simulates a small 5-byte file stream.
+///
+/// # Act
+/// Sends a GET request for the download.
+///
+/// # Assert
+/// Response is 200 OK and `Content-Disposition` contains the sanitized filename (`evil_name__.pdf`)
+/// without any raw double quote or control character from the client-supplied path.
+#[tokio::test]
+async fn test_download_sanitizes_unsafe_filename_in_disposition() {
+    let db = setup_test_db().await;
+
+    let uuid_val = "unsafe-dl-uuid".to_string();
+    file_download::ActiveModel {
+        user: Set(1),
+        job: Set(0),
+        cluster: Set("ozstar".to_string()),
+        bundle: Set("b".to_string()),
+        uuid: Set(uuid_val.clone()),
+        path: Set("/path/to/evil\"name\r\n.pdf".to_string()),
+        timestamp: Set(chrono::Utc::now().naive_utc()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let fd_state = Arc::new(FileDownloadState::new());
+    let fd_sim = Arc::clone(&fd_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fd_sim.file_size.store(5, Ordering::Release);
+        fd_sim.received_data.store(true, Ordering::Release);
+        fd_sim.data_ready.store(true, Ordering::Release);
+        fd_sim.data_notify.notify_waiters();
+        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
+    });
+
+    let fd_for_mgr = Arc::clone(&fd_state);
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    let c2 = Arc::new(online_cluster_no_messages());
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&c2);
+            Box::pin(async move { c as Arc<dyn ClusterTrait> })
+        });
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd_for_mgr)));
+
+    let app = create_router(make_test_state(db, manager));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid_val}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let content_disp = resp
+        .headers()
+        .get("content-disposition")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    assert!(
+        content_disp.contains("evil_name__.pdf"),
+        "Content-Disposition should contain the sanitized filename; got: {content_disp}"
+    );
+    assert!(
+        !content_disp.contains("evil\"name"),
+        "Content-Disposition must not contain a raw double quote from the filename; got: {content_disp}"
+    );
+}
+
 // ===========================================================================
 // 15. FILE UPLOAD — LARGE BODY CHUNKING VERIFICATION
 //
