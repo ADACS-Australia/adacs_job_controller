@@ -2251,3 +2251,103 @@ async fn test_create_file_download_rejects_invalid_json_without_content_type() {
     // Should still reject invalid JSON
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+// ---------------------------------------------------------------------------
+// resolve_cluster_bundle_for_file_list — direct unit tests
+// ---------------------------------------------------------------------------
+
+/// Tests that `resolve_cluster_bundle_for_file_list` returns the cluster and bundle
+/// for a job the application is allowed to access.
+///
+/// # Setup
+/// Inserts a job owned by `testapp`.
+///
+/// # Act
+/// Calls `resolve_cluster_bundle_for_file_list` with `applications = ["testapp"]`.
+///
+/// # Assert
+/// Verifies `Ok(("ozstar", "b"))`.
+#[tokio::test]
+async fn test_resolve_cluster_bundle_for_file_list_success() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let state = make_test_state(db, MockClusterManagerTrait::new());
+    let result = adacs_job_controller::http::file::resolve_cluster_bundle_for_file_list(
+        &state,
+        &["testapp".to_string()],
+        "testapp",
+        job_id as u64,
+    )
+    .await;
+
+    assert_eq!(result, Ok(("ozstar".to_string(), "b".to_string())));
+}
+
+/// Tests that `resolve_cluster_bundle_for_file_list` returns an error when the
+/// application does not have access to the job.
+///
+/// # Setup
+/// Inserts a job owned by `testapp`.
+///
+/// # Act
+/// Calls `resolve_cluster_bundle_for_file_list` with `applications = ["other_app"]`.
+///
+/// # Assert
+/// Verifies a 400 Bad Request error whose message mentions the job ID and app name.
+#[tokio::test]
+async fn test_resolve_cluster_bundle_for_file_list_app_without_access_returns_error() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let state = make_test_state(db, MockClusterManagerTrait::new());
+    let result = adacs_job_controller::http::file::resolve_cluster_bundle_for_file_list(
+        &state,
+        &["other_app".to_string()],
+        "other_app",
+        job_id as u64,
+    )
+    .await;
+
+    let (status, msg) = result.expect_err("expected an error for a job the app cannot access");
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        msg.contains(&format!("Unable to find job with ID {job_id}")),
+        "msg: {msg}"
+    );
+    assert!(msg.contains("other_app"), "msg: {msg}");
+}
+
+/// Tests that `resolve_cluster_bundle_for_file_list` returns an error when the job
+/// does not exist.
+///
+/// # Setup
+/// Empty DB.
+///
+/// # Act
+/// Calls `resolve_cluster_bundle_for_file_list` with a non-existent job ID.
+///
+/// # Assert
+/// Verifies a 400 Bad Request error whose message mentions the job ID and app name.
+#[tokio::test]
+async fn test_resolve_cluster_bundle_for_file_list_missing_job_returns_error() {
+    let db = setup_test_db().await;
+    let missing_job_id: u64 = 999_999;
+
+    let state = make_test_state(db, MockClusterManagerTrait::new());
+    let result = adacs_job_controller::http::file::resolve_cluster_bundle_for_file_list(
+        &state,
+        &["testapp".to_string()],
+        "testapp",
+        missing_job_id,
+    )
+    .await;
+
+    let (status, msg) = result.expect_err("expected an error for a non-existent job");
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        msg.contains(&format!("Unable to find job with ID {missing_job_id}")),
+        "msg: {msg}"
+    );
+    assert!(msg.contains("testapp"), "msg: {msg}");
+}
