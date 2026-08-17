@@ -12,14 +12,14 @@ fi
 
 export DOCKER_BUILDKIT=1
 
-# Run docker-compose in detached mode (rebuild if needed)
-docker-compose -f docker/docker-compose.yaml up -d --build
+# Run docker compose in detached mode (rebuild if needed)
+docker compose -f docker/docker-compose.yaml up -d --build
 
 echo ""
 echo "Job Controller is starting..."
 echo "  - HTTP API: http://localhost:8000"
 echo "  - WebSocket: ws://localhost:8001"
 echo ""
-echo "To view logs: docker-compose -f docker/docker-compose.yaml logs -f"
-echo "To stop: docker-compose -f docker/docker-compose.yaml down"
+echo "To view logs: docker compose -f docker/docker-compose.yaml logs -f"
+echo "To stop: docker compose -f docker/docker-compose.yaml down"
 
