@@ -33,7 +33,7 @@ Custom binary format (little-endian) for server↔cluster communication:
 [source: u64-length-prefix + bytes][messageId: u32][...payload fields...]
 ```
 
-40+ message types covering job control, file transfer, and database operations.
+30 message types covering job control, file transfer, and database operations.
 
 ## Building
 
