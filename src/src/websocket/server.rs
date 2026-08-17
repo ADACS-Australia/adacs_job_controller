@@ -49,8 +49,8 @@ pub async fn ws_handler(
     let token = extract_token_from_headers(request.headers());
     let client_ip = request
         .extensions()
-        .get::<std::net::SocketAddr>()
-        .map_or_else(|| "unknown".to_string(), std::string::ToString::to_string);
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map_or_else(|| "unknown".to_string(), |ci| ci.0.to_string());
 
     tracing::debug!("WS: Received upgrade request from {}", client_ip);
     tracing::trace!("WS: Token extracted (length: {})", token.len());
