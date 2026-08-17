@@ -124,9 +124,12 @@ pub async fn run() -> anyhow::Result<()> {
         },
         async {
             tracing::debug!("WebSocket server task started");
-            axum::serve(ws_listener, ws_router)
-                .await
-                .map_err(anyhow::Error::from)
+            axum::serve(
+                ws_listener,
+                ws_router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .await
+            .map_err(anyhow::Error::from)
         },
     )?;
 
