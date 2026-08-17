@@ -42,15 +42,6 @@ fn env_or_u64(key: &str, default: u64) -> u64 {
     value
 }
 
-fn env_or_bool(key: &str, default: bool) -> bool {
-    let value = std::env::var(key)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default);
-    tracing::trace!("Config: {} = {}", key, value);
-    value
-}
-
 // Database settings
 #[allow(dead_code)]
 pub static DATABASE_USER: LazyLock<String> = LazyLock::new(|| env_or("MYSQL_USER", "jobserver"));
@@ -63,8 +54,6 @@ pub static DATABASE_SCHEMA: LazyLock<String> =
 #[allow(dead_code)]
 pub static DATABASE_HOST: LazyLock<String> = LazyLock::new(|| env_or("DATABASE_HOST", "localhost"));
 pub static DATABASE_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("DATABASE_PORT", 3306));
-#[allow(dead_code)]
-pub static DATABASE_DEBUG: LazyLock<bool> = LazyLock::new(|| env_or_bool("DATABASE_DEBUG", false));
 
 // File download expiry
 /// Seconds before an unused file-download record expires (`FILE_DOWNLOAD_EXPIRY_TIME` env var).
@@ -137,12 +126,6 @@ pub static CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS: LazyLock<u64> =
 /// Seconds between WebSocket keep-alive pings to connected clusters (`CLUSTER_MANAGER_PING_INTERVAL_SECONDS`).
 pub static CLUSTER_MANAGER_PING_INTERVAL_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_PING_INTERVAL_SECONDS", 10));
-#[allow(dead_code)]
-pub static CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
-    LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS", 60));
-#[allow(dead_code)]
-pub static CLUSTER_MANAGER_MANUAL_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
-    LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_MANUAL_TOKEN_EXPIRY_SECONDS", 600));
 pub static CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_u64("CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS", 600));
 
@@ -157,36 +140,18 @@ pub static RATE_LIMIT_REQUESTS_PER_SECOND: LazyLock<u64> =
 /// Burst allowance above the sustained rate (`RATE_LIMIT_BURST_SIZE`).
 pub static RATE_LIMIT_BURST_SIZE: LazyLock<u32> =
     LazyLock::new(|| env_or_u32("RATE_LIMIT_BURST_SIZE", 50));
-#[allow(dead_code)]
-pub static HTTP_WORKER_POOL_SIZE: LazyLock<u32> =
-    LazyLock::new(|| env_or_u32("HTTP_WORKER_POOL_SIZE", 1024));
-#[allow(dead_code)]
-pub static HTTP_CONTENT_TIMEOUT_SECONDS: LazyLock<u64> =
-    LazyLock::new(|| env_or_u64("HTTP_CONTENT_TIMEOUT_SECONDS", 86400));
-
 // WebSocket settings
 /// TCP port for cluster WebSocket connections (`WEBSOCKET_PORT`).
 pub static WEBSOCKET_PORT: LazyLock<u16> = LazyLock::new(|| env_or_u16("WEBSOCKET_PORT", 8001));
-#[allow(dead_code)]
-pub static WEBSOCKET_WORKER_POOL_SIZE: LazyLock<u32> =
-    LazyLock::new(|| env_or_u32("WEBSOCKET_WORKER_POOL_SIZE", 1024));
-
-// Bundle HTTP settings
-#[allow(dead_code)]
-pub static BUNDLE_HTTP_PORT: LazyLock<String> = LazyLock::new(|| env_or("BUNDLE_HTTP_PORT", ":80"));
-#[allow(dead_code)]
-pub static BUNDLE_HTTPS_PORT: LazyLock<String> =
-    LazyLock::new(|| env_or("BUNDLE_HTTPS_PORT", ":443"));
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_database_port_and_debug() {
-        // DATABASE_PORT and DATABASE_DEBUG are not typically overridden in .env
+    fn test_database_port() {
+        // DATABASE_PORT is not typically overridden in .env
         assert_eq!(*DATABASE_PORT, 3306);
-        assert!(!*DATABASE_DEBUG);
     }
 
     #[test]
@@ -223,28 +188,17 @@ mod tests {
         assert_eq!(*CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS, 60);
         assert_eq!(*CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS, 60);
         assert_eq!(*CLUSTER_MANAGER_PING_INTERVAL_SECONDS, 10);
-        assert_eq!(*CLUSTER_MANAGER_TOKEN_EXPIRY_SECONDS, 60);
-        assert_eq!(*CLUSTER_MANAGER_MANUAL_TOKEN_EXPIRY_SECONDS, 600);
         assert_eq!(*CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS, 600);
     }
 
     #[test]
     fn test_http_defaults() {
         assert_eq!(*HTTP_PORT, 8000);
-        assert_eq!(*HTTP_WORKER_POOL_SIZE, 1024);
-        assert_eq!(*HTTP_CONTENT_TIMEOUT_SECONDS, 86400);
     }
 
     #[test]
     fn test_websocket_defaults() {
         assert_eq!(*WEBSOCKET_PORT, 8001);
-        assert_eq!(*WEBSOCKET_WORKER_POOL_SIZE, 1024);
-    }
-
-    #[test]
-    fn test_bundle_defaults() {
-        assert_eq!(BUNDLE_HTTP_PORT.as_str(), ":80");
-        assert_eq!(BUNDLE_HTTPS_PORT.as_str(), ":443");
     }
 
     #[test]
@@ -253,6 +207,5 @@ mod tests {
         assert_eq!(env_or_u16("__NONEXISTENT_TEST_VAR__", 42), 42);
         assert_eq!(env_or_u32("__NONEXISTENT_TEST_VAR__", 999), 999);
         assert_eq!(env_or_u64("__NONEXISTENT_TEST_VAR__", 123_456), 123_456);
-        assert!(!env_or_bool("__NONEXISTENT_TEST_VAR__", false));
     }
 }
