@@ -303,7 +303,6 @@ Fetch status and/or filter jobs.
 ```json
 {
   "cluster": "ozstar",
-  "userId": 32,
   "parameters": "whatever",
   "bundle": "whatever"
 }
