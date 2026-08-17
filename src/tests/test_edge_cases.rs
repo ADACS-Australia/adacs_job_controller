@@ -1585,6 +1585,96 @@ async fn test_download_without_force_download_sets_inline_disposition() {
     );
 }
 
+/// Verifies that `forceDownload=false` sets `Content-Disposition: inline` (not attachment).
+///
+/// # Setup
+/// Inserts a download record for `report.pdf`; simulates a small 5-byte file stream.
+///
+/// # Act
+/// Sends a GET request with the `forceDownload=false` query parameter.
+///
+/// # Assert
+/// Response is 200 OK and `Content-Disposition` contains `inline` and the filename `report.pdf`.
+#[tokio::test]
+async fn test_download_force_download_false_sets_inline_disposition() {
+    let db = setup_test_db().await;
+
+    let uuid_val = "force-false-dl-uuid".to_string();
+    file_download::ActiveModel {
+        user: Set(1),
+        job: Set(0),
+        cluster: Set("ozstar".to_string()),
+        bundle: Set("b".to_string()),
+        uuid: Set(uuid_val.clone()),
+        path: Set("/path/to/report.pdf".to_string()),
+        timestamp: Set(chrono::Utc::now().naive_utc()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let fd_state = Arc::new(FileDownloadState::new());
+    let fd_sim = Arc::clone(&fd_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fd_sim.file_size.store(5, Ordering::Release);
+        fd_sim.received_data.store(true, Ordering::Release);
+        fd_sim.data_ready.store(true, Ordering::Release);
+        fd_sim.data_notify.notify_waiters();
+        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
+    });
+
+    let fd_for_mgr = Arc::clone(&fd_state);
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    let c2 = Arc::new(online_cluster_no_messages());
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&c2);
+            Box::pin(async move { c as Arc<dyn ClusterTrait> })
+        });
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd_for_mgr)));
+
+    let app = create_router(make_test_state(db, manager));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/job/apiv1/file/?fileId={uuid_val}&forceDownload=false"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let content_disp = resp
+        .headers()
+        .get("content-disposition")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    assert!(
+        content_disp.contains("inline"),
+        "forceDownload=false should set Content-Disposition: inline; got: {content_disp}"
+    );
+    assert!(
+        content_disp.contains("report.pdf"),
+        "Content-Disposition should contain the filename; got: {content_disp}"
+    );
+}
+
 // ===========================================================================
 // 15. FILE UPLOAD — LARGE BODY CHUNKING VERIFICATION
 //

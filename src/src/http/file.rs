@@ -46,7 +46,8 @@ pub struct FileDownloadQuery {
     /// UUID of the file download record to stream.
     #[serde(rename = "fileId")]
     pub file_id: Option<String>,
-    /// When set, forces `Content-Disposition: attachment` instead of inline display.
+    /// When `true` (case-insensitive) or `1`, forces `Content-Disposition: attachment`
+    /// instead of inline display; any other value (including `false` or absent) yields inline.
     #[serde(rename = "forceDownload")]
     pub force_download: Option<String>,
 }
@@ -209,7 +210,11 @@ pub async fn download_file(
     })?;
 
     tracing::debug!("HTTP: File download request for UUID: {}", original_uuid);
-    let force_download = params.force_download.is_some();
+    let force_download = params
+        .force_download
+        .as_deref()
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false);
     tracing::trace!("HTTP: Force download flag: {}", force_download);
 
     // Expire old download records
