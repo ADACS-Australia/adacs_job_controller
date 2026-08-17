@@ -454,6 +454,7 @@ pub async fn cancel_job(
     let latest = job_history::Entity::find()
         .filter(job_history::Column::JobId.eq(job.id))
         .order_by_desc(job_history::Column::Timestamp)
+        .order_by_desc(job_history::Column::Id)
         .one(&state.db)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
@@ -553,6 +554,7 @@ pub async fn delete_job(
     let latest = job_history::Entity::find()
         .filter(job_history::Column::JobId.eq(job.id))
         .order_by_desc(job_history::Column::Timestamp)
+        .order_by_desc(job_history::Column::Id)
         .one(&state.db)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
