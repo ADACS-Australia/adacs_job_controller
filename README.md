@@ -364,7 +364,7 @@ Does not require JWT - uses file download ID for authorization.
 ```
 Content-Type: application/octet-stream
 Content-Length: <remote file size>
-Content-Disposition: attachment; filename="remote file name"
+Content-Disposition: inline; filename="remote file name"
 ```
 
 #### POST - Create File Download ID(s)
