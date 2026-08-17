@@ -187,7 +187,7 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
 /// Start a test server configured with a cluster manager that rejects all connections.
 ///
 /// # Act
-/// Connect a WebSocket client sending `?token=bad_token`.
+/// Connect a WebSocket client with `Authorization: Bearer bad_token` header.
 ///
 /// # Assert
 /// The server closes the connection.
@@ -198,9 +198,19 @@ async fn test_ws_invalid_token_disconnects() {
     let server = start_test_server(state).await;
     let port = server.port;
 
-    // Connect with an invalid token
-    let (_, mut stream) =
-        connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=bad_token")).await;
+    // Connect with an invalid Bearer token
+    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", "Bearer bad_token".parse().unwrap());
+
+    let (_, mut stream) = tokio_tungstenite::connect_async(request)
+        .await
+        .unwrap()
+        .0
+        .split();
 
     let closed = connection_closes(&mut stream).await;
     assert!(closed, "Server should close connection for invalid token");
