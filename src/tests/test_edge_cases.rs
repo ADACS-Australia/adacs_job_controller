@@ -572,8 +572,8 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
 // 4. DOWNLOAD TIMEOUT — cluster never sends FILE_DETAILS
 //
 // test_file_transfer_connection_timeout: cluster connects but never sends
-// FILE_DETAILS. Server times out waiting and returns 400 "Client took too long
-// to respond." — the exact message from the Rust implementation.
+// FILE_DETAILS. Server times out waiting and returns 400 "Remote cluster took
+// too long to respond." — the exact message from the Rust implementation.
 // ===========================================================================
 
 /// Verifies the server returns 400 when the cluster never sends `FILE_DETAILS` (timeout path).
@@ -585,7 +585,7 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
 /// Sends a GET download request; advances virtual clock 35 seconds past the 30-second timeout.
 ///
 /// # Assert
-/// Response is 400 Bad Request with body "Client took too long to respond."
+/// Response is 400 Bad Request with body "Remote cluster took too long to respond."
 #[tokio::test]
 async fn test_download_timeout_when_cluster_never_responds() {
     // Use a DB connection with an extended pool acquire_timeout. The default
@@ -665,7 +665,7 @@ async fn test_download_timeout_when_cluster_never_responds() {
         .unwrap();
     assert_eq!(
         String::from_utf8_lossy(&body),
-        "Client took too long to respond.",
+        "Remote cluster took too long to respond.",
         "Timeout body should match expected error message"
     );
 }

@@ -315,7 +315,8 @@ pub async fn download_file(
 
     if ready.is_err() {
         fd_state.error.store(true, Ordering::Release);
-        *fd_state.error_details.lock().await = "Client took too long to respond.".to_string();
+        *fd_state.error_details.lock().await =
+            "Remote cluster took too long to respond.".to_string();
     }
 
     if fd_state.error.load(Ordering::Acquire) {
@@ -388,7 +389,7 @@ pub async fn download_file(
                 Err(_) => {
                     yield Err(std::io::Error::new(
                         std::io::ErrorKind::TimedOut,
-                        "Client took too long to respond",
+                        "Remote cluster took too long to respond",
                     ));
                     break;
                 }
@@ -788,7 +789,7 @@ pub async fn list_files(
     if wait_result.is_err() {
         let mut locked = fl_state.lock().await;
         locked.error = true;
-        locked.error_details = "Client took too long to respond.".to_string();
+        locked.error_details = "Remote cluster took too long to respond.".to_string();
     }
 
     let locked = fl_state.lock().await;
