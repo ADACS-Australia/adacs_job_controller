@@ -274,6 +274,22 @@ pub async fn get_jobs(
         ));
     }
 
+    // A present-but-invalid timestamp (e.g. microseconds instead of seconds) must not
+    // silently drop the filter and widen the result set — return an empty list instead.
+    for ts in [
+        params.start_time_gt,
+        params.start_time_lt,
+        params.end_time_gt,
+        params.end_time_lt,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if chrono::DateTime::from_timestamp(ts, 0).is_none() {
+            return Ok(Json(serde_json::json!([])));
+        }
+    }
+
     // Build the main query, applying all filters as database-level subqueries
     let mut job_query = job::Entity::find().filter(job::Column::Application.is_in(applications));
 
