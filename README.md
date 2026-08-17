@@ -417,7 +417,7 @@ Content-Disposition: attachment; filename="remote file name"
       "path": "/file/path",
       "isDir": false,
       "fileSize": 345652,
-      "permissions": null
+      "permissions": 33188
     }
   ]
 }
