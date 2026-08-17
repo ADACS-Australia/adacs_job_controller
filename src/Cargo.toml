@@ -66,6 +66,7 @@ tempfile = "3"
 mockall = "0.13"
 reqwest = { version = "0.12", features = ["json"] }
 rand = "0.9"
+http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
 dashmap = "6"
 futures = "0.3"

@@ -17,7 +17,6 @@ pub struct Message {
     priority: super::types::Priority,
 }
 
-#[allow(dead_code)]
 impl Message {
     /// Create a new outgoing message with source and ID in the header.
     #[must_use]
@@ -69,6 +68,7 @@ impl Message {
     }
 
     #[must_use]
+    #[allow(dead_code)]
     pub fn data(&self) -> &[u8] {
         &self.data
     }
@@ -128,16 +128,19 @@ impl Message {
         val
     }
 
+    #[allow(dead_code)]
     pub fn push_byte(&mut self, value: i8) {
         self.push_ubyte(value as u8);
     }
 
+    #[allow(dead_code)]
     pub fn pop_byte(&mut self) -> i8 {
         self.pop_ubyte() as i8
     }
 
     // --- Push / Pop: u16 / i16 ---
 
+    #[allow(dead_code)]
     pub fn push_ushort(&mut self, value: u16) {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
@@ -146,6 +149,7 @@ impl Message {
     ///
     /// If there are fewer than 2 bytes remaining in the buffer, a warning is
     /// logged and `0` is returned.
+    #[allow(dead_code)]
     pub fn pop_ushort(&mut self) -> u16 {
         if !self.check_remaining(2) {
             return 0;
@@ -156,6 +160,7 @@ impl Message {
         u16::from_le_bytes(bytes)
     }
 
+    #[allow(dead_code)]
     pub fn push_short(&mut self, value: i16) {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
@@ -164,6 +169,7 @@ impl Message {
     ///
     /// If there are fewer than 2 bytes remaining in the buffer, a warning is
     /// logged and `0` is returned.
+    #[allow(dead_code)]
     pub fn pop_short(&mut self) -> i16 {
         if !self.check_remaining(2) {
             return 0;
@@ -194,6 +200,7 @@ impl Message {
         u32::from_le_bytes(bytes)
     }
 
+    #[allow(dead_code)]
     pub fn push_int(&mut self, value: i32) {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
@@ -202,6 +209,7 @@ impl Message {
     ///
     /// If there are fewer than 4 bytes remaining in the buffer, a warning is
     /// logged and `0` is returned.
+    #[allow(dead_code)]
     pub fn pop_int(&mut self) -> i32 {
         if !self.check_remaining(4) {
             return 0;
@@ -232,6 +240,7 @@ impl Message {
         u64::from_le_bytes(bytes)
     }
 
+    #[allow(dead_code)]
     pub fn push_long(&mut self, value: i64) {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
@@ -240,6 +249,7 @@ impl Message {
     ///
     /// If there are fewer than 8 bytes remaining in the buffer, a warning is
     /// logged and `0` is returned.
+    #[allow(dead_code)]
     pub fn pop_long(&mut self) -> i64 {
         if !self.check_remaining(8) {
             return 0;
@@ -252,6 +262,7 @@ impl Message {
 
     // --- Push / Pop: f32 / f64 ---
 
+    #[allow(dead_code)]
     pub fn push_float(&mut self, value: f32) {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
@@ -260,6 +271,7 @@ impl Message {
     ///
     /// If there are fewer than 4 bytes remaining in the buffer, a warning is
     /// logged and `0.0` is returned.
+    #[allow(dead_code)]
     pub fn pop_float(&mut self) -> f32 {
         if !self.check_remaining(4) {
             return 0.0;
@@ -270,6 +282,7 @@ impl Message {
         f32::from_le_bytes(bytes)
     }
 
+    #[allow(dead_code)]
     pub fn push_double(&mut self, value: f64) {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
@@ -278,6 +291,7 @@ impl Message {
     ///
     /// If there are fewer than 8 bytes remaining in the buffer, a warning is
     /// logged and `0.0` is returned.
+    #[allow(dead_code)]
     pub fn pop_double(&mut self) -> f64 {
         if !self.check_remaining(8) {
             return 0.0;
