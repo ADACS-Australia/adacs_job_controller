@@ -7,7 +7,6 @@ use sea_orm::entity::prelude::*;
 /// token on its next WebSocket handshake; expired rows are pruned before lookup.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "jobserver_clusteruuid")]
-#[allow(dead_code)]
 pub struct Model {
     /// Auto-increment primary key.
     #[sea_orm(primary_key)]
@@ -21,7 +20,6 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-#[allow(dead_code)]
 pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
