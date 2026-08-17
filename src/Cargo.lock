@@ -17,6 +17,7 @@ dependencies = [
  "dashmap",
  "futures",
  "futures-util",
+ "http-body-util",
  "jsonwebtoken",
  "mockall",
  "rand 0.9.2",

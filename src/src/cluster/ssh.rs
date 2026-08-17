@@ -235,11 +235,6 @@ async fn run_via_kerberos(config: &ClusterConfig, token: &str) -> Result<(), Ssh
         std::fs::set_permissions(&keytab_path, std::fs::Permissions::from_mode(0o600))?;
     }
 
-    // SAFETY: This is a controlled single-threaded context during startup.
-    unsafe {
-        std::env::set_var("KRB5_CLIENT_KTNAME", keytab_path.to_str().unwrap());
-    }
-
     let principal = if config.kerberos_principal.is_empty() {
         &config.username
     } else {
@@ -251,21 +246,7 @@ async fn run_via_kerberos(config: &ClusterConfig, token: &str) -> Result<(), Ssh
         config.path, token
     );
 
-    let output = tokio::process::Command::new("ssh")
-        .args([
-            "-o",
-            "GSSAPIAuthentication=yes",
-            "-o",
-            "GSSAPIKeyExchange=yes",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "GSSAPIDelegateCredentials=no",
-            "-l",
-            principal,
-            &config.host,
-            &remote_cmd,
-        ])
+    let output = build_kerberos_ssh_command(principal, &config.host, &remote_cmd, &keytab_path)
         .output()
         .await?;
 
@@ -288,6 +269,36 @@ async fn run_via_kerberos(config: &ClusterConfig, token: &str) -> Result<(), Ssh
     }
 
     Ok(())
+}
+
+/// Build the `ssh` command used for Kerberos-authenticated connections.
+///
+/// The `KRB5_CLIENT_KTNAME` environment variable is scoped to the child
+/// process via [`tokio::process::Command::env`] rather than set globally,
+/// so it never leaks into the server's own environment.
+fn build_kerberos_ssh_command(
+    principal: &str,
+    host: &str,
+    remote_cmd: &str,
+    keytab_path: &Path,
+) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new("ssh");
+    cmd.args([
+        "-o",
+        "GSSAPIAuthentication=yes",
+        "-o",
+        "GSSAPIKeyExchange=yes",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "GSSAPIDelegateCredentials=no",
+        "-l",
+        principal,
+        host,
+        remote_cmd,
+    ])
+    .env("KRB5_CLIENT_KTNAME", keytab_path);
+    cmd
 }
 
 async fn execute_command(
@@ -544,5 +555,67 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
             .unwrap();
 
         assert_eq!(parsed.algorithm(), Algorithm::Ed25519);
+    }
+
+    #[test]
+    fn kerberos_keytab_env_is_scoped_to_child_command() {
+        // SAFETY: Test-only cleanup to guarantee a clean baseline; the test
+        // process is single-threaded at this point.
+        unsafe {
+            std::env::remove_var("KRB5_CLIENT_KTNAME");
+        }
+
+        let keytab_path = Path::new("/tmp/fake-krb5.keytab");
+        let cmd = build_kerberos_ssh_command("user", "host", "remote", keytab_path);
+
+        let envs: Vec<_> = cmd.as_std().get_envs().collect();
+        assert!(
+            envs.iter().any(|(k, v)| {
+                *k == "KRB5_CLIENT_KTNAME" && *v == Some(keytab_path.as_os_str())
+            }),
+            "KRB5_CLIENT_KTNAME must be set on the child ssh command"
+        );
+
+        assert!(
+            std::env::var_os("KRB5_CLIENT_KTNAME").is_none(),
+            "KRB5_CLIENT_KTNAME must not leak into the global process environment"
+        );
+    }
+
+    #[test]
+    fn kerberos_ssh_command_includes_gssapi_flags_and_target() {
+        let keytab_path = Path::new("/tmp/fake-krb5.keytab");
+        let cmd = build_kerberos_ssh_command(
+            "alice",
+            "cluster.example.com",
+            "cd /srv && ./adacs_job_client",
+            keytab_path,
+        );
+
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        for expected in [
+            "-o",
+            "GSSAPIAuthentication=yes",
+            "-o",
+            "GSSAPIKeyExchange=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "GSSAPIDelegateCredentials=no",
+            "-l",
+            "alice",
+            "cluster.example.com",
+            "cd /srv && ./adacs_job_client",
+        ] {
+            assert!(
+                args.iter().any(|a| a == expected),
+                "expected {expected:?} in args {args:?}"
+            );
+        }
     }
 }
