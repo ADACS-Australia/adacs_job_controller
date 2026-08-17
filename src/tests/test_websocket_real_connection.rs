@@ -19,6 +19,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tower::ServiceExt;
 
 use adacs_job_controller::cluster::traits::{
@@ -84,8 +85,12 @@ async fn connect_websocket(
         >,
     >,
 ) {
-    let url = format!("ws://127.0.0.1:{port}/job/ws/?token={token}");
-    let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    let url = format!("ws://127.0.0.1:{port}/job/ws/");
+    let mut request = url.into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", format!("Bearer {token}").parse().unwrap());
+    let (ws_stream, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     ws_stream.split()
 }
 
