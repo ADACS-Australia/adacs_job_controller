@@ -780,6 +780,149 @@ async fn test_list_files_ws_response_populates_result() {
     assert_eq!(files[0]["path"].as_str().unwrap(), "/output/result.txt");
 }
 
+/// Tests that a completed job's root recursive listing is written to the `file_list_cache`.
+///
+/// # Setup
+/// Inserts a Completed job (no pre-existing cache). Wires a cluster whose `send_message`
+/// mock populates the `file_list_map` entry with files.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/file/ with the job ID, empty path, and recursive=true.
+///
+/// # Assert
+/// Verifies 200 OK and that the `file_list_cache` table holds one row per returned file
+/// with the correct `job_id`, path, `is_dir`, `file_size`, and `permissions`.
+#[tokio::test]
+async fn test_list_files_completed_job_populates_file_list_cache() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    // Mark as complete — enables the caching path
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+    insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
+
+    // The fl_state will be populated by a background task simulating the WS handler
+    let file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+        Arc::new(dashmap::DashMap::new());
+    let file_list_map_clone = Arc::clone(&file_list_map);
+
+    let cluster = {
+        let flm = Arc::clone(&file_list_map_clone);
+        let mut c = MockClusterTrait::new();
+        c.expect_name().returning(|| "ozstar".to_string());
+        c.expect_is_online().returning(|| true);
+        c.expect_role().returning(|| ClusterRole::Master);
+        c.expect_role_string().returning(|| "master".to_string());
+        c.expect_cluster_details()
+            .returning(|| test_cluster_config("ozstar"));
+        c.expect_send_message().returning(move |msg| {
+            // Parse the UUID from the FILE_LIST message, then signal it
+            let mut m =
+                adacs_job_controller::protocol::message::Message::from_bytes(msg.into_data());
+            let _job_id = m.pop_uint();
+            let uuid = m.pop_string();
+
+            let flm2 = Arc::clone(&flm);
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                if let Some(state_arc) = flm2.get(&uuid) {
+                    let mut locked = state_arc.lock().await;
+                    locked.files = vec![
+                        FileInfo {
+                            file_name: "/out/results.txt".to_string(),
+                            file_size: 1024,
+                            permissions: 0o644,
+                            is_directory: false,
+                        },
+                        FileInfo {
+                            file_name: "/out/".to_string(),
+                            file_size: 0,
+                            permissions: 0o755,
+                            is_directory: true,
+                        },
+                    ];
+                    locked.data_ready = true;
+                    locked.notify.notify_waiters();
+                }
+            });
+            Box::pin(async {})
+        });
+        Arc::new(c)
+    };
+
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+
+    // Build AppState with the shared file_list_map
+    let state = adacs_job_controller::app::AppState {
+        db: db.clone(),
+        cluster_manager: Arc::new(manager),
+        file_list_map,
+        jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: None,
+    };
+
+    let app = create_router(state);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/job/apiv1/file/")
+                .header("content-type", "application/json")
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "path": "",
+                        "recursive": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let files = body["files"].as_array().unwrap();
+    assert_eq!(
+        files.len(),
+        2,
+        "should return the 2 files from the WS response"
+    );
+
+    // The completed-job root recursive listing must have been written to the cache
+    let cached = file_list_cache::Entity::find()
+        .filter(file_list_cache::Column::JobId.eq(job_id))
+        .all(&db)
+        .await
+        .unwrap();
+    assert_eq!(cached.len(), 2, "should have cached 2 file entries");
+
+    let by_path: std::collections::HashMap<&str, &file_list_cache::Model> =
+        cached.iter().map(|c| (c.path.as_str(), c)).collect();
+    let file = by_path.get("/out/results.txt").expect("file cached");
+    assert_eq!(file.file_size, 1024);
+    assert_eq!(file.permissions, 0o644);
+    assert!(!file.is_dir);
+
+    let dir = by_path.get("/out/").expect("dir cached");
+    assert_eq!(dir.file_size, 0);
+    assert_eq!(dir.permissions, 0o755);
+    assert!(dir.is_dir);
+}
+
 /// Tests that PATCH /file/ returns 503 when the cluster is offline.
 ///
 /// # Setup
