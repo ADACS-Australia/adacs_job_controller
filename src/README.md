@@ -69,7 +69,7 @@ Create `config/clusters.json` and `config/access_secrets.json` from templates in
 | PUT | `/job/apiv1/file/upload/` | Upload file to cluster |
 | PATCH | `/job/apiv1/file/` | List remote files |
 
-All HTTP endpoints require JWT (HS256) authentication via `Authorization: Bearer <token>` header.
+All HTTP endpoints require JWT (HS256) authentication via `Authorization: Bearer <token>` header, except `GET /job/apiv1/file/` (stream file download), which authorizes via the `fileId` UUID instead.
 
 ## Dependencies
 
