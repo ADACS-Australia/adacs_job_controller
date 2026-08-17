@@ -439,21 +439,37 @@ async fn test_close_handshake_timeout_forces_tcp_close() {
 async fn test_websocket_connection_rejected_invalid_token() {
     let db = setup_test_db().await;
 
-    let manager = MockClusterManagerTrait::new();
+    // Manager that rejects the connection (invalid token -> None).
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_handle_new_connection()
+        .returning(|_, _, _| Box::pin(async { None }));
+    manager
+        .expect_remove_connection()
+        .returning(|_, _| Box::pin(async {}));
+    manager.expect_report_websocket_error().returning(|_, _| ());
 
     // Start real server
     let (port, server_handle) = start_http_server(db.clone(), manager).await;
-    let invalid_token = "Bearer invalid_token_12345";
 
-    // Try to connect with invalid token - should fail or close immediately
-    let url = format!("ws://127.0.0.1:{port}/job/ws/?token={invalid_token}");
-    let result = tokio_tungstenite::connect_async(&url).await;
+    // Connect with invalid Bearer token via the Authorization header
+    // (the server ignores the ?token= query param).
+    let (_sink, mut stream) = connect_websocket(port, "invalid_token_12345").await;
 
-    // Connection should be rejected
-    assert!(
-        result.is_err() || result.unwrap().1.status().is_client_error(),
-        "Server should reject invalid token"
-    );
+    // Connection should be closed by the server.
+    let closed = tokio::time::timeout(Duration::from_secs(2), async {
+        while let Some(msg) = stream.next().await {
+            match msg {
+                Ok(TungsteniteMsg::Close(_)) | Err(_) => return true,
+                _ => {}
+            }
+        }
+        true // stream ended
+    })
+    .await
+    .unwrap_or(false);
+
+    assert!(closed, "Server should close connection for invalid token");
 
     server_handle.abort();
 }
