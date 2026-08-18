@@ -373,6 +373,25 @@ fn test_all_file_message_ids_are_unique() {
     }
 }
 
+/// Verifies that all job-control message ID constants have unique values.
+///
+/// # Setup
+/// An array of the 5 job-control message ID constants is assembled.
+///
+/// # Act
+/// Each ID is inserted into a `HashSet`.
+///
+/// # Assert
+/// No duplicate IDs are found; the assertion fails with the duplicate value if any collision occurs.
+#[test]
+fn test_all_job_message_ids_are_unique() {
+    let ids = [SERVER_READY, SUBMIT_JOB, UPDATE_JOB, CANCEL_JOB, DELETE_JOB];
+    let mut seen = std::collections::HashSet::new();
+    for id in &ids {
+        assert!(seen.insert(*id), "Duplicate job message ID: {id}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Stress: large payload round-trip
 // ---------------------------------------------------------------------------
