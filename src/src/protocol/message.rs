@@ -649,6 +649,26 @@ mod tests {
         assert_eq!(msg2.pop_string(), long_string);
     }
 
+    /// Verifies that `pop_string` returns an empty string (without panicking) when
+    /// the buffer holds invalid UTF-8 bytes, and that the malformed bytes are consumed.
+    ///
+    /// # Setup
+    /// Create a new message and push raw bytes `[0xFF, 0xFE]` (invalid UTF-8) via `push_bytes`.
+    ///
+    /// # Act
+    /// Serialise via `into_data`, parse back with `from_bytes`, then call `pop_string`.
+    ///
+    /// # Assert
+    /// `pop_string` returns `""` and `remaining()` is `0` (the malformed bytes were consumed).
+    #[test]
+    fn test_pop_string_invalid_utf8_returns_empty() {
+        let mut msg = Message::new(1, Priority::Lowest, "t");
+        msg.push_bytes(&[0xFF, 0xFE]);
+        let mut msg2 = Message::from_bytes(msg.into_data());
+        assert_eq!(msg2.pop_string(), "");
+        assert_eq!(msg2.remaining(), 0);
+    }
+
     /// Verifies that `push_bytes` / `pop_bytes` round-trips a non-empty and empty byte slice.
     ///
     /// # Setup
