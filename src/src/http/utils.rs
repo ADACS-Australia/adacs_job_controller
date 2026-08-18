@@ -162,7 +162,7 @@ pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec
 
             if normalized_file_name == abs_path
                 || parent_path.starts_with(&abs_path)
-                || (normalized_file_name == abs_path_no_trail && file.is_directory)
+                || normalized_file_name == abs_path_no_trail
             {
                 matched.push(file.clone());
             }
@@ -174,7 +174,7 @@ pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec
 
             if parent == abs_path
                 || parent == abs_path_no_trail
-                || (normalized_file_name == abs_path_no_trail && file.is_directory)
+                || normalized_file_name == abs_path_no_trail
             {
                 matched.push(file.clone());
             }
@@ -648,6 +648,40 @@ mod tests {
         assert_eq!(names(&result), expected_names);
 
         let result = filter_files(&files, "testdir/testdir1/", false);
+        assert_eq!(names(&result), expected_names);
+    }
+
+    // --- Exact file path requests ---
+
+    /// Verifies that requesting an exact file path recursively returns that file.
+    #[test]
+    fn test_cpp_exact_file_path_recursive() {
+        let files = cpp_file_list();
+        let expected_names = vec!["/testdir/file"];
+
+        let result = filter_files(&files, "/testdir/file", true);
+        assert_eq!(names(&result), expected_names);
+
+        let result = filter_files(&files, "/testdir/file/", true);
+        assert_eq!(names(&result), expected_names);
+
+        let result = filter_files(&files, "testdir/file", true);
+        assert_eq!(names(&result), expected_names);
+    }
+
+    /// Verifies that requesting an exact file path non-recursively returns that file.
+    #[test]
+    fn test_cpp_exact_file_path_non_recursive() {
+        let files = cpp_file_list();
+        let expected_names = vec!["/testdir/file"];
+
+        let result = filter_files(&files, "/testdir/file", false);
+        assert_eq!(names(&result), expected_names);
+
+        let result = filter_files(&files, "/testdir/file/", false);
+        assert_eq!(names(&result), expected_names);
+
+        let result = filter_files(&files, "testdir/file", false);
         assert_eq!(names(&result), expected_names);
     }
 }
