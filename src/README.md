@@ -43,8 +43,12 @@ cargo build --release
 
 ## Testing
 
+Tests share global state and must run sequentially:
+
 ```bash
-cargo test
+./run_tests.sh
+# or
+cargo test -- --test-threads=1
 ```
 
 ## Configuration
