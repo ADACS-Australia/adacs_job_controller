@@ -479,16 +479,16 @@ async fn test_upload_route_exists() {
 }
 
 // ===========================================================================
-// HttpServer constructor and access secrets tests
+// Router construction and JWT access secrets tests
 // ===========================================================================
 
-/// Tests that `HttpServer` constructor with empty access config creates zero JWT secrets.
+/// Tests that a router built with an empty access-secrets list rejects all tokens.
 ///
 /// # Setup
 /// Creates empty access config JSON "[]".
 ///
 /// # Act
-/// Instantiates `HttpServer` through Application/router creation.
+/// Builds the axum `Router` via `create_router` with an empty JWT secrets list.
 ///
 /// # Assert
 /// - Router is created successfully
@@ -519,13 +519,13 @@ async fn test_http_server_constructor_empty_config() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
-/// Tests that `HttpServer` constructor with populated access config creates correct JWT secrets.
+/// Tests that a router built with a populated access-secrets list accepts tokens signed by any secret.
 ///
 /// # Setup
 /// Creates 3 access secrets with different names and secrets.
 ///
 /// # Act
-/// Instantiates `HttpServer` with populated config.
+/// Builds the axum `Router` via `create_router` with the 3 JWT secrets.
 ///
 /// # Assert
 /// - Router accepts tokens signed with any of the 3 secrets
