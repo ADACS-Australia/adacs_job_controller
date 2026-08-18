@@ -697,8 +697,7 @@ impl Cluster {
     // ---- FileUpload message handling ----
 
     /// Signals that the file-upload server is ready and unblocks waiting upload readers.
-    #[allow(clippy::unused_async)]
-    async fn handle_server_ready(&self) {
+    fn handle_server_ready(&self) {
         let Some(state) = &self.file_upload_state else {
             tracing::warn!(
                 "Cluster[{}]: SERVER_READY received but no file_upload_state",
@@ -926,7 +925,7 @@ impl ClusterTrait for Cluster {
 
             // FileUpload messages
             SERVER_READY if self.role == ClusterRole::FileUpload => {
-                self.handle_server_ready().await;
+                self.handle_server_ready();
             }
             SERVER_READY => {
                 tracing::warn!(
