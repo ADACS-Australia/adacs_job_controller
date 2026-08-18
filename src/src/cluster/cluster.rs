@@ -53,8 +53,7 @@ pub struct Cluster {
 
     /// Priority-ordered outbound message queues keyed by source string.
     /// Lower priority enum values are dequeued first.
-    #[allow(clippy::type_complexity)]
-    queue: BTreeMap<u8, RwLock<HashMap<String, VecDeque<Vec<u8>>>>>,
+    queue: PriorityQueue,
 
     /// Total bytes currently buffered across all queued messages.
     queued_message_size: AtomicUsize,
