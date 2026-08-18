@@ -1040,4 +1040,83 @@ mod tests {
         assert_eq!(msg.pop_string(), "");
         assert_eq!(msg.pop_bytes(), Vec::<u8>::new());
     }
+
+    // ---- Length-prefix underrun (prefix present but exceeds remaining) ----
+
+    /// Verifies that `pop_bytes` returns an empty `Vec` when the length prefix
+    /// is present but claims more bytes than remain in the buffer.
+    ///
+    /// # Setup
+    /// Build a message whose raw buffer holds a valid u64 length prefix of 10
+    /// followed by only 3 payload bytes.
+    ///
+    /// # Act
+    /// Call `pop_bytes` on the buffer.
+    ///
+    /// # Assert
+    /// `pop_bytes` returns an empty `Vec<u8>` instead of panicking on the
+    /// out-of-bounds slice.
+    #[test]
+    fn test_pop_bytes_underrun_length_prefix_exceeds_remaining() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&10u64.to_le_bytes());
+        raw.extend_from_slice(&[1, 2, 3]);
+        let mut msg = Message {
+            data: raw,
+            index: 0,
+            id: 0,
+            source: String::new(),
+            priority: Priority::Lowest,
+        };
+        assert_eq!(msg.pop_bytes(), Vec::<u8>::new());
+    }
+
+    /// Verifies that `pop_string` returns an empty string when the length
+    /// prefix is present but claims more bytes than remain in the buffer.
+    ///
+    /// # Setup
+    /// Build a message whose raw buffer holds a valid u64 length prefix of 10
+    /// followed by only 3 payload bytes.
+    ///
+    /// # Act
+    /// Call `pop_string` on the buffer.
+    ///
+    /// # Assert
+    /// `pop_string` returns an empty string instead of panicking.
+    #[test]
+    fn test_pop_string_underrun_length_prefix_exceeds_remaining() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&10u64.to_le_bytes());
+        raw.extend_from_slice(b"abc");
+        let mut msg = Message {
+            data: raw,
+            index: 0,
+            id: 0,
+            source: String::new(),
+            priority: Priority::Lowest,
+        };
+        assert_eq!(msg.pop_string(), "");
+    }
+
+    /// Verifies that `from_bytes` yields an empty source and id 0 when the
+    /// source length prefix is present but claims more bytes than remain.
+    ///
+    /// # Setup
+    /// Construct a raw byte vector with a source length prefix of 10 followed
+    /// by only 3 bytes.
+    ///
+    /// # Act
+    /// Parse with `from_bytes`.
+    ///
+    /// # Assert
+    /// `source()` is `""` and `id()` is 0, with no panic on the truncated buffer.
+    #[test]
+    fn test_from_bytes_underrun_source_length_prefix_exceeds_remaining() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&10u64.to_le_bytes());
+        raw.extend_from_slice(&[1, 2, 3]);
+        let msg = Message::from_bytes(raw);
+        assert_eq!(msg.source(), "");
+        assert_eq!(msg.id(), 0);
+    }
 }
