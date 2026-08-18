@@ -1480,6 +1480,73 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_BUNDLE_CREATE_OR_UPDATE_JOB — unknown ID (>0) falls through to insert
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` inserts a new bundle row when the
+/// wire message carries a non-existent bundle id (>0).
+///
+/// # Setup
+/// Empty in-memory DB with bundle job schema; `BundleJob` with id=99999 (unknown),
+/// content=`{"script":"run.sh"}`.
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with `db_request_id=5006`, the `BundleJob`
+/// payload, and `hash="unknown_id_hash"`.
+///
+/// # Assert
+/// A new row exists in `bundle_job` with the supplied content, cluster="ozstar", and
+/// `bundle_hash="unknown_id_hash"`; the `DB_RESPONSE` echoes `db_request_id=5006` and
+/// returns the new non-zero row id.
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_unknown_id_inserts() {
+    let db = make_db().await;
+    setup_cluster_db(&db).await;
+
+    let bundle = BundleJob {
+        id: 99999, // non-existent id > 0
+        content: r#"{"script":"run.sh"}"#.to_string(),
+        cluster: String::new(),
+        bundle_hash: String::new(),
+    };
+
+    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(5006);
+        bundle.to_message(m);
+        m.push_string("unknown_id_hash");
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    // A new row is inserted with the supplied content, cluster, and hash
+    let model = bundle_job::Entity::find()
+        .filter(bundle_job::Column::BundleHash.eq("unknown_id_hash"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.content, r#"{"script":"run.sh"}"#);
+    assert_eq!(model.cluster, "ozstar");
+    assert_eq!(model.bundle_hash, "unknown_id_hash");
+
+    // Only one row exists (the unknown id was not reused)
+    let count = bundle_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(count, 1);
+
+    // Response returns the new non-zero row id
+    let captured = sent.lock().unwrap();
+    let (req_id, mut body) = parse_response(captured[0].clone());
+    assert_eq!(req_id, 5006);
+    let returned_id = body.pop_ulong();
+    assert!(
+        returned_id > 0 && returned_id == model.id.cast_unsigned(),
+        "returned_id={returned_id}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // DB_BUNDLE_DELETE_JOB — delete non-existent ID is a no-op
 // Equivalent behavior: test_db_bundle_job_delete_error → returns success=false
 // Rust: delete_by_id is silently ignored, no error response.
