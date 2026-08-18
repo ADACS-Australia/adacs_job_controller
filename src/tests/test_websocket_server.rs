@@ -127,10 +127,15 @@ fn manager_rejecting_connections() -> MockClusterManagerTrait {
     m
 }
 
-/// Mock manager that accepts connections with any token, returning a simple mock cluster.
 /// Mock manager that accepts connections and FORWARDS messages through the WS channel.
 /// This is needed for tests that need to receive `SERVER_READY` from the server.
-fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
+///
+/// If `accepted_token` is `Some`, connections are only accepted when the token
+/// extracted from the request matches it; otherwise any token is accepted.
+fn manager_with_forwarding_cluster_accepting(
+    name: &str,
+    accepted_token: Option<&str>,
+) -> MockClusterManagerTrait {
     use adacs_job_controller::cluster::traits::WsConnectionSender;
     use std::sync::Mutex as StdMutex;
 
@@ -163,9 +168,15 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
 
     // Build a manager that captures tx and returns the forwarding cluster
     let tx_for_new = Arc::clone(&tx_slot);
+    let accepted: Option<String> = accepted_token.map(str::to_string);
     let mut m = MockClusterManagerTrait::new();
     m.expect_handle_new_connection()
-        .returning(move |_, ws_tx, _| {
+        .returning(move |_, ws_tx, token| {
+            if let Some(ref accepted) = accepted
+                && token != accepted.as_str()
+            {
+                return Box::pin(async { None });
+            }
             *tx_for_new.lock().unwrap() = Some(ws_tx);
             let c = Arc::clone(&cluster_arc);
             Box::pin(async move { Some(c) })
@@ -264,7 +275,7 @@ async fn test_ws_no_token_disconnects() {
 #[tokio::test]
 async fn test_ws_valid_token_receives_server_ready() {
     let db = setup_test_db().await;
-    let manager = manager_with_forwarding_cluster("ozstar");
+    let manager = manager_with_forwarding_cluster_accepting("ozstar", None);
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -314,7 +325,7 @@ async fn test_ws_valid_token_receives_server_ready() {
 #[tokio::test]
 async fn test_ws_valid_token_handles_disconnect_gracefully() {
     let db = setup_test_db().await;
-    let manager = manager_with_forwarding_cluster("ozstar");
+    let manager = manager_with_forwarding_cluster_accepting("ozstar", None);
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -473,7 +484,7 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
 async fn test_ws_pong_handled() {
     let db = setup_test_db().await;
 
-    let manager = manager_with_forwarding_cluster("ozstar");
+    let manager = manager_with_forwarding_cluster_accepting("ozstar", None);
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -521,7 +532,7 @@ async fn test_ws_pong_handled() {
 #[tokio::test]
 async fn test_ws_authorization_header_success() {
     let db = setup_test_db().await;
-    let manager = manager_with_forwarding_cluster("ozstar");
+    let manager = manager_with_forwarding_cluster_accepting("ozstar", None);
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -646,7 +657,7 @@ async fn test_ws_malformed_authorization_header() {
 #[tokio::test]
 async fn test_ws_query_param_rejected() {
     let db = setup_test_db().await;
-    let manager = manager_rejecting_connections();
+    let manager = manager_with_forwarding_cluster_accepting("ozstar", Some("valid"));
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
