@@ -1183,6 +1183,62 @@ async fn test_handle_file_list_populates_file_entries() {
     }
 }
 
+/// Verifies that a `FILE_LIST` message whose `num_files` count exceeds the entries actually present
+/// populates the entries that are present and sets `data_ready` without panicking.
+///
+/// # Setup
+/// A UUID `"test-fl-truncated"` is pre-registered in the `file_list_map`.
+/// A `FILE_LIST` message is built claiming 5 entries but only carrying 2 complete entries
+/// (a truncated/malformed payload from a cluster).
+///
+/// # Act
+/// The message is dispatched via `cluster.handle_message`.
+///
+/// # Assert
+/// The `FileListState` contains the 2 entries that were present and `data_ready` is set to `true`.
+#[tokio::test]
+async fn test_handle_file_list_truncated_message_graceful() {
+    let (ctx, file_list_map) = make_app_context_with_file_list_map();
+    let cluster = Cluster::new(test_config(), Some(ctx));
+
+    let uuid = "test-fl-truncated";
+
+    // Register UUID in the file list map
+    let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+    file_list_map.insert(uuid.to_string(), Arc::clone(&fl_state));
+
+    // Build FILE_LIST message claiming 5 entries but only carrying 2
+    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
+    msg.push_string(uuid);
+    msg.push_uint(5);
+    msg.push_string("/file1");
+    msg.push_bool(false);
+    msg.push_ulong(0x1234);
+    msg.push_string("/file2");
+    msg.push_bool(false);
+    msg.push_ulong(0x4321);
+    let msg = Message::from_bytes(msg.into_data());
+
+    cluster.handle_message(msg).await;
+
+    // Entries that were present are populated and data_ready is set
+    {
+        let state = fl_state.lock().await;
+        assert_eq!(state.files.len(), 2);
+        assert!(!state.error);
+        assert!(state.error_details.is_empty());
+        assert!(state.data_ready);
+
+        assert_eq!(state.files[0].file_name, "/file1");
+        assert!(!state.files[0].is_directory);
+        assert_eq!(state.files[0].file_size, 0x1234);
+
+        assert_eq!(state.files[1].file_name, "/file2");
+        assert!(!state.files[1].is_directory);
+        assert_eq!(state.files[1].file_size, 0x4321);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // File list error handling
 // ---------------------------------------------------------------------------
