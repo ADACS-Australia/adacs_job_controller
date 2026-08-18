@@ -64,20 +64,21 @@ pub const ACCESS_SECRET_CONFIG_FILE_ENV_VARIABLE: &str = "ACCESS_SECRET_CONFIG_F
 // LTK security settings
 /// Milliseconds to wait for an LTK WebSocket handshake before timing out (`LTK_CONNECTION_TIMEOUT_MS`).
 ///
-/// The default intentionally diverges between build types: test builds default to `0` (no artificial
-/// delay, keeping the suite fast), while production defaults to `1000` (throttling brute-force LTK
-/// handshake attempts). Both are overridable via `LTK_CONNECTION_TIMEOUT_MS`.
+/// The default intentionally diverges between build types: test and test-support builds default to
+/// `0` (no artificial delay, keeping the suite fast), while production defaults to `1000`
+/// (throttling brute-force LTK handshake attempts). Both are overridable via
+/// `LTK_CONNECTION_TIMEOUT_MS`.
 // Read on each use so tests can toggle the value between invocations.
 #[must_use]
 pub fn ltk_connection_timeout_ms() -> u32 {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     {
         std::env::var("LTK_CONNECTION_TIMEOUT_MS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0)
     }
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-support")))]
     {
         std::env::var("LTK_CONNECTION_TIMEOUT_MS")
             .ok()
