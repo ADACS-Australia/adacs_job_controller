@@ -109,7 +109,6 @@ async fn test_handle_job_save_insert() {
         running: false,
         deleting: false,
         deleted: false,
-        cluster: String::new(),
     };
 
     let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
@@ -205,7 +204,6 @@ async fn test_handle_job_save_update() {
         running: true,
         deleting: false,
         deleted: false,
-        cluster: String::new(),
     };
 
     let (mock, sent) = mock_cluster_capturing("ozstar");

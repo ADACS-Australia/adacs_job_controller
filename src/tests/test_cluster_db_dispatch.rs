@@ -63,7 +63,6 @@ fn test_db_job_save_message_construction() {
         running: false,
         deleting: false,
         deleted: false,
-        cluster: "test_cluster".to_string(),
     };
 
     let mut msg = Message::new(DB_JOB_SAVE, Priority::Highest, SYSTEM_SOURCE);
@@ -190,7 +189,6 @@ fn test_db_response_format_with_result_count() {
         running: true,
         deleting: false,
         deleted: false,
-        cluster: "c1".to_string(),
     };
     let job2 = ClusterJob {
         id: 20,
@@ -203,7 +201,6 @@ fn test_db_response_format_with_result_count() {
         running: false,
         deleting: true,
         deleted: false,
-        cluster: "c2".to_string(),
     };
     job1.to_message(&mut response);
     job2.to_message(&mut response);
