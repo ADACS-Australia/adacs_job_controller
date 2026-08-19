@@ -333,6 +333,35 @@ async fn test_file_upload_complete_flow() {
     assert!(upload_state.data_ready.load(Ordering::Relaxed));
 }
 
+/// Verifies that `SERVER_READY` and `FILE_UPLOAD_COMPLETE` messages dispatched to a
+/// non-file-upload (master) cluster hit the role-mismatch warn branches without
+/// panicking or mutating upload state.
+///
+/// # Setup
+/// A `Cluster` created via `Cluster::new` (role `Master`, no upload state) is prepared.
+///
+/// # Act
+/// A `SERVER_READY` and a `FILE_UPLOAD_COMPLETE` message are dispatched via `from_bytes`.
+///
+/// # Assert
+/// Dispatching completes without panicking and the cluster role remains `Master`.
+#[tokio::test]
+async fn test_upload_messages_on_master_cluster_are_noop() {
+    use adacs_job_controller::protocol::types::ClusterRole;
+
+    let cluster = Cluster::new(test_config(), None);
+
+    let ready_msg = Message::new(SERVER_READY, Priority::Medium, "test");
+    let ready_msg = Message::from_bytes(ready_msg.into_data());
+    cluster.handle_message(ready_msg).await;
+
+    let complete_msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Medium, "test");
+    let complete_msg = Message::from_bytes(complete_msg.into_data());
+    cluster.handle_message(complete_msg).await;
+
+    assert_eq!(cluster.role(), ClusterRole::Master);
+}
+
 // ---------------------------------------------------------------------------
 // Backpressure: wait_for_queue_drain
 // ---------------------------------------------------------------------------
