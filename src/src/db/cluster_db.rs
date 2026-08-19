@@ -42,7 +42,6 @@ impl From<cluster_job::Model> for ClusterJob {
             running: m.running,
             deleting: m.deleting,
             deleted: m.deleted,
-            cluster: m.cluster,
         }
     }
 }
