@@ -1072,6 +1072,74 @@ async fn test_list_files_cluster_offline_returns_503() {
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
+/// Tests that PATCH /file/ for a job whose ID exceeds `u32::MAX` returns 400
+/// instead of silently truncating the job ID in the `FILE_LIST` message.
+///
+/// # Setup
+/// Inserts a job with ID = `u32::MAX + 1`. Wires an online cluster.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/file/ with `{"jobId": {huge}, "path": "", "recursive": true}`.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "exceeds maximum supported value".
+#[tokio::test]
+async fn test_list_files_job_id_exceeding_u32_returns_400() {
+    use adacs_job_controller::db::entities::job;
+
+    let db = setup_test_db().await;
+    let huge: i64 = i64::from(u32::MAX) + 1;
+    job::ActiveModel {
+        id: Set(huge),
+        user: Set(1),
+        parameters: Set("{}".to_string()),
+        cluster: Set("ozstar".to_string()),
+        bundle: Set("b".to_string()),
+        application: Set("testapp".to_string()),
+    }
+    .insert(&db)
+    .await
+    .expect("insert test job with id failed");
+
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_cluster_by_name()
+        .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/job/apiv1/file/")
+                .header("content-type", "application/json")
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": huge,
+                        "path": "",
+                        "recursive": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("exceeds maximum supported value"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
 /// Tests that PATCH /file/ without a jobId and missing cluster + bundle returns 400.
 ///
 /// # Setup
