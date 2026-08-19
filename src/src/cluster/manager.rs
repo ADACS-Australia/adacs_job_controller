@@ -311,14 +311,14 @@ impl ClusterManager {
                         "ClusterManager: Initiating SSH connection for cluster '{}'",
                         name
                     );
-                    self.launch_ssh_connection(&details, &uuid);
+                    Self::launch_ssh_connection(&details, &uuid);
                 }
                 "kerberos" => {
                     tracing::debug!(
                         "ClusterManager: Initiating Kerberos connection for cluster '{}'",
                         name
                     );
-                    self.launch_ssh_connection(&details, &uuid);
+                    Self::launch_ssh_connection(&details, &uuid);
                 }
                 other => {
                     tracing::warn!(
@@ -326,7 +326,7 @@ impl ClusterManager {
                         other,
                         name
                     );
-                    self.launch_ssh_connection(&details, &uuid);
+                    Self::launch_ssh_connection(&details, &uuid);
                 }
             }
             reconnected_count += 1;
@@ -339,8 +339,7 @@ impl ClusterManager {
         );
     }
 
-    #[allow(clippy::unused_self)]
-    fn launch_ssh_connection(&self, details: &ClusterConfig, token: &str) {
+    fn launch_ssh_connection(details: &ClusterConfig, token: &str) {
         let config = details.clone();
         let token = token.to_string();
         let cluster_name = config.name.clone();
