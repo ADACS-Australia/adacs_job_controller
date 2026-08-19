@@ -672,6 +672,39 @@ async fn test_reconnect_clusters_deletes_stale_uuids() {
     assert_eq!(count_uuids(&db).await, 3);
 }
 
+/// Verifies that `reconnect_clusters` skips LTK clusters (no UUID inserted) while non-LTK clusters still get UUIDs.
+///
+/// # Setup
+/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with one LTK cluster and two non-LTK clusters. Confirm no UUIDs exist initially.
+///
+/// # Act
+/// Call `reconnect_clusters`.
+///
+/// # Assert
+/// Exactly two UUID rows are inserted (one per non-LTK cluster), and the LTK cluster is not present in the UUID list.
+#[tokio::test]
+async fn test_reconnect_clusters_skips_ltk_clusters() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+
+    let mut configs = ltk_cluster_configs();
+    configs.extend(three_cluster_configs().into_iter().take(2));
+    let mgr = make_manager(configs, db.clone());
+
+    // Before reconnect, no UUIDs
+    assert_eq!(count_uuids(&db).await, 0);
+
+    // Reconnect should insert UUIDs only for non-LTK clusters
+    mgr.reconnect_clusters().await;
+    assert_eq!(count_uuids(&db).await, 2);
+
+    // LTK cluster must NOT be in the UUID list; non-LTK clusters must be
+    let clusters = get_uuid_clusters(&db).await;
+    assert!(!clusters.contains(&"ltk_cluster".to_string()));
+    assert!(clusters.contains(&"cluster1".to_string()));
+    assert!(clusters.contains(&"cluster2".to_string()));
+}
+
 /// Verifies that `handle_pong` records timestamps without panicking, even for connections that do not exist.
 ///
 /// # Setup
