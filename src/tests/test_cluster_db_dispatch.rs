@@ -136,8 +136,6 @@ fn test_db_bundle_create_or_update_message_construction() {
     let bundle = BundleJob {
         id: 0,
         content: r#"{"key":"value"}"#.to_string(),
-        cluster: "test_cluster".to_string(),
-        bundle_hash: "hash_abc".to_string(),
     };
 
     let mut msg = Message::new(
