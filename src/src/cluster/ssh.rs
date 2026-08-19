@@ -35,6 +35,27 @@ impl From<russh::Error> for SshError {
     }
 }
 
+/// The RSA hash algorithm the SSH server advertised for public-key auth.
+#[derive(Clone, Copy)]
+enum PreferredRsaHash {
+    /// Server did not advertise an RSA hash algorithm.
+    NotAdvertised,
+    /// Server only advertises legacy `ssh-rsa` (SHA-1).
+    LegacySshRsa,
+    /// Server advertises a specific RSA hash algorithm.
+    Specific(HashAlg),
+}
+
+impl From<Option<Option<HashAlg>>> for PreferredRsaHash {
+    fn from(value: Option<Option<HashAlg>>) -> Self {
+        match value {
+            None => Self::NotAdvertised,
+            Some(None) => Self::LegacySshRsa,
+            Some(Some(hash_alg)) => Self::Specific(hash_alg),
+        }
+    }
+}
+
 struct SshHandler;
 
 impl client::Handler for SshHandler {
@@ -170,7 +191,7 @@ async fn authenticate_public_key(
     let key_pair = Arc::new(key_pair);
     let attempts = authentication_hash_attempts(
         key_pair.algorithm().is_rsa(),
-        session.best_supported_rsa_hash().await?,
+        session.best_supported_rsa_hash().await?.into(),
     );
 
     for hash_alg in attempts {
@@ -191,10 +212,9 @@ async fn authenticate_public_key(
     ))
 }
 
-#[allow(clippy::option_option)]
 fn authentication_hash_attempts(
     is_rsa: bool,
-    preferred_hash: Option<Option<HashAlg>>,
+    preferred_hash: PreferredRsaHash,
 ) -> Vec<Option<HashAlg>> {
     if !is_rsa {
         return vec![None];
@@ -202,8 +222,10 @@ fn authentication_hash_attempts(
 
     let mut attempts = Vec::new();
 
-    if let Some(hash_alg) = preferred_hash {
-        attempts.push(hash_alg);
+    match preferred_hash {
+        PreferredRsaHash::NotAdvertised => {}
+        PreferredRsaHash::LegacySshRsa => attempts.push(None),
+        PreferredRsaHash::Specific(hash_alg) => attempts.push(Some(hash_alg)),
     }
 
     for fallback in [Some(HashAlg::Sha512), Some(HashAlg::Sha256), None] {
@@ -471,13 +493,16 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
     #[test]
     fn authentication_hash_attempts_uses_single_none_for_non_rsa() {
-        assert_eq!(authentication_hash_attempts(false, None), vec![None]);
+        assert_eq!(
+            authentication_hash_attempts(false, PreferredRsaHash::NotAdvertised),
+            vec![None]
+        );
     }
 
     #[test]
     fn authentication_hash_attempts_prefers_advertised_rsa_hash() {
         assert_eq!(
-            authentication_hash_attempts(true, Some(Some(HashAlg::Sha256))),
+            authentication_hash_attempts(true, PreferredRsaHash::Specific(HashAlg::Sha256)),
             vec![Some(HashAlg::Sha256), Some(HashAlg::Sha512), None]
         );
     }
@@ -485,7 +510,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
     #[test]
     fn authentication_hash_attempts_falls_back_across_rsa_algorithms() {
         assert_eq!(
-            authentication_hash_attempts(true, None),
+            authentication_hash_attempts(true, PreferredRsaHash::NotAdvertised),
             vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
         );
     }
@@ -493,7 +518,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
     #[test]
     fn authentication_hash_attempts_keeps_legacy_when_server_only_advertises_ssh_rsa() {
         assert_eq!(
-            authentication_hash_attempts(true, Some(None)),
+            authentication_hash_attempts(true, PreferredRsaHash::LegacySshRsa),
             vec![None, Some(HashAlg::Sha512), Some(HashAlg::Sha256)]
         );
     }
