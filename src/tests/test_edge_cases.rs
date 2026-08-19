@@ -2697,7 +2697,6 @@ async fn test_file_transfer_no_details_returns_503() {
 /// # Assert
 /// Both responses are 200 OK with `status: "completed"`, and each has a unique `uploadId`.
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn test_continuous_file_uploads_sequential() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
@@ -2865,7 +2864,6 @@ async fn test_continuous_file_uploads_sequential() {
 ///
 /// # Assert
 /// Response is 200 OK; `UPLOAD_FILE` message has jobId=0, correct bundle, path, and file size.
-#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_file_upload_with_cluster_bundle_no_job_id() {
     let db = setup_test_db().await;
@@ -3038,7 +3036,6 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
 ///
 /// # Assert
 /// DB cache contains 2 files; PATCH response returns the 2 cached files;
-#[allow(clippy::too_many_lines)]
 /// mock cluster's `send_message` is never called (cache hit).
 #[tokio::test]
 async fn test_job_finished_update_populates_cache() {
@@ -3320,7 +3317,6 @@ fn get_memory_usage_kb() -> u64 {
 ///
 /// # Assert
 /// - Memory growth stays under 200MB throughout transfer
-#[allow(clippy::too_many_lines)]
 /// - Backpressure triggered (`received_bytes` - `sent_bytes` exceeded buffer)
 /// - Total bytes received matches file size
 #[tokio::test]
