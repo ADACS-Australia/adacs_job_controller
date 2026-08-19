@@ -65,8 +65,6 @@ impl From<bundle_job::Model> for BundleJob {
         Self {
             id: m.id,
             content: m.content,
-            cluster: m.cluster,
-            bundle_hash: m.bundle_hash,
         }
     }
 }
