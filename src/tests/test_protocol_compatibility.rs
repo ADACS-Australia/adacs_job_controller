@@ -202,7 +202,6 @@ fn test_cluster_job_full_roundtrip_via_message() {
         running: false,
         deleting: false,
         deleted: false,
-        cluster: "test_cluster".to_string(),
     };
 
     // Wrap in a DB_JOB_SAVE message like the cluster client would

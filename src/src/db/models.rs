@@ -28,9 +28,6 @@ pub struct ClusterJob {
     pub deleting: bool,
     /// Whether the job record has been marked deleted on the cluster.
     pub deleted: bool,
-    /// Cluster name (populated locally; not serialized on the wire).
-    #[allow(dead_code)]
-    pub cluster: String,
 }
 
 impl ClusterJob {
@@ -51,8 +48,6 @@ impl ClusterJob {
     }
 
     /// Deserialize a cluster job record from a binary protocol message body.
-    ///
-    /// The `cluster` field is not present on the wire and defaults to empty.
     pub fn from_message(msg: &mut Message) -> Self {
         Self {
             id: msg.pop_ulong().cast_signed(),
@@ -65,7 +60,6 @@ impl ClusterJob {
             running: msg.pop_bool(),
             deleting: msg.pop_bool(),
             deleted: msg.pop_bool(),
-            cluster: String::new(),
         }
     }
 }
@@ -157,7 +151,6 @@ mod tests {
             running: true,
             deleting: false,
             deleted: false,
-            cluster: "test-cluster".to_string(),
         };
 
         let mut msg = Message::new(5000, crate::protocol::types::Priority::Medium, "test");
