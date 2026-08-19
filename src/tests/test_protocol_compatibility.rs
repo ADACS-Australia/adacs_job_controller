@@ -282,8 +282,6 @@ fn test_bundle_job_full_roundtrip_via_message() {
     let original = BundleJob {
         id: 0,
         content: r##"{"script":"#!/bin/bash\necho hello"}"##.to_string(),
-        cluster: "ozstar".to_string(),
-        bundle_hash: "hash_xyz".to_string(),
     };
 
     let mut msg = Message::new(

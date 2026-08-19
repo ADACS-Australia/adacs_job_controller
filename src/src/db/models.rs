@@ -106,20 +106,14 @@ impl ClusterJobStatus {
 
 /// A job bundle record (wire format only — DB ops use `SeaORM` entities).
 ///
-/// Bundles hold serialized job definitions keyed by `bundle_hash`. The wire
-/// protocol transfers only `id` and `content`; `cluster` and `bundle_hash`
-/// are populated when converting from database rows.
+/// Bundles hold serialized job definitions. The wire protocol transfers only
+/// `id` and `content`.
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct BundleJob {
     /// Internal row ID.
     pub id: i64,
     /// Serialized bundle payload (typically JSON).
     pub content: String,
-    /// Owning cluster name (DB-only; not sent on the wire).
-    pub cluster: String,
-    /// Content hash used for deduplication (DB-only; not sent on the wire).
-    pub bundle_hash: String,
 }
 
 impl BundleJob {
@@ -134,8 +128,6 @@ impl BundleJob {
         Self {
             id: msg.pop_ulong().cast_signed(),
             content: msg.pop_string(),
-            cluster: String::new(),
-            bundle_hash: String::new(),
         }
     }
 }
@@ -204,8 +196,6 @@ mod tests {
         let bundle = BundleJob {
             id: 5,
             content: r#"{"key": "value"}"#.to_string(),
-            cluster: "cluster1".to_string(),
-            bundle_hash: "hash123".to_string(),
         };
 
         let mut msg = Message::new(8000, crate::protocol::types::Priority::Medium, "test");

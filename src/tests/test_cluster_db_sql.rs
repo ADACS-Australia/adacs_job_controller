@@ -903,8 +903,6 @@ async fn test_handle_bundle_create_or_update_new() {
     let bundle = BundleJob {
         id: 0,
         content: r#"{"script":"run.sh"}"#.to_string(),
-        cluster: String::new(),
-        bundle_hash: String::new(),
     };
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -981,8 +979,6 @@ async fn test_handle_bundle_create_or_update_existing() {
     let bundle = BundleJob {
         id: 0,
         content: "new_content".to_string(),
-        cluster: String::new(),
-        bundle_hash: String::new(),
     };
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -1050,8 +1046,6 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
     let bundle = BundleJob {
         id: existing_id,
         content: "new_content".to_string(),
-        cluster: String::new(),
-        bundle_hash: String::new(),
     };
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -1511,8 +1505,6 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
     let bundle = BundleJob {
         id: original_id, // Use existing ID
         content: "updated content".to_string(),
-        cluster: String::new(),
-        bundle_hash: String::new(),
     };
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -1575,8 +1567,6 @@ async fn test_handle_bundle_create_or_update_unknown_id_inserts() {
     let bundle = BundleJob {
         id: 99999, // non-existent id > 0
         content: r#"{"script":"run.sh"}"#.to_string(),
-        cluster: String::new(),
-        bundle_hash: String::new(),
     };
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
