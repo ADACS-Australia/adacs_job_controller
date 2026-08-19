@@ -1160,7 +1160,6 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Verifies comprehensive queue insertion: multiple sources and priorities, correct dequeuing order.
-    #[allow(clippy::too_many_lines)]
     #[tokio::test]
     async fn test_queue_message_comprehensive() {
         let cluster = Cluster::new(test_config(), None);
@@ -1494,7 +1493,6 @@ mod tests {
 
     /// Verifies that `has_higher_priority_data` correctly detects non-empty queues at priorities
     /// higher than the given level.
-    #[allow(clippy::too_many_lines)]
     #[tokio::test]
     async fn test_has_higher_priority_data() {
         let cluster = Cluster::new(test_config(), None);
