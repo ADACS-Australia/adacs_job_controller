@@ -253,7 +253,6 @@ pub async fn create_job(
 /// - Both startTimeGt and startTimeLt are provided
 /// - Both endTimeGt and endTimeLt are provided
 /// - Database query fails
-#[allow(clippy::too_many_lines)]
 pub async fn get_jobs(
     auth: AuthResult,
     State(state): State<AppState>,

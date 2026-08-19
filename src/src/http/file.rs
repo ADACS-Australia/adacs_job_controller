@@ -199,7 +199,6 @@ pub async fn create_file_download(
 /// - Cluster is offline or unavailable
 /// - File transmission fails
 /// - Response header construction fails
-#[allow(clippy::too_many_lines)]
 pub async fn download_file(
     State(state): State<AppState>,
     Query(params): Query<FileDownloadQuery>,
@@ -446,7 +445,6 @@ pub async fn download_file(
 /// - File upload session cannot be created
 /// - Upload timeout occurs
 /// - Chunk reception fails
-#[allow(clippy::too_many_lines)]
 pub async fn upload_file(
     auth: AuthResult,
     State(state): State<AppState>,
@@ -673,7 +671,6 @@ pub async fn upload_file(
 /// - Cluster is offline
 /// - File list request times out
 /// - Database operations fail
-#[allow(clippy::too_many_lines)]
 pub async fn list_files(
     auth: AuthResult,
     State(state): State<AppState>,
