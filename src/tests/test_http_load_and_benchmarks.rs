@@ -178,7 +178,6 @@ async fn test_http_concurrent_job_creation_moderate_load() {
 /// - No panics or crashes
 /// - Response times reasonable (< 5s average)
 #[tokio::test]
-#[allow(clippy::cast_precision_loss)]
 async fn test_http_concurrent_job_creation_heavy_load() {
     let db = setup_test_db().await;
 
@@ -312,11 +311,6 @@ async fn test_http_concurrent_job_creation_heavy_load() {
 /// This is a performance test, not a functional test.
 /// It measures baseline performance for regression detection.
 #[tokio::test]
-#[allow(
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
-)]
 async fn test_benchmark_job_creation_performance() {
     let db = setup_test_db().await;
 
