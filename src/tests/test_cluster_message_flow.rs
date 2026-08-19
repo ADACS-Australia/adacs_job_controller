@@ -242,6 +242,42 @@ async fn test_file_download_error_flow() {
     );
 }
 
+/// Verifies that `FILE_DETAILS`, `FILE_CHUNK`, and `FILE_ERROR` messages dispatched to a
+/// master cluster (no `file_download_state`) hit the no-state warn branches without
+/// panicking or mutating download state.
+///
+/// # Setup
+/// A `Cluster` created via `Cluster::new` (role `Master`, no download state) is prepared.
+///
+/// # Act
+/// A `FILE_DETAILS`, a `FILE_CHUNK`, and a `FILE_ERROR` message are dispatched via `from_bytes`.
+///
+/// # Assert
+/// Dispatching completes without panicking and the cluster role remains `Master`.
+#[tokio::test]
+async fn test_download_messages_on_master_cluster_are_noop() {
+    use adacs_job_controller::protocol::types::ClusterRole;
+
+    let cluster = Cluster::new(test_config(), None);
+
+    let mut details_msg = Message::new(FILE_DETAILS, Priority::Medium, "test");
+    details_msg.push_ulong(1024);
+    let details_msg = Message::from_bytes(details_msg.into_data());
+    cluster.handle_message(details_msg).await;
+
+    let mut chunk_msg = Message::new(FILE_CHUNK, Priority::Medium, "test");
+    chunk_msg.push_bytes(&[0xDE, 0xAD, 0xBE, 0xEF]);
+    let chunk_msg = Message::from_bytes(chunk_msg.into_data());
+    cluster.handle_message(chunk_msg).await;
+
+    let mut err_msg = Message::new(FILE_ERROR, Priority::Medium, "test");
+    err_msg.push_string("Permission denied");
+    let err_msg = Message::from_bytes(err_msg.into_data());
+    cluster.handle_message(err_msg).await;
+
+    assert_eq!(cluster.role(), ClusterRole::Master);
+}
+
 // ---------------------------------------------------------------------------
 // File upload state transitions
 // ---------------------------------------------------------------------------
