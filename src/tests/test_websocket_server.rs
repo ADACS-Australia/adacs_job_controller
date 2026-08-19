@@ -499,22 +499,64 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
 // test_ws_pong_handled
 // ---------------------------------------------------------------------------
 
-/// Verify that a WebSocket Pong frame is handled without errors.
+/// Verify that a WebSocket Pong frame is forwarded to the manager's `handle_pong`.
 ///
 /// # Setup
-/// Start a test server with a forwarding cluster manager that accepts all connections.
+/// Start a test server with a mock manager that records `handle_pong` calls.
 ///
 /// # Act
 /// Connect a client via `Authorization: Bearer` header, receive `SERVER_READY`,
 /// then send a Pong frame.
 ///
 /// # Assert
-/// No panic or error occurs within 50 ms after the Pong is sent.
+/// The manager's `handle_pong` is invoked after the Pong is sent.
 #[tokio::test]
 async fn test_ws_pong_handled() {
-    let db = setup_test_db().await;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-    let (manager, _) = manager_with_forwarding_cluster_accepting("ozstar", None);
+    let db = setup_test_db().await;
+    let pong_handled = Arc::new(AtomicBool::new(false));
+
+    // Build a minimal cluster for the accepted connection
+    let mut mock_cluster = MockClusterTrait::new();
+    mock_cluster
+        .expect_name()
+        .returning(|| "ozstar".to_string());
+    mock_cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
+    mock_cluster.expect_is_online().returning(|| true);
+    mock_cluster.expect_role().returning(|| ClusterRole::Master);
+    mock_cluster
+        .expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
+    mock_cluster
+        .expect_send_message()
+        .returning(|_| Box::pin(async {}));
+    mock_cluster
+        .expect_handle_message()
+        .returning(|_| Box::pin(async {}));
+
+    let cluster: Arc<dyn ClusterTrait> = Arc::new(mock_cluster);
+    let cluster_for_manager = Arc::clone(&cluster);
+
+    // Build a manager that records handle_pong invocations
+    let pong_flag = Arc::clone(&pong_handled);
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_handle_new_connection()
+        .returning(move |_, _, _| {
+            let c = Arc::clone(&cluster_for_manager);
+            Box::pin(async move { Some(c) })
+        });
+    manager
+        .expect_remove_connection()
+        .returning(|_, _| Box::pin(async {}));
+    manager.expect_report_websocket_error().returning(|_, _| ());
+    manager.expect_handle_pong().returning(move |_| {
+        pong_flag.store(true, Ordering::SeqCst);
+    });
+
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -533,16 +575,28 @@ async fn test_ws_pong_handled() {
         .0
         .split();
 
-    // Receive SERVER_READY
+    // Wait for SERVER_READY
     recv_binary(&mut stream).await;
 
-    // Send a Pong — the server should handle this without error
+    // Send a Pong — the server should forward it to handle_pong
     sink.send(TungsteniteMsg::Pong(vec![].into()))
         .await
         .unwrap();
 
-    tokio::task::yield_now().await;
-    // No assertion needed — the test passes if no panic occurs
+    // Wait for handle_pong to be invoked, with a timeout
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(100);
+    loop {
+        if start.elapsed() > timeout {
+            break;
+        }
+        if pong_handled.load(Ordering::SeqCst) {
+            return; // Test passed
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+
+    panic!("Pong should have been forwarded to manager.handle_pong");
 }
 
 // ---------------------------------------------------------------------------
