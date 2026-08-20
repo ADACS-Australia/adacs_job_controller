@@ -125,6 +125,27 @@ mod tests {
     }
 
     #[test]
+    fn test_load_cluster_configs_success() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "ozstar",
+                "host": "ozstar.swin.edu.au",
+                "username": "admin",
+                "path": "/home/admin/jobcontroller"
+            }]"#,
+        )
+        .unwrap();
+
+        let configs = load_cluster_configs(&config_path).unwrap();
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].name, "ozstar");
+        assert_eq!(configs[0].connection_type, "ssh");
+    }
+
+    #[test]
     fn test_deserialize_cluster_with_ltk() {
         let json = r#"[{
             "name": "ltk-cluster",
