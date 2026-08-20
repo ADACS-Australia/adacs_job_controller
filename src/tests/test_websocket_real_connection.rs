@@ -535,7 +535,10 @@ async fn test_download_resume_after_interruption() {
         .unwrap()
         .unwrap();
 
-    assert_eq!(record.id, record.id); // Just verify record exists
+    assert!(
+        record.id > 0,
+        "Record should have a valid auto-increment id"
+    );
 
     // Simulate resume: we can't actually resume without the file_download table having bytes_received
     // This test demonstrates the database operations work correctly
