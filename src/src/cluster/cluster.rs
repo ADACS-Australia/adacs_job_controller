@@ -268,10 +268,18 @@ impl Cluster {
         // observe `running == false` on their next loop iteration.
         self.stop();
 
-        for handle in handles {
+        // Abort every retained handle before awaiting any one of them so a
+        // slow handle cannot delay the abort of the others.
+        for handle in &handles {
+            handle.abort();
+        }
+
+        // Join all handles concurrently, each bounded by the same five-second
+        // close-handshake bound. Concurrent joins keep the per-cluster total
+        // bounded instead of scaling with the retained handle count.
+        let joins = handles.into_iter().map(|handle| async move {
             // Defensive abort: `stop()` should be enough for scheduler/prune/
             // resend but guarantees bounded completion regardless of state.
-            handle.abort();
             match tokio::time::timeout(Duration::from_secs(5), handle).await {
                 Ok(Ok(())) => {}
                 Ok(Err(join_err)) if join_err.is_cancelled() => {}
@@ -289,7 +297,8 @@ impl Cluster {
                     );
                 }
             }
-        }
+        });
+        futures_util::future::join_all(joins).await;
     }
 
     // ---- Scheduler ----
@@ -1170,6 +1179,25 @@ impl Cluster {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len()
+    }
+
+    /// Test-only: inject a non-cooperative task handle that ignores the
+    /// `running` flag and only stops when aborted.
+    ///
+    /// Used by the application-shutdown regression test to prove the global
+    /// drain deadline is enforced even when a retained task never observes
+    /// the graceful stop signal.
+    #[cfg(test)]
+    pub fn push_non_cooperative_task_handle(&self) {
+        let handle = tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        });
+        self.download_task_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(handle);
     }
 }
 
