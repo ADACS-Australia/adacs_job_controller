@@ -577,7 +577,7 @@ impl Cluster {
                 .await;
 
                 let locked = fl_state.lock().await;
-                if !locked.error {
+                if !locked.error && locked.data_ready {
                     let _ = file_list_cache::Entity::delete_many()
                         .filter(file_list_cache::Column::JobId.eq(i64::from(job_id)))
                         .exec(&db)
