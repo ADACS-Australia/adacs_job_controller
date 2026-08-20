@@ -553,6 +553,9 @@ async fn test_ws_pong_handled() {
         .expect_remove_connection()
         .returning(|_, _| Box::pin(async {}));
     manager.expect_report_websocket_error().returning(|_, _| ());
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_handle_pong().returning(move |_| {
         pong_flag.store(true, Ordering::SeqCst);
     });
