@@ -233,11 +233,18 @@ impl PreResponseGuard {
 
     /// Clone the held trigger without consuming or disarming the guard.
     ///
-    /// This lets the stream and the response-body guard share the same
-    /// session trigger without a second manager lookup, which could race
-    /// with concurrent cleanup and previously panicked via `expect`.
+    /// This lets the stream share the same session trigger without a second
+    /// manager lookup, which could race with concurrent cleanup.
     pub fn trigger_clone(&self) -> Option<DownloadCleanupTrigger> {
         self.trigger.clone()
+    }
+
+    /// Consume the guard and return its trigger without firing the fallback
+    /// response error. Call this only after the HTTP response body has been
+    /// constructed successfully and another owner has taken responsibility
+    /// for terminal cleanup.
+    pub fn into_trigger(mut self) -> Option<DownloadCleanupTrigger> {
+        self.trigger.take()
     }
 }
 
@@ -253,12 +260,14 @@ impl Drop for PreResponseGuard {
 /// session trigger. On `Drop`, fires the configured typed reason unless the
 /// guard was disarmed. The HTTP body is consumed only when the caller extracts
 /// it via `into_body()` after a successful response build.
+#[allow(dead_code)]
 pub struct DownloadBodyGuard {
     body: Option<Body>,
     trigger: Option<DownloadCleanupTrigger>,
     reason: DownloadShutdownReason,
 }
 
+#[allow(dead_code)]
 impl DownloadBodyGuard {
     /// Arm a new body guard around an existing [`Body`].
     pub fn new(
@@ -612,21 +621,15 @@ pub async fn download_file(
 
     let body = Body::from_stream(stream);
 
-    // Build the response body guard BEFORE disarming the pre-response guard.
-    // The body guard owns a clone of the same trigger so its Drop covers
-    // every body-drop position (before poll, while waiting, after chunks,
-    // and after the final chunk without polling EOF).
+    // The pre-response guard only covers failures before the HTTP response is
+    // successfully constructed. Once streaming owns the trigger, consume the
+    // guard without firing its ResponseError fallback; otherwise the guard is
+    // dropped at the end of this block and closes the dedicated WebSocket
+    // before the client can send the file chunks.
     let body_for_response = match pre_response_guard.take() {
         Some(guard) => {
-            // Clone the trigger from the guard itself rather than re-fetching
-            // it from the manager, which could race with concurrent cleanup.
-            if let Some(trigger) = guard.trigger_clone() {
-                let guard =
-                    DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
-                guard.into_body()
-            } else {
-                body
-            }
+            let _streaming_owner = guard.into_trigger();
+            body
         }
         None => body,
     };

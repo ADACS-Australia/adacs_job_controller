@@ -2652,6 +2652,27 @@ mod download_session_cleanup {
         );
     }
 
+    #[test]
+    fn pre_response_guard_into_trigger_disarms_response_error_drop() {
+        let (session, mut rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+        let streaming_trigger = guard
+            .into_trigger()
+            .expect("trigger should transfer to streaming owner");
+        assert_eq!(session.state(), DownloadSessionState::Pending);
+        assert!(rx.try_recv().is_err());
+
+        assert!(streaming_trigger.trigger(DownloadShutdownReason::Complete));
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::Complete,
+            }
+        );
+    }
+
     // ---- Body guard primitives ----
 
     #[test]
