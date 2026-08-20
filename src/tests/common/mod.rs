@@ -1,6 +1,8 @@
 //! Shared test helpers for integration tests.
 #![allow(dead_code)]
 
+pub mod repeated_download;
+
 use std::sync::Arc;
 
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
@@ -84,6 +86,9 @@ pub fn mock_cluster_manager_with_online_cluster(
 
     let mut mock_manager = MockClusterManagerTrait::new();
     mock_manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    mock_manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(cluster_for_closure.clone()));
 
@@ -93,6 +98,9 @@ pub fn mock_cluster_manager_with_online_cluster(
 /// Build a mock `ClusterManagerTrait` that returns None for all cluster lookups.
 pub fn mock_cluster_manager_no_clusters() -> MockClusterManagerTrait {
     let mut mock_manager = MockClusterManagerTrait::new();
+    mock_manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     mock_manager
         .expect_get_cluster_by_name()
         .returning(|_| None);

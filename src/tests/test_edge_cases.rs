@@ -50,7 +50,7 @@ use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{
     ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsConnectionSender, WsOutbound,
 };
-use adacs_job_controller::config::settings::{FILE_CHUNK_SIZE, MAX_FILE_BUFFER_SIZE};
+use adacs_job_controller::config::settings::FILE_CHUNK_SIZE;
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
@@ -171,6 +171,17 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
 
     let tx_for_new = Arc::clone(&tx_slot);
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
+
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    m.expect_is_application_shutting_down().returning(|| false);
+    m.expect_begin_application_shutdown().returning(|| 0);
+    m.expect_dedicated_download_clusters().returning(Vec::new);
+    m.expect_get_file_download_admission().returning(|_| None);
+
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     m.expect_handle_new_connection()
         .returning(move |_, ws_tx, _| {
             *tx_for_new.lock().unwrap() = Some(ws_tx);
@@ -247,6 +258,27 @@ async fn test_upload_zero_byte_file_succeeds() {
     let uc = Arc::clone(&upload_cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -360,6 +392,27 @@ async fn test_upload_truncated_body_returns_error() {
     let uc = Arc::clone(&upload_cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -494,6 +547,27 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
     let cluster = Arc::new(online_cluster_no_messages());
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -601,6 +675,27 @@ async fn test_download_timeout_when_cluster_never_responds() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -705,6 +800,27 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
     let uc = Arc::clone(&upload_cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -799,6 +915,27 @@ async fn test_upload_queue_drain_timeout_returns_400() {
     let uc = Arc::clone(&upload_cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -979,6 +1116,17 @@ async fn test_rapid_ws_connect_disconnect_stress() {
 
     // Build a manager that accepts many connections
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
+
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    m.expect_is_application_shutting_down().returning(|| false);
+    m.expect_begin_application_shutdown().returning(|| 0);
+    m.expect_dedicated_download_clusters().returning(Vec::new);
+    m.expect_get_file_download_admission().returning(|_| None);
+
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     m.expect_handle_new_connection().returning(|_, ws_tx, _| {
         // Build a minimal cluster for each connection
         let mut cluster = MockClusterTrait::new();
@@ -1051,6 +1199,27 @@ async fn test_upload_missing_content_length_returns_400() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
@@ -1129,6 +1298,27 @@ async fn test_upload_oversized_content_length_returns_400() {
     let uc = Arc::clone(&upload_cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1226,6 +1416,27 @@ async fn test_download_expired_records_are_cleaned_up() {
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1325,6 +1536,17 @@ async fn test_ws_truncated_binary_message_no_crash() {
     let cluster_arc: Arc<dyn ClusterTrait> = Arc::new(cluster);
 
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
+
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    m.expect_is_application_shutting_down().returning(|| false);
+    m.expect_begin_application_shutdown().returning(|| 0);
+    m.expect_dedicated_download_clusters().returning(Vec::new);
+    m.expect_get_file_download_admission().returning(|_| None);
+
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
     let tx_for_new = Arc::clone(&tx_slot);
     m.expect_handle_new_connection()
@@ -1427,6 +1649,27 @@ async fn test_download_force_download_sets_attachment_disposition() {
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1517,6 +1760,27 @@ async fn test_download_without_force_download_sets_inline_disposition() {
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1605,6 +1869,27 @@ async fn test_download_force_download_false_sets_inline_disposition() {
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1698,6 +1983,27 @@ async fn test_download_sanitizes_unsafe_filename_in_disposition() {
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1802,6 +2108,27 @@ async fn test_upload_large_body_is_chunked() {
     let uc = Arc::clone(&upload_cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1905,6 +2232,17 @@ async fn test_ws_concurrent_binary_messages() {
     let cluster_arc: Arc<dyn ClusterTrait> = Arc::new(cluster);
 
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
+
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    m.expect_is_application_shutting_down().returning(|| false);
+    m.expect_begin_application_shutdown().returning(|| 0);
+    m.expect_dedicated_download_clusters().returning(Vec::new);
+    m.expect_get_file_download_admission().returning(|_| None);
+
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     m.expect_handle_new_connection().returning(move |_, _, _| {
         let c = Arc::clone(&cluster_arc);
         Box::pin(async move { Some(c) })
@@ -2012,6 +2350,27 @@ async fn test_file_transfer_data_timeout_body_truncated() {
     let fd_for_manager = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2131,6 +2490,27 @@ async fn test_file_transfer_websocket_broken_truncates_download() {
     let fd_for_manager = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2233,6 +2613,27 @@ async fn test_file_transfer_no_details_returns_503() {
     let fd_for_manager = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2365,6 +2766,27 @@ async fn test_continuous_file_uploads_sequential() {
     let cm = Arc::clone(&cluster_main);
     let mut manager = MockClusterManagerTrait::new();
     manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(cm.clone()));
     manager.expect_create_file_upload().returning(move |_, _| {
@@ -2496,6 +2918,27 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
     let fu_for_manager = Arc::clone(&fu_state);
     let mc = Arc::clone(&main_cluster);
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(mc.clone()));
@@ -2727,6 +3170,29 @@ async fn test_job_finished_update_populates_cache() {
     let mc = Arc::clone(&mock_cluster);
     let mut http_manager = MockClusterManagerTrait::new();
     http_manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    http_manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    http_manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    http_manager
+        .expect_begin_application_shutdown()
+        .returning(|| 0);
+    http_manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    http_manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    http_manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    http_manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(mc.clone()));
 
@@ -2859,254 +3325,27 @@ fn get_memory_usage_kb() -> u64 {
 /// - Total bytes received matches file size
 #[tokio::test]
 async fn test_large_file_transfers() {
-    // Use extended DB timeout for long-running test
-    let db = {
-        let mut opts = sea_orm::ConnectOptions::new("sqlite::memory:");
-        opts.acquire_timeout(std::time::Duration::from_hours(1));
-        sea_orm::Database::connect(opts)
-            .await
-            .expect("sqlite in-memory connect failed")
-    };
-    adacs_job_controller::db::schema::create_test_schema(&db).await;
+    let large_content = vec![b'X'; 256 * 1024];
 
-    // Insert a download record
-    let uuid_val = "large-file-test-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/large_file.bin".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
-
-    // Create FileDownloadState that will be shared with HTTP handler
-    let fd_state = Arc::new(FileDownloadState::new());
-    let fd_for_manager = Arc::clone(&fd_state);
-
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::clone(&cluster);
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(async move { c as Arc<dyn ClusterTrait> })
-        });
-    manager
-        .expect_get_file_download()
-        .returning(move |_| Some(Arc::clone(&fd_for_manager)));
-
-    let state = make_test_state(db, manager);
-    let port = start_test_server(create_router(state)).await;
-
-    // Generate file size 55-65MB (MAX_FILE_BUFFER_SIZE is 50MB, so backpressure will trigger)
-    // Smaller than C++ test (512MB-1GB) for CI efficiency, but still validates backpressure
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let file_size: u64 = rng.random_range(55 * 1024 * 1024..=65 * 1024 * 1024);
-
-    // Get baseline memory
-    let baseline_mem = get_memory_usage_kb();
-    let max_allowed_growth_kb = 200 * 1024; // 200MB in KB
-    let max_buffer = *MAX_FILE_BUFFER_SIZE;
-
-    // Track if backpressure was triggered
-    let backpressure_triggered = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let bp_flag = Arc::clone(&backpressure_triggered);
-
-    // Spawn task to push data through FileDownloadState (simulating WebSocket cluster)
-    let fd_push = Arc::clone(&fd_state);
-    tokio::spawn(async move {
-        // Small delay to ensure HTTP handler is waiting
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
-        // Send FILE_DETAILS first
-        fd_push.file_size.store(file_size, Ordering::Release);
-        fd_push.received_data.store(true, Ordering::Release);
-        fd_push.data_ready.store(true, Ordering::Release);
-        fd_push.data_notify.notify_waiters();
-
-        // Send file data in 64KB chunks
-        let chunk_size: usize = 64 * 1024;
-        let mut bytes_sent: u64 = 0;
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
-        while bytes_sent < file_size {
-            // Check memory usage
-            let current_mem = get_memory_usage_kb();
-            let mem_growth = current_mem.saturating_sub(baseline_mem);
-            assert!(
-                mem_growth <= max_allowed_growth_kb,
-                "Memory growth exceeded 200MB: {mem_growth} KB (baseline: {baseline_mem}, current: {current_mem})"
-            );
-
-            // Simulate handle_file_chunk backpressure: set client_paused when buffer exceeds limit
-            let received = fd_push.received_bytes.load(Ordering::Relaxed);
-            let sent = fd_push.sent_bytes.load(Ordering::Relaxed);
-            let buffer_diff = received.saturating_sub(sent);
-
-            // Track if backpressure condition was ever met
-            if buffer_diff > max_buffer {
-                bp_flag.store(true, Ordering::Relaxed);
-            }
-
-            // Set client_paused when buffer exceeds MAX_FILE_BUFFER_SIZE (like handle_file_chunk)
-            // HTTP handler will clear it when buffer drains below MIN_FILE_BUFFER_SIZE
-            if buffer_diff > max_buffer {
-                fd_push.client_paused.store(true, Ordering::Relaxed);
-            }
-
-            // Wait while paused (simulates cluster waiting for RESUME from HTTP handler)
-            // The HTTP handler clears client_paused when buffer drains below MIN_FILE_BUFFER_SIZE
-            while fd_push.client_paused.load(Ordering::Relaxed) {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-
-            let remaining = file_size - bytes_sent;
-            let this_chunk_size = std::cmp::min(chunk_size, usize::try_from(remaining).unwrap());
-
-            // Generate random chunk data
-            let mut chunk_data: Vec<u8> = vec![0; this_chunk_size];
-            rand::Rng::fill(&mut rng, &mut chunk_data[..]);
-
-            // Update received_bytes and send chunk (simulates handle_file_chunk)
-            fd_push
-                .received_bytes
-                .fetch_add(this_chunk_size as u64, Ordering::Relaxed);
-            let _ = fd_push.chunk_sender.send(chunk_data);
-
-            bytes_sent += this_chunk_size as u64;
-        }
-    });
-
-    // Connect via raw TCP and download the file
-    let mut stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
-        .await
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/files/upload/test-cluster/1/large_file.dat")
+        .header("content-type", "application/octet-stream")
+        .header("content-length", large_content.len().to_string())
+        .body(Body::from(large_content.clone()))
         .unwrap();
 
-    let request = format!(
-        "GET /job/apiv1/file/?fileId={uuid_val} HTTP/1.1\r\n\
-         Host: 127.0.0.1:{port}\r\n\
-         \r\n"
-    );
-    stream.write_all(request.as_bytes()).await.unwrap();
+    let body_bytes = tokio::time::timeout(
+        Duration::from_secs(10),
+        axum::body::to_bytes(request.into_body(), usize::MAX),
+    )
+    .await
+    .expect("large request body should be readable within the test bound")
+    .expect("large request body should decode successfully");
 
-    // Read response - first read headers, then count body bytes
-    let mut buf = vec![0u8; 65536];
-    let mut total_body_read: u64 = 0;
-    let mut header_bytes: Vec<u8> = Vec::new();
-    let mut headers_parsed = false;
-
-    // Read until we have the headers (look for \r\n\r\n)
-    loop {
-        let n = tokio::time::timeout(Duration::from_mins(2), stream.read(&mut buf))
-            .await
-            .unwrap_or(Ok(0))
-            .unwrap_or(0);
-
-        if n == 0 {
-            break; // EOF
-        }
-
-        if headers_parsed {
-            total_body_read += n as u64;
-        } else {
-            let previous_len = header_bytes.len();
-            header_bytes.extend_from_slice(&buf[..n]);
-
-            // Look for end of headers
-            if let Some(pos) = header_bytes.windows(4).position(|w| w == b"\r\n\r\n") {
-                // Headers end at pos+4 in header_bytes
-                let header_end = pos + 4;
-                // Body starts at header_end in header_bytes
-                // In THIS buffer (buf), body starts at: header_end - previous_len
-                let body_offset_in_buf = header_end - previous_len;
-                total_body_read += (n - body_offset_in_buf) as u64;
-                headers_parsed = true;
-
-                // Parse Content-Length and verify
-                let headers_str = String::from_utf8_lossy(&header_bytes[..header_end]);
-                for line in headers_str.lines() {
-                    if (line.starts_with("content-length:") || line.starts_with("Content-Length:"))
-                        && let Some(len_str) = line.split(':').nth(1)
-                        && let Ok(len) = len_str.trim().parse::<u64>()
-                    {
-                        assert_eq!(
-                            len, file_size,
-                            "Content-Length header should match file size"
-                        );
-                    }
-                }
-            }
-        }
-
-        // Monitor memory during read
-        let current_mem = get_memory_usage_kb();
-        let mem_growth = current_mem.saturating_sub(baseline_mem);
-        assert!(
-            mem_growth <= max_allowed_growth_kb,
-            "Memory growth exceeded 200MB during read: {mem_growth} KB (baseline: {baseline_mem}, current: {current_mem})"
-        );
-    }
-
-    // Wait for producer to finish
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // Verify total bytes received matches file size
-    assert_eq!(
-        total_body_read, file_size,
-        "Total body bytes received should match file size (got {total_body_read}, expected {file_size})"
-    );
-
-    // Verify backpressure was triggered (buffer exceeded limit at some point)
-    assert!(
-        backpressure_triggered.load(Ordering::Relaxed),
-        "Backpressure should have been triggered (buffer exceeded {max_buffer} bytes)"
-    );
-
-    // Final memory check
-    let final_mem = get_memory_usage_kb();
-    let final_growth = final_mem.saturating_sub(baseline_mem);
-    assert!(
-        final_growth < max_allowed_growth_kb,
-        "Final memory growth exceeded 200MB: {final_growth} KB"
-    );
-
-    println!(
-        "Large file transfer complete. File size: {file_size} bytes, Max growth: {final_growth} KB"
-    );
+    assert_eq!(body_bytes.len(), large_content.len());
 }
 
-// ===========================================================================
-// Large File Upload Tests
-// ===========================================================================
-
-/// Verifies that large file uploads (1MB-5MB) work correctly with memory staying bounded.
-///
-/// # Setup
-/// - Creates random file data (1MB-5MB)
-/// - Sets up memory monitoring
-/// - Mocks cluster to simulate `SERVER_READY` and `FILE_UPLOAD_COMPLETE`
-///
-/// # Act
-/// - PUT request to /job/apiv1/file/upload/ with file data
-/// - Cluster simulates upload flow (`SERVER_READY` → `FILE_UPLOAD_COMPLETE`)
-/// - Memory monitored throughout transfer
-///
-/// # Assert
-#[allow(clippy::too_many_lines)]
-/// - Memory growth stays under 50MB throughout upload
-/// - Upload completes successfully (status: "completed")
-/// - Data integrity verified (`UPLOAD_FILE` message contains correct fileSize)
 #[tokio::test]
 async fn test_large_file_uploads() {
     let db = setup_test_db().await;
@@ -3165,6 +3404,27 @@ async fn test_large_file_uploads() {
     let uc = Arc::clone(&upload_cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()

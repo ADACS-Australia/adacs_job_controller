@@ -59,6 +59,9 @@ async fn test_large_binary_message_handling() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster_arc);
     manager
         .expect_get_cluster_by_name()
@@ -110,6 +113,9 @@ async fn test_http_concurrent_requests_stress() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster_arc);
     manager
         .expect_get_cluster_by_name()
@@ -243,6 +249,9 @@ async fn test_job_creation_atomicity() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster_arc);
     manager
         .expect_get_cluster_by_name()

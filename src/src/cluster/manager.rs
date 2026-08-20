@@ -8,7 +8,10 @@ use dashmap::DashMap;
 use tokio::sync::RwLock;
 
 use crate::cluster::cluster::{AppContext, Cluster};
-use crate::cluster::file_download::FileDownloadState;
+use crate::cluster::file_download::{
+    DownloadCleanupRequest, DownloadCleanupTrigger, DownloadSession, DownloadSessionState,
+    DownloadShutdownReason, FileDownloadState,
+};
 use crate::cluster::file_upload::FileUploadState;
 use crate::cluster::ssh;
 use crate::cluster::traits::{ClusterManagerTrait, ClusterTrait, ConnectionId, WsConnectionSender};
@@ -18,6 +21,13 @@ use crate::config::settings::{
     CLUSTER_MANAGER_PING_INTERVAL_SECONDS,
 };
 use crate::protocol::types::ClusterRole;
+
+type FileDownloadAdmissionContext = (
+    Arc<dyn crate::cluster::traits::ClusterTrait>,
+    Arc<DownloadSession>,
+    ConnectionId,
+    Arc<Cluster>,
+);
 
 /// `ClusterManager` manages the lifecycle of all cluster connections.
 ///
@@ -34,8 +44,14 @@ pub struct ClusterManager {
     /// WebSocket connection ID → cluster mapping
     connection_map: DashMap<ConnectionId, Arc<Cluster>>,
 
-    /// File download sessions: UUID → (`download_state`, cluster)
-    file_download_map: DashMap<String, (Arc<FileDownloadState>, Arc<Cluster>)>,
+    /// File download sessions by UUID. Allocation identity is authoritative.
+    file_download_map: DashMap<String, Arc<DownloadSession>>,
+
+    /// Dedicated cluster retained by the exact download session allocation.
+    file_download_clusters: DashMap<usize, Arc<Cluster>>,
+
+    /// Cleanup endpoint registered independently of HTTP response bodies.
+    download_cleanup_sender: tokio::sync::mpsc::UnboundedSender<DownloadCleanupRequest>,
 
     /// File upload sessions: UUID → (`upload_state`, cluster)
     file_upload_map: DashMap<String, (Arc<FileUploadState>, Arc<Cluster>)>,
@@ -48,6 +64,11 @@ pub struct ClusterManager {
 
     /// Whether the manager is running
     running: AtomicBool,
+
+    /// Whether application shutdown has begun. Once true, new dedicated
+    /// file-download admission is rejected so existing handlers can drain
+    /// without new traffic arriving. Set by [`Self::begin_application_shutdown_inherent`].
+    shutdown_initiated: AtomicBool,
 
     /// Pong timestamps for latency tracking (`connection_id` → `last_pong_time`)
     pong_times: DashMap<ConnectionId, std::time::Instant>,
@@ -91,21 +112,215 @@ impl ClusterManager {
             clusters.insert(name, cluster);
         }
 
-        Arc::new(Self {
+        let (download_cleanup_sender, download_cleanup_receiver) =
+            tokio::sync::mpsc::unbounded_channel();
+        let manager = Arc::new(Self {
             clusters: RwLock::new(clusters),
             connection_map: DashMap::new(),
             file_download_map: DashMap::new(),
+            file_download_clusters: DashMap::new(),
+            download_cleanup_sender,
             file_upload_map: DashMap::new(),
             db,
             app_context,
             running: AtomicBool::new(true),
+            shutdown_initiated: AtomicBool::new(false),
             pong_times: DashMap::new(),
             ping_times: DashMap::new(),
             missed_pongs: DashMap::new(),
             pause_resume_locks,
             reconnect_attempts: DashMap::new(),
             last_reconnect_attempt: DashMap::new(),
-        })
+        });
+        Self::start_download_cleanup_worker(&manager, download_cleanup_receiver);
+        manager
+    }
+
+    fn session_key(session: &Arc<DownloadSession>) -> usize {
+        Arc::as_ptr(session) as usize
+    }
+
+    fn start_download_cleanup_worker(
+        manager: &Arc<Self>,
+        mut receiver: tokio::sync::mpsc::UnboundedReceiver<DownloadCleanupRequest>,
+    ) {
+        let manager = Arc::downgrade(manager);
+        tokio::spawn(async move {
+            while let Some(request) = receiver.recv().await {
+                let Some(manager) = manager.upgrade() else {
+                    break;
+                };
+                manager.cleanup_file_download(request).await;
+            }
+        });
+    }
+
+    fn remove_exact_download_session(
+        &self,
+        download_id: &str,
+        session: &Arc<DownloadSession>,
+    ) -> bool {
+        use dashmap::mapref::entry::Entry;
+
+        match self.file_download_map.entry(download_id.to_owned()) {
+            Entry::Occupied(entry) if Arc::ptr_eq(entry.get(), session) => {
+                entry.remove();
+                true
+            }
+            Entry::Occupied(_) | Entry::Vacant(_) => false,
+        }
+    }
+
+    fn remove_exact_connection(&self, connection_id: ConnectionId, cluster: &Arc<Cluster>) -> bool {
+        use dashmap::mapref::entry::Entry;
+
+        match self.connection_map.entry(connection_id) {
+            Entry::Occupied(entry) if Arc::ptr_eq(entry.get(), cluster) => {
+                entry.remove();
+                true
+            }
+            Entry::Occupied(_) | Entry::Vacant(_) => false,
+        }
+    }
+
+    async fn cleanup_file_download(&self, request: DownloadCleanupRequest) {
+        let Some(session) = request.session.upgrade() else {
+            return;
+        };
+        if session.download_id() != request.download_id {
+            return;
+        }
+
+        let session_key = Self::session_key(&session);
+        let Some(cluster) = self
+            .file_download_clusters
+            .get(&session_key)
+            .map(|entry| Arc::clone(entry.value()))
+        else {
+            return;
+        };
+
+        if !self.remove_exact_download_session(&request.download_id, &session) {
+            return;
+        }
+        self.file_download_clusters.remove(&session_key);
+
+        tracing::info!(
+            download_id = %request.download_id,
+            connection_id = ?request.connection_id,
+            reason = ?request.reason,
+            "File download shutdown started"
+        );
+
+        if let Some(connection_id) = request.connection_id {
+            self.remove_exact_connection(connection_id, &cluster);
+            self.pong_times.remove(&connection_id);
+            self.ping_times.remove(&connection_id);
+            self.missed_pongs.remove(&connection_id);
+            cluster.close(false).await;
+            cluster.terminate_download_tasks().await;
+        } else {
+            cluster.set_connection(None).await;
+            cluster.terminate_download_tasks().await;
+            session.complete(None);
+        }
+    }
+
+    /// Returns `true` when application shutdown has begun. New dedicated
+    /// admission paths consult this flag so they can reject without
+    /// publishing any new state.
+    #[must_use]
+    pub fn is_application_shutting_down(&self) -> bool {
+        self.shutdown_initiated.load(Ordering::SeqCst)
+    }
+
+    /// Begin bounded application shutdown. Sets the dedicated-admission
+    /// flag so new file-download admission is rejected for the remainder of
+    /// the process lifetime, then synchronously triggers every currently
+    /// registered dedicated download session with reason
+    /// [`DownloadShutdownReason::ApplicationShutdown`].
+    ///
+    /// The call is synchronous, non-blocking, and does not spawn a new task.
+    /// It reuses the existing one-shot cleanup trigger from task-1 so the
+    /// first notification wins and later duplicates are idempotent no-ops.
+    /// Existing session-side cleanup (manager worker + handler-exit guard)
+    /// routes the trigger through the same `cleanup_file_download` path as
+    /// every other reason, so the structured
+    /// `File download shutdown started` event still fires exactly once per
+    /// accepted connection.
+    ///
+    /// This method does not await graceful transport closure or task
+    /// termination — the caller composes that with the existing
+    /// `WS_CLOSE_HANDSHAKE_GRACE_SECONDS` bound.
+    ///
+    /// Returns the number of sessions that received the shutdown trigger.
+    /// Repeated calls are safe and idempotent: the flag is set on the
+    /// first call, and later `trigger(...)` calls on already-`Closing`
+    /// sessions are no-ops.
+    fn begin_application_shutdown_inherent(&self) -> usize {
+        if self.shutdown_initiated.swap(true, Ordering::SeqCst) {
+            return 0;
+        }
+
+        let mut triggered = 0usize;
+        for entry in self.file_download_map.iter() {
+            let session = entry.value();
+            if session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::ApplicationShutdown)
+            {
+                triggered += 1;
+            }
+        }
+        triggered
+    }
+
+    /// Exact context for a successfully admitted dedicated download handler.
+    /// Convenience inherent mirror of the trait implementation that returns
+    /// the concrete `Arc<Cluster>` instead of the trait object.
+    #[allow(dead_code)]
+    pub fn get_file_download_admission(
+        &self,
+        connection_id: ConnectionId,
+    ) -> Option<(Arc<DownloadSession>, ConnectionId, Arc<Cluster>)> {
+        self.admit_file_download(connection_id)
+            .map(|(_, session, conn_id, cluster)| (session, conn_id, cluster))
+    }
+
+    /// Shared lookup used by both the inherent helper and the trait
+    /// implementation. Returns the trait-object cluster pointer alongside
+    /// the exact `Arc<DownloadSession>` and accepted `ConnectionId` so the
+    /// WebSocket handler can retain all three without holding a map guard.
+    fn admit_file_download(
+        &self,
+        connection_id: ConnectionId,
+    ) -> Option<FileDownloadAdmissionContext> {
+        // During application shutdown we keep serving already-admitted
+        // sessions so their handler-exit guard can finalise
+        // `Closing -> Closed`. New admission is rejected upstream in
+        // `handle_new_connection`, so reaching `get_file_download_admission`
+        // during shutdown is permitted; the guard still emits exactly one
+        // closed event at handler exit.
+        let cluster = self
+            .connection_map
+            .get(&connection_id)
+            .map(|entry| Arc::clone(entry.value()))?;
+        if cluster.role() != ClusterRole::FileDownload {
+            return None;
+        }
+
+        let download_id = cluster.uuid()?.to_owned();
+        let session = self
+            .file_download_map
+            .get(&download_id)
+            .map(|entry| Arc::clone(entry.value()))?;
+        if session.state() != DownloadSessionState::Connected(connection_id) {
+            return None;
+        }
+
+        let trait_cluster: Arc<dyn crate::cluster::traits::ClusterTrait> =
+            Arc::clone(&cluster) as Arc<dyn crate::cluster::traits::ClusterTrait>;
+        Some((trait_cluster, session, connection_id, cluster))
     }
 
     /// Start background tasks (reconnection, ping).
@@ -479,6 +694,24 @@ impl ClusterManagerTrait for ClusterManager {
             .map(|c| Arc::clone(c.value()) as Arc<dyn ClusterTrait>)
     }
 
+    fn get_file_download_admission(
+        &self,
+        conn_id: ConnectionId,
+    ) -> Option<(
+        Arc<crate::cluster::file_download::DownloadSession>,
+        ConnectionId,
+        Arc<dyn ClusterTrait>,
+    )> {
+        self.admit_file_download(conn_id)
+            .map(|(_, session, conn_id, cluster)| {
+                (
+                    session,
+                    conn_id,
+                    Arc::clone(&cluster) as Arc<dyn ClusterTrait>,
+                )
+            })
+    }
+
     async fn handle_new_connection(
         &self,
         conn_id: ConnectionId,
@@ -494,13 +727,61 @@ impl ClusterManagerTrait for ClusterManager {
             token.len()
         );
 
-        // Check file download map first
-        if let Some(entry) = self.file_download_map.get(token) {
+        // Reject only the dedicated file-download admission branch during
+        // application shutdown. Master, LTK, and upload paths are unchanged.
+        // The HTTP download endpoint observes the same flag and routes its
+        // post-shutdown admission into the existing `SERVICE_UNAVAILABLE`
+        // path (see [`http::file::download_file`]) so no session is created
+        // and no transport owner is leaked.
+        if self.is_application_shutting_down() && self.file_download_map.contains_key(token) {
+            tracing::debug!(
+                "ClusterManager: Rejecting file-download connection during application shutdown"
+            );
+            return None;
+        }
+
+        // Clone exact identity so no map guard survives sender installation.
+        if let Some(session) = self
+            .file_download_map
+            .get(token)
+            .map(|entry| Arc::clone(entry.value()))
+        {
             tracing::trace!("ClusterManager: Token matches file download session");
-            let (_, cluster) = entry.value();
-            let cluster = Arc::clone(cluster);
+
+            if session.bind_connection(conn_id).is_err() {
+                tracing::warn!(
+                    download_id = %token,
+                    connection_id = conn_id,
+                    "Duplicate or closing file download admission rejected"
+                );
+                return None;
+            }
+
+            let session_key = Self::session_key(&session);
+            let Some(cluster) = self
+                .file_download_clusters
+                .get(&session_key)
+                .map(|entry| Arc::clone(entry.value()))
+            else {
+                let _ = session
+                    .cleanup_trigger()
+                    .trigger(DownloadShutdownReason::ClusterOffline);
+                return None;
+            };
+
             cluster.set_connection(Some(ws_sender)).await;
-            self.connection_map.insert(conn_id, cluster.clone());
+            if session.state() != DownloadSessionState::Connected(conn_id) {
+                cluster.set_connection(None).await;
+                return None;
+            }
+
+            self.connection_map.insert(conn_id, Arc::clone(&cluster));
+            if session.state() != DownloadSessionState::Connected(conn_id) {
+                self.remove_exact_connection(conn_id, &cluster);
+                cluster.set_connection(None).await;
+                return None;
+            }
+
             tracing::debug!(
                 "ClusterManager: File download cluster connected (conn_id={})",
                 conn_id
@@ -612,7 +893,40 @@ impl ClusterManagerTrait for ClusterManager {
     }
 
     async fn remove_connection(&self, conn_id: ConnectionId, close: bool) {
-        if let Some((_, cluster)) = self.connection_map.remove(&conn_id) {
+        let cluster = self
+            .connection_map
+            .get(&conn_id)
+            .map(|entry| Arc::clone(entry.value()));
+        if let Some(cluster) = cluster {
+            if cluster.role() == ClusterRole::FileDownload {
+                if let Some(uuid) = cluster.uuid()
+                    && let Some(session) = self
+                        .file_download_map
+                        .get(uuid)
+                        .map(|entry| Arc::clone(entry.value()))
+                    && session.state() == DownloadSessionState::Connected(conn_id)
+                {
+                    let reason = if close {
+                        DownloadShutdownReason::WebSocketError
+                    } else {
+                        DownloadShutdownReason::WebSocketClosed
+                    };
+                    if session.cleanup_trigger().trigger(reason) {
+                        self.cleanup_file_download(DownloadCleanupRequest {
+                            download_id: uuid.to_owned(),
+                            connection_id: Some(conn_id),
+                            reason,
+                            session: Arc::downgrade(&session),
+                        })
+                        .await;
+                    }
+                }
+                return;
+            }
+
+            if !self.remove_exact_connection(conn_id, &cluster) {
+                return;
+            }
             if close {
                 cluster.close(false).await;
             }
@@ -625,12 +939,8 @@ impl ClusterManagerTrait for ClusterManager {
             let name = cluster.name();
             tracing::debug!("Connection removed for {} (role={:?})", name, role);
 
-            // Clean up file download/upload entries if applicable
-            if role == ClusterRole::FileDownload {
-                if let Some(uuid) = cluster.uuid() {
-                    self.file_download_map.remove(uuid);
-                }
-            } else if role == ClusterRole::FileUpload
+            // Dedicated downloads return above through exact lifecycle cleanup.
+            if role == ClusterRole::FileUpload
                 && let Some(uuid) = cluster.uuid()
             {
                 self.file_upload_map.remove(uuid);
@@ -663,6 +973,21 @@ impl ClusterManagerTrait for ClusterManager {
         cluster: &Arc<dyn ClusterTrait>,
         uuid: &str,
     ) -> Arc<dyn ClusterTrait> {
+        // Reject new dedicated admissions once application shutdown has
+        // begun. The HTTP layer treats the absent session as the existing
+        // `ResponseError` typed terminal reason and never reaches the
+        // session-creation branch, so no state is published. The original
+        // cluster is returned so the HTTP layer does not panic on its
+        // `Arc<dyn ClusterTrait>` argument; the subsequent
+        // `get_file_download(...)` lookup returns `None` and the existing
+        // `SERVICE_UNAVAILABLE` path is taken when the layer also checks
+        // `is_application_shutting_down`.
+        if self.is_application_shutting_down() {
+            tracing::debug!(
+                "ClusterManager: Rejecting create_file_download during application shutdown"
+            );
+            return Arc::clone(cluster);
+        }
         let details = cluster.cluster_details();
         let download_state = Arc::new(FileDownloadState::new());
 
@@ -682,8 +1007,14 @@ impl ClusterManagerTrait for ClusterManager {
         );
         dl_cluster.start_tasks();
 
-        self.file_download_map
-            .insert(uuid.to_string(), (download_state, Arc::clone(&dl_cluster)));
+        let session = DownloadSession::new(
+            uuid.to_string(),
+            download_state,
+            self.download_cleanup_sender.clone(),
+        );
+        self.file_download_clusters
+            .insert(Self::session_key(&session), Arc::clone(&dl_cluster));
+        self.file_download_map.insert(uuid.to_string(), session);
 
         dl_cluster as Arc<dyn ClusterTrait>
     }
@@ -722,15 +1053,60 @@ impl ClusterManagerTrait for ClusterManager {
     }
 
     fn get_file_download(&self, uuid: &str) -> Option<Arc<FileDownloadState>> {
+        if self.is_application_shutting_down() {
+            return None;
+        }
         self.file_download_map
             .get(uuid)
-            .map(|entry| Arc::clone(&entry.value().0))
+            .map(|entry| Arc::clone(entry.value().transfer()))
+    }
+
+    fn get_file_download_cleanup_trigger(&self, uuid: &str) -> Option<DownloadCleanupTrigger> {
+        if self.shutdown_initiated.load(Ordering::SeqCst) {
+            return None;
+        }
+        self.file_download_map
+            .get(uuid)
+            .map(|entry| entry.value().cleanup_trigger())
+    }
+
+    fn is_application_shutting_down(&self) -> bool {
+        self.shutdown_initiated.load(Ordering::SeqCst)
+    }
+
+    fn begin_application_shutdown(&self) -> usize {
+        self.begin_application_shutdown_inherent()
+    }
+
+    fn dedicated_download_clusters(
+        &self,
+    ) -> Vec<std::sync::Weak<dyn crate::cluster::traits::ClusterTrait>> {
+        let mut out: Vec<std::sync::Weak<dyn crate::cluster::traits::ClusterTrait>> = Vec::new();
+        for entry in self.file_download_clusters.iter() {
+            let cluster = Arc::clone(entry.value());
+            out.push(Arc::downgrade(&cluster)
+                as std::sync::Weak<dyn crate::cluster::traits::ClusterTrait>);
+        }
+        out
     }
 
     fn get_file_upload(&self, uuid: &str) -> Option<Arc<FileUploadState>> {
         self.file_upload_map
             .get(uuid)
             .map(|entry| Arc::clone(&entry.value().0))
+    }
+}
+impl ClusterManager {
+    /// Test-only: clone every concrete `Arc<Cluster>` retained for
+    /// dedicated file-download shutdown.
+    #[allow(dead_code)]
+    pub fn dedicated_download_clusters_concrete(
+        &self,
+    ) -> Vec<Arc<crate::cluster::cluster::Cluster>> {
+        self.file_download_clusters
+            .iter()
+            .map(|entry| Arc::clone(entry.value()))
+            .collect()
     }
 }
 

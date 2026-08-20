@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use dashmap::DashMap;
 use sea_orm_migration::MigratorTrait;
@@ -8,6 +9,7 @@ use crate::cluster::manager::ClusterManager;
 use crate::cluster::traits::ClusterManagerTrait;
 use crate::config::access_secrets::AccessSecret;
 use crate::protocol::types::FileListState;
+use crate::websocket::server::WS_CLOSE_HANDSHAKE_GRACE_SECONDS;
 
 /// Shared application state, injected into all HTTP/WS handlers.
 #[derive(Clone)]
@@ -115,10 +117,15 @@ pub async fn run() -> anyhow::Result<()> {
 
     tracing::info!("ADACS Job Controller fully initialized, accepting connections");
 
+    let shutdown_manager: Arc<dyn ClusterManagerTrait> = Arc::clone(&cluster_manager);
+
     tokio::try_join!(
         async {
             tracing::debug!("HTTP server task started");
             axum::serve(http_listener, http_router)
+                .with_graceful_shutdown(build_application_shutdown_future(Arc::clone(
+                    &shutdown_manager,
+                )))
                 .await
                 .map_err(anyhow::Error::from)
         },
@@ -128,12 +135,91 @@ pub async fn run() -> anyhow::Result<()> {
                 ws_listener,
                 ws_router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
             )
+            .with_graceful_shutdown(build_application_shutdown_future(Arc::clone(
+                &shutdown_manager,
+            )))
             .await
             .map_err(anyhow::Error::from)
         },
     )?;
 
     Ok(())
+}
+
+/// Compose the bounded application-shutdown future used by both
+/// `axum::serve` `with_graceful_shutdown` arms.
+///
+/// The future:
+/// 1. Waits for `SIGINT` or `SIGTERM` (Linux only; other platforms
+///    fall back to waiting for `SIGINT` only).
+/// 2. Calls [`ClusterManager::begin_application_shutdown`] which sets
+///    the dedicated-admission flag and synchronously triggers every
+///    registered file-download session with reason
+///    [`crate::cluster::file_download::DownloadShutdownReason::ApplicationShutdown`].
+/// 3. Sleeps `WS_CLOSE_HANDSHAKE_GRACE_SECONDS` so handlers and
+///    forwarders can complete the existing five-second close handshake
+///    within the same bound reused by the WebSocket handler.
+/// 4. Awaits [`crate::cluster::cluster::Cluster::terminate_download_tasks`]
+///    on every dedicated download cluster currently retained by the
+///    manager. The awaitable reuses the same five-second bound and is
+///    idempotent; sessions that finished naturally short-circuit.
+/// 5. Resolves so axum proceeds with its own connection drain.
+///
+/// No `DashMap`, lifecycle, pause/resume, or connection lock is held
+/// across any await in this future. No new task is spawned.
+async fn build_application_shutdown_future(cluster_manager: Arc<dyn ClusterManagerTrait>) {
+    wait_for_shutdown_signal().await;
+
+    tracing::info!("Application shutdown: signalling dedicated download sessions");
+    let triggered = cluster_manager.begin_application_shutdown();
+    tracing::info!(
+        "Application shutdown: triggered {} dedicated download session(s); draining for {}s",
+        triggered,
+        WS_CLOSE_HANDSHAKE_GRACE_SECONDS,
+    );
+
+    // Reuse the existing five-second close bound instead of inventing a
+    // new long timeout. After this sleep the WS handlers will have
+    // observed `ApplicationShutdown`, sent Close, and either completed
+    // gracefully or fallen back through the existing forced-fallback
+    // path.
+    tokio::time::sleep(Duration::from_secs(WS_CLOSE_HANDSHAKE_GRACE_SECONDS)).await;
+
+    // Drain every retained dedicated download cluster's scheduler,
+    // prune, and resend task handles within the same bound. The await
+    // is bounded by `WS_CLOSE_HANDSHAKE_GRACE_SECONDS` because
+    // `Cluster::terminate_download_tasks` reuses that constant.
+    let weak_clusters = cluster_manager.dedicated_download_clusters();
+    for weak in weak_clusters {
+        if let Some(cluster) = weak.upgrade() {
+            cluster.terminate_download_tasks().await;
+        }
+    }
+
+    tracing::debug!("Application shutdown: axum graceful shutdown may now proceed");
+}
+
+/// Block until `SIGINT` or `SIGTERM` is received.
+///
+/// On Linux both signals are honoured. On other targets only `SIGINT`
+/// is bound because `tokio::signal::unix::SignalKind::terminate()` is
+/// unavailable.
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sigint = signal(SignalKind::interrupt()).expect("install SIGINT handler");
+        let mut sigterm = signal(SignalKind::terminate()).expect("install SIGTERM handler");
+        tokio::select! {
+            _ = sigint.recv() => tracing::info!("Received SIGINT, beginning bounded shutdown"),
+            _ = sigterm.recv() => tracing::info!("Received SIGTERM, beginning bounded shutdown"),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+        tracing::info!("Received Ctrl+C, beginning bounded shutdown");
+    }
 }
 
 #[cfg(test)]
