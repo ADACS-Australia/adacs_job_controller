@@ -1144,3 +1144,239 @@ async fn test_handle_new_connection_ltk_duplicate_rejected() {
     assert!(mgr.get_cluster_by_connection(1).is_some());
     assert!(mgr.get_cluster_by_connection(2).is_none());
 }
+
+// ===========================================================================
+// Application shutdown (task-6) — bounded, idempotent, dedicated-admission
+// rejection, manager-side drain, and map-baseline assertions.
+// ===========================================================================
+
+/// Verifies the dedicated-admission rejection flag starts `false`.
+#[tokio::test]
+async fn test_application_shutdown_flag_starts_false() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    assert!(!mgr.is_application_shutting_down());
+    assert!(!mgr.is_application_shutting_down());
+}
+
+/// Verifies `begin_application_shutdown` flips the flag and is idempotent.
+#[tokio::test]
+async fn test_application_shutdown_begin_is_idempotent() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    let first = mgr.begin_application_shutdown();
+    assert_eq!(first, 0, "no sessions registered, should report 0");
+    assert!(mgr.is_application_shutting_down());
+
+    let second = mgr.begin_application_shutdown();
+    assert_eq!(second, 0, "second call should report 0 (idempotent)");
+    assert!(mgr.is_application_shutting_down());
+}
+
+/// Verifies `begin_application_shutdown` triggers every registered
+/// `FileDownload` session with `ApplicationShutdown`.
+#[tokio::test]
+async fn test_application_shutdown_triggers_every_registered_session() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let _dl_a = mgr.create_file_download(&cluster, "dl-a").await;
+    let _dl_b = mgr.create_file_download(&cluster, "dl-b").await;
+
+    let (tx_a, _rx_a) = tokio::sync::mpsc::unbounded_channel();
+    let (tx_b, _rx_b) = tokio::sync::mpsc::unbounded_channel();
+    assert!(mgr.handle_new_connection(101, tx_a, "dl-a").await.is_some());
+    assert!(mgr.handle_new_connection(102, tx_b, "dl-b").await.is_some());
+
+    let first = mgr.begin_application_shutdown();
+    assert_eq!(first, 2, "both sessions should receive the trigger");
+
+    let second = mgr.begin_application_shutdown();
+    assert_eq!(second, 0, "second call is a no-op");
+
+    // Allow the cleanup worker to drain.
+    tokio::task::yield_now().await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    tokio::task::yield_now().await;
+
+    // Both sessions must have moved through Closing and been removed from
+    // `file_download_map`.
+    assert!(
+        mgr.get_file_download("dl-a").is_none(),
+        "dl-a session state should be unavailable after worker drain"
+    );
+    assert!(
+        mgr.get_file_download("dl-b").is_none(),
+        "dl-b session state should be unavailable after worker drain"
+    );
+    assert_eq!(mgr.dedicated_download_clusters().len(), 0);
+
+    // The admitted connections must also be cleaned up because each
+    // session had a connected conn_id.
+    assert!(mgr.get_cluster_by_connection(101).is_none());
+    assert!(mgr.get_cluster_by_connection(102).is_none());
+}
+
+/// Verifies that new dedicated `create_file_download` admission is
+/// rejected once application shutdown has begun, while master, LTK, and
+/// upload paths remain unchanged.
+#[tokio::test]
+async fn test_application_shutdown_rejects_dedicated_admission_only() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    mgr.begin_application_shutdown();
+    assert!(mgr.is_application_shutting_down());
+
+    // Dedicated admission is rejected.
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let dl_cluster = mgr.create_file_download(&cluster, "dl-rejected").await;
+    assert_eq!(dl_cluster.name(), "cluster1");
+    assert!(
+        mgr.get_file_download("dl-rejected").is_none(),
+        "create_file_download during shutdown must not publish state"
+    );
+    assert!(
+        mgr.get_file_download_cleanup_trigger("dl-rejected")
+            .is_none(),
+        "cleanup trigger lookup during shutdown must return None"
+    );
+
+    // Upload admission is unaffected.
+    let ul_cluster = mgr.create_file_upload(&cluster, "ul-ok").await;
+    assert_eq!(ul_cluster.name(), "cluster1");
+    assert!(mgr.get_file_upload("ul-ok").is_some());
+
+    // LTK admission is unaffected.
+    let ltk_mgr = make_manager(ltk_cluster_configs(), db.clone());
+    ltk_mgr.begin_application_shutdown();
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let result = ltk_mgr
+        .handle_new_connection(900, tx, "super-secret-ltk")
+        .await;
+    assert!(
+        result.is_some(),
+        "LTK admission must remain available during application shutdown"
+    );
+}
+
+/// Verifies that new WebSocket admission for a registered file-download
+/// session is rejected during shutdown.
+#[tokio::test]
+async fn test_application_shutdown_rejects_file_download_ws_admission() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let _dl_first = mgr.create_file_download(&cluster, "dl-first").await;
+    let _dl_second = mgr.create_file_download(&cluster, "dl-second").await;
+
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let first = mgr.handle_new_connection(201, tx, "dl-first").await;
+    assert!(first.is_some());
+    assert!(mgr.get_cluster_by_connection(201).is_some());
+
+    mgr.begin_application_shutdown();
+
+    let (tx2, _rx2) = tokio::sync::mpsc::unbounded_channel();
+    let second = mgr.handle_new_connection(202, tx2, "dl-second").await;
+    assert!(
+        second.is_none(),
+        "WebSocket admission for a registered file-download session must be rejected during shutdown"
+    );
+    assert!(
+        mgr.get_cluster_by_connection(202).is_none(),
+        "rejected admission must not register a connection"
+    );
+}
+
+/// Verifies `dedicated_download_clusters` returns a snapshot of all
+/// currently retained dedicated clusters.
+#[tokio::test]
+async fn test_dedicated_download_clusters_snapshot() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    assert_eq!(mgr.dedicated_download_clusters().len(), 0);
+
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let _dl = mgr.create_file_download(&cluster, "dl-snap").await;
+    assert_eq!(mgr.dedicated_download_clusters().len(), 1);
+
+    let _ul = mgr.create_file_upload(&cluster, "ul-snap").await;
+    assert_eq!(mgr.dedicated_download_clusters().len(), 1);
+}
+
+/// Verifies that a dedicated cluster returned by
+/// `dedicated_download_clusters` can be joined through
+/// `terminate_download_tasks` and that the retained task handle count
+/// returns to baseline.
+#[tokio::test]
+async fn test_application_shutdown_drains_dedicated_tasks_within_bound() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let _dl_cluster = mgr.create_file_download(&cluster, "dl-drain").await;
+
+    let concrete = mgr
+        .dedicated_download_clusters_concrete()
+        .into_iter()
+        .next()
+        .expect("create_file_download should register one dedicated cluster");
+
+    assert!(
+        concrete.retained_download_task_count() >= 1,
+        "create_file_download should populate download_task_handles"
+    );
+
+    let cluster_for_task = std::sync::Arc::clone(&concrete);
+    let join = tokio::spawn(async move {
+        cluster_for_task.terminate_download_tasks().await;
+    });
+
+    tokio::time::timeout(
+        std::time::Duration::from_secs(
+            adacs_job_controller::websocket::server::WS_CLOSE_HANDSHAKE_GRACE_SECONDS,
+        ),
+        join,
+    )
+    .await
+    .expect("terminate_download_tasks should join within the bound")
+    .expect("sibling task should not panic");
+
+    assert_eq!(
+        concrete.retained_download_task_count(),
+        0,
+        "no retained task handles after termination"
+    );
+    assert!(
+        !concrete.running(),
+        "running flag should be cleared after termination"
+    );
+}
+
+/// Verifies that the `begin_application_shutdown` flag is also visible
+/// through the trait object.
+#[tokio::test]
+async fn test_application_shutdown_flag_visible_through_trait_object() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let trait_mgr: std::sync::Arc<dyn ClusterManagerTrait> = mgr.clone();
+
+    assert!(!trait_mgr.is_application_shutting_down());
+    assert_eq!(trait_mgr.begin_application_shutdown(), 0);
+    assert!(trait_mgr.is_application_shutting_down());
+    assert_eq!(trait_mgr.begin_application_shutdown(), 0);
+}

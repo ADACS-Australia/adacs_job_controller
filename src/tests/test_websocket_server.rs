@@ -119,6 +119,7 @@ async fn connection_closes(
 /// Mock manager where `handle_new_connection` always returns `None` (invalid token).
 fn manager_rejecting_connections() -> MockClusterManagerTrait {
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
     m.expect_handle_new_connection()
         .returning(|_, _, _| Box::pin(async { None }));
     m.expect_remove_connection()
@@ -170,6 +171,7 @@ fn manager_with_forwarding_cluster_accepting(
     let tx_for_new = Arc::clone(&tx_slot);
     let accepted: Option<String> = accepted_token.map(str::to_string);
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
     m.expect_handle_new_connection()
         .returning(move |_, ws_tx, token| {
             if let Some(ref accepted) = accepted
@@ -404,6 +406,9 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
     let cluster_for_manager = Arc::clone(&cluster);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager
         .expect_handle_new_connection()
         .returning(move |_, _, _| {

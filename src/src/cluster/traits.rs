@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::cluster::file_download::DownloadCleanupTrigger;
 use crate::config::clusters::ClusterConfig;
 use crate::protocol::message::Message;
 use crate::protocol::types::{ClusterRole, Priority};
@@ -78,6 +79,14 @@ pub trait ClusterTrait: Send + Sync {
     /// Stop all background tasks (scheduler, prune, resend).
     #[allow(dead_code)]
     fn stop(&self);
+
+    /// Idempotent conclusive termination for retained background tasks.
+    /// Dedicated file-download clusters override this to drain scheduler,
+    /// prune, and resend handles within the existing five-second close
+    /// bound reused by [].
+    /// The default implementation is a no-op so master, shared, and
+    /// upload clusters keep their existing detached-task semantics.
+    async fn terminate_download_tasks(&self) {}
 }
 
 /// Unique identifier for a WebSocket connection.
@@ -95,6 +104,31 @@ pub trait ClusterManagerTrait: Send + Sync {
     /// Look up a cluster by its WebSocket connection ID.
     #[allow(dead_code)]
     fn get_cluster_by_connection(&self, conn_id: ConnectionId) -> Option<Arc<dyn ClusterTrait>>;
+
+    /// Exact admission context for an accepted dedicated file-download handler.
+    ///
+    /// Returns `Some((session, connection_id, cluster))` only when the
+    /// `connection_id` is currently bound to a `FileDownload` cluster AND its
+    /// `DownloadSession` is in `Connected(connection_id)` state — i.e. the
+    /// session has been admitted and is the canonical entry. The WebSocket
+    /// handler retains the exact `Arc<DownloadSession>` and immutable
+    /// accepted `ConnectionId` from this call so it can perform exact
+    /// `Closing -> Closed` completion at handler exit without relying on a
+    /// manager lookup.
+    ///
+    /// Returns `None` for non-download roles (master, LTK, upload) and when
+    /// the connection is no longer admitted.
+    fn get_file_download_admission(
+        &self,
+        conn_id: ConnectionId,
+    ) -> Option<(
+        Arc<crate::cluster::file_download::DownloadSession>,
+        ConnectionId,
+        Arc<dyn ClusterTrait>,
+    )> {
+        let _ = conn_id;
+        None
+    }
 
     /// Handle a new WebSocket connection with the given token.
     /// Returns the cluster if the token is valid, None otherwise.
@@ -137,6 +171,52 @@ pub trait ClusterManagerTrait: Send + Sync {
         &self,
         uuid: &str,
     ) -> Option<Arc<crate::cluster::file_download::FileDownloadState>>;
+
+    /// Get a clone of the session-scoped cleanup trigger for an active file
+    /// download. Returns `None` when no session exists for the UUID. Used by
+    /// the HTTP handler to wire pre-response and body-drop guards to the same
+    /// one-shot trigger. The default implementation returns `None` so that
+    /// callers without an active session (including mocks) continue to work
+    /// even though they cannot observe cleanup.
+    fn get_file_download_cleanup_trigger(&self, uuid: &str) -> Option<DownloadCleanupTrigger> {
+        let _ = uuid;
+        None
+    }
+
+    /// Returns `true` when the manager has begun bounded application
+    /// shutdown. The HTTP download endpoint consults this flag and routes
+    /// post-shutdown admission attempts into the existing
+    /// `SERVICE_UNAVAILABLE` typed error path so no transport owner is
+    /// published. Default returns `false` so mocks continue to work.
+    fn is_application_shutting_down(&self) -> bool {
+        false
+    }
+
+    /// Begin bounded application shutdown. Sets the dedicated-admission
+    /// flag so new file-download admission is rejected for the remainder
+    /// of the process lifetime, then synchronously triggers every
+    /// currently registered dedicated download session with reason
+    /// [`crate::cluster::file_download::DownloadShutdownReason::ApplicationShutdown`].
+    /// The trigger is non-blocking, performs no `await`, and does not
+    /// spawn. Returns the number of sessions that received the trigger;
+    /// repeated calls return `0` because the flag is set on the first
+    /// call and later triggers on already-`Closing` sessions are no-ops.
+    /// Default returns `0` so mocks continue to work.
+    fn begin_application_shutdown(&self) -> usize {
+        0
+    }
+
+    /// Snapshot of every dedicated file-download cluster currently
+    /// retained for shutdown-time termination. The returned `Vec`
+    /// contains `Weak` references so dropped clusters do not extend the
+    /// manager's lifetime. Callers pair this with
+    /// [`ClusterTrait::terminate_download_tasks`] to drain scheduler,
+    /// prune, and resend handles within the existing five-second close
+    /// bound reused by the WebSocket handler. Default returns an empty
+    /// `Vec` so mocks continue to work.
+    fn dedicated_download_clusters(&self) -> Vec<std::sync::Weak<dyn ClusterTrait>> {
+        Vec::new()
+    }
 
     /// Get the `FileUploadSession` for a given UUID (for HTTP handler to access).
     fn get_file_upload(

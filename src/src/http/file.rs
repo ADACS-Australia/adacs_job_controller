@@ -10,6 +10,7 @@ use axum::http::StatusCode;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::app::AppState;
+use crate::cluster::file_download::{DownloadCleanupTrigger, DownloadShutdownReason};
 use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
@@ -189,6 +190,105 @@ pub async fn create_file_download(
 
 // ---- GET /job/apiv1/file/ (Stream file download) ----
 
+// ---------------------------------------------------------------------------
+// HTTP cleanup guards for the file-download response generator.
+//
+// Both guards hold a clone of the same [`DownloadCleanupTrigger`] and share
+// the session's transition lock, so the first notification wins and all later
+// calls (whether from another guard, the stream, or the manager worker) are
+// idempotent no-ops.
+//
+// Neither guard may `await` or `spawn`. They are safe to use inside the HTTP
+// response generator and inside response-body `Drop` because they only invoke
+// a synchronous atomic transition followed by one non-blocking send into the
+// pre-registered cleanup channel.
+// ---------------------------------------------------------------------------
+
+/// RAII guard covering the interval from dedicated session creation until the
+/// response body has been constructed successfully. On `Drop`, fires the
+/// configured typed reason unless the guard was disarmed by `trigger()`.
+pub struct PreResponseGuard {
+    trigger: Option<DownloadCleanupTrigger>,
+    reason: DownloadShutdownReason,
+}
+
+impl PreResponseGuard {
+    /// Arm a new pre-response guard with the given typed fallback reason.
+    pub fn new(trigger: DownloadCleanupTrigger, reason: DownloadShutdownReason) -> Self {
+        Self {
+            trigger: Some(trigger),
+            reason,
+        }
+    }
+
+    /// Fire the typed reason immediately and disarm the guard. Subsequent
+    /// `Drop` becomes a no-op. Returns `true` when this call won the trigger.
+    pub fn trigger(mut self, reason: DownloadShutdownReason) -> bool {
+        if let Some(trigger) = self.trigger.take() {
+            trigger.trigger(reason)
+        } else {
+            false
+        }
+    }
+
+    /// Clone the held trigger without consuming or disarming the guard.
+    ///
+    /// This lets the stream and the response-body guard share the same
+    /// session trigger without a second manager lookup, which could race
+    /// with concurrent cleanup and previously panicked via `expect`.
+    pub fn trigger_clone(&self) -> Option<DownloadCleanupTrigger> {
+        self.trigger.clone()
+    }
+}
+
+impl Drop for PreResponseGuard {
+    fn drop(&mut self) {
+        if let Some(trigger) = self.trigger.take() {
+            let _ = trigger.trigger(self.reason);
+        }
+    }
+}
+
+/// Response-body cleanup guard. Holds the response [`Body`] and a clone of the
+/// session trigger. On `Drop`, fires the configured typed reason unless the
+/// guard was disarmed. The HTTP body is consumed only when the caller extracts
+/// it via `into_body()` after a successful response build.
+pub struct DownloadBodyGuard {
+    body: Option<Body>,
+    trigger: Option<DownloadCleanupTrigger>,
+    reason: DownloadShutdownReason,
+}
+
+impl DownloadBodyGuard {
+    /// Arm a new body guard around an existing [`Body`].
+    pub fn new(
+        body: Body,
+        trigger: DownloadCleanupTrigger,
+        reason: DownloadShutdownReason,
+    ) -> Self {
+        Self {
+            body: Some(body),
+            trigger: Some(trigger),
+            reason,
+        }
+    }
+
+    /// Consume the guard and return the underlying [`Body`] without firing
+    /// `Drop`. The trigger is disarmed before extraction.
+    pub fn into_body(mut self) -> Body {
+        self.trigger.take();
+        self.body.take().expect("body guard already consumed")
+    }
+}
+
+impl Drop for DownloadBodyGuard {
+    fn drop(&mut self) {
+        if let Some(trigger) = self.trigger.take() {
+            let _ = trigger.trigger(self.reason);
+        }
+    }
+}
+
 /// Stream a file download from a remote cluster.
 ///
 /// # Errors
@@ -274,6 +374,20 @@ pub async fn download_file(
     }
     tracing::debug!("HTTP: Cluster '{}' is online", s_cluster);
 
+    // Application shutdown: reject new dedicated admission via the same
+    // typed error / status code already returned for offline clusters. No
+    // session is created and no transport owner is published.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!(
+            "HTTP: Rejecting download (cluster='{}') - application shutdown in progress",
+            s_cluster
+        );
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Remote Cluster Offline".to_string(),
+        ));
+    }
+
     let uuid = generate_uuid();
     tracing::trace!("HTTP: Generated download session UUID: {}", uuid);
 
@@ -283,24 +397,51 @@ pub async fn download_file(
         .await;
     tracing::debug!("HTTP: File download session created");
 
+    // After this point, every terminal path must trigger the session's
+    // cleanup primitive. The pre-response guard covers the interval from
+    // session creation until the response body has been constructed; the
+    // response-body guard covers the body lifetime. The optional `None` case
+    // keeps the legacy mock-only test path working without a session.
+    let mut pre_response_guard: Option<PreResponseGuard> = state
+        .cluster_manager
+        .get_file_download_cleanup_trigger(&uuid)
+        .map(|trigger| PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError));
+
+    // Validate the job ID before sending the DOWNLOAD_FILE message.
+    let job_id_u32 = match u32::try_from(job_id) {
+        Ok(value) => value,
+        Err(_) => {
+            if let Some(guard) = pre_response_guard.take() {
+                let _ = guard.trigger(DownloadShutdownReason::ResponseError);
+            }
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Job ID {job_id} exceeds maximum supported value"),
+            ));
+        }
+    };
+
     tracing::trace!("HTTP: Sending DOWNLOAD_FILE message to cluster");
     let mut msg = Message::new(DOWNLOAD_FILE, Priority::Highest, &uuid);
-    msg.push_uint(u32::try_from(job_id).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Job ID {job_id} exceeds maximum supported value"),
-        )
-    })?);
+    msg.push_uint(job_id_u32);
     msg.push_string(&uuid);
     msg.push_string(&s_bundle);
     msg.push_string(&s_file_path);
     cluster.send_message(msg).await;
     tracing::trace!("HTTP: DOWNLOAD_FILE message sent");
 
-    let fd_state = state.cluster_manager.get_file_download(&uuid).ok_or((
-        StatusCode::BAD_REQUEST,
-        "File download session not found".to_string(),
-    ))?;
+    let fd_state = match state.cluster_manager.get_file_download(&uuid) {
+        Some(state) => state,
+        None => {
+            if let Some(guard) = pre_response_guard.take() {
+                let _ = guard.trigger(DownloadShutdownReason::ResponseError);
+            }
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "File download session not found".to_string(),
+            ));
+        }
+    };
 
     let timeout = std::time::Duration::from_secs(
         state
@@ -325,10 +466,16 @@ pub async fn download_file(
 
     if fd_state.error.load(Ordering::Acquire) {
         let details = fd_state.error_details.lock().await.clone();
+        if let Some(guard) = pre_response_guard.take() {
+            let _ = guard.trigger(DownloadShutdownReason::FileError);
+        }
         return Err((StatusCode::BAD_REQUEST, details));
     }
 
     if !fd_state.received_data.load(Ordering::Acquire) {
+        if let Some(guard) = pre_response_guard.take() {
+            let _ = guard.trigger(DownloadShutdownReason::ClusterOffline);
+        }
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Remote Cluster Offline".to_string(),
@@ -366,6 +513,24 @@ pub async fn download_file(
         .client_timeout_seconds
         .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS);
 
+    // For zero-length files there is nothing to stream, but the lifecycle must
+    // still observe `Complete` exactly once. Fire the trigger before the body
+    // is constructed so that any later body-drop guard call is a no-op.
+    if file_size == 0
+        && let Some(guard) = pre_response_guard.take()
+    {
+        let _ = guard.trigger(DownloadShutdownReason::Complete);
+    }
+
+    // The stream owns a clone of the trigger so it can fire typed terminal
+    // reasons. The body guard below owns another clone. All clones share the
+    // same session transition, so the first notification wins. The clone is
+    // taken from the guard itself, avoiding a manager re-lookup that could
+    // race with concurrent cleanup.
+    let stream_trigger = pre_response_guard
+        .as_ref()
+        .and_then(PreResponseGuard::trigger_clone);
+
     let stream = async_stream::stream! {
         let mut receiver = fd_state_stream.chunk_receiver.lock().await;
         let mut sent: u64 = 0;
@@ -375,7 +540,22 @@ pub async fn download_file(
                 std::time::Duration::from_secs(chunk_timeout_secs),
                 receiver.recv()
             ).await {
-                Ok(Some(chunk)) => {
+                Ok(Some(mut chunk)) => {
+                    // Slice the final chunk so the response never exceeds the
+                    // declared file size. If the chunk overshoots, truncate
+                    // before yielding.
+                    if sent + (chunk.len() as u64) > file_size {
+                        let remaining = (file_size - sent) as usize;
+                        chunk.truncate(remaining);
+                        sent += chunk.len() as u64;
+                        fd_state_stream.sent_bytes.store(sent, Ordering::Release);
+                        if let Some(trigger) = stream_trigger.as_ref() {
+                            let _ = trigger.trigger(DownloadShutdownReason::Complete);
+                        }
+                        yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
+                        break;
+                    }
+
                     sent += chunk.len() as u64;
                     fd_state_stream.sent_bytes.store(sent, Ordering::Release);
 
@@ -390,18 +570,36 @@ pub async fn download_file(
                             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
                             .is_ok()
                     {
-                                let resume_msg = Message::new(
-                                    RESUME_FILE_CHUNK_STREAM,
-                                    Priority::Highest,
-                                    &uuid_for_resume,
-                                );
+                        let resume_msg = Message::new(
+                            RESUME_FILE_CHUNK_STREAM,
+                            Priority::Highest,
+                            &uuid_for_resume,
+                        );
                         fd_cluster.send_message(resume_msg).await;
+                    }
+
+                    if sent == file_size
+                        && let Some(trigger) = stream_trigger.as_ref()
+                    {
+                        let _ = trigger.trigger(DownloadShutdownReason::Complete);
                     }
 
                     yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
                 }
-                Ok(None) => break,
+                Ok(None) => {
+                    if sent == file_size {
+                        if let Some(trigger) = stream_trigger.as_ref() {
+                            let _ = trigger.trigger(DownloadShutdownReason::Complete);
+                        }
+                    } else if let Some(trigger) = stream_trigger.as_ref() {
+                        let _ = trigger.trigger(DownloadShutdownReason::ChunkTimeout);
+                    }
+                    break;
+                }
                 Err(_) => {
+                    if let Some(trigger) = stream_trigger.as_ref() {
+                        let _ = trigger.trigger(DownloadShutdownReason::ChunkTimeout);
+                    }
                     yield Err(std::io::Error::new(
                         std::io::ErrorKind::TimedOut,
                         "Remote cluster took too long to respond",
@@ -414,12 +612,31 @@ pub async fn download_file(
 
     let body = Body::from_stream(stream);
 
+    // Build the response body guard BEFORE disarming the pre-response guard.
+    // The body guard owns a clone of the same trigger so its Drop covers
+    // every body-drop position (before poll, while waiting, after chunks,
+    // and after the final chunk without polling EOF).
+    let body_for_response = match pre_response_guard.take() {
+        Some(guard) => {
+            // Clone the trigger from the guard itself rather than re-fetching
+            // it from the manager, which could race with concurrent cleanup.
+            if let Some(trigger) = guard.trigger_clone() {
+                let guard =
+                    DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
+                guard.into_body()
+            } else {
+                body
+            }
+        }
+        None => body,
+    };
+
     let response = axum::response::Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/octet-stream")
         .header("Content-Length", file_size.to_string())
         .header("Content-Disposition", content_disposition)
-        .body(body)
+        .body(body_for_response)
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
