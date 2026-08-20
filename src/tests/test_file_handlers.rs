@@ -1077,6 +1077,83 @@ async fn test_spawn_background_cache_replaces_stale_rows() {
     assert_eq!(cached[0].path, "/output/result.txt");
 }
 
+/// Tests that `spawn_background_cache` preserves existing `file_list_cache` rows when the
+/// remote cluster fails to respond before the client timeout.
+///
+/// # Setup
+/// Inserts a completed job and pre-populates the `file_list_cache` table with 2 entries.
+/// Wires a cluster whose `send_message` mock never populates the `FileListState`, so the
+/// request can only end via the client timeout.
+///
+/// # Act
+/// Calls `spawn_background_cache` directly with `client_timeout_seconds = Some(1)`.
+///
+/// # Assert
+/// Verifies the pre-seeded cache rows are still present — the timed-out request must not
+/// delete them (previously the timeout left `error = false`, wiping a valid cache).
+#[tokio::test]
+async fn test_spawn_background_cache_timeout_preserves_cache() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    // Pre-seed valid cache rows for the job
+    for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
+        file_list_cache::ActiveModel {
+            job_id: Set(job_id),
+            path: Set(name.to_string()),
+            is_dir: Set(is_dir),
+            file_size: Set(1024),
+            permissions: Set(0o644),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+    }
+
+    // Non-responding cluster: send_message accepts the message but never populates state
+    let cluster = {
+        let mut c = MockClusterTrait::new();
+        c.expect_name().returning(|| "ozstar".to_string());
+        c.expect_is_online().returning(|| true);
+        c.expect_role().returning(|| ClusterRole::Master);
+        c.expect_role_string().returning(|| "master".to_string());
+        c.expect_cluster_details()
+            .returning(|| test_cluster_config("ozstar"));
+        c.expect_send_message().returning(|_| Box::pin(async {}));
+        Arc::new(c)
+    };
+
+    let state = adacs_job_controller::app::AppState {
+        db: db.clone(),
+        cluster_manager: Arc::new(MockClusterManagerTrait::new()),
+        file_list_map: Arc::new(dashmap::DashMap::new()),
+        jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: Some(1),
+    };
+
+    adacs_job_controller::http::file::spawn_background_cache(
+        state,
+        cluster,
+        "b".to_string(),
+        job_id as u64,
+    )
+    .await
+    .unwrap();
+
+    // Pre-seeded rows must survive the timed-out request
+    let cached = file_list_cache::Entity::find()
+        .filter(file_list_cache::Column::JobId.eq(job_id))
+        .all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        cached.len(),
+        2,
+        "timed-out background cache request must not wipe existing cache rows"
+    );
+}
+
 /// Tests that PATCH /file/ returns 503 when the cluster is offline.
 ///
 /// # Setup

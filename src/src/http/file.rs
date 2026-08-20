@@ -1066,7 +1066,7 @@ pub async fn spawn_background_cache(
             .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
     );
     let fl_clone = Arc::clone(&fl_state);
-    let _ = tokio::time::timeout(timeout, async {
+    let wait_result = tokio::time::timeout(timeout, async {
         loop {
             let notify = {
                 let locked = fl_clone.lock().await;
@@ -1079,6 +1079,12 @@ pub async fn spawn_background_cache(
         }
     })
     .await;
+
+    if wait_result.is_err() {
+        let mut locked = fl_state.lock().await;
+        locked.error = true;
+        locked.error_details = "Remote cluster took too long to respond.".to_string();
+    }
 
     let locked = fl_state.lock().await;
     if !locked.error {
