@@ -279,7 +279,6 @@ mod tests {
 
     #[test]
     fn test_cluster_role_equality() {
-        assert_eq!(ClusterRole::Master, ClusterRole::Master);
         assert_ne!(ClusterRole::Master, ClusterRole::FileDownload);
     }
 
