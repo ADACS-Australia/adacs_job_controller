@@ -95,4 +95,27 @@ mod tests {
         let result = load_access_secrets(Path::new("/nonexistent/path.json"));
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_load_access_secrets_success() {
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let path = tmp_dir.path().join("access_secrets.json");
+        std::fs::write(
+            &path,
+            r#"[{
+                "name": "gwcloud",
+                "secret": "super_secret_key_123",
+                "applications": ["compas", "bilby"],
+                "clusters": ["ozstar", "nci"]
+            }]"#,
+        )
+        .unwrap();
+
+        let secrets = load_access_secrets(&path).unwrap();
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0].name, "gwcloud");
+        assert_eq!(secrets[0].secret, "super_secret_key_123");
+        assert_eq!(secrets[0].applications, vec!["compas", "bilby"]);
+        assert_eq!(secrets[0].clusters, vec!["ozstar", "nci"]);
+    }
 }
