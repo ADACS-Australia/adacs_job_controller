@@ -109,6 +109,9 @@ async fn test_create_job_cluster_online_inserts_and_submits() {
     ));
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -188,6 +191,9 @@ async fn test_create_job_cluster_offline_only_pending_no_ws_message() {
     let db = setup_test_db().await;
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -245,6 +251,9 @@ async fn test_create_job_cluster_offline_only_pending_no_ws_message() {
 async fn test_create_job_cluster_not_in_secret_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
 
     let app = create_router(make_test_state(db, manager));
@@ -384,6 +393,9 @@ async fn test_create_job_job_id_exceeding_u32_returns_400() {
         Arc::clone(&sent),
     ));
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -459,6 +471,9 @@ fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Mess
         Arc::clone(&sent),
     ));
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -468,6 +483,7 @@ fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Mess
 
 fn manager_no_clusters() -> MockClusterManagerTrait {
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
     m.expect_get_cluster_by_name().returning(|_| None);
     m
 }
@@ -795,6 +811,9 @@ async fn test_cancel_job_wrong_cluster_access_returns_400() {
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     // Cluster "nci" not found by manager
     manager.expect_get_cluster_by_name().returning(|_| None);
 
@@ -1161,6 +1180,9 @@ async fn test_get_jobs_returns_all_application_jobs() {
     insert_job_history(&db, other_job, JobStatus::Running as i32, "system").await;
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
 
     let app = create_router(make_test_state(db.clone(), manager));
@@ -1214,6 +1236,9 @@ async fn test_get_jobs_with_job_ids_filter() {
     insert_job_history(&db, job2, JobStatus::Running as i32, "system").await;
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
 
     let app = create_router(make_test_state(db.clone(), manager));
@@ -1258,6 +1283,9 @@ async fn test_get_jobs_with_job_ids_filter() {
 async fn test_get_jobs_conflicting_time_filters_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
 
     let app = create_router(make_test_state(db, manager));
@@ -1296,6 +1324,9 @@ async fn test_get_jobs_history_in_response() {
     insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
 
     let app = create_router(make_test_state(db.clone(), manager));
@@ -1387,6 +1418,9 @@ fn ts_secs(secs: i64) -> chrono::NaiveDateTime {
 
 async fn get_jobs_with_query(db: sea_orm::DatabaseConnection, query: &str) -> serde_json::Value {
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1930,6 +1964,9 @@ async fn test_create_job_works_without_content_type_header() {
     ));
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2059,6 +2096,9 @@ async fn test_delete_job_works_without_content_type_header() {
 async fn test_create_job_rejects_invalid_json_without_content_type() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
 
     let app = create_router(make_test_state(db, manager));

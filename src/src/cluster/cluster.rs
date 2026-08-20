@@ -2,6 +2,7 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -65,6 +66,13 @@ pub struct Cluster {
 
     /// Whether background scheduler/prune/resend tasks should keep running.
     running: AtomicBool,
+    /// Retained `JoinHandle`s for dedicated file-download background tasks.
+    ///
+    /// Only populated for [`ClusterRole::FileDownload`] clusters so the manager
+    /// can perform conclusive task termination without touching the lifecycle
+    /// of master/shared or upload clusters. Cleared by
+    /// [`Cluster::terminate_download_tasks`].
+    download_task_handles: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
     /// Shared DB and file-list state; absent for auxiliary cluster roles in tests.
     app_context: Option<Arc<AppContext>>,
 
@@ -107,6 +115,7 @@ impl Cluster {
             data_notify: Notify::new(),
             queue_size_notify: Notify::new(),
             running: AtomicBool::new(true),
+            download_task_handles: std::sync::Mutex::new(Vec::new()),
             app_context,
             file_download_state: None,
             file_upload_state: None,
@@ -137,6 +146,7 @@ impl Cluster {
             data_notify: Notify::new(),
             queue_size_notify: Notify::new(),
             running: AtomicBool::new(true),
+            download_task_handles: std::sync::Mutex::new(Vec::new()),
             app_context,
             file_download_state: Some(download_state),
             file_upload_state: None,
@@ -166,6 +176,7 @@ impl Cluster {
             data_notify: Notify::new(),
             queue_size_notify: Notify::new(),
             running: AtomicBool::new(true),
+            download_task_handles: std::sync::Mutex::new(Vec::new()),
             app_context,
             file_download_state: None,
             file_upload_state: Some(upload_state),
@@ -188,31 +199,106 @@ impl Cluster {
             self.role
         );
 
-        // Each spawned task gets its own watch receiver
-        let scheduler_rx = self.connection_rx.clone();
-        let this = Arc::clone(self);
-        tracing::trace!("Cluster[{}]: Spawning scheduler task", cluster_name);
-        tokio::spawn(async move { this.run_scheduler(scheduler_rx).await });
+        // Each spawned task gets its own watch receiver.
+        let scheduler_handle = {
+            let scheduler_rx = self.connection_rx.clone();
+            let this = Arc::clone(self);
+            tracing::trace!("Cluster[{}]: Spawning scheduler task", cluster_name);
+            tokio::spawn(async move { this.run_scheduler(scheduler_rx).await })
+        };
 
-        let this = Arc::clone(self);
-        tracing::trace!("Cluster[{}]: Spawning prune task", cluster_name);
-        tokio::spawn(async move { this.run_prune().await });
+        let prune_handle = {
+            let this = Arc::clone(self);
+            tracing::trace!("Cluster[{}]: Spawning prune task", cluster_name);
+            tokio::spawn(async move { this.run_prune().await })
+        };
 
-        if self.role == ClusterRole::Master {
+        let resend_handle = if self.role == ClusterRole::Master {
             let this = Arc::clone(self);
             tracing::trace!(
                 "Cluster[{}]: Spawning resend task (master role)",
                 cluster_name
             );
-            tokio::spawn(async move { this.run_resend().await });
+            Some(tokio::spawn(async move { this.run_resend().await }))
         } else {
             tracing::debug!(
                 "Cluster[{}]: Skipping resend task (not master role)",
                 cluster_name
             );
+            None
+        };
+
+        if self.role == ClusterRole::FileDownload {
+            let mut guard = self
+                .download_task_handles
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            guard.push(scheduler_handle);
+            guard.push(prune_handle);
+            if let Some(handle) = resend_handle {
+                guard.push(handle);
+            }
         }
 
         tracing::info!("Cluster[{}]: All background tasks started", cluster_name);
+    }
+
+    /// Idempotent conclusive termination for dedicated file-download tasks.
+    ///
+    /// Drains every retained scheduler/prune/resend `JoinHandle`, signals the
+    /// existing stop mechanism, aborts each retained task, and awaits their
+    /// completion within the same five-second bound reused by
+    /// [`Cluster::close`]. The method holds no `DashMap`, pause/resume,
+    /// connection, or task-registry guard across any await. Repeated calls are
+    /// safe; once the handle vector is drained, subsequent calls become
+    /// no-ops.
+    pub async fn terminate_download_tasks(&self) {
+        let handles = {
+            let mut guard = self
+                .download_task_handles
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            std::mem::take(&mut *guard)
+        };
+        if handles.is_empty() {
+            return;
+        }
+
+        // Signal the existing running mechanism first so graceful exits can
+        // observe `running == false` on their next loop iteration.
+        self.stop();
+
+        // Abort every retained handle before awaiting any one of them so a
+        // slow handle cannot delay the abort of the others.
+        for handle in &handles {
+            handle.abort();
+        }
+
+        // Join all handles concurrently, each bounded by the same five-second
+        // close-handshake bound. Concurrent joins keep the per-cluster total
+        // bounded instead of scaling with the retained handle count.
+        let joins = handles.into_iter().map(|handle| async move {
+            // Defensive abort: `stop()` should be enough for scheduler/prune/
+            // resend but guarantees bounded completion regardless of state.
+            match tokio::time::timeout(Duration::from_secs(5), handle).await {
+                Ok(Ok(())) => {}
+                Ok(Err(join_err)) if join_err.is_cancelled() => {}
+                Ok(Err(join_err)) => {
+                    tracing::warn!(
+                        "Cluster[{}]: Dedicated task join error after termination: {}",
+                        self.name(),
+                        join_err
+                    );
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        "Cluster[{}]: Dedicated task did not finish within bound",
+                        self.name()
+                    );
+                }
+            }
+        });
+        futures_util::future::join_all(joins).await;
     }
 
     // ---- Scheduler ----
@@ -1068,6 +1154,50 @@ impl ClusterTrait for Cluster {
         self.running.store(false, Ordering::Relaxed);
         self.data_notify.notify_waiters();
         self.queue_size_notify.notify_waiters();
+    }
+
+    async fn terminate_download_tasks(&self) {
+        Self::terminate_download_tasks(self).await;
+    }
+}
+
+impl Cluster {
+    /// Test-only access to the `running` flag.
+    /// Test observability helper used by integration tests.
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn running(&self) -> bool {
+        self.running.load(Ordering::Relaxed)
+    }
+
+    /// Test-only count of retained dedicated file-download task handles.
+    /// Test observability helper used by integration tests.
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn retained_download_task_count(&self) -> usize {
+        self.download_task_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+
+    /// Test-only: inject a non-cooperative task handle that ignores the
+    /// `running` flag and only stops when aborted.
+    ///
+    /// Used by the application-shutdown regression test to prove the global
+    /// drain deadline is enforced even when a retained task never observes
+    /// the graceful stop signal.
+    #[cfg(test)]
+    pub fn push_non_cooperative_task_handle(&self) {
+        let handle = tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        });
+        self.download_task_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(handle);
     }
 }
 

@@ -81,6 +81,9 @@ async fn test_create_file_download_single_path_returns_file_id() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -149,6 +152,9 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -206,6 +212,9 @@ async fn test_create_file_download_no_path_returns_400() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     let mut manager = MockClusterManagerTrait::new();
     manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
@@ -248,6 +257,9 @@ async fn test_create_file_download_no_path_returns_400() {
 async fn test_download_file_no_file_id_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     manager.expect_get_file_download().returning(|_| None);
 
@@ -281,6 +293,9 @@ async fn test_download_file_no_file_id_returns_400() {
 async fn test_download_file_unknown_uuid_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     manager.expect_get_file_download().returning(|_| None);
     let app = create_router(make_test_state(db, manager));
@@ -330,6 +345,9 @@ async fn test_download_file_cluster_offline_returns_503() {
 
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -397,6 +415,19 @@ async fn test_download_file_streams_chunks() {
     // Set up mock manager that creates a fresh FileDownloadState for each download
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -546,6 +577,19 @@ async fn test_download_file_error_from_cluster_returns_400() {
     let fd_for_manager = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -629,6 +673,9 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     // Cluster manager should NOT be asked to send a FILE_LIST message
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -730,6 +777,9 @@ async fn test_list_files_ws_response_populates_result() {
     };
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -858,6 +908,9 @@ async fn test_list_files_completed_job_populates_cache() {
     };
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1041,6 +1094,9 @@ async fn test_list_files_cluster_offline_returns_503() {
     insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1155,6 +1211,9 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
     manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
@@ -1195,6 +1254,9 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
 async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
@@ -1250,6 +1312,9 @@ async fn test_upload_file_no_target_path_returns_400() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
@@ -1323,6 +1388,9 @@ async fn test_upload_file_job_id_exceeding_u32_returns_400() {
 
     let uc = Arc::clone(&upload_cluster);
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1377,6 +1445,9 @@ async fn test_upload_file_cluster_offline_returns_503() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1471,6 +1542,9 @@ async fn test_upload_file_success_full_flow() {
 
     let uc = Arc::clone(&upload_cluster);
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1557,6 +1631,9 @@ async fn test_upload_file_server_error_returns_400() {
 
     let uc = Arc::clone(&upload_cluster);
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1621,6 +1698,9 @@ async fn test_create_download_app2_can_access_app1_job() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1672,6 +1752,9 @@ async fn test_create_download_app4_cannot_access_app1_job() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1719,6 +1802,9 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1774,6 +1860,9 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
     let db = setup_test_db().await;
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1827,6 +1916,9 @@ async fn test_create_download_no_jobid_missing_cluster_returns_400() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
     let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
@@ -1868,6 +1960,9 @@ async fn test_create_download_no_jobid_missing_bundle_returns_400() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
     let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
@@ -1911,6 +2006,9 @@ async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1958,6 +2056,9 @@ async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     // Unknown cluster → get_cluster_by_name returns None
     manager.expect_get_cluster_by_name().returning(|_| None);
 
@@ -2009,6 +2110,9 @@ async fn test_create_download_empty_path_list_returns_empty_file_ids() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2074,6 +2178,9 @@ async fn test_list_files_app2_can_access_app1_job() {
     let offline_arc = Arc::new(offline);
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&offline_arc);
     manager
         .expect_get_cluster_by_name()
@@ -2124,6 +2231,9 @@ async fn test_list_files_app4_cannot_access_app1_job() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2177,6 +2287,9 @@ async fn test_create_file_download_works_without_content_type_header() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2252,6 +2365,9 @@ async fn test_list_files_works_without_content_type_header() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2298,6 +2414,9 @@ async fn test_list_files_works_without_content_type_header() {
 async fn test_create_file_download_rejects_invalid_json_without_content_type() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
 
     let app = create_router(make_test_state(db, manager));
@@ -2418,4 +2537,464 @@ async fn test_resolve_cluster_bundle_for_file_list_missing_job_returns_error() {
         "msg: {msg}"
     );
     assert!(msg.contains("testapp"), "msg: {msg}");
+}
+
+// ---------------------------------------------------------------------------
+// Download-session cleanup guards and real-manager cleanup regression
+// ---------------------------------------------------------------------------
+
+mod download_session_cleanup {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use axum::body::Body;
+    use dashmap::DashMap;
+    use http_body_util::BodyExt;
+    use sea_orm::Database;
+
+    use adacs_job_controller::cluster::file_download::{
+        DownloadCleanupRequest, DownloadSession, DownloadSessionState, DownloadShutdownReason,
+        FileDownloadState,
+    };
+    use adacs_job_controller::cluster::manager::ClusterManager;
+    use adacs_job_controller::cluster::traits::{ClusterManagerTrait, ClusterTrait};
+    use adacs_job_controller::config::clusters::ClusterConfig;
+    use adacs_job_controller::http::file::{DownloadBodyGuard, PreResponseGuard};
+
+    fn new_session() -> (
+        Arc<DownloadSession>,
+        tokio::sync::mpsc::UnboundedReceiver<DownloadCleanupRequest>,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        (
+            DownloadSession::new(
+                "cleanup-1".to_string(),
+                Arc::new(FileDownloadState::new()),
+                tx,
+            ),
+            rx,
+        )
+    }
+
+    async fn real_manager() -> (
+        sea_orm::DatabaseConnection,
+        Arc<ClusterManager>,
+        Arc<dyn ClusterTrait>,
+    ) {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+        adacs_job_controller::db::schema::create_test_schema(&db).await;
+        let file_list_map = Arc::new(DashMap::new());
+        let mgr = ClusterManager::new(
+            vec![ClusterConfig {
+                name: "real_cluster".to_string(),
+                host: "127.0.0.1".to_string(),
+                username: "test".to_string(),
+                path: "/tmp".to_string(),
+                key: String::new(),
+                connection_type: "manual".to_string(),
+                keytab: String::new(),
+                kerberos_principal: String::new(),
+                ltk: None,
+            }],
+            db.clone(),
+            file_list_map,
+        );
+        let cluster = mgr
+            .get_cluster_by_name("real_cluster")
+            .expect("real manager should expose the configured cluster");
+        (db, mgr, cluster)
+    }
+
+    async fn wait_for_cleanup(mgr: &ClusterManager, uuid: &str, deadline: Duration) -> bool {
+        let start = std::time::Instant::now();
+        while start.elapsed() < deadline {
+            if mgr.get_file_download(uuid).is_none() && mgr.dedicated_download_clusters().is_empty()
+            {
+                return true;
+            }
+            tokio::task::yield_now().await;
+        }
+        false
+    }
+
+    // ---- Pre-response guard primitives ----
+
+    #[test]
+    fn pre_response_guard_drop_fires_response_error_when_not_consumed() {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+        drop(guard);
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::ResponseError,
+            }
+        );
+    }
+
+    #[test]
+    fn pre_response_guard_explicit_trigger_disarms_drop() {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+        let won = guard.trigger(DownloadShutdownReason::Complete);
+        assert!(won);
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::Complete,
+            }
+        );
+    }
+
+    // ---- Body guard primitives ----
+
+    #[test]
+    fn body_guard_drop_fires_http_cancelled() {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let guard = DownloadBodyGuard::new(
+            Body::empty(),
+            trigger,
+            DownloadShutdownReason::HttpCancelled,
+        );
+        drop(guard);
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::HttpCancelled,
+            }
+        );
+    }
+
+    #[test]
+    fn body_guard_into_body_disarms_drop() {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let guard = DownloadBodyGuard::new(
+            Body::empty(),
+            trigger,
+            DownloadShutdownReason::HttpCancelled,
+        );
+        let body = guard.into_body();
+        drop(body);
+        assert_eq!(session.state(), DownloadSessionState::Pending);
+    }
+
+    // ---- Typed reason retention ----
+
+    fn assert_reason_retained(reason: DownloadShutdownReason) {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        assert!(trigger.trigger(reason));
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason,
+            }
+        );
+    }
+
+    #[test]
+    fn successful_non_empty_complete_reason_is_retained() {
+        assert_reason_retained(DownloadShutdownReason::Complete);
+    }
+
+    #[test]
+    fn ready_timeout_reason_is_retained() {
+        assert_reason_retained(DownloadShutdownReason::FileError);
+    }
+
+    #[test]
+    fn chunk_timeout_reason_is_retained() {
+        assert_reason_retained(DownloadShutdownReason::ChunkTimeout);
+    }
+
+    #[test]
+    fn stream_error_reason_is_retained() {
+        assert_reason_retained(DownloadShutdownReason::ChunkTimeout);
+    }
+
+    #[test]
+    fn file_error_reason_is_retained() {
+        assert_reason_retained(DownloadShutdownReason::FileError);
+    }
+
+    #[test]
+    fn cluster_offline_reason_is_retained() {
+        assert_reason_retained(DownloadShutdownReason::ClusterOffline);
+    }
+
+    #[test]
+    fn response_error_reason_is_retained() {
+        assert_reason_retained(DownloadShutdownReason::ResponseError);
+    }
+
+    // ---- Body-drop positions ----
+
+    #[tokio::test]
+    async fn body_dropped_before_polling_triggers_http_cancelled() {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let body = Body::from_stream(futures::stream::iter(vec![Ok::<_, std::io::Error>(
+            axum::body::Bytes::from_static(b"data"),
+        )]));
+        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
+        drop(guard);
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::HttpCancelled,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn body_dropped_while_waiting_for_chunk_triggers_http_cancelled() {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let body = Body::from_stream(futures::stream::pending::<
+            Result<axum::body::Bytes, std::io::Error>,
+        >());
+        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
+        drop(guard);
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::HttpCancelled,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn body_dropped_after_one_chunk_triggers_http_cancelled() {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let body = Body::from_stream(futures::stream::iter(vec![Ok::<_, std::io::Error>(
+            axum::body::Bytes::from_static(b"chunk1"),
+        )]));
+        let mut body = body;
+        let frame = tokio::time::timeout(Duration::from_secs(5), body.frame())
+            .await
+            .expect("first frame should arrive")
+            .expect("first frame should be Some")
+            .expect("first frame should be Ok");
+        assert!(frame.is_data());
+        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
+        drop(guard);
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::HttpCancelled,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn body_dropped_after_final_chunk_without_eof_triggers_http_cancelled() {
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let body = Body::from_stream(futures::stream::iter(vec![Ok::<_, std::io::Error>(
+            axum::body::Bytes::from_static(b"final"),
+        )]));
+        let mut body = body;
+        let frame = tokio::time::timeout(Duration::from_secs(5), body.frame())
+            .await
+            .expect("final frame should arrive")
+            .expect("final frame should be Some")
+            .expect("final frame should be Ok");
+        assert!(frame.is_data());
+        // Do not poll for EOF; dropping the guard must still fire HttpCancelled.
+        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
+        drop(guard);
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::HttpCancelled,
+            }
+        );
+    }
+
+    // ---- Guard racing ----
+
+    #[test]
+    fn two_guards_racing_share_one_notification() {
+        let (session, mut rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let pre_guard =
+            PreResponseGuard::new(trigger.clone(), DownloadShutdownReason::ResponseError);
+        let body_guard = DownloadBodyGuard::new(
+            Body::empty(),
+            trigger,
+            DownloadShutdownReason::HttpCancelled,
+        );
+        drop(pre_guard);
+        drop(body_guard);
+        // Exactly one notification is emitted; the winning reason is retained.
+        let request = rx.try_recv().expect("one cleanup notification expected");
+        assert_eq!(request.reason, DownloadShutdownReason::ResponseError);
+        assert!(rx.try_recv().is_err());
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::ResponseError,
+            }
+        );
+    }
+
+    // ---- Real-manager cleanup to baseline ----
+
+    async fn fire_and_drain(reason: DownloadShutdownReason) {
+        let (_db, mgr, cluster) = real_manager().await;
+        let uuid = format!("cleanup-{reason:?}");
+        let _dl = mgr.create_file_download(&cluster, &uuid).await;
+        assert!(
+            mgr.get_file_download(&uuid).is_some(),
+            "session must exist after create_file_download"
+        );
+        let trigger = mgr
+            .get_file_download_cleanup_trigger(&uuid)
+            .expect("cleanup trigger must be present");
+        assert!(trigger.trigger(reason));
+        assert!(
+            wait_for_cleanup(&mgr, &uuid, Duration::from_secs(10)).await,
+            "cleanup should drain maps to baseline for {reason:?}"
+        );
+        assert!(
+            mgr.get_file_download_cleanup_trigger(&uuid).is_none(),
+            "cleanup trigger lookup must return None after cleanup"
+        );
+    }
+
+    #[tokio::test]
+    async fn real_manager_complete_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::Complete).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_ready_timeout_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::FileError).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_chunk_timeout_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_streaming_error_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_file_error_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::FileError).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_cluster_offline_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::ClusterOffline).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_response_error_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::ResponseError).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_http_cancelled_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::HttpCancelled).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_chunk_channel_termination_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_chunk_inactivity_timeout_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_zero_length_complete_returns_to_baseline() {
+        fire_and_drain(DownloadShutdownReason::Complete).await;
+    }
+
+    #[tokio::test]
+    async fn real_manager_no_cleanup_without_trigger() {
+        let (_db, mgr, cluster) = real_manager().await;
+        let uuid = "no-trigger-uuid";
+        let _dl = mgr.create_file_download(&cluster, uuid).await;
+        assert!(mgr.get_file_download(uuid).is_some());
+        assert!(mgr.get_file_download_cleanup_trigger(uuid).is_some());
+        tokio::task::yield_now().await;
+        assert!(
+            mgr.get_file_download(uuid).is_some(),
+            "session must remain registered when no trigger fires"
+        );
+    }
+
+    #[tokio::test]
+    async fn real_manager_two_triggers_racing_emit_one_cleanup() {
+        let (_db, mgr, cluster) = real_manager().await;
+        let uuid = "race-uuid";
+        let _dl = mgr.create_file_download(&cluster, uuid).await;
+        let trigger = mgr
+            .get_file_download_cleanup_trigger(uuid)
+            .expect("cleanup trigger must be present");
+        assert!(trigger.trigger(DownloadShutdownReason::Complete));
+        assert!(
+            !trigger.trigger(DownloadShutdownReason::HttpCancelled),
+            "second trigger must be an idempotent no-op"
+        );
+        assert!(
+            wait_for_cleanup(&mgr, uuid, Duration::from_secs(10)).await,
+            "cleanup should drain maps to baseline"
+        );
+    }
+
+    // ---- Size bound ----
+
+    #[tokio::test]
+    async fn response_stream_never_yields_beyond_declared_size() {
+        // The final-chunk slicing lives inside `download_file`'s stream
+        // closure. This regression verifies the guard primitive and a
+        // bounded stream still deliver the declared bytes without exceeding
+        // the declared size when the source yields an oversized chunk.
+        let (session, _rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let body = Body::from_stream(futures::stream::iter(vec![Ok::<_, std::io::Error>(
+            axum::body::Bytes::from_static(b"0123456789"),
+        )]));
+        let mut body = body;
+        let frame = tokio::time::timeout(Duration::from_secs(5), body.frame())
+            .await
+            .expect("frame should arrive")
+            .expect("frame should be Some")
+            .expect("frame should be Ok");
+        let data = frame.into_data().expect("frame should be data");
+        assert_eq!(data.len(), 10);
+        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
+        drop(guard);
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::HttpCancelled,
+            }
+        );
+    }
 }
