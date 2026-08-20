@@ -133,14 +133,21 @@ fn manager_rejecting_connections() -> MockClusterManagerTrait {
 ///
 /// If `accepted_token` is `Some`, connections are only accepted when the token
 /// extracted from the request matches it; otherwise any token is accepted.
+///
+/// Returns the manager together with a counter of `remove_connection`
+/// invocations, so tests can assert the server forwards disconnects.
 fn manager_with_forwarding_cluster_accepting(
     name: &str,
     accepted_token: Option<&str>,
-) -> MockClusterManagerTrait {
+) -> (MockClusterManagerTrait, Arc<std::sync::atomic::AtomicUsize>) {
     use adacs_job_controller::cluster::traits::WsConnectionSender;
     use std::sync::Mutex as StdMutex;
 
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
+
+    // Count remove_connection calls so tests can assert the server forwards
+    // client disconnects to the manager.
+    let removed_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
     // Build a cluster whose send_message forwards via the captured tx
     let tx_for_send = Arc::clone(&tx_slot);
@@ -169,6 +176,7 @@ fn manager_with_forwarding_cluster_accepting(
 
     // Build a manager that captures tx and returns the forwarding cluster
     let tx_for_new = Arc::clone(&tx_slot);
+    let removed_for_manager = Arc::clone(&removed_count);
     let accepted: Option<String> = accepted_token.map(str::to_string);
     let mut m = MockClusterManagerTrait::new();
     m.expect_get_file_download_admission().returning(|_| None);
@@ -183,11 +191,13 @@ fn manager_with_forwarding_cluster_accepting(
             let c = Arc::clone(&cluster_arc);
             Box::pin(async move { Some(c) })
         });
-    m.expect_remove_connection()
-        .returning(|_, _| Box::pin(async {}));
+    m.expect_remove_connection().returning(move |_, _| {
+        removed_for_manager.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async {})
+    });
     m.expect_report_websocket_error().returning(|_, _| ());
     m.expect_handle_pong().returning(|_| ());
-    m
+    (m, removed_count)
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +287,7 @@ async fn test_ws_no_token_disconnects() {
 #[tokio::test]
 async fn test_ws_valid_token_receives_server_ready() {
     let db = setup_test_db().await;
-    let manager = manager_with_forwarding_cluster_accepting("ozstar", None);
+    let (manager, _) = manager_with_forwarding_cluster_accepting("ozstar", None);
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -313,7 +323,8 @@ async fn test_ws_valid_token_receives_server_ready() {
 // test_ws_valid_token_handles_disconnect_gracefully
 // ---------------------------------------------------------------------------
 
-/// Verify that the server handles a client-initiated disconnect without errors.
+/// Verify that the server forwards a client-initiated disconnect to the manager's
+/// `remove_connection`.
 ///
 /// # Setup
 /// Start a test server with a forwarding cluster manager that accepts all connections.
@@ -323,11 +334,13 @@ async fn test_ws_valid_token_receives_server_ready() {
 /// then close the connection from the client side.
 ///
 /// # Assert
-/// No panic or timeout occurs within 100 ms after the client disconnects.
+/// The manager's `remove_connection` is invoked after the client disconnects.
 #[tokio::test]
 async fn test_ws_valid_token_handles_disconnect_gracefully() {
+    use std::sync::atomic::Ordering;
+
     let db = setup_test_db().await;
-    let manager = manager_with_forwarding_cluster_accepting("ozstar", None);
+    let (manager, removed_count) = manager_with_forwarding_cluster_accepting("ozstar", None);
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -352,8 +365,20 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
     // Client closes connection
     sink.close().await.unwrap();
 
-    // Server should process the disconnect without issues (no panic/timeout)
-    tokio::task::yield_now().await;
+    // The server should forward the disconnect to remove_connection
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(100);
+    loop {
+        if start.elapsed() > timeout {
+            break;
+        }
+        if removed_count.load(Ordering::SeqCst) > 0 {
+            return; // Test passed
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+
+    panic!("Client disconnect should have been forwarded to manager.remove_connection");
 }
 
 // ---------------------------------------------------------------------------
@@ -489,7 +514,7 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
 async fn test_ws_pong_handled() {
     let db = setup_test_db().await;
 
-    let manager = manager_with_forwarding_cluster_accepting("ozstar", None);
+    let (manager, _) = manager_with_forwarding_cluster_accepting("ozstar", None);
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -537,7 +562,7 @@ async fn test_ws_pong_handled() {
 #[tokio::test]
 async fn test_ws_authorization_header_success() {
     let db = setup_test_db().await;
-    let manager = manager_with_forwarding_cluster_accepting("ozstar", None);
+    let (manager, _) = manager_with_forwarding_cluster_accepting("ozstar", None);
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
@@ -662,7 +687,7 @@ async fn test_ws_malformed_authorization_header() {
 #[tokio::test]
 async fn test_ws_query_param_rejected() {
     let db = setup_test_db().await;
-    let manager = manager_with_forwarding_cluster_accepting("ozstar", Some("valid"));
+    let (manager, _) = manager_with_forwarding_cluster_accepting("ozstar", Some("valid"));
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
