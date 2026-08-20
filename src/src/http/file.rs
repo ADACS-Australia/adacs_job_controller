@@ -256,48 +256,6 @@ impl Drop for PreResponseGuard {
     }
 }
 
-/// Response-body cleanup guard. Holds the response [`Body`] and a clone of the
-/// session trigger. On `Drop`, fires the configured typed reason unless the
-/// guard was disarmed. The HTTP body is consumed only when the caller extracts
-/// it via `into_body()` after a successful response build.
-#[allow(dead_code)]
-pub struct DownloadBodyGuard {
-    body: Option<Body>,
-    trigger: Option<DownloadCleanupTrigger>,
-    reason: DownloadShutdownReason,
-}
-
-#[allow(dead_code)]
-impl DownloadBodyGuard {
-    /// Arm a new body guard around an existing [`Body`].
-    pub fn new(
-        body: Body,
-        trigger: DownloadCleanupTrigger,
-        reason: DownloadShutdownReason,
-    ) -> Self {
-        Self {
-            body: Some(body),
-            trigger: Some(trigger),
-            reason,
-        }
-    }
-
-    /// Consume the guard and return the underlying [`Body`] without firing
-    /// `Drop`. The trigger is disarmed before extraction.
-    pub fn into_body(mut self) -> Body {
-        self.trigger.take();
-        self.body.take().expect("body guard already consumed")
-    }
-}
-
-impl Drop for DownloadBodyGuard {
-    fn drop(&mut self) {
-        if let Some(trigger) = self.trigger.take() {
-            let _ = trigger.trigger(self.reason);
-        }
-    }
-}
-
 /// Stream a file download from a remote cluster.
 ///
 /// # Errors
