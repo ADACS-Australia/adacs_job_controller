@@ -825,7 +825,6 @@ impl Cluster {
             return;
         };
         state.complete.store(true, Ordering::Release);
-        state.received_data.store(true, Ordering::Release);
         state.data_ready.store(true, Ordering::Release);
         state.data_notify.notify_one();
     }
@@ -2215,7 +2214,6 @@ mod tests {
         // Verify initial upload state
         assert!(!state.error.load(Ordering::Relaxed));
         assert!(!state.data_ready.load(Ordering::Relaxed));
-        assert!(!state.received_data.load(Ordering::Relaxed));
         assert!(!state.complete.load(Ordering::Relaxed));
     }
 
