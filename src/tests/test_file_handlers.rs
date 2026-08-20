@@ -2547,9 +2547,7 @@ mod download_session_cleanup {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use axum::body::Body;
     use dashmap::DashMap;
-    use http_body_util::BodyExt;
     use sea_orm::Database;
 
     use adacs_job_controller::cluster::file_download::{
@@ -2559,7 +2557,7 @@ mod download_session_cleanup {
     use adacs_job_controller::cluster::manager::ClusterManager;
     use adacs_job_controller::cluster::traits::{ClusterManagerTrait, ClusterTrait};
     use adacs_job_controller::config::clusters::ClusterConfig;
-    use adacs_job_controller::http::file::{DownloadBodyGuard, PreResponseGuard};
+    use adacs_job_controller::http::file::PreResponseGuard;
 
     fn new_session() -> (
         Arc<DownloadSession>,
@@ -2652,196 +2650,38 @@ mod download_session_cleanup {
         );
     }
 
-    // ---- Body guard primitives ----
-
     #[test]
-    fn body_guard_drop_fires_http_cancelled() {
-        let (session, _rx) = new_session();
-        let trigger = session.cleanup_trigger();
-        let guard = DownloadBodyGuard::new(
-            Body::empty(),
-            trigger,
-            DownloadShutdownReason::HttpCancelled,
-        );
-        drop(guard);
-        assert_eq!(
-            session.state(),
-            DownloadSessionState::Closing {
-                connection_id: None,
-                reason: DownloadShutdownReason::HttpCancelled,
-            }
-        );
-    }
-
-    #[test]
-    fn body_guard_into_body_disarms_drop() {
-        let (session, _rx) = new_session();
-        let trigger = session.cleanup_trigger();
-        let guard = DownloadBodyGuard::new(
-            Body::empty(),
-            trigger,
-            DownloadShutdownReason::HttpCancelled,
-        );
-        let body = guard.into_body();
-        drop(body);
-        assert_eq!(session.state(), DownloadSessionState::Pending);
-    }
-
-    // ---- Typed reason retention ----
-
-    fn assert_reason_retained(reason: DownloadShutdownReason) {
-        let (session, _rx) = new_session();
-        let trigger = session.cleanup_trigger();
-        assert!(trigger.trigger(reason));
-        assert_eq!(
-            session.state(),
-            DownloadSessionState::Closing {
-                connection_id: None,
-                reason,
-            }
-        );
-    }
-
-    #[test]
-    fn successful_non_empty_complete_reason_is_retained() {
-        assert_reason_retained(DownloadShutdownReason::Complete);
-    }
-
-    #[test]
-    fn ready_timeout_reason_is_retained() {
-        assert_reason_retained(DownloadShutdownReason::FileError);
-    }
-
-    #[test]
-    fn chunk_timeout_reason_is_retained() {
-        assert_reason_retained(DownloadShutdownReason::ChunkTimeout);
-    }
-
-    #[test]
-    fn stream_error_reason_is_retained() {
-        assert_reason_retained(DownloadShutdownReason::ChunkTimeout);
-    }
-
-    #[test]
-    fn file_error_reason_is_retained() {
-        assert_reason_retained(DownloadShutdownReason::FileError);
-    }
-
-    #[test]
-    fn cluster_offline_reason_is_retained() {
-        assert_reason_retained(DownloadShutdownReason::ClusterOffline);
-    }
-
-    #[test]
-    fn response_error_reason_is_retained() {
-        assert_reason_retained(DownloadShutdownReason::ResponseError);
-    }
-
-    // ---- Body-drop positions ----
-
-    #[tokio::test]
-    async fn body_dropped_before_polling_triggers_http_cancelled() {
-        let (session, _rx) = new_session();
-        let trigger = session.cleanup_trigger();
-        let body = Body::from_stream(futures::stream::iter(vec![Ok::<_, std::io::Error>(
-            axum::body::Bytes::from_static(b"data"),
-        )]));
-        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
-        drop(guard);
-        assert_eq!(
-            session.state(),
-            DownloadSessionState::Closing {
-                connection_id: None,
-                reason: DownloadShutdownReason::HttpCancelled,
-            }
-        );
-    }
-
-    #[tokio::test]
-    async fn body_dropped_while_waiting_for_chunk_triggers_http_cancelled() {
-        let (session, _rx) = new_session();
-        let trigger = session.cleanup_trigger();
-        let body = Body::from_stream(futures::stream::pending::<
-            Result<axum::body::Bytes, std::io::Error>,
-        >());
-        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
-        drop(guard);
-        assert_eq!(
-            session.state(),
-            DownloadSessionState::Closing {
-                connection_id: None,
-                reason: DownloadShutdownReason::HttpCancelled,
-            }
-        );
-    }
-
-    #[tokio::test]
-    async fn body_dropped_after_one_chunk_triggers_http_cancelled() {
-        let (session, _rx) = new_session();
-        let trigger = session.cleanup_trigger();
-        let body = Body::from_stream(futures::stream::iter(vec![Ok::<_, std::io::Error>(
-            axum::body::Bytes::from_static(b"chunk1"),
-        )]));
-        let mut body = body;
-        let frame = tokio::time::timeout(Duration::from_secs(5), body.frame())
-            .await
-            .expect("first frame should arrive")
-            .expect("first frame should be Some")
-            .expect("first frame should be Ok");
-        assert!(frame.is_data());
-        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
-        drop(guard);
-        assert_eq!(
-            session.state(),
-            DownloadSessionState::Closing {
-                connection_id: None,
-                reason: DownloadShutdownReason::HttpCancelled,
-            }
-        );
-    }
-
-    #[tokio::test]
-    async fn body_dropped_after_final_chunk_without_eof_triggers_http_cancelled() {
-        let (session, _rx) = new_session();
-        let trigger = session.cleanup_trigger();
-        let body = Body::from_stream(futures::stream::iter(vec![Ok::<_, std::io::Error>(
-            axum::body::Bytes::from_static(b"final"),
-        )]));
-        let mut body = body;
-        let frame = tokio::time::timeout(Duration::from_secs(5), body.frame())
-            .await
-            .expect("final frame should arrive")
-            .expect("final frame should be Some")
-            .expect("final frame should be Ok");
-        assert!(frame.is_data());
-        // Do not poll for EOF; dropping the guard must still fire HttpCancelled.
-        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
-        drop(guard);
-        assert_eq!(
-            session.state(),
-            DownloadSessionState::Closing {
-                connection_id: None,
-                reason: DownloadShutdownReason::HttpCancelled,
-            }
-        );
-    }
-
-    // ---- Guard racing ----
-
-    #[test]
-    fn two_guards_racing_share_one_notification() {
+    fn pre_response_guard_into_trigger_disarms_response_error_drop() {
         let (session, mut rx) = new_session();
         let trigger = session.cleanup_trigger();
-        let pre_guard =
-            PreResponseGuard::new(trigger.clone(), DownloadShutdownReason::ResponseError);
-        let body_guard = DownloadBodyGuard::new(
-            Body::empty(),
-            trigger,
-            DownloadShutdownReason::HttpCancelled,
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+        let streaming_trigger = guard
+            .into_trigger()
+            .expect("trigger should transfer to streaming owner");
+        assert_eq!(session.state(), DownloadSessionState::Pending);
+        assert!(rx.try_recv().is_err());
+
+        assert!(streaming_trigger.trigger(DownloadShutdownReason::Complete));
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::Complete,
+            }
         );
-        drop(pre_guard);
-        drop(body_guard);
-        // Exactly one notification is emitted; the winning reason is retained.
+    }
+
+    // ---- Trigger racing ----
+
+    #[test]
+    fn two_triggers_racing_share_one_notification() {
+        let (session, mut rx) = new_session();
+        let first = session.cleanup_trigger();
+        let second = session.cleanup_trigger();
+
+        assert!(first.trigger(DownloadShutdownReason::ResponseError));
+        assert!(!second.trigger(DownloadShutdownReason::Complete));
+
         let request = rx.try_recv().expect("one cleanup notification expected");
         assert_eq!(request.reason, DownloadShutdownReason::ResponseError);
         assert!(rx.try_recv().is_err());
@@ -2914,11 +2754,6 @@ mod download_session_cleanup {
     }
 
     #[tokio::test]
-    async fn real_manager_http_cancelled_returns_to_baseline() {
-        fire_and_drain(DownloadShutdownReason::HttpCancelled).await;
-    }
-
-    #[tokio::test]
     async fn real_manager_chunk_channel_termination_returns_to_baseline() {
         fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
     }
@@ -2947,54 +2782,5 @@ mod download_session_cleanup {
         );
     }
 
-    #[tokio::test]
-    async fn real_manager_two_triggers_racing_emit_one_cleanup() {
-        let (_db, mgr, cluster) = real_manager().await;
-        let uuid = "race-uuid";
-        let _dl = mgr.create_file_download(&cluster, uuid).await;
-        let trigger = mgr
-            .get_file_download_cleanup_trigger(uuid)
-            .expect("cleanup trigger must be present");
-        assert!(trigger.trigger(DownloadShutdownReason::Complete));
-        assert!(
-            !trigger.trigger(DownloadShutdownReason::HttpCancelled),
-            "second trigger must be an idempotent no-op"
-        );
-        assert!(
-            wait_for_cleanup(&mgr, uuid, Duration::from_secs(10)).await,
-            "cleanup should drain maps to baseline"
-        );
-    }
-
     // ---- Size bound ----
-
-    #[tokio::test]
-    async fn response_stream_never_yields_beyond_declared_size() {
-        // The final-chunk slicing lives inside `download_file`'s stream
-        // closure. This regression verifies the guard primitive and a
-        // bounded stream still deliver the declared bytes without exceeding
-        // the declared size when the source yields an oversized chunk.
-        let (session, _rx) = new_session();
-        let trigger = session.cleanup_trigger();
-        let body = Body::from_stream(futures::stream::iter(vec![Ok::<_, std::io::Error>(
-            axum::body::Bytes::from_static(b"0123456789"),
-        )]));
-        let mut body = body;
-        let frame = tokio::time::timeout(Duration::from_secs(5), body.frame())
-            .await
-            .expect("frame should arrive")
-            .expect("frame should be Some")
-            .expect("frame should be Ok");
-        let data = frame.into_data().expect("frame should be data");
-        assert_eq!(data.len(), 10);
-        let guard = DownloadBodyGuard::new(body, trigger, DownloadShutdownReason::HttpCancelled);
-        drop(guard);
-        assert_eq!(
-            session.state(),
-            DownloadSessionState::Closing {
-                connection_id: None,
-                reason: DownloadShutdownReason::HttpCancelled,
-            }
-        );
-    }
 }

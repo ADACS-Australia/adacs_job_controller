@@ -65,7 +65,6 @@ pub enum DownloadShutdownReason {
     ChunkTimeout,
     FileError,
     ClusterOffline,
-    HttpCancelled,
     WebSocketClosed,
     WebSocketError,
     ResponseError,
