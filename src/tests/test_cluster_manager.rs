@@ -255,7 +255,6 @@ async fn test_reconnect_clusters_skips_online() {
     let mgr = make_manager(three_cluster_configs(), db.clone());
 
     // Insert a UUID for cluster2 and connect it
-    uuid::Uuid::new_v4();
     let uuid = uuid::Uuid::new_v4().to_string();
     cluster_uuid::ActiveModel {
         id: sea_orm::ActiveValue::NotSet,
