@@ -637,10 +637,20 @@ async fn test_cluster_get_name() {
 /// Returns `ClusterDetails` with correct values matching config.
 #[tokio::test]
 async fn test_cluster_get_cluster_details() {
-    use crate::common::test_cluster_config;
     use adacs_job_controller::cluster::cluster::Cluster;
+    use adacs_job_controller::config::clusters::ClusterConfig;
 
-    let config = test_cluster_config("test_cluster");
+    let config = ClusterConfig {
+        name: "test_cluster".to_string(),
+        host: "localhost".to_string(),
+        username: "testuser".to_string(),
+        path: "/home/testuser/jobcontroller".to_string(),
+        key: "/home/testuser/.ssh/id_ed25519".to_string(),
+        connection_type: "ssh".to_string(),
+        keytab: "/etc/krb5/test.keytab".to_string(),
+        kerberos_principal: "testuser@EXAMPLE.COM".to_string(),
+        ltk: Some("super-secret-ltk".to_string()),
+    };
     let cluster = Cluster::new(config.clone(), None);
 
     let details = cluster.cluster_details();
@@ -648,7 +658,11 @@ async fn test_cluster_get_cluster_details() {
     assert_eq!(details.host, config.host);
     assert_eq!(details.username, config.username);
     assert_eq!(details.path, config.path);
+    assert_eq!(details.key, config.key);
     assert_eq!(details.connection_type, config.connection_type);
+    assert_eq!(details.keytab, config.keytab);
+    assert_eq!(details.kerberos_principal, config.kerberos_principal);
+    assert_eq!(details.ltk, config.ltk);
 }
 
 // ===========================================================================
