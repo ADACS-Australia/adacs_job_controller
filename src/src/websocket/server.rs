@@ -353,8 +353,7 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
     tracing::debug!("WS: Starting read loop for connection {}", conn_id);
     let mut received_count: u64 = 0;
     let mut server_close_initiated = false;
-    #[allow(unused_assignments)]
-    let mut exit_reason: HandlerExitReason = HandlerExitReason::PeerEof;
+    let exit_reason: HandlerExitReason;
 
     loop {
         if server_close_initiated {
