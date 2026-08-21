@@ -1463,12 +1463,13 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
 }
 
 // ---------------------------------------------------------------------------
-// DB_BUNDLE_CREATE_OR_UPDATE_JOB — update with different hash creates new entry
+// DB_BUNDLE_CREATE_OR_UPDATE_JOB — update with different hash returns error
 // Equivalent behavior: test_db_bundle_job_save_error → returns success=false
-// Rust: lookup by hash fails to find existing, so a new bundle is created.
+// Rust: lookup by hash finds existing, hash mismatch → error (id=0), no insert.
 // ---------------------------------------------------------------------------
 
-/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` creates a new bundle instead of updating when the hash does not match any existing row.
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` returns an error (id=0) and does
+/// not create a new bundle when the supplied hash does not match the existing row.
 ///
 /// # Setup
 /// In-memory DB with one bundle row (`bundle_hash="original_hash`"); attempt to update
@@ -1479,8 +1480,8 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
 /// `hash="different_hash"`.
 ///
 /// # Assert
-/// A new bundle row is created (total count=2); the original bundle is unchanged;
-/// the `DB_RESPONSE` returns an id differing from the original.
+/// No new bundle row is created (total count stays 1); the original bundle is unchanged;
+/// the `DB_RESPONSE` returns id=0 (error).
 #[tokio::test]
 async fn test_handle_bundle_update_wrong_hash_returns_error() {
     let db = make_db().await;
