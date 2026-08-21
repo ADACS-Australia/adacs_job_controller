@@ -1521,7 +1521,7 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
     assert_eq!(count, 1, "Wrong hash should NOT create a new bundle");
 
     // Original bundle should be unchanged
-    let original = bundle_job::Entity::find_by_id(original_id as i64)
+    let original = bundle_job::Entity::find_by_id(original_id)
         .one(&db)
         .await
         .unwrap()
