@@ -815,6 +815,40 @@ async fn test_handle_new_connection_file_download() {
     assert!(found.is_some());
 }
 
+/// Verifies that `handle_new_connection` rejects a second WebSocket connection to an already-bound file download session.
+///
+/// # Setup
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, then create a file download session for cluster1 using a known token and bind it with connection ID 50.
+///
+/// # Act
+/// Call `handle_new_connection` a second time with the same file download token and a new connection ID 51.
+///
+/// # Assert
+/// Returns `None`, and the new connection is not registered via `get_cluster_by_connection(51)`.
+#[tokio::test]
+async fn test_handle_new_connection_file_download_duplicate_rejected() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    // Create a file download session
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let _dl_cluster = mgr.create_file_download(&cluster, "dl-token-dup").await;
+
+    // First connection binds the session
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let result = mgr.handle_new_connection(50, tx, "dl-token-dup").await;
+    assert!(result.is_some());
+
+    // Second connection to the same token must be rejected
+    let (tx2, _rx2) = tokio::sync::mpsc::unbounded_channel();
+    let result2 = mgr.handle_new_connection(51, tx2, "dl-token-dup").await;
+    assert!(result2.is_none());
+
+    // The rejected connection must not be registered
+    assert!(mgr.get_cluster_by_connection(51).is_none());
+}
+
 /// Verifies that `handle_new_connection` accepts a file upload session token and registers the connection.
 ///
 /// # Setup
