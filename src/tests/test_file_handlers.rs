@@ -1153,6 +1153,48 @@ async fn test_spawn_background_cache_timeout_preserves_cache() {
     );
 }
 
+/// Tests that `spawn_background_cache` returns `Err("Cluster offline")` when the
+/// cluster is offline, covering the `is_online()` early-return path.
+///
+/// # Setup
+/// Wires an offline cluster via the `offline_cluster()` helper. No job is needed
+/// because the function returns before touching the database.
+///
+/// # Act
+/// Calls `spawn_background_cache` directly.
+///
+/// # Assert
+/// Verifies the returned error is exactly "Cluster offline" and that no cache rows
+/// are written.
+#[tokio::test]
+async fn test_spawn_background_cache_offline_cluster_returns_error() {
+    let db = setup_test_db().await;
+    let cluster = Arc::new(offline_cluster());
+
+    let state = adacs_job_controller::app::AppState {
+        db: db.clone(),
+        cluster_manager: Arc::new(MockClusterManagerTrait::new()),
+        file_list_map: Arc::new(dashmap::DashMap::new()),
+        jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: None,
+    };
+
+    let err = adacs_job_controller::http::file::spawn_background_cache(
+        state,
+        cluster,
+        "b".to_string(),
+        1,
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(err, "Cluster offline");
+
+    // No cache rows should have been written for the offline path
+    let cached = file_list_cache::Entity::find().all(&db).await.unwrap();
+    assert!(cached.is_empty(), "offline path must not write cache rows");
+}
+
 /// Tests that PATCH /file/ returns 503 when the cluster is offline.
 ///
 /// # Setup
