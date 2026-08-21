@@ -349,7 +349,7 @@ async fn test_file_upload_error_flow() {
 /// A `FILE_UPLOAD_COMPLETE` message is dispatched.
 ///
 /// # Assert
-/// The `complete`, `received_data`, and `data_ready` flags are all set to `true`.
+/// The `complete` and `data_ready` flags are all set to `true`.
 #[tokio::test]
 async fn test_file_upload_complete_flow() {
     let upload_state = Arc::new(FileUploadState::new());
@@ -365,7 +365,6 @@ async fn test_file_upload_complete_flow() {
     cluster.handle_message(complete_msg).await;
 
     assert!(upload_state.complete.load(Ordering::Relaxed));
-    assert!(upload_state.received_data.load(Ordering::Relaxed));
     assert!(upload_state.data_ready.load(Ordering::Relaxed));
 }
 
@@ -698,7 +697,6 @@ async fn test_file_upload_constructor() {
 
     // Verify all flags are false
     assert!(!state.error.load(Ordering::Relaxed));
-    assert!(!state.received_data.load(Ordering::Relaxed));
     assert!(!state.data_ready.load(Ordering::Relaxed));
     assert!(!state.complete.load(Ordering::Relaxed));
 }
