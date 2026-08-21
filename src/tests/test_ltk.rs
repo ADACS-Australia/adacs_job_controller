@@ -128,6 +128,7 @@ async fn test_invalid_ltk_falls_back_to_uuid() {
         .await;
 
     assert!(result.is_some(), "UUID authentication should succeed");
+    assert_eq!(result.unwrap().name(), "test-cluster");
 }
 
 // ---------------------------------------------------------------------------
