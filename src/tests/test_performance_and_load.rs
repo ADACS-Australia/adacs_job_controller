@@ -32,8 +32,6 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 /// Matches C++ test: `test_websocket_large_message_fragmentation`
 #[tokio::test]
 async fn test_large_binary_message_handling() {
-    let db = setup_test_db().await;
-
     let mut cluster = MockClusterTrait::new();
     cluster.expect_name().returning(|| "ozstar".to_string());
     cluster.expect_is_online().returning(|| true);
@@ -48,42 +46,42 @@ async fn test_large_binary_message_handling() {
     let received_messages = Arc::new(StdMutex::new(vec![]));
     let received_clone = Arc::clone(&received_messages);
 
-    cluster.expect_send_message().returning(move |msg| {
+    cluster.expect_handle_message().returning(move |msg| {
         received_clone.lock().unwrap().push(msg);
         Box::pin(async {})
     });
-    cluster
-        .expect_handle_message()
-        .returning(|_| Box::pin(async {}));
 
     let cluster_arc = Arc::new(cluster);
 
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    let c = Arc::clone(&cluster_arc);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-
-    let _app = create_router(make_test_state(db.clone(), manager));
-    let _token = encode_test_jwt(&serde_json::json!({"userId": 42}));
-
-    // Create a large payload (1MB simulated)
+    // Create a large payload (1MB)
     let large_data = vec![0x42u8; 1024 * 1024];
 
-    // Simulate receiving a large message via cluster
-    // In real scenario, this would come through WebSocket
+    // Build an UPDATE_JOB message carrying the full 1MB payload
     let mut msg = Message::new(UPDATE_JOB, Priority::Medium, "test");
     msg.push_uint(1); // job_id
     msg.push_string("test_what");
     msg.push_uint(500); // status
     msg.push_string(&format!("Large details: {} bytes", large_data.len()));
+    msg.push_bytes(&large_data);
 
     cluster_arc.handle_message(msg).await;
 
-    // Verify large message was processed without panic (mock returns immediately)
+    // Verify the handled message round-trips intact through Message::from_bytes
+    let handled = received_messages.lock().unwrap();
+    let handled_msg = handled
+        .first()
+        .expect("handle_message should have captured the message");
+    let mut parsed = Message::from_bytes(handled_msg.clone().into_data());
+    assert_eq!(parsed.id(), UPDATE_JOB);
+    assert_eq!(parsed.source(), "test");
+    assert_eq!(parsed.pop_uint(), 1); // job_id
+    assert_eq!(parsed.pop_string(), "test_what");
+    assert_eq!(parsed.pop_uint(), 500); // status
+    assert_eq!(
+        parsed.pop_string(),
+        format!("Large details: {} bytes", large_data.len())
+    );
+    assert_eq!(parsed.pop_bytes(), large_data);
 }
 
 // ===========================================================================
