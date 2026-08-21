@@ -197,6 +197,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_auth_valid_bearer_prefix() {
+        let secrets = make_test_secrets();
+        let claims = serde_json::json!({"userId": 7});
+        let token = encode_jwt(&claims, &secrets[0].secret);
+
+        let app = test_router(secrets);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/test")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "app1");
+        assert_eq!(json["payload"]["userId"], 7);
+    }
+
+    #[tokio::test]
     async fn test_auth_valid_second_secret() {
         let secrets = make_test_secrets();
         let claims = serde_json::json!({"userId": 99});
