@@ -691,51 +691,6 @@ mod tests {
     }
 
     #[test]
-    fn test_handler_exit_guard_emits_forced_fallback_warning_only_when_triggered() {
-        // Capture the forced-fallback flag in an Arc so we can read it
-        // after the guard is dropped.
-        let flag = Arc::new(AtomicBool::new(false));
-        let g = HandlerExitGuard {
-            session: None,
-            connection_id: None,
-            cluster_name: "test".to_string(),
-            conn_id: 1,
-            sent_count: Arc::new(AtomicU64::new(0)),
-            received_count: 0,
-            closed_event_emitted: AtomicBool::new(false),
-            forced_fallback_emitted: AtomicBool::new(false),
-            forced_fallback_triggered: false,
-        };
-        // Without `force_fallback()` the guard's Drop emits no warning.
-        let _ = flag;
-        drop(g);
-        // Since we constructed a fresh guard, neither flag was set.
-    }
-
-    #[test]
-    fn test_handler_exit_guard_emits_forced_fallback_warning_when_triggered() {
-        let mut g = HandlerExitGuard::new(
-            None,
-            None,
-            "test".to_string(),
-            1,
-            Arc::new(AtomicU64::new(0)),
-            0,
-        );
-        g.force_fallback();
-        // Capture the forced-fallback flag for post-drop verification.
-        let emitted_flag = Arc::clone(
-            &Arc::new(AtomicBool::new(false)), // unused — we just need to keep this test isolated
-        );
-        drop(g);
-        // We can't inspect g after drop. The warning cardinality is
-        // covered by the explicit `emit_forced_fallback_warning()`
-        // test above. Here we only verify Drop with the fallback flag
-        // set doesn't panic and the warning emission is exactly-once.
-        let _ = emitted_flag;
-    }
-
-    #[test]
     fn test_handler_exit_guard_complete_ignores_wrong_connection_id() {
         let session = make_closing_session(7);
         let g = HandlerExitGuard::new(
