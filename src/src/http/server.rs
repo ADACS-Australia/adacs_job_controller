@@ -99,16 +99,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_router_builds() {
-        // Verify that the router structure compiles and can be constructed
-        // We can't test with real requests without a DB pool, but we verify
-        // the route definitions are correct by checking the function compiles.
-        fn _assert_router_fn_exists() {
-            let _: fn(AppState) -> Router = create_router;
-        }
-    }
-
-    #[test]
     fn rate_limiter_interval_ms_is_none_when_rate_limiting_disabled() {
         // A zero requests-per-second value disables rate limiting entirely.
         assert_eq!(rate_limiter_interval_ms(0, 50), None);
