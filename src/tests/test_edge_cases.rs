@@ -561,13 +561,6 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -689,13 +682,6 @@ async fn test_download_timeout_when_cluster_never_responds() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1430,13 +1416,6 @@ async fn test_download_expired_records_are_cleaned_up() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1663,13 +1642,6 @@ async fn test_download_force_download_sets_attachment_disposition() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1774,13 +1746,6 @@ async fn test_download_without_force_download_sets_inline_disposition() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1883,13 +1848,6 @@ async fn test_download_force_download_false_sets_inline_disposition() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1997,13 +1955,6 @@ async fn test_download_sanitizes_unsafe_filename_in_disposition() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2364,13 +2315,6 @@ async fn test_file_transfer_data_timeout_body_truncated() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2504,13 +2448,6 @@ async fn test_file_transfer_websocket_broken_truncates_download() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2627,13 +2564,6 @@ async fn test_file_transfer_no_details_returns_503() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
