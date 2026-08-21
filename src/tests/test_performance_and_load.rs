@@ -181,6 +181,7 @@ async fn test_http_concurrent_requests_stress() {
 #[tokio::test]
 async fn test_priority_preemption_under_load() {
     use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
+    use adacs_job_controller::cluster::traits::WsOutbound;
     use dashmap::DashMap;
 
     let db = setup_test_db().await;
@@ -192,6 +193,10 @@ async fn test_priority_preemption_under_load() {
     });
 
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(app_context));
+
+    // Connect the cluster to a real channel so the scheduler emits messages
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster.set_connection(Some(tx)).await;
 
     // Queue 100 low priority messages
     for i in 0..100 {
@@ -214,11 +219,27 @@ async fn test_priority_preemption_under_load() {
     // Start the scheduler
     cluster.start_tasks();
 
-    // Wait for some processing
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // Wait for the full queue to drain
+    assert!(
+        cluster.wait_for_queue_drain(true).await,
+        "queue should fully drain"
+    );
 
-    // The high priority message should be processed before remaining low priority
-    // This is hard to test directly without mocking, but we verify the queue processes
+    // The highest-priority message must be emitted first
+    let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("first message should be emitted before timeout")
+        .expect("channel should not be closed");
+    let WsOutbound::Binary(data) = first else {
+        panic!("expected a binary outbound message");
+    };
+    let first_msg = Message::from_bytes(data);
+    assert_eq!(
+        first_msg.source(),
+        "high_priority",
+        "highest-priority message should preempt the queued lowest-priority messages"
+    );
+
     cluster.stop();
 }
 
