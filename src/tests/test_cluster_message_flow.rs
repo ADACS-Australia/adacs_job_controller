@@ -1382,3 +1382,36 @@ async fn test_handle_file_list_error_sets_error_state() {
         assert!(state.data_ready);
     }
 }
+
+/// Verifies that `FILE_LIST` and `FILE_LIST_ERROR` messages dispatched to a master
+/// cluster without an `AppContext` hit the no-app-context warn branches without
+/// panicking or mutating state.
+///
+/// # Setup
+/// A `Cluster` created via `Cluster::new` (role `Master`, no `AppContext`) is prepared.
+///
+/// # Act
+/// A `FILE_LIST` and a `FILE_LIST_ERROR` message are dispatched via `from_bytes`.
+///
+/// # Assert
+/// Dispatching completes without panicking and the cluster role remains `Master`.
+#[tokio::test]
+async fn test_file_list_messages_on_master_cluster_are_noop() {
+    use adacs_job_controller::protocol::types::ClusterRole;
+
+    let cluster = Cluster::new(test_config(), None);
+
+    let mut list_msg = Message::new(FILE_LIST, Priority::Medium, "test");
+    list_msg.push_string("no-ctx-uuid");
+    list_msg.push_uint(0);
+    let list_msg = Message::from_bytes(list_msg.into_data());
+    cluster.handle_message(list_msg).await;
+
+    let mut err_msg = Message::new(FILE_LIST_ERROR, Priority::Medium, "test");
+    err_msg.push_string("no-ctx-uuid");
+    err_msg.push_string("details");
+    let err_msg = Message::from_bytes(err_msg.into_data());
+    cluster.handle_message(err_msg).await;
+
+    assert_eq!(cluster.role(), ClusterRole::Master);
+}
