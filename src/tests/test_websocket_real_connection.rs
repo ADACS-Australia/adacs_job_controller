@@ -1,5 +1,4 @@
 //! Real integration tests matching C++ test coverage.
-#![allow(clippy::too_many_lines)]
 //!
 //! These tests use REAL external dependencies:
 //! - Real WebSocket connections with tokio-tungstenite
