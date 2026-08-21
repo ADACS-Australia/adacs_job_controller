@@ -3268,6 +3268,96 @@ async fn test_job_finished_update_populates_cache() {
     cluster_obj.stop();
 }
 
+/// Regression test: a background `FILE_LIST` cache request that times out (no response,
+/// no error) must NOT wipe the job's existing valid `file_list_cache` rows.
+///
+/// `cache_file_list_on_completion` waits up to `CLIENT_TIMEOUT_SECONDS` for a
+/// `FILE_LIST_RESPONSE`. If the cluster never responds, `FileListState` is left with
+/// `error=false` and `data_ready=false`. Before the fix, the `if !locked.error` guard
+/// proceeded to delete the valid cache rows and insert an empty list.
+///
+/// Pauses the tokio clock (after DB setup) so the 30s timeout fires via auto-advance
+/// instead of waiting in real time.
+#[tokio::test]
+async fn test_job_finished_update_timeout_keeps_existing_cache() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    // Pre-populate the cache with a valid row for this job.
+    file_list_cache::ActiveModel {
+        job_id: Set(job_id),
+        path: Set("/existing.log".to_string()),
+        is_dir: Set(false),
+        file_size: Set(1024),
+        permissions: Set(644),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    // Shared file_list_map — used by both the real Cluster and the HTTP AppState.
+    let file_list_map: Arc<DashMap<String, Arc<TokioMutex<FileListState>>>> =
+        Arc::new(DashMap::new());
+    let flmap_for_cluster = Arc::clone(&file_list_map);
+
+    // Build a real Cluster (not mock) with the test DB and file_list_map.
+    let app_ctx = Arc::new(AppContext {
+        db: db.clone(),
+        file_list_map: flmap_for_cluster,
+    });
+    let cluster_obj = Cluster::new(test_cluster_config("ozstar"), Some(app_ctx));
+
+    // Give the cluster a WS sender so the FILE_LIST request is delivered, but never
+    // respond to it — the background cache task must time out.
+    let (ws_tx, _ws_rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster_obj.set_connection(Some(ws_tx)).await;
+    cluster_obj.start_tasks();
+
+    // Pause the clock so the background task's 30s timeout fires via auto-advance.
+    tokio::time::pause();
+
+    // Send UPDATE_JOB with _job_completion_ to trigger the background cache population.
+    let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
+    msg.push_uint(job_id.try_into().unwrap());
+    msg.push_string(JOB_COMPLETION_SOURCE);
+    msg.push_uint(0u32); // SUCCESS status
+    msg.push_string("Job completed");
+    let routed = Message::from_bytes(msg.into_data());
+    cluster_obj.handle_message(routed).await;
+
+    // Wait for the background task to finish (it removes its uuid from the map).
+    // With paused time the 30s timeout fires via auto-advance as we poll.
+    let start = std::time::Instant::now();
+    loop {
+        if file_list_map.is_empty() {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "Background cache task did not finish within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    tokio::time::resume();
+
+    // The valid pre-existing cache row must survive the timed-out request.
+    let cached = file_list_cache::Entity::find()
+        .filter(file_list_cache::Column::JobId.eq(job_id))
+        .all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        cached.len(),
+        1,
+        "Timed-out FILE_LIST request must not wipe the existing cache"
+    );
+    assert_eq!(cached[0].path, "/existing.log");
+
+    cluster_obj.stop();
+}
+
 // ===========================================================================
 // 23. LARGE FILE TRANSFERS — full end-to-end with backpressure and memory monitoring
 //
