@@ -19,6 +19,10 @@ use sea_orm::{
     EntityTrait, PaginatorTrait, QueryOrder, Schema,
 };
 
+// The LTK rate-limit test below mutates the process-global LTK_CONNECTION_TIMEOUT_MS
+// env var, so it must not run concurrently or it races on shared state.
+static LTK_TIMEOUT_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -1177,6 +1181,53 @@ async fn test_handle_new_connection_ltk_duplicate_rejected() {
     // Original connection remains active; the new one is not registered
     assert!(mgr.get_cluster_by_connection(1).is_some());
     assert!(mgr.get_cluster_by_connection(2).is_none());
+}
+
+/// Verifies that `handle_new_connection` enforces the LTK rate-limiting sleep for a matching token.
+///
+/// # Setup
+/// Set `LTK_CONNECTION_TIMEOUT_MS=100`, create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with a single LTK-configured cluster.
+///
+/// # Act
+/// Call `handle_new_connection` with the configured LTK token while measuring elapsed time.
+///
+/// # Assert
+/// The call returns `Some` and takes at least 100ms, directly exercising the rate-limiting sleep in `ClusterManager::handle_new_connection`.
+#[tokio::test]
+async fn test_handle_new_connection_ltk_rate_limiting_sleep() {
+    let _guard = LTK_TIMEOUT_TEST_LOCK.lock().await;
+
+    let previous = std::env::var("LTK_CONNECTION_TIMEOUT_MS").ok();
+    unsafe {
+        std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "100");
+    }
+
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(ltk_cluster_configs(), db);
+
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let start = std::time::Instant::now();
+    let result = mgr.handle_new_connection(1, tx, "super-secret-ltk").await;
+    let elapsed = start.elapsed();
+
+    match previous {
+        Some(value) => unsafe {
+            std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", value);
+        },
+        None => unsafe {
+            std::env::remove_var("LTK_CONNECTION_TIMEOUT_MS");
+        },
+    }
+
+    assert!(
+        result.is_some(),
+        "LTK token match should authenticate the cluster"
+    );
+    assert!(
+        elapsed >= std::time::Duration::from_millis(100),
+        "rate-limiting sleep should delay the LTK handshake, took {elapsed:?}"
+    );
 }
 
 // ===========================================================================
