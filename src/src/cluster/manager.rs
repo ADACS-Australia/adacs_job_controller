@@ -275,22 +275,10 @@ impl ClusterManager {
         triggered
     }
 
-    /// Exact context for a successfully admitted dedicated download handler.
-    /// Convenience inherent mirror of the trait implementation that returns
-    /// the concrete `Arc<Cluster>` instead of the trait object.
-    #[allow(dead_code)]
-    pub fn get_file_download_admission(
-        &self,
-        connection_id: ConnectionId,
-    ) -> Option<(Arc<DownloadSession>, ConnectionId, Arc<Cluster>)> {
-        self.admit_file_download(connection_id)
-            .map(|(_, session, conn_id, cluster)| (session, conn_id, cluster))
-    }
-
-    /// Shared lookup used by both the inherent helper and the trait
-    /// implementation. Returns the trait-object cluster pointer alongside
-    /// the exact `Arc<DownloadSession>` and accepted `ConnectionId` so the
-    /// WebSocket handler can retain all three without holding a map guard.
+    /// Shared lookup used by the trait implementation. Returns the
+    /// trait-object cluster pointer alongside the exact `Arc<DownloadSession>`
+    /// and accepted `ConnectionId` so the WebSocket handler can retain all
+    /// three without holding a map guard.
     fn admit_file_download(
         &self,
         connection_id: ConnectionId,
