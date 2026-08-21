@@ -208,4 +208,22 @@ mod tests {
         assert_eq!(env_or_u32("__NONEXISTENT_TEST_VAR__", 999), 999);
         assert_eq!(env_or_u64("__NONEXISTENT_TEST_VAR__", 123_456), 123_456);
     }
+
+    #[test]
+    fn test_ltk_connection_timeout_ms() {
+        unsafe { std::env::remove_var("LTK_CONNECTION_TIMEOUT_MS") };
+        assert_eq!(ltk_connection_timeout_ms(), 0, "test default is no delay");
+
+        unsafe { std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "250") };
+        assert_eq!(ltk_connection_timeout_ms(), 250, "valid override respected");
+
+        unsafe { std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "not-a-number") };
+        assert_eq!(
+            ltk_connection_timeout_ms(),
+            0,
+            "invalid value falls back to default"
+        );
+
+        unsafe { std::env::remove_var("LTK_CONNECTION_TIMEOUT_MS") };
+    }
 }
