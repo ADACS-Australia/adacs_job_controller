@@ -1243,7 +1243,6 @@ async fn test_application_shutdown_flag_starts_false() {
     let mgr = make_manager(three_cluster_configs(), db.clone());
 
     assert!(!mgr.is_application_shutting_down());
-    assert!(!mgr.is_application_shutting_down());
 }
 
 /// Verifies `begin_application_shutdown` flips the flag and is idempotent.
