@@ -255,3 +255,142 @@ impl DownloadCleanupTrigger {
         self.session.trigger(reason)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn make_session() -> (
+        Arc<DownloadSession>,
+        tokio::sync::mpsc::UnboundedReceiver<DownloadCleanupRequest>,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let session = DownloadSession::new(
+            "test-download".to_string(),
+            Arc::new(FileDownloadState::new()),
+            tx,
+        );
+        (session, rx)
+    }
+
+    #[test]
+    fn bind_connection_succeeds_when_pending() {
+        let (session, _rx) = make_session();
+        assert!(session.bind_connection(7).is_ok());
+        assert_eq!(session.state(), DownloadSessionState::Connected(7));
+    }
+
+    #[test]
+    fn bind_connection_rejects_when_already_connected() {
+        let (session, _rx) = make_session();
+        assert!(session.bind_connection(7).is_ok());
+        let err = session.bind_connection(8).unwrap_err();
+        assert_eq!(err.state, DownloadSessionState::Connected(7));
+        assert_eq!(session.state(), DownloadSessionState::Connected(7));
+    }
+
+    #[test]
+    fn bind_connection_rejects_when_closing() {
+        let (session, _rx) = make_session();
+        assert!(
+            session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::WebSocketClosed)
+        );
+        let err = session.bind_connection(7).unwrap_err();
+        assert_eq!(
+            err.state,
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::WebSocketClosed,
+            }
+        );
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::WebSocketClosed,
+            }
+        );
+    }
+
+    #[test]
+    fn bind_connection_rejects_when_closed() {
+        let (session, _rx) = make_session();
+        assert!(
+            session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::Complete)
+        );
+        assert!(session.complete(None));
+        let err = session.bind_connection(7).unwrap_err();
+        assert_eq!(
+            err.state,
+            DownloadSessionState::Closed {
+                connection_id: None,
+                reason: DownloadShutdownReason::Complete,
+            }
+        );
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closed {
+                connection_id: None,
+                reason: DownloadShutdownReason::Complete,
+            }
+        );
+    }
+
+    #[test]
+    fn trigger_is_idempotent_noop_after_closed() {
+        let (session, _rx) = make_session();
+        assert!(
+            session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::Complete)
+        );
+        assert!(session.complete(None));
+        assert!(
+            !session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::Complete)
+        );
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closed {
+                connection_id: None,
+                reason: DownloadShutdownReason::Complete,
+            }
+        );
+    }
+
+    #[test]
+    fn trigger_is_noop_when_already_closing() {
+        let (session, _rx) = make_session();
+        assert!(
+            session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::WebSocketClosed)
+        );
+        assert!(
+            !session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::WebSocketError)
+        );
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::WebSocketClosed,
+            }
+        );
+    }
+
+    #[test]
+    fn complete_requires_closing_state() {
+        let (session, _rx) = make_session();
+        assert!(session.bind_connection(7).is_ok());
+        assert!(!session.complete(Some(7)));
+        assert_eq!(session.state(), DownloadSessionState::Connected(7));
+    }
+}
