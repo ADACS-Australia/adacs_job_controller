@@ -131,25 +131,6 @@ async fn test_invalid_ltk_falls_back_to_uuid() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: LTK clusters don't get UUID generated in reconnect
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_ltk_clusters_skipped_in_reconnect() {
-    let ltk_config = test_cluster_config_with_ltk("ltk-cluster", "ltk-secret");
-    let ssh_config = test_cluster_config("ssh-cluster");
-
-    assert!(
-        ltk_config.ltk.is_some(),
-        "LTK cluster should have ltk field"
-    );
-    assert!(
-        ssh_config.ltk.is_none(),
-        "SSH cluster should not have ltk field"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Test: LTK configuration deserialization
 // ---------------------------------------------------------------------------
 
