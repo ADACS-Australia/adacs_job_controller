@@ -171,10 +171,6 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
 
     let tx_for_new = Arc::clone(&tx_slot);
     let mut m = MockClusterManagerTrait::new();
-    m.expect_get_file_download_admission().returning(|_| None);
-
-    m.expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     m.expect_is_application_shutting_down().returning(|| false);
     m.expect_begin_application_shutdown().returning(|| 0);
     m.expect_dedicated_download_clusters().returning(Vec::new);
