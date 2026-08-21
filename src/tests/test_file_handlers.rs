@@ -2671,6 +2671,34 @@ mod download_session_cleanup {
         );
     }
 
+    #[test]
+    fn pre_response_guard_trigger_clone_does_not_disarm_guard() {
+        let (session, mut rx) = new_session();
+        let trigger = session.cleanup_trigger();
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+
+        let cloned = guard
+            .trigger_clone()
+            .expect("trigger_clone should yield a trigger without disarming the guard");
+        let remaining = guard
+            .into_trigger()
+            .expect("guard should still hold its trigger after trigger_clone");
+
+        assert_eq!(session.state(), DownloadSessionState::Pending);
+        assert!(rx.try_recv().is_err());
+
+        assert!(cloned.trigger(DownloadShutdownReason::Complete));
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::Complete,
+            }
+        );
+
+        assert!(!remaining.trigger(DownloadShutdownReason::FileError));
+    }
+
     // ---- Trigger racing ----
 
     #[test]
