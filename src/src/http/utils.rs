@@ -96,8 +96,10 @@ pub fn parse_job_steps(s: &str) -> Vec<(String, u32)> {
     while i + 1 < parts.len() {
         if let Ok(state) = parts[i + 1].parse::<u32>() {
             result.push((parts[i].to_string(), state));
+            i += 2;
+        } else {
+            i += 1;
         }
-        i += 2;
     }
     result
 }
@@ -249,6 +251,15 @@ mod tests {
         let steps = parse_job_steps("jid0,500,jid1");
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0], ("jid0".to_string(), 500));
+    }
+
+    /// Verifies that a malformed state token does not shift the fixed 2-step alignment,
+    /// so a subsequent valid (what, state) pair is still parsed.
+    #[test]
+    fn test_parse_job_steps_malformed_state_preserves_subsequent_pair() {
+        let steps = parse_job_steps("a,b,500");
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0], ("b".to_string(), 500));
     }
 
     /// Verifies that an empty input string yields an empty result.
