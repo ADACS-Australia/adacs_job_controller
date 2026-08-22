@@ -663,6 +663,7 @@ pub async fn get_job_with_access_check(
     job_id: u64,
 ) -> Result<job::Model, (StatusCode, String)> {
     let j = job::Entity::find_by_id(job_id.cast_signed())
+        .filter(job::Column::Application.is_in(get_applications(&auth.secret)))
         .one(&state.db)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
