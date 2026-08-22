@@ -654,6 +654,52 @@ async fn test_ws_authorization_header_success() {
 }
 
 // ---------------------------------------------------------------------------
+// test_ws_lowercase_bearer_scheme_accepted
+// ---------------------------------------------------------------------------
+
+/// Verify that a lowercase `bearer` scheme prefix is accepted per RFC 6750.
+///
+/// # Setup
+/// Start a test server with a forwarding cluster manager.
+///
+/// # Act
+/// Connect with `Authorization: bearer valid-token` header (lowercase scheme).
+///
+/// # Assert
+/// Connection succeeds and receives `SERVER_READY`.
+#[tokio::test]
+async fn test_ws_lowercase_bearer_scheme_accepted() {
+    let db = setup_test_db().await;
+    let (manager, _) = manager_with_forwarding_cluster_accepting("ozstar", None);
+    let state = make_test_state(db, manager);
+    let server = start_test_server(state).await;
+    let port = server.port;
+
+    // Connect with lowercase "bearer " scheme prefix
+    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Authorization", "bearer valid-token".parse().unwrap());
+
+    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
+        .await
+        .unwrap()
+        .0
+        .split();
+
+    // Should receive SERVER_READY
+    let msg = recv_binary(&mut stream).await;
+    assert!(
+        msg.is_some(),
+        "Should receive SERVER_READY with lowercase bearer scheme"
+    );
+
+    sink.close().await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
 // test_ws_missing_authorization_header
 // ---------------------------------------------------------------------------
 
