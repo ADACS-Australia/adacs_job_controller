@@ -258,6 +258,16 @@ mod tests {
         assert!(steps.is_empty());
     }
 
+    /// Verifies that `parse_job_steps` trims whitespace around each CSV token.
+    #[test]
+    fn test_parse_job_steps_trims_whitespace() {
+        let steps = parse_job_steps(" jid0 ,500 , jid1 , 500 ");
+        assert_eq!(
+            steps,
+            vec![("jid0".to_string(), 500), ("jid1".to_string(), 500)]
+        );
+    }
+
     /// Verifies that `weak_canonical` resolves `.` and `..` path components without filesystem access.
     #[test]
     fn test_weak_canonical() {
