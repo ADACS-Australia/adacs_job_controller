@@ -3109,13 +3109,6 @@ async fn test_job_finished_update_populates_cache() {
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
     http_manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    http_manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    http_manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(mc.clone()));
 
