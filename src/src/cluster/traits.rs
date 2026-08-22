@@ -83,7 +83,7 @@ pub trait ClusterTrait: Send + Sync {
     /// Idempotent conclusive termination for retained background tasks.
     /// Dedicated file-download clusters override this to drain scheduler,
     /// prune, and resend handles within the existing five-second close
-    /// bound reused by [].
+    /// bound reused by [`crate::websocket::server::WS_CLOSE_HANDSHAKE_GRACE_SECONDS`].
     /// The default implementation is a no-op so master, shared, and
     /// upload clusters keep their existing detached-task semantics.
     async fn terminate_download_tasks(&self) {}
