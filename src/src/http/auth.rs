@@ -47,8 +47,12 @@ where
             auth_header.len()
         );
 
-        // Accept both "Bearer <jwt>" and bare "<jwt>" for backwards compatibility
-        let jwt_str = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header);
+        // Accept both "Bearer <jwt>" and bare "<jwt>" for backwards compatibility.
+        // Per RFC 6750 the auth scheme is case-insensitive, so accept any casing.
+        let jwt_str = match auth_header.get(..7) {
+            Some(prefix) if prefix.eq_ignore_ascii_case("Bearer ") => &auth_header[7..],
+            _ => auth_header,
+        };
         tracing::trace!("AUTH: JWT token extracted (length: {})", jwt_str.len());
 
         // Try each secret with HS256
@@ -221,6 +225,33 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["name"], "app1");
         assert_eq!(json["payload"]["userId"], 7);
+    }
+
+    #[tokio::test]
+    async fn test_auth_valid_lowercase_bearer_prefix() {
+        let secrets = make_test_secrets();
+        let claims = serde_json::json!({"userId": 13});
+        let token = encode_jwt(&claims, &secrets[0].secret);
+
+        let app = test_router(secrets);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/test")
+                    .header("authorization", format!("bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "app1");
+        assert_eq!(json["payload"]["userId"], 13);
     }
 
     #[tokio::test]
