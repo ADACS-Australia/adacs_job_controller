@@ -149,7 +149,6 @@ impl DownloadSession {
             .state
     }
 
-    /// Bind the only accepted WebSocket connection while the session is pending.
     /// Bind this download session to the accepted WebSocket connection.
     ///
     /// # Errors
