@@ -882,6 +882,44 @@ async fn test_handle_new_connection_file_upload() {
     assert!(found.is_some());
 }
 
+/// Verifies that a duplicate file upload connection for an already-online upload session is rejected.
+///
+/// # Setup
+/// Create an in-memory `SQLite` database and UUID table, instantiate `ClusterManager` with three configs, then create a file upload session for cluster1 using a known token.
+///
+/// # Act
+/// Call `handle_new_connection` twice with the same file upload token.
+///
+/// # Assert
+/// The first call returns `Some` and brings the upload cluster online; the second call returns `None` and does not register a new connection.
+#[tokio::test]
+async fn test_handle_new_connection_file_upload_duplicate_rejected() {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    let mgr = make_manager(three_cluster_configs(), db.clone());
+
+    // Create a file upload session
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let _ul_cluster = mgr.create_file_upload(&cluster, "ul-token-dup").await;
+
+    // First connection authenticates
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let result = mgr.handle_new_connection(60, tx, "ul-token-dup").await;
+    assert!(result.is_some());
+
+    // Second connection with the same token must be rejected
+    let (tx2, _rx2) = tokio::sync::mpsc::unbounded_channel();
+    let result2 = mgr.handle_new_connection(61, tx2, "ul-token-dup").await;
+    assert!(
+        result2.is_none(),
+        "duplicate file upload connection should be rejected while the upload cluster is online"
+    );
+
+    // Original connection remains active; the new one is not registered
+    assert!(mgr.get_cluster_by_connection(60).is_some());
+    assert!(mgr.get_cluster_by_connection(61).is_none());
+}
+
 /// Verifies that `remove_connection` removes the connection and cleans up the associated file download session.
 ///
 /// # Setup
