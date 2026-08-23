@@ -26,6 +26,7 @@ use adacs_job_controller::cluster::traits::{
 };
 use adacs_job_controller::db::entities::{file_download, job};
 use adacs_job_controller::http::server::create_router;
+use adacs_job_controller::protocol::constants::{SERVER_READY, SYSTEM_SOURCE};
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, Priority};
 
@@ -226,14 +227,16 @@ async fn test_real_websocket_connection_and_auth() {
     let (sink, mut stream) = connect_websocket(port, &token).await;
 
     // Expect SERVER_READY (sent automatically after connection)
-    let response = recv_binary(&mut stream).await;
-    assert!(response.is_some(), "Server should send SERVER_READY");
-
-    // Verify we got a non-empty response
-    assert!(
-        !response.as_ref().unwrap().is_empty(),
-        "Response should not be empty"
+    let response = recv_binary(&mut stream)
+        .await
+        .expect("Server should send SERVER_READY");
+    let msg = Message::from_bytes(response);
+    assert_eq!(
+        msg.id(),
+        SERVER_READY,
+        "First message should be SERVER_READY"
     );
+    assert_eq!(msg.source(), SYSTEM_SOURCE);
 
     // Cleanup
     drop(sink);
