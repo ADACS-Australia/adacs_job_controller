@@ -119,12 +119,8 @@ async fn connection_closes(
 /// Mock manager where `handle_new_connection` always returns `None` (invalid token).
 fn manager_rejecting_connections() -> MockClusterManagerTrait {
     let mut m = MockClusterManagerTrait::new();
-    m.expect_get_file_download_admission().returning(|_| None);
     m.expect_handle_new_connection()
         .returning(|_, _, _| Box::pin(async { None }));
-    m.expect_remove_connection()
-        .returning(|_, _| Box::pin(async {}));
-    m.expect_report_websocket_error().returning(|_, _| ());
     m
 }
 
