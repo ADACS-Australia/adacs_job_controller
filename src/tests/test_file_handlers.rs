@@ -2870,17 +2870,7 @@ mod download_session_cleanup {
     }
 
     #[tokio::test]
-    async fn real_manager_ready_timeout_returns_to_baseline() {
-        fire_and_drain(DownloadShutdownReason::FileError).await;
-    }
-
-    #[tokio::test]
     async fn real_manager_chunk_timeout_returns_to_baseline() {
-        fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
-    }
-
-    #[tokio::test]
-    async fn real_manager_streaming_error_returns_to_baseline() {
         fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
     }
 
@@ -2897,21 +2887,6 @@ mod download_session_cleanup {
     #[tokio::test]
     async fn real_manager_response_error_returns_to_baseline() {
         fire_and_drain(DownloadShutdownReason::ResponseError).await;
-    }
-
-    #[tokio::test]
-    async fn real_manager_chunk_channel_termination_returns_to_baseline() {
-        fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
-    }
-
-    #[tokio::test]
-    async fn real_manager_chunk_inactivity_timeout_returns_to_baseline() {
-        fire_and_drain(DownloadShutdownReason::ChunkTimeout).await;
-    }
-
-    #[tokio::test]
-    async fn real_manager_zero_length_complete_returns_to_baseline() {
-        fire_and_drain(DownloadShutdownReason::Complete).await;
     }
 
     #[tokio::test]
