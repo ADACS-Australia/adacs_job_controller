@@ -803,7 +803,7 @@ const CANCELLING_NOOP_STATES: &[i32] = &[
 ];
 
 /// Verifies that `check_cancelling_jobs` does not trigger `CANCEL_JOB` for any status
-/// other than CANCELLING (75).
+/// other than CANCELLING (60).
 ///
 /// # Setup
 /// For each status in `CANCELLING_NOOP_STATES`, an old history row with that status is inserted
@@ -871,7 +871,7 @@ const DELETING_NOOP_STATES: &[i32] = &[
 ];
 
 /// Verifies that `check_deleting_jobs` does not trigger `DELETE_JOB` for any status
-/// other than DELETING (85).
+/// other than DELETING (80).
 ///
 /// # Setup
 /// For each status in `DELETING_NOOP_STATES`, an old history row with that status is inserted
