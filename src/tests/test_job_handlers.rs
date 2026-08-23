@@ -61,6 +61,25 @@ fn offline_cluster() -> MockClusterTrait {
     c
 }
 
+fn offline_cluster_capturing_messages(
+    name: &str,
+    sent: Arc<Mutex<Vec<Message>>>,
+) -> MockClusterTrait {
+    let mut c = MockClusterTrait::new();
+    let n = name.to_string();
+    c.expect_name().returning(move || n.clone());
+    c.expect_is_online().returning(|| false);
+    c.expect_role().returning(|| ClusterRole::Master);
+    c.expect_role_string().returning(|| "master".to_string());
+    c.expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
+    c.expect_send_message().returning(move |msg| {
+        sent.lock().unwrap().push(msg);
+        Box::pin(async {})
+    });
+    c
+}
+
 /// Insert a job with an explicit ID (used to exercise the `u32::MAX` conversion guard).
 async fn insert_test_job_with_id(
     db: &sea_orm::DatabaseConnection,
@@ -481,6 +500,23 @@ fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Mess
     (manager, sent)
 }
 
+fn manager_with_offline_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
+    let sent = Arc::new(Mutex::new(vec![]));
+    let cluster = Arc::new(offline_cluster_capturing_messages(
+        "ozstar",
+        Arc::clone(&sent),
+    ));
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    (manager, sent)
+}
+
 fn manager_no_clusters() -> MockClusterManagerTrait {
     let mut m = MockClusterManagerTrait::new();
     m.expect_get_file_download_admission().returning(|_| None);
@@ -563,6 +599,47 @@ async fn test_cancel_job_submitting_sends_cancel_ws_message() {
     let mut m = Message::from_bytes(msgs[0].clone().into_data());
     assert_eq!(m.id(), CANCEL_JOB);
     assert_eq!(i64::from(m.pop_uint()), job_id);
+}
+
+/// Tests that cancelling a SUBMITTING job on an offline cluster transitions it to
+/// Cancelling without sending a `CANCEL_JOB` WS message (dispatch is deferred to
+/// `check_cancelling_jobs` when the cluster reconnects).
+///
+/// # Setup
+/// Inserts a job with PENDING → SUBMITTING history and an offline cluster.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
+///
+/// # Assert
+/// Verifies 200 OK, latest history state is Cancelling, and no WS message was sent.
+#[tokio::test]
+async fn test_cancel_job_offline_cluster_no_ws_message() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+    insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
+
+    let (manager, sent) = manager_with_offline_cluster();
+    let (status, body) = run_cancel(job_id, &db, manager).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+
+    // Latest state should be Cancelling
+    let latest = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(job_id))
+        .order_by_desc(job_history::Column::Timestamp)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.state, JobStatus::Cancelling as i32);
+
+    // No CANCEL_JOB WS message should be sent while the cluster is offline
+    assert!(
+        sent.lock().unwrap().is_empty(),
+        "offline cluster must not receive a CANCEL_JOB message"
+    );
 }
 
 /// Tests that cancelling a RUNNING job sends a `CANCEL_JOB` WS message.
@@ -940,6 +1017,46 @@ async fn test_delete_job_cancelled_sends_delete_ws_message() {
     let mut m = Message::from_bytes(msgs[0].clone().into_data());
     assert_eq!(m.id(), DELETE_JOB);
     assert_eq!(i64::from(m.pop_uint()), job_id);
+}
+
+/// Tests that deleting a Cancelled job on an offline cluster transitions it to
+/// Deleting without sending a `DELETE_JOB` WS message (dispatch is deferred to
+/// `check_deleting_jobs` when the cluster reconnects).
+///
+/// # Setup
+/// Inserts a job with a Cancelled history entry and an offline cluster.
+///
+/// # Act
+/// Sends DELETE /job/apiv1/job/ with the job ID.
+///
+/// # Assert
+/// Verifies 200 OK, latest history state is Deleting, and no WS message was sent.
+#[tokio::test]
+async fn test_delete_job_offline_cluster_no_ws_message() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Cancelled as i32, "system").await;
+
+    let (manager, sent) = manager_with_offline_cluster();
+    let (status, body) = run_delete(job_id, &db, manager).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+
+    // Latest state should be Deleting
+    let latest = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(job_id))
+        .order_by_desc(job_history::Column::Timestamp)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.state, JobStatus::Deleting as i32);
+
+    // No DELETE_JOB WS message should be sent while the cluster is offline
+    assert!(
+        sent.lock().unwrap().is_empty(),
+        "offline cluster must not receive a DELETE_JOB message"
+    );
 }
 
 /// Tests that deleting a Completed job sends a `DELETE_JOB` WS message.
