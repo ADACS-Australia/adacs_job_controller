@@ -1098,10 +1098,6 @@ async fn test_rapid_ws_connect_disconnect_stress() {
 
     // Build a manager that accepts many connections
     let mut m = MockClusterManagerTrait::new();
-    m.expect_get_file_download_admission().returning(|_| None);
-
-    m.expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     m.expect_is_application_shutting_down().returning(|| false);
     m.expect_begin_application_shutdown().returning(|| 0);
     m.expect_dedicated_download_clusters().returning(Vec::new);
@@ -1511,10 +1507,6 @@ async fn test_ws_truncated_binary_message_no_crash() {
     let cluster_arc: Arc<dyn ClusterTrait> = Arc::new(cluster);
 
     let mut m = MockClusterManagerTrait::new();
-    m.expect_get_file_download_admission().returning(|_| None);
-
-    m.expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     m.expect_is_application_shutting_down().returning(|| false);
     m.expect_begin_application_shutdown().returning(|| 0);
     m.expect_dedicated_download_clusters().returning(Vec::new);
