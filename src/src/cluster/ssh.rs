@@ -492,6 +492,24 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
     }
 
     #[test]
+    fn preferred_rsa_hash_from_none_is_not_advertised() {
+        let hash = PreferredRsaHash::from(None);
+        assert!(matches!(hash, PreferredRsaHash::NotAdvertised));
+    }
+
+    #[test]
+    fn preferred_rsa_hash_from_some_none_is_legacy_ssh_rsa() {
+        let hash = PreferredRsaHash::from(Some(None));
+        assert!(matches!(hash, PreferredRsaHash::LegacySshRsa));
+    }
+
+    #[test]
+    fn preferred_rsa_hash_from_some_some_is_specific() {
+        let hash = PreferredRsaHash::from(Some(Some(HashAlg::Sha256)));
+        assert!(matches!(hash, PreferredRsaHash::Specific(HashAlg::Sha256)));
+    }
+
+    #[test]
     fn authentication_hash_attempts_uses_single_none_for_non_rsa() {
         assert_eq!(
             authentication_hash_attempts(false, PreferredRsaHash::NotAdvertised),
