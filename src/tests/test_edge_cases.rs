@@ -3029,7 +3029,7 @@ async fn test_job_finished_update_populates_cache() {
     let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
     msg.push_uint(job_id.try_into().unwrap());
     msg.push_string(JOB_COMPLETION_SOURCE);
-    msg.push_uint(90u32); // ERROR status — triggers the completion path regardless
+    msg.push_uint(90u32); // Deleted status — triggers the completion path regardless
     msg.push_string("Job completed with errors");
     let routed = Message::from_bytes(msg.into_data());
     cluster_obj.handle_message(routed).await;
@@ -3244,7 +3244,7 @@ async fn test_job_finished_update_timeout_keeps_existing_cache() {
     let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
     msg.push_uint(job_id.try_into().unwrap());
     msg.push_string(JOB_COMPLETION_SOURCE);
-    msg.push_uint(0u32); // SUCCESS status
+    msg.push_uint(0u32); // invalid status — value is irrelevant for the timeout path
     msg.push_string("Job completed");
     let routed = Message::from_bytes(msg.into_data());
     cluster_obj.handle_message(routed).await;
