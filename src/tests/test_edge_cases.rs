@@ -268,13 +268,6 @@ async fn test_upload_zero_byte_file_succeeds() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -402,13 +395,6 @@ async fn test_upload_truncated_body_returns_error() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -796,13 +782,6 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -911,13 +890,6 @@ async fn test_upload_queue_drain_timeout_returns_400() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1196,13 +1168,6 @@ async fn test_upload_missing_content_length_returns_400() {
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
     manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
@@ -1294,13 +1259,6 @@ async fn test_upload_oversized_content_length_returns_400() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -2069,13 +2027,6 @@ async fn test_upload_large_body_is_chunked() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -2705,13 +2656,6 @@ async fn test_continuous_file_uploads_sequential() {
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
     manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(cm.clone()));
     manager.expect_create_file_upload().returning(move |_, _| {
@@ -2856,13 +2800,6 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(mc.clone()));
@@ -3430,13 +3367,6 @@ async fn test_large_file_uploads() {
     manager
         .expect_dedicated_download_clusters()
         .returning(Vec::new);
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
