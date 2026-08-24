@@ -590,11 +590,11 @@ async fn test_http_server_constructor_populated_config() {
             .await
             .unwrap();
 
-        // Token should be accepted (may fail for other reasons, but not auth)
-        assert_ne!(
+        // Token should pass auth and reach the handler, which returns 400 for the unknown cluster
+        assert_eq!(
             resp.status(),
-            StatusCode::FORBIDDEN,
-            "Token signed with {secret_name} should be accepted"
+            StatusCode::BAD_REQUEST,
+            "Token signed with {secret_name} should pass auth (expected 400 Invalid cluster)"
         );
     }
 }
