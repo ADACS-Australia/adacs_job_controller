@@ -391,6 +391,70 @@ async fn test_handle_job_get_by_job_id_found() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_JOB_GET_BY_JOB_ID — cluster scoping
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_JOB_GET_BY_JOB_ID` returns only rows belonging to the calling cluster,
+/// even when the same `job_id` exists in another cluster.
+///
+/// # Setup
+/// In-memory DB with two rows sharing `job_id=77`: one for "ozstar" and one for "nci".
+///
+/// # Act
+/// Dispatch a `DB_JOB_GET_BY_JOB_ID` message with `db_request_id=401` and `job_id=77`
+/// from cluster "ozstar".
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=401`, count=1, and the single ozstar row
+/// (`cluster="ozstar"`), excluding the nci row.
+#[tokio::test]
+async fn test_handle_job_get_by_job_id_cluster_scoping() {
+    let db = make_db().await;
+    setup_cluster_db(&db).await;
+
+    let mut ozstar_id = 0;
+    for cluster in ["ozstar", "nci"] {
+        let inserted = cluster_job::ActiveModel {
+            job_id: Set(77),
+            scheduler_id: Set(0),
+            submitting: Set(false),
+            submitting_count: Set(0),
+            bundle_hash: Set("h1".to_string()),
+            working_directory: Set("/d1".to_string()),
+            running: Set(false),
+            deleting: Set(false),
+            deleted: Set(false),
+            cluster: Set(cluster.to_string()),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        if cluster == "ozstar" {
+            ozstar_id = inserted.id;
+        }
+    }
+
+    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let mut msg = dispatch_message(DB_JOB_GET_BY_JOB_ID, |m| {
+        m.push_uint(401);
+        m.push_ulong(77);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    let (req_id, mut body) = parse_response(captured[0].clone());
+    assert_eq!(req_id, 401);
+    let count = body.pop_uint();
+    assert_eq!(count, 1, "Only 1 row for 'ozstar' despite shared job_id=77");
+    let row = ClusterJob::from_message(&mut body);
+    assert_eq!(row.id, ozstar_id, "Returned row must be the ozstar row");
+    assert_eq!(row.job_id, 77);
+}
+
+// ---------------------------------------------------------------------------
 // DB_JOB_GET_RUNNING_JOBS — mixed running/non-running
 // ---------------------------------------------------------------------------
 
