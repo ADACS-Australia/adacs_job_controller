@@ -162,7 +162,7 @@ async fn test_http_concurrent_requests_stress() {
         }
     }
 
-    // Most should succeed (allowing for some race conditions in test setup)
+    // All requests should succeed
     assert_eq!(success_count, 100, "All requests should succeed");
 
     // Verify jobs were created
