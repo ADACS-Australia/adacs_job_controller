@@ -166,7 +166,7 @@ async fn test_handle_update_job_inserts_history() {
 ///
 /// # Setup
 /// An in-memory `SQLite` DB with the required tables is created. Three `UPDATE_JOB` messages
-/// are built for `job_id=7` with states 10 (queued), 40 (running), and 500 (complete).
+/// are built for `job_id=7` with states 10 (Pending), 40 (Queued), and 500 (Completed).
 ///
 /// # Act
 /// All three messages are dispatched via `cluster.handle_message`.
