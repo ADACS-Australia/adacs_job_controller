@@ -3,12 +3,9 @@
 
 pub mod repeated_download;
 
-use std::sync::Arc;
-
-use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
+use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
 use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
-use adacs_job_controller::protocol::types::ClusterRole;
 
 /// Create a test `ClusterConfig` with reasonable defaults.
 pub fn test_cluster_config(name: &str) -> ClusterConfig {
@@ -59,40 +56,6 @@ pub fn encode_test_jwt(claims: &serde_json::Value) -> String {
         &EncodingKey::from_secret(test_jwt_secrets()[0].secret.as_bytes()),
     )
     .expect("failed to encode test JWT")
-}
-
-/// Build a mock `ClusterManagerTrait` with a default `get_cluster_by_name` expectation
-/// that returns a mock cluster for `cluster_name`.
-pub fn mock_cluster_manager_with_online_cluster(
-    cluster_name: &str,
-) -> (MockClusterManagerTrait, Arc<MockClusterTrait>) {
-    let mut mock_cluster = MockClusterTrait::new();
-    let name = cluster_name.to_string();
-    mock_cluster.expect_name().returning(move || name.clone());
-    mock_cluster.expect_is_online().returning(|| true);
-    mock_cluster.expect_role().returning(|| ClusterRole::Master);
-    mock_cluster
-        .expect_role_string()
-        .returning(|| "master test".to_string());
-    mock_cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    mock_cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
-
-    let cluster_arc: Arc<MockClusterTrait> = Arc::new(mock_cluster);
-    let cluster_for_closure = Arc::clone(&cluster_arc);
-
-    let mut mock_manager = MockClusterManagerTrait::new();
-    mock_manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    mock_manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(cluster_for_closure.clone()));
-
-    (mock_manager, cluster_arc)
 }
 
 /// Build a mock `ClusterManagerTrait` that returns None for all cluster lookups.
