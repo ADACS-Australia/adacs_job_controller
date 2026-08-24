@@ -22,7 +22,7 @@ use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_job_history_at,
-    insert_test_job, make_test_state, make_test_state_with_secrets, setup_test_db,
+    insert_test_job, make_test_state, make_test_state_with_secrets, offline_cluster, setup_test_db,
     test_cluster_config, test_jwt_secrets_multi,
 };
 
@@ -51,17 +51,6 @@ fn online_cluster_capturing_messages(
     c
 }
 
-fn offline_cluster() -> MockClusterTrait {
-    let mut c = MockClusterTrait::new();
-    c.expect_name().returning(|| "ozstar".to_string());
-    c.expect_is_online().returning(|| false);
-    c.expect_role().returning(|| ClusterRole::Master);
-    c.expect_role_string().returning(|| "master".to_string());
-    c.expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    c
-}
-
 fn offline_cluster_capturing_messages(
     name: &str,
     sent: Arc<Mutex<Vec<Message>>>,
@@ -80,7 +69,6 @@ fn offline_cluster_capturing_messages(
     });
     c
 }
-
 /// Insert a job with an explicit ID (used to exercise the `u32::MAX` conversion guard).
 async fn insert_test_job_with_id(
     db: &sea_orm::DatabaseConnection,
