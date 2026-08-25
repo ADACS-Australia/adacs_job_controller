@@ -73,7 +73,7 @@ async fn test_duplicate_ltk_connection_rejected() {
         .cluster_manager
         .handle_new_connection(1, tx1, "test-ltk-secret")
         .await;
-    assert!(result1.is_some(), "First LTK connection should succeed");
+    assert_eq!(result1.as_ref().unwrap().name(), "ltk-test-cluster");
 
     let (tx2, _rx2) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     let result2 = state
