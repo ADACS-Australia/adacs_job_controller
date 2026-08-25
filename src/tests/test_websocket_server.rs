@@ -638,12 +638,17 @@ async fn test_ws_authorization_header_success() {
         .0
         .split();
 
-    // Should receive SERVER_READY
-    let msg = recv_binary(&mut stream).await;
-    assert!(
-        msg.is_some(),
-        "Should receive SERVER_READY with valid Bearer token"
+    // The server should send SERVER_READY after accepting the connection
+    let data = recv_binary(&mut stream)
+        .await
+        .expect("Expected SERVER_READY binary message");
+    let msg = Message::from_bytes(data);
+    assert_eq!(
+        msg.id(),
+        SERVER_READY,
+        "First message should be SERVER_READY"
     );
+    assert_eq!(msg.source(), SYSTEM_SOURCE);
 
     sink.close().await.unwrap();
 }
