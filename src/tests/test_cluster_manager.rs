@@ -554,8 +554,12 @@ async fn test_remove_connection() {
     assert!(mgr.get_cluster_by_connection(2).is_none());
 
     // Other clusters should still be online
-    assert!(mgr.get_cluster_by_connection(1).is_some());
-    assert!(mgr.get_cluster_by_connection(3).is_some());
+    let found = mgr.get_cluster_by_connection(1);
+    assert!(found.is_some());
+    assert_eq!(found.unwrap().name(), "cluster1");
+    let found = mgr.get_cluster_by_connection(3);
+    assert!(found.is_some());
+    assert_eq!(found.unwrap().name(), "cluster3");
 
     // Removing an invalid connection should not panic
     mgr.remove_connection(999, false).await;
