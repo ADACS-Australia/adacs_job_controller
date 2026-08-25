@@ -904,7 +904,7 @@ async fn test_remove_connection_file_download_cleanup() {
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(70, tx, "dl-cleanup").await;
-    assert!(result.is_some());
+    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Remove the connection
     mgr.remove_connection(70, true).await;
@@ -938,7 +938,7 @@ async fn test_remove_connection_file_upload_cleanup() {
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(80, tx, "ul-cleanup").await;
-    assert!(result.is_some());
+    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Remove the connection
     mgr.remove_connection(80, true).await;
