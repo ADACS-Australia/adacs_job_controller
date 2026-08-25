@@ -415,9 +415,10 @@ async fn test_handle_new_connection_valid_uuid() {
     // Connect with the last UUID
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(10, tx, &last_uuid).await;
-    assert!(
-        result.is_some(),
-        "handle_new_connection should return the cluster"
+    assert_eq!(
+        result.as_ref().unwrap().name(),
+        "cluster2",
+        "handle_new_connection should return the cluster that owns the UUID"
     );
 
     // All UUIDs should be deleted
