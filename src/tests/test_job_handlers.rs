@@ -21,8 +21,9 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
 
 use common::{
-    encode_test_jwt, insert_job_history, insert_job_history_at, insert_test_job, make_test_state,
-    setup_test_db, test_cluster_config,
+    encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_job_history_at,
+    insert_test_job, make_test_state, make_test_state_with_secrets, setup_test_db,
+    test_cluster_config, test_jwt_secrets_multi,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -836,6 +837,53 @@ async fn test_cancel_job_wrong_cluster_access_returns_400() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Tests that app3 (cluster access but an empty applications list) cannot cancel or
+/// delete an app1 job on a shared cluster.
+///
+/// # Setup
+/// Inserts an app1 job on "ozstar" (a cluster app3 also has access to). Uses the
+/// multi-secret configuration where secret[2] (app3) has no cross-app applications.
+///
+/// # Act
+/// Sends PATCH and DELETE /job/apiv1/job/ with app3's token and the app1 job ID.
+///
+/// # Assert
+/// Verifies 400 Bad Request for both operations — the job is invisible to app3.
+#[tokio::test]
+async fn test_cancel_delete_app3_cannot_access_app1_job_on_shared_cluster() {
+    let secrets = test_jwt_secrets_multi();
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "app1").await;
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+
+    let app = create_router(make_test_state_with_secrets(
+        db,
+        manager_no_clusters(),
+        secrets.clone(),
+    ));
+    let token = encode_jwt_for_secret(&secrets[2], &serde_json::json!({"userId": 10}));
+
+    for method in ["PATCH", "DELETE"] {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri("/job/apiv1/job/")
+                    .header("content-type", "application/json")
+                    .header("authorization", &token)
+                    .body(Body::from(
+                        serde_json::json!({ "jobId": job_id }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "method: {method}");
+    }
 }
 
 // ---------------------------------------------------------------------------
