@@ -59,7 +59,7 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 
 use common::{
     connect_ws, encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages,
-    recv_binary, setup_test_db, test_cluster_config,
+    recv_binary, setup_test_db, test_cluster_config, ws_router,
 };
 
 use sea_orm::{
@@ -69,16 +69,6 @@ use sea_orm::{
 // ===========================================================================
 // Helpers
 // ===========================================================================
-
-/// Build the WebSocket-only router for WS integration tests.
-fn ws_router(state: adacs_job_controller::app::AppState) -> axum::Router {
-    axum::Router::new()
-        .route(
-            "/job/ws/",
-            axum::routing::get(adacs_job_controller::websocket::server::ws_handler),
-        )
-        .with_state(state)
-}
 
 /// Start an axum server on a random OS-assigned port and return the port.
 async fn start_test_server(router: axum::Router) -> u16 {

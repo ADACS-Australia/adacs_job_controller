@@ -11,6 +11,16 @@ use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::protocol::types::ClusterRole;
 
+/// Build the WebSocket-only router for WS integration tests.
+pub fn ws_router(state: adacs_job_controller::app::AppState) -> axum::Router {
+    axum::Router::new()
+        .route(
+            "/job/ws/",
+            axum::routing::get(adacs_job_controller::websocket::server::ws_handler),
+        )
+        .with_state(state)
+}
+
 /// Create a test `ClusterConfig` with reasonable defaults.
 pub fn test_cluster_config(name: &str) -> ClusterConfig {
     ClusterConfig {
