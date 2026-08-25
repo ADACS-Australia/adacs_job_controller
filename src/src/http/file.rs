@@ -988,22 +988,7 @@ pub async fn list_files(
 
     // Cache if job is complete and this was a root recursive listing
     if job_complete && body.path.is_empty() && body.recursive {
-        let _ = file_list_cache::Entity::delete_many()
-            .filter(file_list_cache::Column::JobId.eq(job_id.cast_signed()))
-            .exec(&state.db)
-            .await;
-        for file in &files {
-            let _ = file_list_cache::ActiveModel {
-                job_id: Set(job_id.cast_signed()),
-                path: Set(file.file_name.clone()),
-                is_dir: Set(file.is_directory),
-                file_size: Set(file.file_size.cast_signed()),
-                permissions: Set(file.permissions.cast_signed()),
-                ..Default::default()
-            }
-            .insert(&state.db)
-            .await;
-        }
+        cache_file_list(&state, job_id, &files).await;
     } else if job_complete {
         // Background: cache the full root recursive listing for this job
         let state_clone = state.clone();
@@ -1017,6 +1002,28 @@ pub async fn list_files(
     state.file_list_map.remove(&uuid);
 
     Ok(Json(serde_json::json!({ "files": filtered })))
+}
+
+/// Replace the cached file list for a job with the given entries.
+///
+/// Deletes any existing rows for `job_id`, then inserts one row per file.
+async fn cache_file_list(state: &AppState, job_id: u64, files: &[FileInfo]) {
+    let _ = file_list_cache::Entity::delete_many()
+        .filter(file_list_cache::Column::JobId.eq(job_id.cast_signed()))
+        .exec(&state.db)
+        .await;
+    for file in files {
+        let _ = file_list_cache::ActiveModel {
+            job_id: Set(job_id.cast_signed()),
+            path: Set(file.file_name.clone()),
+            is_dir: Set(file.is_directory),
+            file_size: Set(file.file_size.cast_signed()),
+            permissions: Set(file.permissions.cast_signed()),
+            ..Default::default()
+        }
+        .insert(&state.db)
+        .await;
+    }
 }
 
 /// Spawn a background file-list request to populate the cache for a completed job.
@@ -1072,22 +1079,7 @@ pub async fn spawn_background_cache(
     drop(locked);
 
     if let Some(files) = files {
-        let _ = file_list_cache::Entity::delete_many()
-            .filter(file_list_cache::Column::JobId.eq(job_id.cast_signed()))
-            .exec(&state.db)
-            .await;
-        for file in &files {
-            let _ = file_list_cache::ActiveModel {
-                job_id: Set(job_id.cast_signed()),
-                path: Set(file.file_name.clone()),
-                is_dir: Set(file.is_directory),
-                file_size: Set(file.file_size.cast_signed()),
-                permissions: Set(file.permissions.cast_signed()),
-                ..Default::default()
-            }
-            .insert(&state.db)
-            .await;
-        }
+        cache_file_list(&state, job_id, &files).await;
     }
 
     state.file_list_map.remove(&uuid);
