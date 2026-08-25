@@ -468,7 +468,7 @@ async fn test_handle_new_connection_already_connected_rejected() {
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(1, tx, "uuid-first").await;
-    assert!(result.is_some());
+    assert_eq!(result.as_ref().unwrap().name(), "cluster2");
 
     // cluster2 is now online
     let cluster2 = mgr.get_cluster_by_name("cluster2").unwrap();
