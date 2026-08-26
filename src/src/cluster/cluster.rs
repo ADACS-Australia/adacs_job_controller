@@ -576,13 +576,21 @@ impl Cluster {
                 })
                 .await;
 
-                let locked = fl_state.lock().await;
-                if !locked.error && locked.data_ready {
+                let files = {
+                    let locked = fl_state.lock().await;
+                    if !locked.error && locked.data_ready {
+                        Some(locked.files.clone())
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(files) = files {
                     let _ = file_list_cache::Entity::delete_many()
                         .filter(file_list_cache::Column::JobId.eq(i64::from(job_id)))
                         .exec(&db)
                         .await;
-                    for file in &locked.files {
+                    for file in &files {
                         let _ = file_list_cache::ActiveModel {
                             job_id: Set(i64::from(job_id)),
                             path: Set(file.file_name.clone()),
