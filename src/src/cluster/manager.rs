@@ -782,6 +782,15 @@ impl ClusterManagerTrait for ClusterManager {
             tracing::trace!("ClusterManager: Token matches file upload session");
             let (_, cluster) = entry.value();
             let cluster = Arc::clone(cluster);
+            // Reject a duplicate connection while the upload cluster is online
+            // (mirrors the LTK branch's is_online guard).
+            if cluster.is_online() {
+                tracing::warn!(
+                    "Security: Duplicate file upload connection attempt for token (conn_id={})",
+                    conn_id
+                );
+                return None;
+            }
             cluster.set_connection(Some(ws_sender)).await;
             self.connection_map.insert(conn_id, cluster.clone());
             tracing::debug!(
