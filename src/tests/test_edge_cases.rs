@@ -1465,6 +1465,7 @@ async fn test_ws_truncated_binary_message_no_crash() {
         .returning(|_, _| Box::pin(async {}));
     m.expect_report_websocket_error().returning(|_, _| ());
     m.expect_handle_pong().returning(|_| ());
+    m.expect_get_file_download_admission().returning(|_| None);
 
     let state = make_test_state(db, m);
     let port = start_test_server(ws_router(state)).await;
