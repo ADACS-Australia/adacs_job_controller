@@ -243,17 +243,37 @@ mod tests {
     #[test]
     fn test_job_status_as_str() {
         assert_eq!(JobStatus::Pending.as_str(), "Pending");
+        assert_eq!(JobStatus::Submitting.as_str(), "Submitting");
+        assert_eq!(JobStatus::Submitted.as_str(), "Submitted");
+        assert_eq!(JobStatus::Queued.as_str(), "Queued");
+        assert_eq!(JobStatus::Running.as_str(), "Running");
+        assert_eq!(JobStatus::Cancelling.as_str(), "Cancelling");
+        assert_eq!(JobStatus::Cancelled.as_str(), "Cancelled");
+        assert_eq!(JobStatus::Deleting.as_str(), "Deleting");
+        assert_eq!(JobStatus::Deleted.as_str(), "Deleted");
+        assert_eq!(JobStatus::Error.as_str(), "Error");
         assert_eq!(JobStatus::WallTimeExceeded.as_str(), "Wall Time Exceeded");
+        assert_eq!(JobStatus::OutOfMemory.as_str(), "Out of Memory");
         assert_eq!(JobStatus::Completed.as_str(), "Completed");
     }
 
     #[test]
     fn test_job_status_display() {
         assert_eq!(JobStatus::Pending.to_string(), "Pending");
+        assert_eq!(JobStatus::Submitting.to_string(), "Submitting");
+        assert_eq!(JobStatus::Submitted.to_string(), "Submitted");
+        assert_eq!(JobStatus::Queued.to_string(), "Queued");
+        assert_eq!(JobStatus::Running.to_string(), "Running");
+        assert_eq!(JobStatus::Cancelling.to_string(), "Cancelling");
+        assert_eq!(JobStatus::Cancelled.to_string(), "Cancelled");
+        assert_eq!(JobStatus::Deleting.to_string(), "Deleting");
+        assert_eq!(JobStatus::Deleted.to_string(), "Deleted");
+        assert_eq!(JobStatus::Error.to_string(), "Error");
         assert_eq!(
             JobStatus::WallTimeExceeded.to_string(),
             "Wall Time Exceeded"
         );
+        assert_eq!(JobStatus::OutOfMemory.to_string(), "Out of Memory");
         assert_eq!(JobStatus::Completed.to_string(), "Completed");
     }
 
