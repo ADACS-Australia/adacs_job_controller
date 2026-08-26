@@ -811,11 +811,11 @@ async fn test_handle_new_connection_file_download() {
     // Connect using the file download token
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(50, tx, "dl-token-1").await;
-    assert!(result.is_some());
+    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Should be trackable by connection
     let found = mgr.get_cluster_by_connection(50);
-    assert!(found.is_some());
+    assert_eq!(found.as_ref().unwrap().name(), "cluster1");
 }
 
 /// Verifies that `handle_new_connection` rejects a second WebSocket connection to an already-bound file download session.
@@ -875,11 +875,11 @@ async fn test_handle_new_connection_file_upload() {
     // Connect using the file upload token
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(60, tx, "ul-token-1").await;
-    assert!(result.is_some());
+    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Should be trackable by connection
     let found = mgr.get_cluster_by_connection(60);
-    assert!(found.is_some());
+    assert_eq!(found.as_ref().unwrap().name(), "cluster1");
 }
 
 /// Verifies that a duplicate file upload connection for an already-online upload session is rejected.
