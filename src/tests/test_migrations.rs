@@ -38,9 +38,9 @@ async fn test_all_migrations_up() {
         let count: i64 = result
             .and_then(|r| r.try_get::<i64>("", "COUNT(*)").ok())
             .unwrap_or(0);
-        assert!(
-            count > 0,
-            "Table '{table_name}' should exist after migration",
+        assert_eq!(
+            count, 1,
+            "Table '{table_name}' should exist exactly once after migration",
         );
     }
 }
