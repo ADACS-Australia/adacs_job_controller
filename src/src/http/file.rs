@@ -121,6 +121,11 @@ pub async fn create_file_download(
         return Err((StatusCode::BAD_REQUEST, "No path provided".to_string()));
     };
 
+    let file_paths: Vec<String> = file_paths
+        .into_iter()
+        .filter(|p| !p.trim().is_empty())
+        .collect();
+
     if file_paths.is_empty() {
         tracing::debug!("HTTP: Empty file paths list - returning empty response");
         return Ok(Json(serde_json::json!({ "fileIds": [] })));

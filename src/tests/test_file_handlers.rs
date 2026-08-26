@@ -239,6 +239,101 @@ async fn test_create_file_download_no_path_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Tests that POST /file/ rejects empty or whitespace-only paths instead of
+/// creating useless file-download records with an empty path.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with `{"jobId": ..., "path": ""}` and with
+/// `{"jobId": ..., "paths": ["", "   ", "/valid.txt"]}`.
+///
+/// # Assert
+/// Verifies 200 OK with an empty `fileIds` array for the all-empty request, and
+/// that only the non-empty path yields a download record (no empty-path rows).
+#[tokio::test]
+async fn test_create_file_download_rejects_empty_paths() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    let app = create_router(make_test_state(db.clone(), manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    // Single empty path — must not create a record.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header("content-type", "application/json")
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({ "jobId": job_id, "path": "" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        body["fileIds"]
+            .as_array()
+            .expect("fileIds should be array")
+            .is_empty(),
+        "empty path must not create a download record"
+    );
+
+    // Mixed list — empty/whitespace entries are filtered out, valid path kept.
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header("content-type", "application/json")
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "paths": ["", "   ", "/valid.txt"]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let file_ids = body["fileIds"].as_array().expect("fileIds should be array");
+    assert_eq!(file_ids.len(), 1, "only the non-empty path should be kept");
+
+    let records = file_download::Entity::find().all(&db).await.unwrap();
+    assert_eq!(records.len(), 1, "no empty-path records should exist");
+    assert_eq!(records[0].path, "/valid.txt");
+}
+
 // ---------------------------------------------------------------------------
 // GET /job/apiv1/file/ — stream file download (WS→HTTP data flow)
 // ---------------------------------------------------------------------------
