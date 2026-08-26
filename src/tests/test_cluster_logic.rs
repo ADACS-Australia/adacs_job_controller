@@ -9,7 +9,7 @@ mod common;
 
 use std::sync::Arc;
 
-use common::test_cluster_config;
+use common::{setup_test_db, test_cluster_config};
 
 use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::traits::ClusterTrait;
@@ -21,21 +21,11 @@ use adacs_job_controller::protocol::types::Priority;
 use dashmap::DashMap;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
-use sea_orm::{
-    ColumnTrait, Database, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async fn make_db() -> DatabaseConnection {
-    let db = Database::connect("sqlite::memory:")
-        .await
-        .expect("sqlite in-memory connection failed");
-    adacs_job_controller::db::schema::create_test_schema(&db).await;
-    db
-}
 
 /// Old-style timestamp (far in the past) for triggering re-submission logic.
 fn old_timestamp() -> sea_orm::prelude::DateTime {
@@ -125,7 +115,7 @@ fn make_update_job_message(job_id: u32, what: &str, status: u32, details: &str) 
 /// and `details="submitted to scheduler"`.
 #[tokio::test]
 async fn test_handle_update_job_inserts_history() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     let ctx = make_app_context(db.clone());
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
@@ -162,7 +152,7 @@ async fn test_handle_update_job_inserts_history() {
 /// `JobserverJobhistory` contains exactly 3 rows for `jobId=7`.
 #[tokio::test]
 async fn test_handle_update_job_multiple_updates() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     let ctx = make_app_context(db.clone());
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
@@ -219,7 +209,7 @@ async fn test_handle_update_job_no_app_context_does_not_panic() {
 /// At least one `SUBMIT_JOB` message is present in the drained output.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_resends_old_pending() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     // Insert a job on "ozstar"
     insert_job(&db, 1, "ozstar", "mybundle", "myapp", "{}").await;
@@ -286,7 +276,7 @@ async fn test_check_unsubmitted_jobs_resends_old_pending() {
 /// No `SUBMIT_JOB` messages appear in the output.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_ignores_recent_state() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 2, "ozstar", "mybundle", "myapp", "{}").await;
 
@@ -338,7 +328,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
 /// No `SUBMIT_JOB` messages appear in the output.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_ignores_recent_terminal_state() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 5, "ozstar", "mybundle", "myapp", "{}").await;
 
@@ -391,7 +381,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_terminal_state() {
 /// The call completes without panicking.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_skips_offline_cluster() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 3, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 3, old_timestamp(), "sub", 10).await;
@@ -422,7 +412,7 @@ async fn test_check_unsubmitted_jobs_skips_offline_cluster() {
 /// At least one `CANCEL_JOB` message is present in the output.
 #[tokio::test]
 async fn test_check_cancelling_jobs_resends_old_cancelling() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 10, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 10, old_timestamp(), "cancel", 60).await;
@@ -468,7 +458,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
 /// No `CANCEL_JOB` messages appear in the output.
 #[tokio::test]
 async fn test_check_cancelling_jobs_ignores_recent() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 11, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 11, now_timestamp(), "cancel", 60).await;
@@ -514,7 +504,7 @@ async fn test_check_cancelling_jobs_ignores_recent() {
 /// At least one `CANCEL_JOB` message is present in the output.
 #[tokio::test]
 async fn test_check_cancelling_jobs_resends_with_pending_history() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 12, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 12, old_timestamp(), "created", 10).await;
@@ -568,7 +558,7 @@ async fn test_check_cancelling_jobs_resends_with_pending_history() {
 /// At least one `DELETE_JOB` message is present in the output.
 #[tokio::test]
 async fn test_check_deleting_jobs_resends_old_deleting() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 20, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 20, old_timestamp(), "delete", 80).await;
@@ -614,7 +604,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
 /// No `DELETE_JOB` messages appear in the output.
 #[tokio::test]
 async fn test_check_deleting_jobs_ignores_recent() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 21, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 21, now_timestamp(), "delete", 80).await;
@@ -664,7 +654,7 @@ async fn test_check_deleting_jobs_ignores_recent() {
 /// No `SUBMIT_JOB` messages appear in the output.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_only_for_own_cluster() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     // Job belongs to "nci", cluster is "ozstar" — should NOT resend
     insert_job(&db, 30, "nci", "b", "app", "{}").await;
@@ -736,7 +726,7 @@ const UNSUBMITTED_NOOP_STATES: &[i32] = &[
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_noop_for_non_matching_statuses() {
     for &state_val in UNSUBMITTED_NOOP_STATES {
-        let db = make_db().await;
+        let db = setup_test_db().await;
 
         insert_job(&db, 100, "ozstar", "b", "app", "{}").await;
         insert_history(&db, 100, old_timestamp(), "test", state_val).await;
@@ -804,7 +794,7 @@ const CANCELLING_NOOP_STATES: &[i32] = &[
 #[tokio::test]
 async fn test_check_cancelling_jobs_noop_for_non_matching_statuses() {
     for &state_val in CANCELLING_NOOP_STATES {
-        let db = make_db().await;
+        let db = setup_test_db().await;
 
         insert_job(&db, 200, "ozstar", "b", "app", "{}").await;
         insert_history(&db, 200, old_timestamp(), "test", state_val).await;
@@ -872,7 +862,7 @@ const DELETING_NOOP_STATES: &[i32] = &[
 #[tokio::test]
 async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
     for &state_val in DELETING_NOOP_STATES {
-        let db = make_db().await;
+        let db = setup_test_db().await;
 
         insert_job(&db, 300, "ozstar", "b", "app", "{}").await;
         insert_history(&db, 300, old_timestamp(), "test", state_val).await;
@@ -927,7 +917,7 @@ async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
 /// At least one `SUBMIT_JOB` message is present in the output.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_resends_old_submitting() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     insert_job(&db, 400, "ozstar", "mybundle", "myapp", r#"{"key":"val"}"#).await;
 
@@ -986,7 +976,7 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
 /// candidates instead of stopping at a single latest-history lookup.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_resends_all_stale_jobs_in_batch() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     for job_id in 1..=3 {
         insert_job(
@@ -1042,7 +1032,7 @@ async fn test_check_unsubmitted_jobs_resends_all_stale_jobs_in_batch() {
 /// No `SUBMIT_JOB` message is emitted for the out-of-range job.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_skips_job_id_exceeding_u32_range() {
-    let db = make_db().await;
+    let db = setup_test_db().await;
 
     let oversized_id = i64::from(u32::MAX) + 1;
     insert_job(&db, oversized_id, "ozstar", "mybundle", "myapp", "{}").await;
