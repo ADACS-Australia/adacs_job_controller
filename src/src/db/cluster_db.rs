@@ -15,7 +15,10 @@ use crate::db::entities::{bundle_job, cluster_job, cluster_job_status};
 use crate::db::models::{BundleJob, ClusterJob, ClusterJobStatus};
 #[cfg(test)]
 use crate::protocol::constants::{
-    CANCEL_JOB, DELETE_JOB, FILE_CHUNK, FILE_DETAILS, FILE_ERROR, SUBMIT_JOB, UPDATE_JOB,
+    CANCEL_JOB, DELETE_JOB, DOWNLOAD_FILE, FILE_CHUNK, FILE_DETAILS, FILE_ERROR, FILE_LIST,
+    FILE_LIST_ERROR, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, FILE_UPLOAD_ERROR,
+    PAUSE_FILE_CHUNK_STREAM, RESUME_FILE_CHUNK_STREAM, SERVER_READY, SUBMIT_JOB, UPDATE_JOB,
+    UPLOAD_FILE,
 };
 use crate::protocol::constants::{
     DB_BUNDLE_CREATE_OR_UPDATE_JOB, DB_BUNDLE_DELETE_JOB, DB_BUNDLE_GET_JOB_BY_ID, DB_JOB_DELETE,
@@ -660,13 +663,23 @@ mod tests {
         // This test doesn't need async since we test the ID matching
         // We verify that non-DB message IDs return false
         let non_db_ids = vec![
+            SERVER_READY,
             SUBMIT_JOB,
             UPDATE_JOB,
             CANCEL_JOB,
             DELETE_JOB,
-            FILE_CHUNK,
+            DOWNLOAD_FILE,
             FILE_DETAILS,
             FILE_ERROR,
+            FILE_CHUNK,
+            PAUSE_FILE_CHUNK_STREAM,
+            RESUME_FILE_CHUNK_STREAM,
+            FILE_LIST,
+            FILE_LIST_ERROR,
+            UPLOAD_FILE,
+            FILE_UPLOAD_CHUNK,
+            FILE_UPLOAD_ERROR,
+            FILE_UPLOAD_COMPLETE,
         ];
         for id in non_db_ids {
             // Just check the match arm — not DB_* so should return false
