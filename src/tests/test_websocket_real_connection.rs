@@ -486,26 +486,22 @@ async fn test_websocket_connection_rejected_invalid_token() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Download Resume After Interruption
+// Test: File Download Record Persistence
 // ---------------------------------------------------------------------------
 
-/// Tests that file download can resume after interruption.
-///
-/// This matches C++ test: `test_download_resume_after_interruption`
+/// Tests that a `file_download` record is persisted and can be read back.
 ///
 /// # Setup
-/// - Creates file download record in database
-/// - Sets download state to "`in_progress`" with partial bytes
+/// - Creates a `file_download` record in the database
 ///
 /// # Act
-/// - Simulates download restart
-/// - Checks if download resumes from correct offset
+/// - Queries the record back by its UUID
 ///
 /// # Assert
-/// - Download resumes from last known position
-/// - No duplicate data written
+/// - The record exists with a positive id
+/// - The record has the expected UUID
 #[tokio::test]
-async fn test_download_resume_after_interruption() {
+async fn test_file_download_record_persistence() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
@@ -536,8 +532,7 @@ async fn test_download_resume_after_interruption() {
 
     assert!(record.id > 0, "download record should have a positive id");
 
-    // Simulate resume: we can't actually resume without the file_download table having bytes_received
-    // This test demonstrates the database operations work correctly
+    // Re-query the record to confirm it is still readable after insertion
     let updated = file_download::Entity::find()
         .filter(file_download::Column::Uuid.eq(&uuid))
         .one(&db)
