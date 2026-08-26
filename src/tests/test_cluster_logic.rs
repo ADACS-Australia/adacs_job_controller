@@ -596,7 +596,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
         .filter(|data| Message::from_bytes((*data).clone()).id() == DELETE_JOB)
         .collect();
 
-    assert!(!delete_msgs.is_empty(), "Expected at least one DELETE_JOB");
+    assert_eq!(delete_msgs.len(), 1, "Expected exactly one DELETE_JOB");
     cluster.stop();
 }
 
