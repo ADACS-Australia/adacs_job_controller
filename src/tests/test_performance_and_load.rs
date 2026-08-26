@@ -308,5 +308,5 @@ async fn test_job_creation_atomicity() {
         .unwrap();
 
     // Should have PENDING and SUBMITTING history
-    assert!(!histories.is_empty());
+    assert_eq!(histories.len(), 2);
 }
