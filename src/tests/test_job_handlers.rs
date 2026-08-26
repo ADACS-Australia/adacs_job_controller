@@ -32,33 +32,15 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 // Helper: build a mock cluster that captures sent messages
 // ---------------------------------------------------------------------------
 
-fn online_cluster_capturing_messages(
+fn cluster_capturing_messages(
     name: &str,
     sent: Arc<Mutex<Vec<Message>>>,
+    online: bool,
 ) -> MockClusterTrait {
     let mut c = MockClusterTrait::new();
     let n = name.to_string();
     c.expect_name().returning(move || n.clone());
-    c.expect_is_online().returning(|| true);
-    c.expect_role().returning(|| ClusterRole::Master);
-    c.expect_role_string().returning(|| "master".to_string());
-    c.expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    c.expect_send_message().returning(move |msg| {
-        sent.lock().unwrap().push(msg);
-        Box::pin(async {})
-    });
-    c
-}
-
-fn offline_cluster_capturing_messages(
-    name: &str,
-    sent: Arc<Mutex<Vec<Message>>>,
-) -> MockClusterTrait {
-    let mut c = MockClusterTrait::new();
-    let n = name.to_string();
-    c.expect_name().returning(move || n.clone());
-    c.expect_is_online().returning(|| false);
+    c.expect_is_online().returning(move || online);
     c.expect_role().returning(|| ClusterRole::Master);
     c.expect_role_string().returning(|| "master".to_string());
     c.expect_cluster_details()
@@ -111,9 +93,10 @@ async fn insert_test_job_with_id(
 async fn test_create_job_cluster_online_inserts_and_submits() {
     let db = setup_test_db().await;
     let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(online_cluster_capturing_messages(
+    let cluster = Arc::new(cluster_capturing_messages(
         "ozstar",
         Arc::clone(&sent),
+        true,
     ));
 
     let mut manager = MockClusterManagerTrait::new();
@@ -387,9 +370,10 @@ async fn test_create_job_job_id_exceeding_u32_returns_400() {
     insert_test_job_with_id(&db, i64::from(u32::MAX), "ozstar", "b", "testapp").await;
 
     let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(online_cluster_capturing_messages(
+    let cluster = Arc::new(cluster_capturing_messages(
         "ozstar",
         Arc::clone(&sent),
+        true,
     ));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
@@ -462,9 +446,10 @@ async fn run_cancel(
 
 fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
     let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(online_cluster_capturing_messages(
+    let cluster = Arc::new(cluster_capturing_messages(
         "ozstar",
         Arc::clone(&sent),
+        true,
     ));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
@@ -476,9 +461,10 @@ fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Mess
 
 fn manager_with_offline_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
     let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(offline_cluster_capturing_messages(
+    let cluster = Arc::new(cluster_capturing_messages(
         "ozstar",
         Arc::clone(&sent),
+        false,
     ));
     let mut manager = MockClusterManagerTrait::new();
     manager
@@ -2077,9 +2063,10 @@ async fn test_get_jobs_start_time_gt_only_uses_system_source_entries() {
 async fn test_create_job_works_without_content_type_header() {
     let db = setup_test_db().await;
     let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(online_cluster_capturing_messages(
+    let cluster = Arc::new(cluster_capturing_messages(
         "ozstar",
         Arc::clone(&sent),
+        true,
     ));
 
     let mut manager = MockClusterManagerTrait::new();
