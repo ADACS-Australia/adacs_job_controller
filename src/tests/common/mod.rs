@@ -51,6 +51,18 @@ pub fn online_cluster_no_messages() -> MockClusterTrait {
     c
 }
 
+/// Build a mock offline cluster.
+pub fn offline_cluster() -> MockClusterTrait {
+    let mut c = MockClusterTrait::new();
+    c.expect_name().returning(|| "ozstar".to_string());
+    c.expect_is_online().returning(|| false);
+    c.expect_role().returning(|| ClusterRole::Master);
+    c.expect_role_string().returning(|| "master".to_string());
+    c.expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
+    c
+}
+
 /// Create test JWT secrets for HTTP handler tests.
 pub fn test_jwt_secrets() -> Vec<AccessSecret> {
     vec![AccessSecret {
