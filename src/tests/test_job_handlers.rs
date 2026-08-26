@@ -164,7 +164,7 @@ async fn test_create_job_cluster_online_inserts_and_submits() {
     .unwrap();
 
     let job_id = body["jobId"].as_i64().expect("jobId should be present");
-    assert!(job_id > 0);
+    assert_eq!(job_id, 1);
 
     // Verify DB: job exists
     let j = job::Entity::find_by_id(job_id)
