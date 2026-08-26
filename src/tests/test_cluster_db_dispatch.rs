@@ -408,6 +408,7 @@ fn test_unhandled_message_ids_are_not_db_operations() {
         FILE_UPLOAD_CHUNK,
         FILE_UPLOAD_ERROR,
         FILE_UPLOAD_COMPLETE,
+        DB_RESPONSE,
         0,
         9999,
     ];
