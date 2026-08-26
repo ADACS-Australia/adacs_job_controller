@@ -3,9 +3,10 @@
 
 pub mod repeated_download;
 
-use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
+use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
+use adacs_job_controller::protocol::types::ClusterRole;
 
 /// Create a test `ClusterConfig` with reasonable defaults.
 pub fn test_cluster_config(name: &str) -> ClusterConfig {
@@ -47,6 +48,18 @@ pub fn online_cluster_no_messages() -> MockClusterTrait {
     c.expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
     c.expect_send_message().returning(|_| Box::pin(async {}));
+    c
+}
+
+/// Build a mock offline cluster.
+pub fn offline_cluster() -> MockClusterTrait {
+    let mut c = MockClusterTrait::new();
+    c.expect_name().returning(|| "ozstar".to_string());
+    c.expect_is_online().returning(|| false);
+    c.expect_role().returning(|| ClusterRole::Master);
+    c.expect_role_string().returning(|| "master".to_string());
+    c.expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
     c
 }
 

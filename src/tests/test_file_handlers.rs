@@ -24,8 +24,8 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_test_job, make_test_state,
-    make_test_state_with_secrets, online_cluster_no_messages, setup_test_db, test_cluster_config,
-    test_jwt_secrets, test_jwt_secrets_multi,
+    make_test_state_with_secrets, offline_cluster, online_cluster_no_messages, setup_test_db,
+    test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
@@ -35,17 +35,6 @@ use std::sync::atomic::Ordering;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn offline_cluster() -> MockClusterTrait {
-    let mut c = MockClusterTrait::new();
-    c.expect_name().returning(|| "ozstar".to_string());
-    c.expect_is_online().returning(|| false);
-    c.expect_role().returning(|| ClusterRole::Master);
-    c.expect_role_string().returning(|| "master".to_string());
-    c.expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    c
-}
 
 // ---------------------------------------------------------------------------
 // POST /job/apiv1/file/ — create file download records
