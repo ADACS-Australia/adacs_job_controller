@@ -1033,6 +1033,7 @@ async fn test_rapid_ws_connect_disconnect_stress() {
 
     // Build a manager that accepts many connections
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
     m.expect_is_application_shutting_down().returning(|| false);
     m.expect_handle_new_connection().returning(|_, ws_tx, _| {
         // Build a minimal cluster for each connection
@@ -3055,7 +3056,6 @@ async fn test_job_finished_update_populates_cache() {
     http_manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    http_manager
     http_manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(mc.clone()));
