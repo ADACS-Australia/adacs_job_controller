@@ -530,8 +530,8 @@ impl Cluster {
 
     /// Cache the file list for a completed job in the background.
     async fn cache_file_list_on_completion(&self, ctx: &AppContext, job_id: u32) {
-        use crate::db::entities::{file_list_cache, job};
-        use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+        use crate::db::entities::job;
+        use sea_orm::EntityTrait;
 
         let model = job::Entity::find_by_id(i64::from(job_id))
             .one(&ctx.db)
@@ -573,22 +573,8 @@ impl Cluster {
                 };
 
                 if let Some(files) = files {
-                    let _ = file_list_cache::Entity::delete_many()
-                        .filter(file_list_cache::Column::JobId.eq(i64::from(job_id)))
-                        .exec(&db)
+                    crate::db::file_list_cache::replace_file_list(&db, i64::from(job_id), &files)
                         .await;
-                    for file in &files {
-                        let _ = file_list_cache::ActiveModel {
-                            job_id: Set(i64::from(job_id)),
-                            path: Set(file.file_name.clone()),
-                            is_dir: Set(file.is_directory),
-                            file_size: Set(file.file_size.cast_signed()),
-                            permissions: Set(file.permissions.cast_signed()),
-                            ..Default::default()
-                        }
-                        .insert(&db)
-                        .await;
-                    }
                 }
                 file_list_map.remove(&uuid_bg);
             });
