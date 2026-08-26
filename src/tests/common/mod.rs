@@ -3,9 +3,10 @@
 
 pub mod repeated_download;
 
-use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
+use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
+use adacs_job_controller::protocol::types::ClusterRole;
 
 /// Create a test `ClusterConfig` with reasonable defaults.
 pub fn test_cluster_config(name: &str) -> ClusterConfig {
