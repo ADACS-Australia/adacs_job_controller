@@ -6,6 +6,8 @@
 
 mod common;
 
+use common::make_db;
+
 use std::sync::{Arc, Mutex};
 
 use adacs_job_controller::cluster::traits::MockClusterTrait;
@@ -17,19 +19,13 @@ use adacs_job_controller::protocol::types::Priority;
 
 use adacs_job_controller::db::entities::{bundle_job, cluster_job, cluster_job_status};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, Database, DatabaseConnection,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Schema,
 };
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async fn make_db() -> DatabaseConnection {
-    Database::connect("sqlite::memory:")
-        .await
-        .expect("sqlite in-memory connection failed")
-}
 
 async fn setup_cluster_db(db: &DatabaseConnection) {
     let builder = DbBackend::Sqlite;

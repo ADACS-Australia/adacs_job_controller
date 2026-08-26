@@ -5,6 +5,8 @@
 
 mod common;
 
+use common::make_db;
+
 use std::sync::Arc;
 
 use adacs_job_controller::cluster::manager::ClusterManager;
@@ -15,7 +17,7 @@ use adacs_job_controller::config::settings::*;
 use adacs_job_controller::db::entities::cluster_uuid;
 use dashmap::DashMap;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend,
     EntityTrait, PaginatorTrait, QueryOrder, Schema,
 };
 
@@ -26,12 +28,6 @@ static LTK_TIMEOUT_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async fn make_db() -> DatabaseConnection {
-    Database::connect("sqlite::memory:")
-        .await
-        .expect("sqlite in-memory connection failed")
-}
 
 async fn setup_cluster_uuid_table(db: &DatabaseConnection) {
     let builder = DbBackend::Sqlite;
