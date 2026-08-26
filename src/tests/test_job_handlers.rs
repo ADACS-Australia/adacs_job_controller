@@ -2001,7 +2001,7 @@ async fn test_create_job_works_without_content_type_header() {
     .unwrap();
 
     let job_id = body["jobId"].as_i64().expect("jobId should be present");
-    assert!(job_id > 0);
+    assert_eq!(job_id, 1);
 }
 
 /// Tests that PATCH /job/ (cancel) succeeds without Content-Type header.
