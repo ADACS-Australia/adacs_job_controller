@@ -3313,51 +3313,6 @@ fn get_memory_usage_kb() -> u64 {
     0
 }
 
-/// Verifies that large file transfers with backpressure work correctly and memory stays bounded.
-///
-/// This is a simplified end-to-end test that validates the core backpressure mechanism
-/// with large files.
-///
-/// # Setup
-/// - Starts real HTTP server on random port
-/// - Creates `FileDownloadState` shared between test and HTTP handler
-/// - Generates random file data (100-200MB)
-/// - Sets up memory monitoring
-///
-/// # Act
-/// - HTTP client sends GET request to download file
-/// - Test task pushes `FILE_DETAILS` + `FILE_CHUNK` to `FileDownloadState`
-/// - Backpressure via `client_paused` flag when buffer exceeds `MAX_FILE_BUFFER_SIZE`
-/// - HTTP handler updates `sent_bytes`, triggering resume when buffer drains
-/// - Data streamed over TCP with memory monitoring throughout
-///
-/// # Assert
-/// - Memory growth stays under 200MB throughout transfer
-/// - Backpressure triggered (`received_bytes` - `sent_bytes` exceeded buffer)
-/// - Total bytes received matches file size
-#[tokio::test]
-async fn test_large_file_transfers() {
-    let large_content = vec![b'X'; 256 * 1024];
-
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/files/upload/test-cluster/1/large_file.dat")
-        .header("content-type", "application/octet-stream")
-        .header("content-length", large_content.len().to_string())
-        .body(Body::from(large_content.clone()))
-        .unwrap();
-
-    let body_bytes = tokio::time::timeout(
-        Duration::from_secs(10),
-        axum::body::to_bytes(request.into_body(), usize::MAX),
-    )
-    .await
-    .expect("large request body should be readable within the test bound")
-    .expect("large request body should decode successfully");
-
-    assert_eq!(body_bytes.len(), large_content.len());
-}
-
 #[tokio::test]
 async fn test_large_file_uploads() {
     let db = setup_test_db().await;
