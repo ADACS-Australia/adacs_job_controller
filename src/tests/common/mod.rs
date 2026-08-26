@@ -3,8 +3,6 @@
 
 pub mod repeated_download;
 
-use std::sync::Arc;
-
 use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 

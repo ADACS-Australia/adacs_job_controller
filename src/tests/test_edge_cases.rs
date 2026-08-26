@@ -59,8 +59,7 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 
 use common::{
     connect_ws, encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages,
-    recv_binary, setup_test_db,
-    test_cluster_config,
+    recv_binary, setup_test_db, test_cluster_config,
 };
 
 use sea_orm::{
