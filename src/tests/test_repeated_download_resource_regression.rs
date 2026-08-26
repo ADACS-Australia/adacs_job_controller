@@ -20,10 +20,11 @@ use adacs_job_controller::cluster::traits::{ClusterManagerTrait, ClusterTrait};
 
 use common::encode_test_jwt;
 use common::repeated_download::{
-    build_app, build_file_chunk, build_file_details, build_state, connect_ws, fresh_db,
-    fresh_manager, insert_regression_file_download, insert_regression_job, send_msg, start_server,
+    build_app, build_file_chunk, build_file_details, build_state, connect_ws, fresh_manager,
+    insert_regression_file_download, insert_regression_job, send_msg, start_server,
     wait_for_cleanup,
 };
+use common::setup_test_db;
 
 // ---------------------------------------------------------------------------
 // Repeated-download regression: manager-level deterministic core
@@ -35,7 +36,7 @@ use common::repeated_download::{
 async fn repeated_download_manager_level_returns_to_baseline() {
     const NUM_TRANSFERS: usize = 5;
 
-    let db = fresh_db().await;
+    let db = setup_test_db().await;
     let manager = fresh_manager(&db).await;
     let _job_id = insert_regression_job(&db).await;
 
@@ -154,7 +155,7 @@ async fn repeated_download_responsive_peer_returns_to_baseline() {
     const CHUNK_SIZE: usize = 64 * 1024;
     const FILE_SIZE: u64 = (CHUNK_SIZE * 2) as u64;
 
-    let db = fresh_db().await;
+    let db = setup_test_db().await;
     let manager = fresh_manager(&db).await;
     let _job_id = insert_regression_job(&db).await;
 
@@ -337,7 +338,7 @@ async fn repeated_download_responsive_peer_returns_to_baseline() {
 async fn repeated_download_unresponsive_peer_returns_to_baseline() {
     const NUM_TRANSFERS: usize = 3;
 
-    let db = fresh_db().await;
+    let db = setup_test_db().await;
     let manager = fresh_manager(&db).await;
     let _job_id = insert_regression_job(&db).await;
 

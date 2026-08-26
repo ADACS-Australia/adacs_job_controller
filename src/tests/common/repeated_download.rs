@@ -7,7 +7,7 @@ use std::time::Duration;
 use axum::Router;
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, DatabaseConnection};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -38,15 +38,6 @@ pub fn regression_cluster_config() -> ClusterConfig {
         kerberos_principal: String::new(),
         ltk: None,
     }
-}
-
-/// Build a fresh in-memory `SQLite` database with all HTTP-handler tables.
-pub async fn fresh_db() -> DatabaseConnection {
-    let db = Database::connect("sqlite::memory:")
-        .await
-        .expect("sqlite in-memory connection failed");
-    adacs_job_controller::db::schema::create_test_schema(&db).await;
-    db
 }
 
 /// Build a real `ClusterManager` with one online manual master cluster.
