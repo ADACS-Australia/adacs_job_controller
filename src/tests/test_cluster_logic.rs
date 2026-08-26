@@ -450,7 +450,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
         .filter(|data| Message::from_bytes((*data).clone()).id() == CANCEL_JOB)
         .collect();
 
-    assert!(!cancel_msgs.is_empty(), "Expected at least one CANCEL_JOB");
+    assert_eq!(cancel_msgs.len(), 1, "Expected exactly one CANCEL_JOB");
     cluster.stop();
 }
 
