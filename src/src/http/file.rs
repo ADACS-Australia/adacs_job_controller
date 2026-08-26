@@ -1087,12 +1087,19 @@ pub async fn spawn_background_cache(
     }
 
     let locked = fl_state.lock().await;
-    if !locked.error {
+    let files = if !locked.error {
+        Some(locked.files.clone())
+    } else {
+        None
+    };
+    drop(locked);
+
+    if let Some(files) = files {
         let _ = file_list_cache::Entity::delete_many()
             .filter(file_list_cache::Column::JobId.eq(job_id.cast_signed()))
             .exec(&state.db)
             .await;
-        for file in &locked.files {
+        for file in &files {
             let _ = file_list_cache::ActiveModel {
                 job_id: Set(job_id.cast_signed()),
                 path: Set(file.file_name.clone()),
@@ -1105,7 +1112,6 @@ pub async fn spawn_background_cache(
             .await;
         }
     }
-    drop(locked);
 
     state.file_list_map.remove(&uuid);
     Ok(())
