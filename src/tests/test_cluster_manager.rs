@@ -535,7 +535,7 @@ async fn test_remove_connection() {
 
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let result = mgr.handle_new_connection(i, tx, &uuid).await;
-        assert!(result.is_some());
+        assert_eq!(result.unwrap().name(), format!("cluster{i}"));
     }
 
     // Verify all clusters are online
