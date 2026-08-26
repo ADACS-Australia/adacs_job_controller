@@ -693,17 +693,18 @@ async fn test_ws_missing_authorization_header() {
 /// Verify that malformed Authorization header is rejected.
 ///
 /// # Setup
-/// Start a test server.
+/// Start a test server with a forwarding cluster manager that accepts only a
+/// specific token.
 ///
 /// # Act
 /// Connect with Authorization header missing "Bearer " prefix.
 ///
 /// # Assert
-/// Connection is rejected.
+/// Connection is rejected because the malformed header yields no valid token.
 #[tokio::test]
 async fn test_ws_malformed_authorization_header() {
     let db = setup_test_db().await;
-    let manager = manager_rejecting_connections();
+    let (manager, _) = manager_with_forwarding_cluster_accepting("ozstar", Some("valid"));
     let state = make_test_state(db, manager);
     let server = start_test_server(state).await;
     let port = server.port;
