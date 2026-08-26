@@ -24,7 +24,8 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_test_job, make_test_state,
-    make_test_state_with_secrets, offline_cluster, online_cluster_no_messages, setup_test_db,
+    make_test_state_with_secrets, offline_cluster, online_cluster, online_cluster_no_messages,
+    setup_test_db,
     test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi,
 };
 
@@ -1808,18 +1809,6 @@ async fn test_upload_file_server_error_returns_400() {
 // Cross-app access tests
 // ---------------------------------------------------------------------------
 
-fn online_cluster_mock_for_multi(name: &'static str) -> MockClusterTrait {
-    let mut c = MockClusterTrait::new();
-    c.expect_name().returning(move || name.to_string());
-    c.expect_is_online().returning(|| true);
-    c.expect_role().returning(|| ClusterRole::Master);
-    c.expect_role_string().returning(|| "master".to_string());
-    c.expect_cluster_details()
-        .returning(move || test_cluster_config(name));
-    c.expect_send_message().returning(|_| Box::pin(async {}));
-    c
-}
-
 /// Verifies that app2, which lists "app1" in its `applications`, can create a file download
 /// for a job owned by app1.
 #[tokio::test]
@@ -1829,7 +1818,7 @@ async fn test_create_download_app2_can_access_app1_job() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "app1").await;
 
-    let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
+    let cluster = Arc::new(online_cluster("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
     manager
@@ -1880,7 +1869,7 @@ async fn test_create_download_app4_cannot_access_app1_job() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "app1").await;
 
-    let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
+    let cluster = Arc::new(online_cluster("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
     manager
@@ -1928,7 +1917,7 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
 
-    let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
+    let cluster = Arc::new(online_cluster("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
     manager
@@ -2002,7 +1991,7 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
 async fn test_create_download_no_jobid_with_zero_jobid_success() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
-    let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
+    let cluster = Arc::new(online_cluster("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
     manager
@@ -2157,7 +2146,7 @@ async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
 
-    let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
+    let cluster = Arc::new(online_cluster("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
     manager
@@ -2370,7 +2359,7 @@ async fn test_list_files_app4_cannot_access_app1_job() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "app1").await;
 
-    let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
+    let cluster = Arc::new(online_cluster("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
     manager
