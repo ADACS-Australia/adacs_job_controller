@@ -68,10 +68,10 @@ fn extract_token_from_headers(headers: &HeaderMap) -> String {
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|header| {
-            if header.starts_with("Bearer ") {
-                header.strip_prefix("Bearer ")
-            } else {
-                None
+            // Per RFC 6750 the auth scheme is case-insensitive, so accept any casing.
+            match header.get(..7) {
+                Some(prefix) if prefix.eq_ignore_ascii_case("Bearer ") => Some(&header[7..]),
+                _ => None,
             }
         })
         .unwrap_or_default()
