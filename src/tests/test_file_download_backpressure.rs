@@ -232,7 +232,11 @@ async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
         .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
         .collect();
 
-    assert!(!pause_msgs.is_empty(), "Expected PAUSE_FILE_CHUNK_STREAM");
+    assert_eq!(
+        pause_msgs.len(),
+        1,
+        "Expected exactly one PAUSE_FILE_CHUNK_STREAM"
+    );
     assert!(
         download_state.client_paused.load(Ordering::Relaxed),
         "client_paused should be true"
