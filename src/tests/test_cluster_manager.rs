@@ -841,7 +841,7 @@ async fn test_handle_new_connection_file_download_duplicate_rejected() {
     // First connection binds the session
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(50, tx, "dl-token-dup").await;
-    assert!(result.is_some());
+    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Second connection to the same token must be rejected
     let (tx2, _rx2) = tokio::sync::mpsc::unbounded_channel();
