@@ -669,7 +669,7 @@ async fn test_cluster_get_cluster_details() {
 // API Path Regression Tests
 // ===========================================================================
 
-/// Regression test: Verifies File API uses `/job/apiv1/file/` path (not `/job/apiv1/file/`).
+/// Regression test: Verifies File API uses `/job/apiv1/file/` path (not the legacy `/file/apiv1/file/` shape).
 ///
 /// This test ensures compatibility with the C++ original API path structure.
 /// If this test fails with 404, the API path has been incorrectly changed.
