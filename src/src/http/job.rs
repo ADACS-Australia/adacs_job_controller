@@ -1,6 +1,8 @@
 #![allow(clippy::pedantic)]
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use crate::cluster::traits::ClusterTrait;
 use crate::http::utils::LenientJson;
 use axum::Json;
 use axum::extract::State;
@@ -451,6 +453,54 @@ pub async fn get_jobs(
 
 // ---- PATCH /job/apiv1/job/ (Cancel) ----
 
+/// Record a job-history state transition for a cancel/delete operation.
+#[allow(clippy::too_many_arguments)]
+async fn record_job_transition(
+    state: &AppState,
+    cluster_obj: &Arc<dyn ClusterTrait>,
+    job: &job::Model,
+    job_id: u64,
+    current_state: i32,
+    terminal_state: JobStatus,
+    terminal_details: &str,
+    intermediate_state: JobStatus,
+    intermediate_details: &str,
+    wire_msg_id: u32,
+) -> Result<(), (StatusCode, String)> {
+    let pending = current_state == JobStatus::Pending as i32;
+    let (new_state, details) = if pending {
+        (terminal_state as i32, terminal_details.to_string())
+    } else {
+        (intermediate_state as i32, intermediate_details.to_string())
+    };
+
+    job_history::ActiveModel {
+        job_id: Set(job.id),
+        timestamp: Set(chrono::Utc::now().naive_utc()),
+        what: Set(SYSTEM_SOURCE.to_string()),
+        state: Set(new_state),
+        details: Set(details),
+        ..Default::default()
+    }
+    .insert(&state.db)
+    .await
+    .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
+
+    if !pending && cluster_obj.is_online() {
+        let source = format!("{}_{}", job_id, job.cluster);
+        let mut msg = Message::new(wire_msg_id, Priority::Medium, &source);
+        msg.push_uint(u32::try_from(job_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Job ID {} exceeds maximum supported value", job_id),
+            )
+        })?);
+        cluster_obj.send_message(msg).await;
+    }
+
+    Ok(())
+}
+
 /// Cancel a running job.
 ///
 /// # Errors
@@ -508,43 +558,19 @@ pub async fn cancel_job(
             "Cluster for job did not exist".to_string(),
         ))?;
 
-    if current_state == JobStatus::Pending as i32 {
-        job_history::ActiveModel {
-            job_id: Set(job.id),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            what: Set(SYSTEM_SOURCE.to_string()),
-            state: Set(JobStatus::Cancelled as i32),
-            details: Set("Job cancelled".to_string()),
-            ..Default::default()
-        }
-        .insert(&state.db)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
-    } else {
-        job_history::ActiveModel {
-            job_id: Set(job.id),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            what: Set(SYSTEM_SOURCE.to_string()),
-            state: Set(JobStatus::Cancelling as i32),
-            details: Set("Job cancelling".to_string()),
-            ..Default::default()
-        }
-        .insert(&state.db)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
-
-        if cluster_obj.is_online() {
-            let source = format!("{}_{}", body.job_id, job.cluster);
-            let mut msg = Message::new(CANCEL_JOB, Priority::Medium, &source);
-            msg.push_uint(u32::try_from(body.job_id).map_err(|_| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    format!("Job ID {} exceeds maximum supported value", body.job_id),
-                )
-            })?);
-            cluster_obj.send_message(msg).await;
-        }
-    }
+    record_job_transition(
+        &state,
+        &cluster_obj,
+        &job,
+        body.job_id,
+        current_state,
+        JobStatus::Cancelled,
+        "Job cancelled",
+        JobStatus::Cancelling,
+        "Job cancelling",
+        CANCEL_JOB,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({ "cancelled": body.job_id })))
 }
@@ -607,43 +633,19 @@ pub async fn delete_job(
             "Cluster for job did not exist".to_string(),
         ))?;
 
-    if current_state == JobStatus::Pending as i32 {
-        job_history::ActiveModel {
-            job_id: Set(job.id),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            what: Set(SYSTEM_SOURCE.to_string()),
-            state: Set(JobStatus::Deleted as i32),
-            details: Set("Job deleted".to_string()),
-            ..Default::default()
-        }
-        .insert(&state.db)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
-    } else {
-        job_history::ActiveModel {
-            job_id: Set(job.id),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            what: Set(SYSTEM_SOURCE.to_string()),
-            state: Set(JobStatus::Deleting as i32),
-            details: Set("Job deleting".to_string()),
-            ..Default::default()
-        }
-        .insert(&state.db)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
-
-        if cluster_obj.is_online() {
-            let source = format!("{}_{}", body.job_id, job.cluster);
-            let mut msg = Message::new(DELETE_JOB, Priority::Medium, &source);
-            msg.push_uint(u32::try_from(body.job_id).map_err(|_| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    format!("Job ID {} exceeds maximum supported value", body.job_id),
-                )
-            })?);
-            cluster_obj.send_message(msg).await;
-        }
-    }
+    record_job_transition(
+        &state,
+        &cluster_obj,
+        &job,
+        body.job_id,
+        current_state,
+        JobStatus::Deleted,
+        "Job deleted",
+        JobStatus::Deleting,
+        "Job deleting",
+        DELETE_JOB,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({ "deleted": body.job_id })))
 }
