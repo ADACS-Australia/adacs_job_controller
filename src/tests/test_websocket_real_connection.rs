@@ -450,9 +450,6 @@ async fn test_websocket_connection_rejected_invalid_token() {
     // Manager that rejects the connection (invalid token -> None).
     let mut manager = MockClusterManagerTrait::new();
     manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    manager
         .expect_handle_new_connection()
         .returning(|_, _, _| Box::pin(async { None }));
     manager
@@ -575,9 +572,6 @@ async fn test_multiple_clusters_concurrent_job_submission() {
     let gadi = Arc::new(create_online_cluster("gadi"));
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let oz = Arc::clone(&ozstar);
     let nc = Arc::clone(&nci);
     let ga = Arc::clone(&gadi);
@@ -622,9 +616,6 @@ async fn test_multiple_clusters_concurrent_job_submission() {
         let ga2 = Arc::clone(&gadi);
         let app = create_router(make_test_state(db.clone(), {
             let mut manager = MockClusterManagerTrait::new();
-            manager
-                .expect_get_file_download_admission()
-                .returning(|_| None);
             manager
                 .expect_get_cluster_by_name()
                 .returning(move |name| match name {
