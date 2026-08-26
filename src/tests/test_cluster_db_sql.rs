@@ -147,9 +147,10 @@ async fn test_handle_job_save_insert() {
     assert_eq!(req_id, 100);
     let returned_id = body.pop_ulong();
     // SeaORM with SQLite returns the real id
-    assert!(
-        returned_id == 0 || returned_id == db_id.cast_unsigned(),
-        "returned_id should be 0 (SQLite) or db_id, got {returned_id}"
+    assert_eq!(
+        returned_id,
+        db_id.cast_unsigned(),
+        "returned_id should match the inserted row id"
     );
 }
 
@@ -570,9 +571,10 @@ async fn test_handle_jobstatus_save_insert() {
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        new_id == 0 || new_id == actual.id.cast_unsigned(),
-        "new_id={new_id}"
+    assert_eq!(
+        new_id,
+        actual.id.cast_unsigned(),
+        "new_id should match the inserted row id"
     );
 }
 
@@ -935,9 +937,10 @@ async fn test_handle_bundle_create_or_update_new() {
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        new_id == 0 || new_id == actual.id.cast_unsigned(),
-        "new_id={new_id}"
+    assert_eq!(
+        new_id,
+        actual.id.cast_unsigned(),
+        "new_id should match the inserted row id"
     );
 }
 
@@ -1445,8 +1448,8 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
     let (req_id, mut body) = parse_response(sent.lock().unwrap()[0].clone());
     assert_eq!(req_id, 5003);
     let returned_id = body.pop_ulong();
-    // The insert succeeds, so returned_id should be a valid (non-zero) row ID
-    // (SQLite may return 0 or real id depending on SeaORM version)
+    // The insert succeeds, so returned_id should be the new row ID
+    // (SeaORM with SQLite returns the real id)
     // Verify the row actually exists in the DB
     let model = cluster_job_status::Entity::find()
         .filter(cluster_job_status::Column::JobId.eq(invalid_job_id))
@@ -1459,7 +1462,11 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
         db_job_id, invalid_job_id,
         "Row was inserted despite non-existent FK"
     );
-    let _ = returned_id; // acknowledged
+    assert_eq!(
+        returned_id,
+        model.id.cast_unsigned(),
+        "returned_id should match the inserted orphan status row id"
+    );
 }
 
 // ---------------------------------------------------------------------------
