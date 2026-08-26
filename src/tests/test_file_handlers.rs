@@ -81,9 +81,6 @@ async fn test_create_file_download_single_path_returns_file_id() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -152,9 +149,6 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -212,9 +206,6 @@ async fn test_create_file_download_no_path_returns_400() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     let mut manager = MockClusterManagerTrait::new();
     manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
@@ -257,9 +248,6 @@ async fn test_create_file_download_no_path_returns_400() {
 async fn test_download_file_no_file_id_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     manager.expect_get_file_download().returning(|_| None);
 
@@ -293,9 +281,6 @@ async fn test_download_file_no_file_id_returns_400() {
 async fn test_download_file_unknown_uuid_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     manager.expect_get_file_download().returning(|_| None);
     let app = create_router(make_test_state(db, manager));
@@ -345,9 +330,6 @@ async fn test_download_file_cluster_offline_returns_503() {
 
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -414,9 +396,6 @@ async fn test_download_file_streams_chunks() {
     // Set up mock manager that creates a fresh FileDownloadState for each download
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
@@ -577,9 +556,6 @@ async fn test_download_file_error_from_cluster_returns_400() {
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
     manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    manager
         .expect_is_application_shutting_down()
         .returning(|| false);
     manager.expect_begin_application_shutdown().returning(|| 0);
@@ -672,9 +648,6 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     // Cluster manager should NOT be asked to send a FILE_LIST message
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -776,9 +749,6 @@ async fn test_list_files_ws_response_populates_result() {
     };
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -907,9 +877,6 @@ async fn test_list_files_completed_job_populates_cache() {
     };
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1212,9 +1179,6 @@ async fn test_list_files_cluster_offline_returns_503() {
     insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1329,9 +1293,6 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
     manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
@@ -1372,9 +1333,6 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
 async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
@@ -1430,9 +1388,6 @@ async fn test_upload_file_no_target_path_returns_400() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
@@ -1506,9 +1461,6 @@ async fn test_upload_file_job_id_exceeding_u32_returns_400() {
 
     let uc = Arc::clone(&upload_cluster);
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1563,9 +1515,6 @@ async fn test_upload_file_cluster_offline_returns_503() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1660,9 +1609,6 @@ async fn test_upload_file_success_full_flow() {
 
     let uc = Arc::clone(&upload_cluster);
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1749,9 +1695,6 @@ async fn test_upload_file_server_error_returns_400() {
 
     let uc = Arc::clone(&upload_cluster);
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1816,9 +1759,6 @@ async fn test_create_download_app2_can_access_app1_job() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1870,9 +1810,6 @@ async fn test_create_download_app4_cannot_access_app1_job() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1920,9 +1857,6 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1978,9 +1912,6 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
     let db = setup_test_db().await;
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2034,9 +1965,6 @@ async fn test_create_download_no_jobid_missing_cluster_returns_400() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
     let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
@@ -2078,9 +2006,6 @@ async fn test_create_download_no_jobid_missing_bundle_returns_400() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
     let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
     let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
@@ -2124,9 +2049,6 @@ async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2174,9 +2096,6 @@ async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     // Unknown cluster → get_cluster_by_name returns None
     manager.expect_get_cluster_by_name().returning(|_| None);
 
@@ -2228,9 +2147,6 @@ async fn test_create_download_empty_path_list_returns_empty_file_ids() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2296,9 +2212,6 @@ async fn test_list_files_app2_can_access_app1_job() {
     let offline_arc = Arc::new(offline);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&offline_arc);
     manager
         .expect_get_cluster_by_name()
@@ -2349,9 +2262,6 @@ async fn test_list_files_app4_cannot_access_app1_job() {
 
     let cluster = Arc::new(online_cluster_mock_for_multi("ozstar"));
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2405,9 +2315,6 @@ async fn test_create_file_download_works_without_content_type_header() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2483,9 +2390,6 @@ async fn test_list_files_works_without_content_type_header() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2532,9 +2436,6 @@ async fn test_list_files_works_without_content_type_header() {
 async fn test_create_file_download_rejects_invalid_json_without_content_type() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(|_| None);
 
     let app = create_router(make_test_state(db, manager));
