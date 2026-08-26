@@ -3,10 +3,15 @@
 
 pub mod repeated_download;
 
+use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
+
 use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 
-use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
+use adacs_job_controller::cluster::traits::{
+    ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsConnectionSender, WsOutbound,
+};
 use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::protocol::types::ClusterRole;
@@ -79,6 +84,39 @@ pub fn offline_cluster() -> MockClusterTrait {
     c.expect_cluster_details()
         .returning(|| test_cluster_config("ozstar"));
     c
+}
+
+/// Build a mock cluster whose `send_message` forwards via the captured WS sender.
+///
+/// `tx_slot` is filled in by the manager's `handle_new_connection` before any
+/// message is forwarded, so the cluster can reach the client's WS channel.
+pub fn forwarding_cluster(
+    name: &str,
+    tx_slot: &Arc<StdMutex<Option<WsConnectionSender>>>,
+) -> Arc<dyn ClusterTrait> {
+    let tx_for_send = Arc::clone(tx_slot);
+    let mut cluster = MockClusterTrait::new();
+    let n = name.to_string();
+    cluster.expect_name().returning(move || n.clone());
+    cluster
+        .expect_role_string()
+        .returning(|| "master test".to_string());
+    cluster.expect_is_online().returning(|| true);
+    cluster.expect_role().returning(|| ClusterRole::Master);
+    cluster
+        .expect_cluster_details()
+        .returning(|| test_cluster_config("test"));
+    cluster.expect_send_message().returning(move |msg| {
+        if let Some(tx) = tx_for_send.lock().unwrap().as_ref() {
+            let _ = tx.send(WsOutbound::Binary(msg.into_data()));
+        }
+        Box::pin(async {})
+    });
+    cluster
+        .expect_handle_message()
+        .returning(|_| Box::pin(async {}));
+
+    Arc::new(cluster)
 }
 
 /// Create test JWT secrets for HTTP handler tests.
