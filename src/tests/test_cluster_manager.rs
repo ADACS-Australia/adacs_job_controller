@@ -1461,9 +1461,10 @@ async fn test_application_shutdown_drains_dedicated_tasks_within_bound() {
         .next()
         .expect("create_file_download should register one dedicated cluster");
 
-    assert!(
-        concrete.retained_download_task_count() >= 1,
-        "create_file_download should populate download_task_handles"
+    assert_eq!(
+        concrete.retained_download_task_count(),
+        2,
+        "create_file_download should retain 2 task handles (scheduler+prune) for `FileDownload` role"
     );
 
     let cluster_for_task = std::sync::Arc::clone(&concrete);
