@@ -666,7 +666,7 @@ async fn test_multiple_clusters_concurrent_job_submission() {
 
     // Verify jobs in database
     let job_count = job::Entity::find().count(&db).await.unwrap();
-    assert!(job_count > 0, "Jobs should be in database");
+    assert_eq!(job_count, 2, "Both submitted jobs should be in database");
 
     server_handle.abort();
 }
