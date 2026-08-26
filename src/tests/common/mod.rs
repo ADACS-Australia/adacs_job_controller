@@ -3,11 +3,10 @@
 
 pub mod repeated_download;
 
-use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
+use std::sync::{Arc, Mutex};
 
 use futures_util::StreamExt;
-use std::sync::Arc;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 
 use adacs_job_controller::cluster::traits::{
@@ -15,6 +14,7 @@ use adacs_job_controller::cluster::traits::{
 };
 use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
+use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::ClusterRole;
 
 /// Build the WebSocket-only router for WS integration tests.
@@ -83,6 +83,22 @@ pub fn online_cluster(name: &str) -> MockClusterTrait {
         .returning(move || test_cluster_config(&details_name));
     c.expect_send_message().returning(|_| Box::pin(async {}));
     c
+}
+
+/// Build a mock cluster that captures all `send_message` calls.
+pub fn mock_cluster_capturing(name: &str) -> (MockClusterTrait, Arc<Mutex<Vec<Message>>>) {
+    let sent = Arc::new(Mutex::new(Vec::<Message>::new()));
+    let sent_clone = Arc::clone(&sent);
+
+    let mut mock = MockClusterTrait::new();
+    let n = name.to_string();
+    mock.expect_name().returning(move || n.clone());
+    mock.expect_send_message().returning(move |msg| {
+        sent_clone.lock().unwrap().push(msg);
+        Box::pin(async {})
+    });
+
+    (mock, sent)
 }
 
 /// Build a mock offline cluster.
