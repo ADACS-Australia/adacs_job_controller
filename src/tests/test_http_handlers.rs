@@ -416,7 +416,7 @@ async fn test_routes_exist_for_job_api() {
         .unwrap();
 
     // 403 means the route exists (auth failed), not 404
-    assert_ne!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 /// Tests that PATCH /job/apiv1/file/ is a registered route (returns non-404).
@@ -446,7 +446,7 @@ async fn test_routes_exist_for_file_api() {
         .await
         .unwrap();
 
-    assert_ne!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 /// Tests that PUT /job/apiv1/file/upload/ is a registered route (returns non-404).
@@ -475,7 +475,7 @@ async fn test_upload_route_exists() {
         .await
         .unwrap();
 
-    assert_ne!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 // ===========================================================================
