@@ -10,29 +10,16 @@ mod common;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use common::test_cluster_config;
+
 use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::file_download::FileDownloadState;
 use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::cluster::traits::WsOutbound;
-use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::Priority;
 use dashmap::DashMap;
-
-fn test_cluster_config(name: &str) -> ClusterConfig {
-    ClusterConfig {
-        name: name.to_string(),
-        host: "localhost".to_string(),
-        username: "testuser".to_string(),
-        path: "/home/testuser/jobcontroller".to_string(),
-        key: String::new(),
-        connection_type: "manual".to_string(),
-        keytab: String::new(),
-        kerberos_principal: String::new(),
-        ltk: None,
-    }
-}
 
 fn make_app_context() -> Arc<AppContext> {
     let db = futures::executor::block_on(sea_orm::Database::connect("sqlite::memory:"))
