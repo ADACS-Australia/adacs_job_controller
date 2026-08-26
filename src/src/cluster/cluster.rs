@@ -1259,14 +1259,18 @@ mod tests {
         assert_eq!(cluster.queued_message_size.load(Ordering::Relaxed), 5);
     }
 
-    /// Verifies that `send_message` results in non-zero `queued_message_size`.
+    /// Verifies that `send_message` queues the full serialized message payload.
     #[tokio::test]
     async fn test_send_message_queues_data() {
         let cluster = Cluster::new(test_config(), None);
         let msg = Message::new(SUBMIT_JOB, Priority::Medium, "test_source");
+        let expected_size = msg.clone().into_data().len();
         cluster.send_message(msg).await;
 
-        assert!(cluster.queued_message_size.load(Ordering::Relaxed) > 0);
+        assert_eq!(
+            cluster.queued_message_size.load(Ordering::Relaxed),
+            expected_size
+        );
     }
 
     /// Verifies that calling `stop()` sets `running` to false.
