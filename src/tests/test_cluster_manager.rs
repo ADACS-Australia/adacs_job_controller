@@ -1201,7 +1201,7 @@ async fn test_handle_new_connection_ltk_duplicate_rejected() {
     // First LTK connection authenticates
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(1, tx, "super-secret-ltk").await;
-    assert!(result.is_some());
+    assert_eq!(result.as_ref().unwrap().name(), "ltk_cluster");
 
     // Cluster is now online
     let cluster = mgr.get_cluster_by_name("ltk_cluster").unwrap();
