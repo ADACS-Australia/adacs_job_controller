@@ -1891,6 +1891,134 @@ async fn test_download_force_download_false_sets_inline_disposition() {
     );
 }
 
+/// Verifies that `forceDownload=1` sets `Content-Disposition: attachment` in the response.
+///
+/// # Setup
+/// Inserts a download record for `report.pdf`; simulates a small 5-byte file stream.
+///
+/// # Act
+/// Sends a GET request with the `forceDownload=1` query parameter.
+///
+/// # Assert
+/// Response is 200 OK and `Content-Disposition` contains `attachment` and the filename `report.pdf`.
+#[tokio::test]
+async fn test_download_force_download_numeric_one_sets_attachment_disposition() {
+    let db = setup_test_db().await;
+    assert_force_download_sets_attachment(db, "force-one-dl-uuid".to_string(), "1").await;
+}
+
+/// Verifies that `forceDownload=TRUE` (uppercase) sets `Content-Disposition: attachment`.
+///
+/// # Setup
+/// Inserts a download record for `report.pdf`; simulates a small 5-byte file stream.
+///
+/// # Act
+/// Sends a GET request with the `forceDownload=TRUE` query parameter.
+///
+/// # Assert
+/// Response is 200 OK and `Content-Disposition` contains `attachment` and the filename `report.pdf`.
+#[tokio::test]
+async fn test_download_force_download_uppercase_true_sets_attachment_disposition() {
+    let db = setup_test_db().await;
+    assert_force_download_sets_attachment(db, "force-true-dl-uuid".to_string(), "TRUE").await;
+}
+
+/// Shared helper: performs one file download request with the given `forceDownload` value and
+/// asserts the response is 200 OK with `Content-Disposition: attachment` containing the filename.
+async fn assert_force_download_sets_attachment(
+    db: sea_orm::DatabaseConnection,
+    uuid_val: String,
+    force_param: &str,
+) {
+    file_download::ActiveModel {
+        user: Set(1),
+        job: Set(0),
+        cluster: Set("ozstar".to_string()),
+        bundle: Set("b".to_string()),
+        uuid: Set(uuid_val.clone()),
+        path: Set("/path/to/report.pdf".to_string()),
+        timestamp: Set(chrono::Utc::now().naive_utc()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let fd_state = Arc::new(FileDownloadState::new());
+    let fd_sim = Arc::clone(&fd_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fd_sim.file_size.store(5, Ordering::Release);
+        fd_sim.received_data.store(true, Ordering::Release);
+        fd_sim.data_ready.store(true, Ordering::Release);
+        fd_sim.data_notify.notify_waiters();
+        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
+    });
+
+    let fd_for_mgr = Arc::clone(&fd_state);
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    let c2 = Arc::new(online_cluster_no_messages());
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&c2);
+            Box::pin(async move { c as Arc<dyn ClusterTrait> })
+        });
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd_for_mgr)));
+
+    let app = create_router(make_test_state(db, manager));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/job/apiv1/file/?fileId={uuid_val}&forceDownload={force_param}"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let content_disp = resp
+        .headers()
+        .get("content-disposition")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    assert!(
+        content_disp.contains("attachment"),
+        "forceDownload={force_param} should set Content-Disposition: attachment; got: {content_disp}"
+    );
+    assert!(
+        content_disp.contains("report.pdf"),
+        "Content-Disposition should contain the filename; got: {content_disp}"
+    );
+}
+
 /// Verifies that a download path whose basename contains characters that would break the
 /// `Content-Disposition` quoted-string (a double quote) or make `HeaderValue` construction fail
 /// (CR/LF control characters) is sanitized, so the response stays 200 OK with a well-formed header.
