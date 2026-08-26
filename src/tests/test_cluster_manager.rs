@@ -1317,8 +1317,10 @@ async fn test_application_shutdown_triggers_every_registered_session() {
 
     let (tx_a, _rx_a) = tokio::sync::mpsc::unbounded_channel();
     let (tx_b, _rx_b) = tokio::sync::mpsc::unbounded_channel();
-    assert!(mgr.handle_new_connection(101, tx_a, "dl-a").await.is_some());
-    assert!(mgr.handle_new_connection(102, tx_b, "dl-b").await.is_some());
+    let result_a = mgr.handle_new_connection(101, tx_a, "dl-a").await;
+    assert_eq!(result_a.as_ref().unwrap().name(), "cluster1");
+    let result_b = mgr.handle_new_connection(102, tx_b, "dl-b").await;
+    assert_eq!(result_b.as_ref().unwrap().name(), "cluster1");
 
     let first = mgr.begin_application_shutdown();
     assert_eq!(first, 2, "both sessions should receive the trigger");
