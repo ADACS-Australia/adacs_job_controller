@@ -46,9 +46,6 @@ async fn test_ltk_authentication_success() {
 
     let mut mock_manager = MockClusterManagerTrait::new();
     mock_manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    mock_manager
         .expect_handle_new_connection()
         .returning(move |_, _, token| {
             let result: Option<Arc<dyn ClusterTrait>> = if token == "test-ltk" {
@@ -108,7 +105,6 @@ async fn test_invalid_ltk_falls_back_to_uuid() {
     };
 
     let mut mgr = MockClusterManagerTrait::new();
-    mgr.expect_get_file_download_admission().returning(|_| None);
     mgr.expect_handle_new_connection()
         .returning(move |_, _, token| {
             assert_eq!(token, "test-uuid-12345", "Should fall back to UUID lookup");

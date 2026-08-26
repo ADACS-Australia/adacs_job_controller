@@ -46,7 +46,6 @@ async fn test_duplicate_ltk_connection_rejected() {
     let cluster_for_first = cluster_arc.clone();
 
     let mut mgr = MockClusterManagerTrait::new();
-    mgr.expect_get_file_download_admission().returning(|_| None);
     mgr.expect_handle_new_connection()
         .returning(move |_, _, token| {
             let mut count = call_count_clone.lock().unwrap();

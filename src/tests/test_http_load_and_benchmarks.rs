@@ -68,9 +68,6 @@ async fn test_http_concurrent_job_creation_moderate_load() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(move |_| {
         Some(Arc::clone(&cluster_arc)
             as Arc<
@@ -197,9 +194,6 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(move |_| {
         Some(Arc::clone(&cluster_arc)
             as Arc<
@@ -330,9 +324,6 @@ async fn test_benchmark_job_creation_performance() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(move |_| {
         Some(Arc::clone(&cluster_arc)
             as Arc<
@@ -503,9 +494,6 @@ async fn test_connection_pool_exhaustion() {
     let cluster_arc = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     manager.expect_get_cluster_by_name().returning(move |_| {
         Some(Arc::clone(&cluster_arc)
             as Arc<
