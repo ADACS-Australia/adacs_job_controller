@@ -58,7 +58,8 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState, Priority};
 
 use common::{
-    encode_test_jwt, insert_test_job, make_test_state, setup_test_db, test_cluster_config,
+    encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages, setup_test_db,
+    test_cluster_config,
 };
 
 use sea_orm::{
@@ -68,18 +69,6 @@ use sea_orm::{
 // ===========================================================================
 // Helpers
 // ===========================================================================
-
-fn online_cluster_no_messages() -> MockClusterTrait {
-    let mut c = MockClusterTrait::new();
-    c.expect_name().returning(|| "ozstar".to_string());
-    c.expect_is_online().returning(|| true);
-    c.expect_role().returning(|| ClusterRole::Master);
-    c.expect_role_string().returning(|| "master".to_string());
-    c.expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    c.expect_send_message().returning(|_| Box::pin(async {}));
-    c
-}
 
 /// Build the WebSocket-only router for WS integration tests.
 fn ws_router(state: adacs_job_controller::app::AppState) -> axum::Router {

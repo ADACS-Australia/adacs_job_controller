@@ -37,6 +37,19 @@ pub fn test_cluster_config_with_ltk(name: &str, ltk: &str) -> ClusterConfig {
     }
 }
 
+/// Build a mock online cluster that never sends messages.
+pub fn online_cluster_no_messages() -> MockClusterTrait {
+    let mut c = MockClusterTrait::new();
+    c.expect_name().returning(|| "ozstar".to_string());
+    c.expect_is_online().returning(|| true);
+    c.expect_role().returning(|| ClusterRole::Master);
+    c.expect_role_string().returning(|| "master".to_string());
+    c.expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
+    c.expect_send_message().returning(|_| Box::pin(async {}));
+    c
+}
+
 /// Create test JWT secrets for HTTP handler tests.
 pub fn test_jwt_secrets() -> Vec<AccessSecret> {
     vec![AccessSecret {
