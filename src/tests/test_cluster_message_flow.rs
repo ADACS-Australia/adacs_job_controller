@@ -854,7 +854,7 @@ async fn test_does_higher_priority_data_exist() {
     }
 
     // Verify there is higher priority data when checking from Medium context
-    // (Even though no Highest is queued yet, we test the mechanism)
+    // (the Highest message queued below should be sent first)
 
     // Now add Highest priority message
     let mut high_msg = Message::new(1000, Priority::Highest, "high_s");
