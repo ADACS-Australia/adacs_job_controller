@@ -1912,7 +1912,8 @@ async fn test_create_download_app4_cannot_access_app1_job() {
 /// Sends POST /job/apiv1/file/ with `{"cluster": "ozstar", "bundle": "...", "path": "/test/path"}`.
 ///
 /// # Assert
-/// Verifies 200 OK with a non-null `fileId`.
+/// Verifies 200 OK with a non-null `fileId`, and the DB record has the correct path,
+/// cluster, bundle, and job=0 (no jobId resolved).
 #[tokio::test]
 async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
     let secrets = test_jwt_secrets_multi();
@@ -1928,7 +1929,11 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
 
-    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
+    let app = create_router(make_test_state_with_secrets(
+        db.clone(),
+        manager,
+        secrets.clone(),
+    ));
     let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
 
     // No jobId key at all
@@ -1959,7 +1964,21 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
             .unwrap(),
     )
     .unwrap();
-    assert!(body["fileId"].as_str().is_some());
+    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    assert!(!file_id.is_empty());
+
+    // Verify the record is in the DB with the resolved cluster/bundle and job=0
+    let record = file_download::Entity::find()
+        .filter(file_download::Column::Uuid.eq(file_id))
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("file download record should be in DB");
+
+    assert_eq!(record.path, "/test/path");
+    assert_eq!(record.cluster, "ozstar");
+    assert_eq!(record.bundle, "test_bundle");
+    assert_eq!(record.job, 0);
 }
 
 /// Tests that jobId=0 is treated the same as no-jobId and succeeds with cluster+bundle.
@@ -1971,7 +1990,8 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
 /// Sends POST /job/apiv1/file/ with `{"jobId": 0, "cluster": "ozstar", "bundle": "...", "path": "..."}`.
 ///
 /// # Assert
-/// Verifies 200 OK with a non-null `fileId`.
+/// Verifies 200 OK with a non-null `fileId`, and the DB record has the correct path,
+/// cluster, bundle, and job=0 (jobId=0 treated as no-jobId).
 #[tokio::test]
 async fn test_create_download_no_jobid_with_zero_jobid_success() {
     let secrets = test_jwt_secrets_multi();
@@ -1985,7 +2005,11 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
-    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
+    let app = create_router(make_test_state_with_secrets(
+        db.clone(),
+        manager,
+        secrets.clone(),
+    ));
     let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
     // jobId key with value 0
     let resp = app
@@ -2016,7 +2040,21 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
             .unwrap(),
     )
     .unwrap();
-    assert!(body["fileId"].as_str().is_some());
+    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    assert!(!file_id.is_empty());
+
+    // Verify the record is in the DB with the resolved cluster/bundle and job=0
+    let record = file_download::Entity::find()
+        .filter(file_download::Column::Uuid.eq(file_id))
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("file download record should be in DB");
+
+    assert_eq!(record.path, "/test/path");
+    assert_eq!(record.cluster, "ozstar");
+    assert_eq!(record.bundle, "test_bundle");
+    assert_eq!(record.job, 0);
 }
 
 /// Tests that the no-jobId path without a cluster field returns 400.
