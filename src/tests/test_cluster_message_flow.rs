@@ -621,6 +621,11 @@ async fn test_cluster_constructor() {
     assert_eq!(details.host, config.host);
     assert_eq!(details.username, config.username);
     assert_eq!(details.path, config.path);
+    assert_eq!(details.key, config.key);
+    assert_eq!(details.connection_type, config.connection_type);
+    assert_eq!(details.keytab, config.keytab);
+    assert_eq!(details.kerberos_principal, config.kerberos_principal);
+    assert_eq!(details.ltk, config.ltk);
 }
 
 /// Verifies that Cluster constructor with `AppContext` works correctly.
