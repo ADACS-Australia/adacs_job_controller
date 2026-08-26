@@ -25,8 +25,7 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_test_job, make_test_state,
     make_test_state_with_secrets, offline_cluster, online_cluster, online_cluster_no_messages,
-    setup_test_db,
-    test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi,
+    setup_test_db, test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
