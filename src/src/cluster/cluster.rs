@@ -561,20 +561,7 @@ impl Cluster {
             let uuid_bg = uuid.clone();
             tokio::spawn(async move {
                 let timeout = std::time::Duration::from_secs(*CLIENT_TIMEOUT_SECONDS);
-                let fl_clone = Arc::clone(&fl_state);
-                let _ = tokio::time::timeout(timeout, async {
-                    loop {
-                        let notify = {
-                            let locked = fl_clone.lock().await;
-                            if locked.data_ready {
-                                return;
-                            }
-                            Arc::clone(&locked.notify)
-                        };
-                        notify.notified().await;
-                    }
-                })
-                .await;
+                let _ = FileListState::wait_until_data_ready(&fl_state, timeout).await;
 
                 let files = {
                     let locked = fl_state.lock().await;

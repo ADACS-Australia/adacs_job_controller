@@ -960,22 +960,7 @@ pub async fn list_files(
             .client_timeout_seconds
             .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
     );
-    let fl_state_clone = Arc::clone(&fl_state);
-    let wait_result = tokio::time::timeout(timeout, async {
-        loop {
-            // Extract the notify Arc before releasing the lock, so we can await
-            // without holding the mutex (holding would deadlock the writer).
-            let notify = {
-                let locked = fl_state_clone.lock().await;
-                if locked.data_ready {
-                    return;
-                }
-                Arc::clone(&locked.notify)
-            };
-            notify.notified().await;
-        }
-    })
-    .await;
+    let wait_result = FileListState::wait_until_data_ready(&fl_state, timeout).await;
 
     if wait_result.is_err() {
         let mut locked = fl_state.lock().await;
@@ -1065,20 +1050,7 @@ pub async fn spawn_background_cache(
             .client_timeout_seconds
             .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
     );
-    let fl_clone = Arc::clone(&fl_state);
-    let wait_result = tokio::time::timeout(timeout, async {
-        loop {
-            let notify = {
-                let locked = fl_clone.lock().await;
-                if locked.data_ready {
-                    return;
-                }
-                Arc::clone(&locked.notify)
-            };
-            notify.notified().await;
-        }
-    })
-    .await;
+    let wait_result = FileListState::wait_until_data_ready(&fl_state, timeout).await;
 
     if wait_result.is_err() {
         let mut locked = fl_state.lock().await;

@@ -193,6 +193,34 @@ impl FileListState {
             notify: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
     }
+
+    /// Wait until `data_ready` becomes true or `timeout` elapses.
+    ///
+    /// The notify handle is extracted before releasing the lock so the caller
+    /// never awaits while holding the mutex (which would deadlock the writer).
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(())` if `timeout` elapses before `data_ready` is set.
+    pub async fn wait_until_data_ready(
+        fl_state: &std::sync::Arc<tokio::sync::Mutex<Self>>,
+        timeout: std::time::Duration,
+    ) -> Result<(), ()> {
+        tokio::time::timeout(timeout, async {
+            loop {
+                let notify = {
+                    let locked = fl_state.lock().await;
+                    if locked.data_ready {
+                        return;
+                    }
+                    std::sync::Arc::clone(&locked.notify)
+                };
+                notify.notified().await;
+            }
+        })
+        .await
+        .map_err(|_| ())
+    }
 }
 
 impl Default for FileListState {
