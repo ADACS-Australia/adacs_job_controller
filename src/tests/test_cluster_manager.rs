@@ -270,7 +270,7 @@ async fn test_reconnect_clusters_skips_online() {
     let conn_id = 100;
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(conn_id, tx, &uuid).await;
-    assert!(result.is_some());
+    assert_eq!(result.as_ref().unwrap().name(), "cluster2");
 
     // Clear remaining UUIDs
     cluster_uuid::Entity::delete_many().exec(&db).await.unwrap();
