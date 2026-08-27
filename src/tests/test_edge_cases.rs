@@ -3477,9 +3477,10 @@ async fn test_large_file_uploads() {
         .iter()
         .filter(|m| m.id() == FILE_UPLOAD_COMPLETE)
         .collect();
-    assert!(
-        !upload_msgs.is_empty(),
-        "FILE_UPLOAD_COMPLETE should have been sent"
+    assert_eq!(
+        upload_msgs.len(),
+        1,
+        "FILE_UPLOAD_COMPLETE should have been sent exactly once"
     );
 
     println!(
