@@ -23,6 +23,28 @@ use crate::protocol::message::Message;
 use crate::protocol::types::{FileInfo, FileListState, Priority};
 use crate::utils::uuid::generate_uuid;
 
+/// Wait until `data_ready` becomes true or `timeout` elapses.
+///
+/// # Errors
+///
+/// Returns `Err(())` if `timeout` elapses before `data_ready` is set.
+async fn wait_until_data_ready(
+    data_ready: &std::sync::atomic::AtomicBool,
+    data_notify: &tokio::sync::Notify,
+    timeout: std::time::Duration,
+) -> Result<(), ()> {
+    tokio::time::timeout(timeout, async {
+        loop {
+            if data_ready.load(Ordering::Acquire) {
+                return;
+            }
+            data_notify.notified().await;
+        }
+    })
+    .await
+    .map_err(|_| ())
+}
+
 // ---- Request/Response types ----
 
 /// JSON body for `POST /job/apiv1/file/` — create file download records.
@@ -420,15 +442,7 @@ pub async fn download_file(
             .client_timeout_seconds
             .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
     );
-    let ready = tokio::time::timeout(timeout, async {
-        loop {
-            if fd_state.data_ready.load(Ordering::Acquire) {
-                return;
-            }
-            fd_state.data_notify.notified().await;
-        }
-    })
-    .await;
+    let ready = wait_until_data_ready(&fd_state.data_ready, &fd_state.data_notify, timeout).await;
 
     if ready.is_err() {
         fd_state.error.store(true, Ordering::Release);
@@ -731,15 +745,7 @@ pub async fn upload_file(
             .client_timeout_seconds
             .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
     );
-    let ready = tokio::time::timeout(timeout, async {
-        loop {
-            if fu_state.data_ready.load(Ordering::Acquire) {
-                return;
-            }
-            fu_state.data_notify.notified().await;
-        }
-    })
-    .await;
+    let ready = wait_until_data_ready(&fu_state.data_ready, &fu_state.data_notify, timeout).await;
 
     if ready.is_err() {
         fu_state.error.store(true, Ordering::Release);
