@@ -38,7 +38,6 @@ use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
 use rand::{Rng, SeedableRng};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
 use tokio::sync::Mutex as TokioMutex;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tower::ServiceExt;
@@ -70,15 +69,7 @@ use sea_orm::{
 // Helpers
 // ===========================================================================
 
-/// Start an axum server on a random OS-assigned port and return the port.
-async fn start_test_server(router: axum::Router) -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        axum::serve(listener, router).await.unwrap();
-    });
-    port
-}
+
 
 /// Manager that accepts connections, captures the WS sender, and forwards via it.
 fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
@@ -317,7 +308,7 @@ async fn test_upload_truncated_body_returns_error() {
 
     // Start real server so we can make a real TCP connection and truncate it
     let state = make_test_state(db, manager);
-    let port = start_test_server(create_router(state)).await;
+    let (port, _handle) = common::repeated_download::start_server(create_router(state)).await;
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     // Open raw TCP connection, send HTTP request with Content-Length: 1000 but only 5 bytes of body
@@ -463,7 +454,7 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
         .returning(move |_| Some(Arc::clone(&fd_for_manager)));
 
     let state = make_test_state(db, manager);
-    let port = start_test_server(create_router(state)).await;
+    let (port, _handle) = common::repeated_download::start_server(create_router(state)).await;
 
     // Start download, then disconnect after reading a few bytes
     let mut stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
@@ -901,7 +892,7 @@ async fn test_ws_drop_during_binary_exchange_no_crash() {
     let db = setup_test_db().await;
     let manager = manager_with_forwarding_cluster("ozstar");
     let state = make_test_state(db, manager);
-    let port = start_test_server(ws_router(state)).await;
+    let (port, _handle) = common::repeated_download::start_server(ws_router(state)).await;
 
     let (mut sink, mut stream) =
         connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
@@ -993,7 +984,7 @@ async fn test_rapid_ws_connect_disconnect_stress() {
     m.expect_handle_pong().returning(|_| ());
 
     let state = make_test_state(db, m);
-    let port = start_test_server(ws_router(state)).await;
+    let (port, _handle) = common::repeated_download::start_server(ws_router(state)).await;
 
     // Connect and disconnect 20 clients rapidly
     for _ in 0..20 {
@@ -1361,7 +1352,7 @@ async fn test_ws_truncated_binary_message_no_crash() {
     m.expect_handle_pong().returning(|_| ());
 
     let state = make_test_state(db, m);
-    let port = start_test_server(ws_router(state)).await;
+    let (port, _handle) = common::repeated_download::start_server(ws_router(state)).await;
 
     let (mut sink, mut stream) =
         connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
@@ -2017,7 +2008,7 @@ async fn test_ws_concurrent_binary_messages() {
     m.expect_handle_pong().returning(|_| ());
 
     let state = make_test_state(db, m);
-    let port = start_test_server(ws_router(state)).await;
+    let (port, _handle) = common::repeated_download::start_server(ws_router(state)).await;
 
     let (mut sink, mut stream) =
         connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
@@ -2521,7 +2512,7 @@ async fn test_continuous_file_uploads_sequential() {
         .returning(move |_| states_for_mock.lock().unwrap().pop_front());
 
     let state = make_test_state(db, manager);
-    let port = start_test_server(create_router(state)).await;
+    let (port, _handle) = common::repeated_download::start_server(create_router(state)).await;
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let client = reqwest::Client::new();
