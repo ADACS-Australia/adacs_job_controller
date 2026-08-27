@@ -88,6 +88,7 @@ async fn start_server_with_real_cluster_accepting()
     let (port, server_handle) = start_http_server(db.clone(), manager).await;
     (cluster, port, server_handle)
 }
+
 /// Receive a binary message from WebSocket with timeout
 async fn recv_binary(
     stream: &mut futures_util::stream::SplitStream<
