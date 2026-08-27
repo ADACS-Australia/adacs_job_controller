@@ -312,9 +312,10 @@ async fn test_upload_zero_byte_file_succeeds() {
         .iter()
         .filter(|m| m.id() == FILE_UPLOAD_COMPLETE)
         .collect();
-    assert!(
-        !complete_msgs.is_empty(),
-        "FILE_UPLOAD_COMPLETE should have been sent"
+    assert_eq!(
+        complete_msgs.len(),
+        1,
+        "FILE_UPLOAD_COMPLETE should have been sent exactly once"
     );
 }
 
