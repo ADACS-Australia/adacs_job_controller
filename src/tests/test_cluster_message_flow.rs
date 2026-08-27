@@ -2,6 +2,8 @@
 //! file download/upload state transitions, backpressure, and file list handling.
 #![allow(clippy::similar_names)]
 
+mod common;
+
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -10,25 +12,10 @@ use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::file_download::FileDownloadState;
 use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{ClusterTrait, WsOutbound};
-use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{FileListState, Priority};
 use dashmap::DashMap;
-
-fn test_config() -> ClusterConfig {
-    ClusterConfig {
-        name: "test_cluster".to_string(),
-        host: "localhost".to_string(),
-        username: "user".to_string(),
-        path: "/home/user/jc".to_string(),
-        key: String::new(),
-        connection_type: "manual".to_string(),
-        keytab: String::new(),
-        kerberos_principal: String::new(),
-        ltk: None,
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Priority queue ordering
@@ -48,7 +35,7 @@ fn test_config() -> ClusterConfig {
 /// Messages arrive in Highest → Medium → Lowest priority order, verified by message ID.
 #[tokio::test]
 async fn test_priority_queue_ordering_via_channel() {
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     // Set up a real channel as the "WS connection"
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
@@ -118,7 +105,7 @@ async fn test_priority_queue_ordering_via_channel() {
 /// Both message IDs (`1_000_001` and `1_000_002`) appear in the received output.
 #[tokio::test]
 async fn test_multiple_messages_same_priority_round_robin() {
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     cluster.set_connection(Some(tx)).await;
@@ -176,7 +163,7 @@ async fn test_file_download_chunk_flow() {
     let download_state = Arc::new(FileDownloadState::new());
     let lock = Arc::new(tokio::sync::Mutex::new(()));
     let cluster = Cluster::new_file_download(
-        test_config(),
+        common::test_cluster_config("test_cluster"),
         "dl-uuid-1".to_string(),
         Arc::clone(&download_state),
         None,
@@ -222,7 +209,7 @@ async fn test_file_download_error_flow() {
     let download_state = Arc::new(FileDownloadState::new());
     let lock = Arc::new(tokio::sync::Mutex::new(()));
     let cluster = Cluster::new_file_download(
-        test_config(),
+        common::test_cluster_config("test_cluster"),
         "dl-uuid-err".to_string(),
         Arc::clone(&download_state),
         None,
@@ -258,7 +245,7 @@ async fn test_file_download_error_flow() {
 async fn test_download_messages_on_master_cluster_are_noop() {
     use adacs_job_controller::protocol::types::ClusterRole;
 
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     let mut details_msg = Message::new(FILE_DETAILS, Priority::Medium, "test");
     details_msg.push_ulong(1024);
@@ -296,7 +283,7 @@ async fn test_download_messages_on_master_cluster_are_noop() {
 async fn test_file_upload_server_ready_flow() {
     let upload_state = Arc::new(FileUploadState::new());
     let cluster = Cluster::new_file_upload(
-        test_config(),
+        common::test_cluster_config("test_cluster"),
         "ul-uuid-1".to_string(),
         Arc::clone(&upload_state),
         None,
@@ -324,7 +311,7 @@ async fn test_file_upload_server_ready_flow() {
 async fn test_file_upload_error_flow() {
     let upload_state = Arc::new(FileUploadState::new());
     let cluster = Cluster::new_file_upload(
-        test_config(),
+        common::test_cluster_config("test_cluster"),
         "ul-uuid-err".to_string(),
         Arc::clone(&upload_state),
         None,
@@ -354,7 +341,7 @@ async fn test_file_upload_error_flow() {
 async fn test_file_upload_complete_flow() {
     let upload_state = Arc::new(FileUploadState::new());
     let cluster = Cluster::new_file_upload(
-        test_config(),
+        common::test_cluster_config("test_cluster"),
         "ul-uuid-done".to_string(),
         Arc::clone(&upload_state),
         None,
@@ -384,7 +371,7 @@ async fn test_file_upload_complete_flow() {
 async fn test_upload_messages_on_master_cluster_are_noop() {
     use adacs_job_controller::protocol::types::ClusterRole;
 
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     let ready_msg = Message::new(SERVER_READY, Priority::Medium, "test");
     let ready_msg = Message::from_bytes(ready_msg.into_data());
@@ -413,7 +400,7 @@ async fn test_upload_messages_on_master_cluster_are_noop() {
 /// The result is `true`.
 #[tokio::test]
 async fn test_wait_for_queue_drain_empty_returns_immediately() {
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     // Queue is empty, should return true instantly
     let result = cluster.wait_for_queue_drain(true).await;
@@ -433,7 +420,7 @@ async fn test_wait_for_queue_drain_empty_returns_immediately() {
 /// The drain future resolves within the timeout and returns `true`.
 #[tokio::test]
 async fn test_wait_for_queue_drain_blocks_then_unblocks() {
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     // Set up a connection so the scheduler can drain the queue
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
@@ -482,7 +469,7 @@ async fn test_wait_for_queue_drain_blocks_then_unblocks() {
 /// and `false` again after clearing it.
 #[tokio::test]
 async fn test_cluster_set_connection_and_offline() {
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
     assert!(!cluster.is_online());
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
@@ -505,7 +492,7 @@ async fn test_cluster_set_connection_and_offline() {
 /// `is_online()` returns `false` after `close`.
 #[tokio::test]
 async fn test_cluster_close_disconnects() {
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     cluster.set_connection(Some(tx)).await;
     assert!(cluster.is_online());
@@ -541,7 +528,7 @@ async fn test_cluster_close_disconnects() {
 async fn test_cluster_close_sends_ws_outbound_close() {
     use std::sync::Mutex as StdMutex;
 
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     cluster.set_connection(Some(tx)).await;
     assert!(cluster.is_online());
@@ -605,7 +592,7 @@ async fn test_cluster_close_sends_ws_outbound_close() {
 async fn test_cluster_constructor() {
     use adacs_job_controller::protocol::types::ClusterRole;
 
-    let config = test_config();
+    let config = common::test_cluster_config("test_cluster");
     let cluster = Cluster::new(config.clone(), None);
 
     // Verify basic properties
@@ -646,7 +633,10 @@ async fn test_cluster_constructor_with_app_context() {
     let file_list_map = Arc::new(DashMap::new());
     let app_context = Arc::new(AppContext { db, file_list_map });
 
-    let cluster = Cluster::new(test_config(), Some(app_context.clone()));
+    let cluster = Cluster::new(
+        common::test_cluster_config("test_cluster"),
+        Some(app_context.clone()),
+    );
 
     assert_eq!(cluster.name(), "test_cluster");
     assert!(!cluster.is_online());
@@ -726,7 +716,7 @@ async fn test_file_upload_constructor() {
 async fn test_run_scheduler_priority_ordering() {
     use adacs_job_controller::protocol::types::Priority;
 
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     // Queue messages at different priorities from different sources
     // Highest priority: s1, s2
@@ -847,7 +837,7 @@ async fn test_run_scheduler_priority_ordering() {
 async fn test_does_higher_priority_data_exist() {
     use adacs_job_controller::protocol::types::Priority;
 
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     // Queue some Medium priority messages first
     for i in 0..3 {
@@ -908,7 +898,7 @@ async fn test_does_higher_priority_data_exist() {
 /// The received binary payload round-trips to the original source, message ID, and payload fields.
 #[tokio::test]
 async fn test_send_message_queues_correctly() {
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     cluster.set_connection(Some(tx)).await;
@@ -958,7 +948,7 @@ async fn test_send_message_queues_correctly() {
 async fn test_file_upload_unrecognized_message_no_crash() {
     let upload_state = Arc::new(FileUploadState::new());
     let cluster = Cluster::new_file_upload(
-        test_config(),
+        common::test_cluster_config("test_cluster"),
         "ul-uuid-unknown".to_string(),
         Arc::clone(&upload_state),
         None,
@@ -991,7 +981,7 @@ async fn test_file_upload_unrecognized_message_no_crash() {
 /// The drain future resolves successfully within a 2-second timeout.
 #[tokio::test]
 async fn test_prune_sources_removes_empty_queues() {
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     // Queue messages from two sources
     let mut msg_a = Message::new(1_000_001, Priority::Medium, "source_a");
@@ -1063,7 +1053,7 @@ async fn test_prune_sources_background_thread() {
 
     // Run 5 iterations like the C++ test
     for _iteration in 0..5 {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
         // Set up WebSocket connection to capture messages and drain queue
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
@@ -1154,7 +1144,7 @@ fn make_app_context_with_file_list_map() -> (
 #[tokio::test]
 async fn test_handle_file_list_unknown_uuid_is_noop() {
     let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(test_config(), Some(ctx));
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
 
     let uuid = "unknown-uuid";
 
@@ -1192,7 +1182,7 @@ async fn test_handle_file_list_unknown_uuid_is_noop() {
 #[tokio::test]
 async fn test_handle_file_list_populates_file_entries() {
     let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(test_config(), Some(ctx));
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
 
     let uuid = "test-fl-uuid";
 
@@ -1267,7 +1257,7 @@ async fn test_handle_file_list_populates_file_entries() {
 #[tokio::test]
 async fn test_handle_file_list_truncated_message_graceful() {
     let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(test_config(), Some(ctx));
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
 
     let uuid = "test-fl-truncated";
 
@@ -1325,7 +1315,7 @@ async fn test_handle_file_list_truncated_message_graceful() {
 #[tokio::test]
 async fn test_handle_file_list_error_unknown_uuid_is_noop() {
     let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(test_config(), Some(ctx));
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
 
     let uuid = "unknown-err-uuid";
 
@@ -1354,7 +1344,7 @@ async fn test_handle_file_list_error_unknown_uuid_is_noop() {
 #[tokio::test]
 async fn test_handle_file_list_error_sets_error_state() {
     let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(test_config(), Some(ctx));
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
 
     let uuid = "test-fle-uuid";
 
@@ -1402,7 +1392,7 @@ async fn test_handle_file_list_error_sets_error_state() {
 async fn test_file_list_messages_on_master_cluster_are_noop() {
     use adacs_job_controller::protocol::types::ClusterRole;
 
-    let cluster = Cluster::new(test_config(), None);
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
     let mut list_msg = Message::new(FILE_LIST, Priority::Medium, "test");
     list_msg.push_string("no-ctx-uuid");
