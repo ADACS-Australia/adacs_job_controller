@@ -239,6 +239,9 @@ async fn handle_job_get_by_job_id(
         .filter(cluster_job::Column::Cluster.eq(&cluster_name))
         .all(db)
         .await
+        .inspect_err(|e| {
+            tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, e);
+        })
         .unwrap_or_default()
         .into_iter()
         .map(ClusterJob::from)
@@ -262,6 +265,9 @@ async fn handle_job_get_by_id(
     let row: Option<ClusterJob> = cluster_job::Entity::find_by_id(id)
         .one(db)
         .await
+        .inspect_err(|e| {
+            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+        })
         .unwrap_or(None)
         .map(ClusterJob::from);
 
@@ -292,6 +298,9 @@ async fn handle_job_get_running_jobs(
         .filter(cluster_job::Column::Running.eq(true))
         .all(db)
         .await
+        .inspect_err(|e| {
+            tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, e);
+        })
         .unwrap_or_default()
         .into_iter()
         .map(ClusterJob::from)
@@ -312,7 +321,9 @@ async fn handle_job_delete(
     let db_request_id = message.pop_uint();
     let id = message.pop_ulong().cast_signed();
 
-    let _ = cluster_job::Entity::delete_by_id(id).exec(db).await;
+    if let Err(e) = cluster_job::Entity::delete_by_id(id).exec(db).await {
+        tracing::error!("ClusterDB[{}]: delete failed: {}", cluster.name(), e);
+    }
 
     let response = prepare_response(db_request_id);
     cluster.send_message(response).await;
@@ -349,7 +360,10 @@ async fn handle_job_save(
         let mut response = prepare_response(db_request_id);
         match result {
             Ok(model) => response.push_ulong(model.id.cast_unsigned()),
-            Err(_) => response.push_ulong(0),
+            Err(e) => {
+                tracing::error!("ClusterDB[{}]: insert failed: {}", cluster.name(), e);
+                response.push_ulong(0);
+            }
         }
         cluster.send_message(response).await;
     } else {
@@ -367,7 +381,9 @@ async fn handle_job_save(
             deleted: Set(job.deleted),
             cluster: NotSet,
         };
-        let _ = active.update(db).await;
+        if let Err(e) = active.update(db).await {
+            tracing::error!("ClusterDB[{}]: update failed: {}", cluster_name, e);
+        }
 
         let mut response = prepare_response(db_request_id);
         response.push_ulong(job.id.cast_unsigned());
@@ -392,6 +408,9 @@ async fn handle_jobstatus_get_by_job_id_and_what(
         .filter(cluster_job_status::Column::What.eq(&what))
         .all(db)
         .await
+        .inspect_err(|e| {
+            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+        })
         .unwrap_or_default()
         .into_iter()
         .map(ClusterJobStatus::from)
@@ -416,6 +435,9 @@ async fn handle_jobstatus_get_by_job_id(
         .filter(cluster_job_status::Column::JobId.eq(job_id))
         .all(db)
         .await
+        .inspect_err(|e| {
+            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+        })
         .unwrap_or_default()
         .into_iter()
         .map(ClusterJobStatus::from)
@@ -442,7 +464,9 @@ async fn handle_jobstatus_delete_by_id_list(
     let ids_to_delete = (count as usize).min(message.remaining() / 8);
     for _ in 0..ids_to_delete {
         let id = message.pop_ulong().cast_signed();
-        let _ = cluster_job_status::Entity::delete_by_id(id).exec(db).await;
+        if let Err(e) = cluster_job_status::Entity::delete_by_id(id).exec(db).await {
+            tracing::error!("ClusterDB[{}]: delete failed: {}", cluster.name(), e);
+        }
     }
 
     let response = prepare_response(db_request_id);
@@ -472,7 +496,10 @@ async fn handle_jobstatus_save(
         let mut response = prepare_response(db_request_id);
         match result {
             Ok(model) => response.push_ulong(model.id.cast_unsigned()),
-            Err(_) => response.push_ulong(0),
+            Err(e) => {
+                tracing::error!("ClusterDB[{}]: insert failed: {}", cluster.name(), e);
+                response.push_ulong(0);
+            }
         }
         cluster.send_message(response).await;
     } else {
@@ -483,7 +510,9 @@ async fn handle_jobstatus_save(
             what: Set(status.what.clone()),
             state: Set(status.state),
         };
-        let _ = active.update(db).await;
+        if let Err(e) = active.update(db).await {
+            tracing::error!("ClusterDB[{}]: update failed: {}", cluster.name(), e);
+        }
 
         let mut response = prepare_response(db_request_id);
         response.push_ulong(status.id.cast_unsigned());
@@ -507,7 +536,9 @@ async fn update_bundle_job(
         cluster: NotSet,
         bundle_hash: NotSet,
     };
-    let _ = active.update(db).await;
+    if let Err(e) = active.update(db).await {
+        tracing::error!("ClusterDB[{}]: update failed: {}", cluster.name(), e);
+    }
 
     let mut response = prepare_response(db_request_id);
     response.push_ulong(model_id.cast_unsigned());
@@ -535,7 +566,10 @@ async fn insert_bundle_job(
     let mut response = prepare_response(db_request_id);
     match result {
         Ok(model) => response.push_ulong(model.id.cast_unsigned()),
-        Err(_) => response.push_ulong(0),
+        Err(e) => {
+            tracing::error!("ClusterDB[{}]: insert failed: {}", cluster.name(), e);
+            response.push_ulong(0);
+        }
     }
     cluster.send_message(response).await;
 }
@@ -556,6 +590,9 @@ async fn handle_bundle_create_or_update(
         let existing = bundle_job::Entity::find_by_id(bundle.id)
             .one(db)
             .await
+            .inspect_err(|e| {
+                tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, e);
+            })
             .unwrap_or(None);
 
         if let Some(model) = existing {
@@ -588,6 +625,9 @@ async fn handle_bundle_create_or_update(
             .filter(bundle_job::Column::Cluster.eq(&cluster_name))
             .one(db)
             .await
+            .inspect_err(|e| {
+                tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, e);
+            })
             .unwrap_or(None);
 
         if let Some(model) = existing {
@@ -620,6 +660,9 @@ async fn handle_bundle_get_by_id(
     let row: Option<BundleJob> = bundle_job::Entity::find_by_id(id)
         .one(db)
         .await
+        .inspect_err(|e| {
+            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+        })
         .unwrap_or(None)
         .map(BundleJob::from);
 
@@ -645,7 +688,9 @@ async fn handle_bundle_delete(
     let db_request_id = message.pop_uint();
     let id = message.pop_ulong().cast_signed();
 
-    let _ = bundle_job::Entity::delete_by_id(id).exec(db).await;
+    if let Err(e) = bundle_job::Entity::delete_by_id(id).exec(db).await {
+        tracing::error!("ClusterDB[{}]: delete failed: {}", cluster.name(), e);
+    }
 
     let response = prepare_response(db_request_id);
     cluster.send_message(response).await;
