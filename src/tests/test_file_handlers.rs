@@ -23,8 +23,9 @@ use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState};
 
 use common::{
-    encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_test_job, make_test_state,
-    make_test_state_with_secrets, manager_with_online_cluster_no_messages, offline_cluster,
+    encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_test_job,
+    insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
+    manager_with_online_cluster_no_messages, offline_cluster,
     online_cluster, online_cluster_no_messages, setup_test_db, test_cluster_config,
     test_jwt_secrets, test_jwt_secrets_multi,
 };
@@ -1440,21 +1441,9 @@ async fn test_list_files_cluster_offline_returns_503() {
 /// Verifies 400 Bad Request with body containing "exceeds maximum supported value".
 #[tokio::test]
 async fn test_list_files_job_id_exceeding_u32_returns_400() {
-    use adacs_job_controller::db::entities::job;
-
     let db = setup_test_db().await;
     let huge: i64 = i64::from(u32::MAX) + 1;
-    job::ActiveModel {
-        id: Set(huge),
-        user: Set(1),
-        parameters: Set("{}".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        application: Set("testapp".to_string()),
-    }
-    .insert(&db)
-    .await
-    .expect("insert test job with id failed");
+    insert_test_job_with_id(&db, huge, "ozstar", "b", "testapp").await;
 
     let mut manager = MockClusterManagerTrait::new();
     manager
@@ -1647,21 +1636,9 @@ async fn test_upload_file_no_target_path_returns_400() {
 /// Verifies 400 Bad Request with body containing "exceeds maximum supported value".
 #[tokio::test]
 async fn test_upload_file_job_id_exceeding_u32_returns_400() {
-    use adacs_job_controller::db::entities::job;
-
     let db = setup_test_db().await;
     let huge: i64 = i64::from(u32::MAX) + 1;
-    job::ActiveModel {
-        id: Set(huge),
-        user: Set(1),
-        parameters: Set("{}".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        application: Set("testapp".to_string()),
-    }
-    .insert(&db)
-    .await
-    .expect("insert test job with id failed");
+    insert_test_job_with_id(&db, huge, "ozstar", "b", "testapp").await;
 
     let cluster_main = Arc::new(online_cluster_no_messages());
     let upload_cluster = {

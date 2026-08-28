@@ -261,6 +261,31 @@ pub async fn insert_test_job(
     .id
 }
 
+/// Insert a job with an explicit ID (used to exercise the `u32::MAX` conversion guard).
+pub async fn insert_test_job_with_id(
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+    cluster: &str,
+    bundle: &str,
+    application: &str,
+) -> i64 {
+    use adacs_job_controller::db::entities::job;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+
+    job::ActiveModel {
+        id: Set(id),
+        user: Set(1),
+        parameters: Set("{}".to_string()),
+        cluster: Set(cluster.to_string()),
+        bundle: Set(bundle.to_string()),
+        application: Set(application.to_string()),
+    }
+    .insert(db)
+    .await
+    .expect("insert test job with id failed")
+    .id
+}
+
 /// Insert a job history record with the given state.
 pub async fn insert_job_history(
     db: &sea_orm::DatabaseConnection,
