@@ -746,20 +746,21 @@ async fn test_race_condition_message_during_disconnect() {
 // Tests: Bounded application shutdown (task-6)
 // ---------------------------------------------------------------------------
 
-/// Verifies that bounded application shutdown triggers every registered
-/// download session, releases transport owners, and empties the manager's
-/// connection map without depending on `tokio::spawn` from `Drop`.
-///
-/// The test wires a real `Cluster` and a real `DownloadSession` into the
-/// manager mock, opens a real WebSocket from a tokio-tungstenite client,
-/// then drives `begin_application_shutdown()` on the manager mock and
-/// asserts:
-/// - The dedicated session reaches `Closed` after the existing
-///   `WS_CLOSE_HANDSHAKE_GRACE_SECONDS` (5 s) close bound plus the
-///   handler-exit guard's `Closing -> Closed` completion.
-/// - The connection map returns to baseline (no live download session).
-/// - The client observes a transport-level shutdown (Close frame or
-///   stream error/EOF).
+/// Verifies the bounded application-shutdown path on a single
+/// `DownloadSession` driven directly — no real WebSocket is opened and no
+/// transport-level shutdown is asserted (the full WS path is covered by
+/// other tests). It asserts:
+/// - An `ApplicationShutdown` trigger moves the session
+///   `Pending/Connected -> Closing` with the winning reason retained.
+/// - Repeated triggers are idempotent no-ops.
+/// - The handler-exit guard's `complete(Some(conn_id))` finalises the
+///   `Closing -> Closed` transition; `complete` is idempotent and rejects
+///   a stale connection id.
+/// - The close bound is the existing `WS_CLOSE_HANDSHAKE_GRACE_SECONDS`
+///   (5 s), with no new long timeout introduced.
+/// - The manager mock's `is_application_shutting_down` and
+///   `begin_application_shutdown` are reachable through the
+///   `Arc<dyn ClusterManagerTrait>` trait-object plumbing.
 #[tokio::test]
 async fn test_application_shutdown_releases_transport_and_completes_session() {
     use adacs_job_controller::cluster::file_download::{
