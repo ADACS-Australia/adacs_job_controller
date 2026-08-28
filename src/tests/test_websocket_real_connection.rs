@@ -29,8 +29,8 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::ClusterRole;
 
 use common::{
-    encode_test_jwt, insert_test_job, make_test_state, online_cluster, setup_test_db,
-    test_cluster_config,
+    connection_closes, encode_test_jwt, insert_test_job, make_test_state, online_cluster,
+    setup_test_db, test_cluster_config,
 };
 
 use sea_orm::{
@@ -387,17 +387,7 @@ async fn test_websocket_connection_rejected_invalid_token() {
         common::repeated_download::connect_ws(port, "invalid_token_12345").await;
 
     // Connection should be closed by the server.
-    let closed = tokio::time::timeout(Duration::from_secs(2), async {
-        while let Some(msg) = stream.next().await {
-            match msg {
-                Ok(TungsteniteMsg::Close(_)) | Err(_) => return true,
-                _ => {}
-            }
-        }
-        true // stream ended
-    })
-    .await
-    .unwrap_or(false);
+    let closed = connection_closes(&mut stream, Duration::from_secs(2)).await;
 
     assert!(closed, "Server should close connection for invalid token");
 

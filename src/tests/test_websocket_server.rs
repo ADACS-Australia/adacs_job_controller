@@ -21,7 +21,8 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, Priority};
 
 use common::{
-    connect_ws, make_test_state, recv_binary, setup_test_db, test_cluster_config, ws_router,
+    connect_ws, connection_closes, make_test_state, recv_binary, setup_test_db, test_cluster_config,
+    ws_router,
 };
 
 // ---------------------------------------------------------------------------
@@ -38,28 +39,6 @@ async fn start_test_server(state: adacs_job_controller::app::AppState) -> common
         axum::serve(listener, app).await.unwrap_or(());
     });
     common::TestServer::new(port, handle)
-}
-
-/// Check whether the WS connection was closed within 500ms.
-async fn connection_closes(
-    stream: &mut futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-    >,
-) -> bool {
-    let timeout = tokio::time::timeout(std::time::Duration::from_millis(500), async {
-        while let Some(msg) = stream.next().await {
-            match msg {
-                Ok(TungsteniteMsg::Close(_)) | Err(_) => return true,
-                _ => {}
-            }
-        }
-        true // stream ended
-    })
-    .await;
-
-    timeout.unwrap_or(false)
 }
 
 /// Poll `cond` every 5ms until `timeout` elapses.
@@ -177,7 +156,7 @@ async fn test_ws_invalid_token_disconnects() {
         .0
         .split();
 
-    let closed = connection_closes(&mut stream).await;
+    let closed = connection_closes(&mut stream, std::time::Duration::from_millis(500)).await;
     assert!(closed, "Server should close connection for invalid token");
 }
 
@@ -205,7 +184,7 @@ async fn test_ws_no_token_disconnects() {
     // Connect without any token query param
     let (_, mut stream) = connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await;
 
-    let closed = connection_closes(&mut stream).await;
+    let closed = connection_closes(&mut stream, std::time::Duration::from_millis(500)).await;
     assert!(
         closed,
         "Server should close connection when no token provided"
