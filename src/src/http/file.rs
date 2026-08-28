@@ -11,6 +11,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, Quer
 
 use crate::app::AppState;
 use crate::cluster::file_download::{DownloadCleanupTrigger, DownloadShutdownReason};
+use crate::cluster::file_upload::FileUploadState;
 use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
@@ -615,6 +616,19 @@ pub async fn download_file(
 
 // ---- PUT /job/apiv1/file/upload/ (Stream file upload) ----
 
+/// Return an error if the upload session has been flagged as failed by the remote cluster.
+///
+/// # Errors
+///
+/// Returns a `BAD_REQUEST` error with the remote error details when the session is in an error state.
+async fn check_upload_error(fu_state: &FileUploadState) -> Result<(), (StatusCode, String)> {
+    if fu_state.error.load(Ordering::Acquire) {
+        let details = fu_state.error_details.lock().await.clone();
+        return Err((StatusCode::BAD_REQUEST, details));
+    }
+    Ok(())
+}
+
 /// Handle a file upload to a remote cluster.
 ///
 /// # Errors
@@ -747,10 +761,7 @@ pub async fn upload_file(
             "Remote cluster took too long to respond.".to_string();
     }
 
-    if fu_state.error.load(Ordering::Acquire) {
-        let details = fu_state.error_details.lock().await.clone();
-        return Err((StatusCode::BAD_REQUEST, details));
-    }
+    check_upload_error(&fu_state).await?;
 
     let chunk_size = (*settings::FILE_CHUNK_SIZE).max(1) as usize;
     let mut total_read: u64 = 0;
@@ -782,10 +793,7 @@ pub async fn upload_file(
             ));
         }
 
-        if fu_state.error.load(Ordering::Acquire) {
-            let details = fu_state.error_details.lock().await.clone();
-            return Err((StatusCode::BAD_REQUEST, details));
-        }
+        check_upload_error(&fu_state).await?;
 
         let remaining = (content_length - total_read) as usize;
         let this_chunk = remaining.min(chunk_size);
@@ -806,10 +814,7 @@ pub async fn upload_file(
         ));
     }
 
-    if fu_state.error.load(Ordering::Acquire) {
-        let details = fu_state.error_details.lock().await.clone();
-        return Err((StatusCode::BAD_REQUEST, details));
-    }
+    check_upload_error(&fu_state).await?;
 
     let complete_msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Highest, &uuid);
     upload_cluster.send_message(complete_msg).await;
@@ -831,10 +836,7 @@ pub async fn upload_file(
         ));
     }
 
-    if fu_state.error.load(Ordering::Acquire) {
-        let details = fu_state.error_details.lock().await.clone();
-        return Err((StatusCode::BAD_REQUEST, details));
-    }
+    check_upload_error(&fu_state).await?;
 
     Ok(Json(serde_json::json!({
         "uploadId": uuid,
