@@ -486,6 +486,53 @@ async fn handle_jobstatus_save(
 
 // ---- DB_BUNDLE_* handlers ----
 
+/// Updates a bundle job row and sends a `DB_RESPONSE` echoing the row ID.
+async fn update_bundle_job(
+    db_request_id: u32,
+    model_id: i64,
+    content: &str,
+    cluster: &dyn ClusterTrait,
+    db: &sea_orm::DatabaseConnection,
+) {
+    let active = bundle_job::ActiveModel {
+        id: Unchanged(model_id),
+        content: Set(content.to_owned()),
+        cluster: NotSet,
+        bundle_hash: NotSet,
+    };
+    let _ = active.update(db).await;
+
+    let mut response = prepare_response(db_request_id);
+    response.push_ulong(model_id.cast_unsigned());
+    cluster.send_message(response).await;
+}
+
+/// Inserts a bundle job row and sends a `DB_RESPONSE` with the assigned ID (or 0 on error).
+async fn insert_bundle_job(
+    db_request_id: u32,
+    content: &str,
+    cluster_name: &str,
+    bundle_hash: &str,
+    cluster: &dyn ClusterTrait,
+    db: &sea_orm::DatabaseConnection,
+) {
+    let result = bundle_job::ActiveModel {
+        id: NotSet,
+        content: Set(content.to_owned()),
+        cluster: Set(cluster_name.to_owned()),
+        bundle_hash: Set(bundle_hash.to_owned()),
+    }
+    .insert(db)
+    .await;
+
+    let mut response = prepare_response(db_request_id);
+    match result {
+        Ok(model) => response.push_ulong(model.id.cast_unsigned()),
+        Err(_) => response.push_ulong(0),
+    }
+    cluster.send_message(response).await;
+}
+
 /// Inserts or updates a bundle job row and sends a `DB_RESPONSE` with the row ID.
 async fn handle_bundle_create_or_update(
     message: &mut Message,
@@ -514,34 +561,18 @@ async fn handle_bundle_create_or_update(
             }
 
             // Update with matching hash
-            let active = bundle_job::ActiveModel {
-                id: Unchanged(model.id),
-                content: Set(bundle.content.clone()),
-                cluster: NotSet,
-                bundle_hash: NotSet,
-            };
-            let _ = active.update(db).await;
-
-            let mut response = prepare_response(db_request_id);
-            response.push_ulong(model.id.cast_unsigned());
-            cluster.send_message(response).await;
+            update_bundle_job(db_request_id, model.id, &bundle.content, cluster, db).await;
         } else {
             // Bundle ID not found - insert new
-            let result = bundle_job::ActiveModel {
-                id: NotSet,
-                content: Set(bundle.content.clone()),
-                cluster: Set(cluster_name),
-                bundle_hash: Set(bundle_hash),
-            }
-            .insert(db)
+            insert_bundle_job(
+                db_request_id,
+                &bundle.content,
+                &cluster_name,
+                &bundle_hash,
+                cluster,
+                db,
+            )
             .await;
-
-            let mut response = prepare_response(db_request_id);
-            match result {
-                Ok(model) => response.push_ulong(model.id.cast_unsigned()),
-                Err(_) => response.push_ulong(0),
-            }
-            cluster.send_message(response).await;
         }
     } else {
         // No ID - search by hash and cluster, insert if not found
@@ -554,34 +585,18 @@ async fn handle_bundle_create_or_update(
 
         if let Some(model) = existing {
             // Update
-            let active = bundle_job::ActiveModel {
-                id: Unchanged(model.id),
-                content: Set(bundle.content.clone()),
-                cluster: NotSet,
-                bundle_hash: NotSet,
-            };
-            let _ = active.update(db).await;
-
-            let mut response = prepare_response(db_request_id);
-            response.push_ulong(model.id.cast_unsigned());
-            cluster.send_message(response).await;
+            update_bundle_job(db_request_id, model.id, &bundle.content, cluster, db).await;
         } else {
             // Insert
-            let result = bundle_job::ActiveModel {
-                id: NotSet,
-                content: Set(bundle.content.clone()),
-                cluster: Set(cluster_name),
-                bundle_hash: Set(bundle_hash),
-            }
-            .insert(db)
+            insert_bundle_job(
+                db_request_id,
+                &bundle.content,
+                &cluster_name,
+                &bundle_hash,
+                cluster,
+                db,
+            )
             .await;
-
-            let mut response = prepare_response(db_request_id);
-            match result {
-                Ok(model) => response.push_ulong(model.id.cast_unsigned()),
-                Err(_) => response.push_ulong(0),
-            }
-            cluster.send_message(response).await;
         }
     }
 }
