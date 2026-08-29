@@ -576,6 +576,44 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_token_from_headers_bearer_prefix_stripped() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer abc123".parse().unwrap());
+        assert_eq!(extract_token_from_headers(&headers), "abc123");
+    }
+
+    #[test]
+    fn test_extract_token_from_headers_lowercase_bearer_accepted() {
+        // RFC 6750: the auth scheme is case-insensitive.
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "bearer abc123".parse().unwrap());
+        assert_eq!(extract_token_from_headers(&headers), "abc123");
+    }
+
+    #[test]
+    fn test_extract_token_from_headers_missing_header_returns_empty() {
+        let headers = HeaderMap::new();
+        assert_eq!(extract_token_from_headers(&headers), "");
+    }
+
+    #[test]
+    fn test_extract_token_from_headers_non_bearer_returns_empty() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Basic abc123".parse().unwrap());
+        assert_eq!(extract_token_from_headers(&headers), "");
+    }
+
+    #[test]
+    fn test_extract_token_from_headers_invalid_utf8_returns_empty() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            axum::http::HeaderValue::from_bytes(b"Bearer \xff\xfe").unwrap(),
+        );
+        assert_eq!(extract_token_from_headers(&headers), "");
+    }
+
+    #[test]
     fn test_handler_exit_guard_idempotent_close_event() {
         let g = HandlerExitGuard::new(
             None,
