@@ -22,6 +22,7 @@ use dashmap::DashMap;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -110,6 +111,18 @@ fn make_update_job_message(job_id: u32, what: &str, status: u32, details: &str) 
     msg.push_string(details);
     // Round-trip so id() and source() are properly set
     Message::from_bytes(msg.into_data())
+}
+
+/// Drain all pending `WsOutbound` messages from the channel, keeping only the
+/// binary payloads (non-binary messages are skipped).
+fn drain_binary_messages(rx: &mut UnboundedReceiver<WsOutbound>) -> Vec<Vec<u8>> {
+    let mut messages = Vec::new();
+    while let Ok(outbound) = rx.try_recv() {
+        if let WsOutbound::Binary(data) = outbound {
+            messages.push(data);
+        }
+    }
+    messages
 }
 
 // ---------------------------------------------------------------------------
@@ -242,13 +255,7 @@ async fn test_check_unsubmitted_jobs_resends_old_pending() {
     cluster.wait_for_queue_drain(true).await;
 
     // Drain channel
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        let WsOutbound::Binary(data) = outbound else {
-            continue;
-        };
-        messages.push(data);
-    }
+    let messages = drain_binary_messages(&mut rx);
 
     // Expect at least one SUBMIT_JOB message + the SERVER_READY that gets sent on connection
     let submit_msgs: Vec<_> = messages
@@ -297,13 +304,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        let WsOutbound::Binary(data) = outbound else {
-            continue;
-        };
-        messages.push(data);
-    }
+    let messages = drain_binary_messages(&mut rx);
 
     let submit_msgs: Vec<_> = messages
         .iter()
@@ -346,13 +347,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_terminal_state() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        let WsOutbound::Binary(data) = outbound else {
-            continue;
-        };
-        messages.push(data);
-    }
+    let messages = drain_binary_messages(&mut rx);
 
     let submit_msgs: Vec<_> = messages
         .iter()
@@ -421,13 +416,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
     cluster.check_cancelling_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        let WsOutbound::Binary(data) = outbound else {
-            continue;
-        };
-        messages.push(data);
-    }
+    let messages = drain_binary_messages(&mut rx);
 
     let cancel_msgs: Vec<_> = messages
         .iter()
@@ -504,13 +493,7 @@ async fn test_check_cancelling_jobs_resends_with_pending_history() {
     cluster.check_cancelling_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        let WsOutbound::Binary(data) = outbound else {
-            continue;
-        };
-        messages.push(data);
-    }
+    let messages = drain_binary_messages(&mut rx);
 
     let cancel_msgs: Vec<_> = messages
         .iter()
@@ -553,13 +536,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
     cluster.check_deleting_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        let WsOutbound::Binary(data) = outbound else {
-            continue;
-        };
-        messages.push(data);
-    }
+    let messages = drain_binary_messages(&mut rx);
 
     let delete_msgs: Vec<_> = messages
         .iter()
@@ -884,13 +861,7 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        let WsOutbound::Binary(data) = outbound else {
-            continue;
-        };
-        messages.push(data);
-    }
+    let messages = drain_binary_messages(&mut rx);
 
     let submit_msgs: Vec<_> = messages
         .iter()
@@ -989,13 +960,7 @@ async fn test_check_unsubmitted_jobs_skips_job_id_exceeding_u32_range() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        let WsOutbound::Binary(data) = outbound else {
-            continue;
-        };
-        messages.push(data);
-    }
+    let messages = drain_binary_messages(&mut rx);
 
     let submit_msgs: Vec<_> = messages
         .iter()
