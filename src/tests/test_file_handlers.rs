@@ -2674,6 +2674,7 @@ async fn test_resolve_cluster_bundle_for_file_list_missing_job_returns_error() {
 
 mod download_session_cleanup {
     use std::sync::Arc;
+    use std::sync::atomic::Ordering;
     use std::time::Duration;
 
     use dashmap::DashMap;
@@ -2905,8 +2906,26 @@ mod download_session_cleanup {
         let (_db, mgr, cluster) = real_manager().await;
         let uuid = "no-trigger-uuid";
         let _dl = mgr.create_file_download(&cluster, uuid).await;
-        assert!(mgr.get_file_download(uuid).is_some());
-        assert!(mgr.get_file_download_cleanup_trigger(uuid).is_some());
+        let dl = mgr
+            .get_file_download(uuid)
+            .expect("download session must be registered after create_file_download");
+        assert!(
+            !dl.error.load(Ordering::Relaxed),
+            "fresh session must not be in error state"
+        );
+        assert!(
+            !dl.data_ready.load(Ordering::Relaxed),
+            "fresh session must not be data-ready"
+        );
+        assert_eq!(
+            dl.file_size.load(Ordering::Relaxed),
+            0,
+            "fresh session must have zero file size"
+        );
+        assert!(
+            mgr.get_file_download_cleanup_trigger(uuid).is_some(),
+            "cleanup trigger must be present for fresh session"
+        );
         tokio::task::yield_now().await;
         assert!(
             mgr.get_file_download(uuid).is_some(),
