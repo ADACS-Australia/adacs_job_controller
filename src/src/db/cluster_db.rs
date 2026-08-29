@@ -207,6 +207,21 @@ fn wire_row_count(cluster_name: &str, rows: usize) -> u32 {
     }
 }
 
+/// Builds a `DB_RESPONSE` with the wire row count followed by each row, then sends it.
+async fn send_rows_response<T>(
+    cluster: &dyn ClusterTrait,
+    db_request_id: u32,
+    rows: &[T],
+    to_message: impl Fn(&T, &mut Message),
+) {
+    let mut response = prepare_response(db_request_id);
+    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
+    for row in rows {
+        to_message(row, &mut response);
+    }
+    cluster.send_message(response).await;
+}
+
 // ---- DB_JOB_* handlers ----
 
 /// Looks up cluster jobs by external job ID and sends a `DB_RESPONSE` with matching rows.
@@ -229,12 +244,10 @@ async fn handle_job_get_by_job_id(
         .map(ClusterJob::from)
         .collect();
 
-    let mut response = prepare_response(db_request_id);
-    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
-    for row in &rows {
-        row.to_message(&mut response);
-    }
-    cluster.send_message(response).await;
+    send_rows_response(cluster, db_request_id, &rows, |row, msg| {
+        row.to_message(msg)
+    })
+    .await;
 }
 
 /// Looks up a cluster job by its primary key and returns zero or one row.
@@ -284,12 +297,10 @@ async fn handle_job_get_running_jobs(
         .map(ClusterJob::from)
         .collect();
 
-    let mut response = prepare_response(db_request_id);
-    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
-    for row in &rows {
-        row.to_message(&mut response);
-    }
-    cluster.send_message(response).await;
+    send_rows_response(cluster, db_request_id, &rows, |row, msg| {
+        row.to_message(msg)
+    })
+    .await;
 }
 
 /// Deletes a cluster job row by primary key and sends an empty DB response.
@@ -386,12 +397,10 @@ async fn handle_jobstatus_get_by_job_id_and_what(
         .map(ClusterJobStatus::from)
         .collect();
 
-    let mut response = prepare_response(db_request_id);
-    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
-    for row in &rows {
-        row.to_message(&mut response);
-    }
-    cluster.send_message(response).await;
+    send_rows_response(cluster, db_request_id, &rows, |row, msg| {
+        row.to_message(msg)
+    })
+    .await;
 }
 
 /// Looks up cluster job status rows by job ID and sends a `DB_RESPONSE` with matching rows.
@@ -412,12 +421,10 @@ async fn handle_jobstatus_get_by_job_id(
         .map(ClusterJobStatus::from)
         .collect();
 
-    let mut response = prepare_response(db_request_id);
-    response.push_uint(wire_row_count(&cluster.name(), rows.len()));
-    for row in &rows {
-        row.to_message(&mut response);
-    }
-    cluster.send_message(response).await;
+    send_rows_response(cluster, db_request_id, &rows, |row, msg| {
+        row.to_message(msg)
+    })
+    .await;
 }
 
 /// Deletes cluster job status rows by primary key list and sends an empty DB response.
