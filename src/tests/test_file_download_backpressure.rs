@@ -92,6 +92,18 @@ async fn drain_channel(
     msgs
 }
 
+/// Count `PAUSE_FILE_CHUNK_STREAM` messages sent on the WS channel.
+async fn pause_message_count(
+    cluster: &Arc<Cluster>,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
+) -> usize {
+    let outgoing = drain_channel(cluster, rx).await;
+    outgoing
+        .iter()
+        .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
+        .count()
+}
+
 // ---------------------------------------------------------------------------
 // test_file_chunk_received_correctly
 // ---------------------------------------------------------------------------
@@ -226,14 +238,8 @@ async fn test_backpressure_pause_sent_when_buffer_exceeds_max() {
     cluster.handle_message(msg).await;
 
     // The cluster should have sent a PAUSE_FILE_CHUNK_STREAM message
-    let outgoing = drain_channel(&cluster, &mut rx).await;
-    let pause_msgs: Vec<_> = outgoing
-        .iter()
-        .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
-        .collect();
-
     assert_eq!(
-        pause_msgs.len(),
+        pause_message_count(&cluster, &mut rx).await,
         1,
         "Expected exactly one PAUSE_FILE_CHUNK_STREAM"
     );
@@ -268,14 +274,9 @@ async fn test_backpressure_no_pause_for_small_chunks() {
     let msg = make_file_chunk_message(&small_data);
     cluster.handle_message(msg).await;
 
-    let outgoing = drain_channel(&cluster, &mut rx).await;
-    let pause_msgs: Vec<_> = outgoing
-        .iter()
-        .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
-        .collect();
-
-    assert!(
-        pause_msgs.is_empty(),
+    assert_eq!(
+        pause_message_count(&cluster, &mut rx).await,
+        0,
         "Small chunk should NOT trigger PAUSE"
     );
 
@@ -311,14 +312,9 @@ async fn test_backpressure_pause_not_resent_when_already_paused() {
     let msg = make_file_chunk_message(&large_data);
     cluster.handle_message(msg).await;
 
-    let outgoing = drain_channel(&cluster, &mut rx).await;
-    let pause_msgs: Vec<_> = outgoing
-        .iter()
-        .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
-        .collect();
-
-    assert!(
-        pause_msgs.is_empty(),
+    assert_eq!(
+        pause_message_count(&cluster, &mut rx).await,
+        0,
         "Should NOT send duplicate PAUSE when already paused"
     );
 
@@ -358,12 +354,11 @@ async fn test_file_download_completes_without_pause_for_small_file() {
     // Should have received all chunks without pause
     assert_eq!(download_state.received_bytes.load(Ordering::Relaxed), 30);
 
-    let outgoing = drain_channel(&cluster, &mut rx).await;
-    let pause_msgs: Vec<_> = outgoing
-        .iter()
-        .filter(|m| m.id() == PAUSE_FILE_CHUNK_STREAM)
-        .collect();
-    assert!(pause_msgs.is_empty(), "Small file should not trigger PAUSE");
+    assert_eq!(
+        pause_message_count(&cluster, &mut rx).await,
+        0,
+        "Small file should not trigger PAUSE"
+    );
 
     // Verify chunks are available in order
     let mut chunk_rx = download_state.chunk_receiver.lock().await;
