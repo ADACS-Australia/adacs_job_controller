@@ -509,16 +509,10 @@ impl ClusterManager {
                         uuid
                     );
                 }
-                "ssh" => {
+                "ssh" | "kerberos" => {
                     tracing::debug!(
-                        "ClusterManager: Initiating SSH connection for cluster '{}'",
-                        name
-                    );
-                    Self::launch_ssh_connection(&details, &uuid);
-                }
-                "kerberos" => {
-                    tracing::debug!(
-                        "ClusterManager: Initiating Kerberos connection for cluster '{}'",
+                        "ClusterManager: Initiating {} connection for cluster '{}'",
+                        details.connection_type,
                         name
                     );
                     Self::launch_ssh_connection(&details, &uuid);
