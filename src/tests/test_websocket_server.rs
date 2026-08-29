@@ -599,57 +599,6 @@ async fn test_ws_pong_handled() {
 }
 
 // ---------------------------------------------------------------------------
-// test_ws_authorization_header_success
-// ---------------------------------------------------------------------------
-
-/// Verify that connection with Authorization: Bearer header succeeds.
-///
-/// # Setup
-/// Start a test server with a forwarding cluster manager.
-///
-/// # Act
-/// Connect with `Authorization: Bearer valid-token` header.
-///
-/// # Assert
-/// Connection succeeds and receives `SERVER_READY`.
-#[tokio::test]
-async fn test_ws_authorization_header_success() {
-    let db = setup_test_db().await;
-    let (manager, _) = manager_with_forwarding_cluster_accepting("ozstar", None);
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
-    let port = server.port;
-
-    // Connect with Authorization: Bearer header
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
-        .into_client_request()
-        .unwrap();
-    request
-        .headers_mut()
-        .insert("Authorization", "Bearer valid-token".parse().unwrap());
-
-    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
-        .await
-        .unwrap()
-        .0
-        .split();
-
-    // The server should send SERVER_READY after accepting the connection
-    let data = recv_binary(&mut stream)
-        .await
-        .expect("Expected SERVER_READY binary message");
-    let msg = Message::from_bytes(data);
-    assert_eq!(
-        msg.id(),
-        SERVER_READY,
-        "First message should be SERVER_READY"
-    );
-    assert_eq!(msg.source(), SYSTEM_SOURCE);
-
-    sink.close().await.unwrap();
-}
-
-// ---------------------------------------------------------------------------
 // test_ws_lowercase_bearer_scheme_accepted
 // ---------------------------------------------------------------------------
 
