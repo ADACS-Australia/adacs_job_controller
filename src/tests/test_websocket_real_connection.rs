@@ -21,6 +21,7 @@ use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tower::ServiceExt;
 
+use adacs_job_controller::cluster::cluster::Cluster;
 use adacs_job_controller::cluster::traits::{
     ClusterManagerTrait, ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsOutbound,
 };
@@ -66,6 +67,44 @@ async fn start_http_server(
         axum::serve(listener, app).await.unwrap();
     });
     (port, handle)
+}
+
+/// Start a server backed by a real cluster that accepts any connection,
+/// returning the cluster together with the server's port and task handle.
+async fn start_server_with_real_cluster_accepting()
+-> (Arc<Cluster>, u16, tokio::task::JoinHandle<()>) {
+    let db = setup_test_db().await;
+    // Real cluster, so real `close()` is exercised.
+    // (Cluster::new returns Arc<Self>.)
+    let cluster: Arc<Cluster> = Cluster::new(test_cluster_config("ozstar"), None);
+    // Start the scheduler so SERVER_READY actually reaches the WS
+    // forwarder.
+    cluster.start_tasks();
+
+    let cluster_for_handler: Arc<dyn ClusterTrait> = Arc::clone(&cluster) as Arc<dyn ClusterTrait>;
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    manager
+        .expect_handle_new_connection()
+        .returning(move |_conn_id, ws_tx, _token| {
+            let c: Arc<dyn ClusterTrait> = Arc::clone(&cluster_for_handler);
+            Box::pin(async move {
+                // Install the WS sender on the cluster so close() can
+                // route a WsOutbound::Close through it.
+                c.set_connection(Some(ws_tx)).await;
+                Some(c)
+            })
+        });
+    manager.expect_handle_pong().returning(|_| ());
+    manager
+        .expect_remove_connection()
+        .returning(|_, _| Box::pin(async {}));
+    manager.expect_report_websocket_error().returning(|_, _| ());
+
+    let (port, server_handle) = start_http_server(db.clone(), manager).await;
+    (cluster, port, server_handle)
 }
 
 /// Connect a real WebSocket client to the server
@@ -258,40 +297,7 @@ async fn test_real_websocket_connection_and_auth() {
 /// WebSocket Close frame within a short timeout.
 #[tokio::test]
 async fn test_server_initiated_close_sends_close_frame_to_client() {
-    use adacs_job_controller::cluster::cluster::Cluster;
-
-    let db = setup_test_db().await;
-
-    // Real cluster, so real `close()` is exercised.
-    // (Cluster::new returns Arc<Self>.)
-    let cluster: Arc<Cluster> = Cluster::new(test_cluster_config("ozstar"), None);
-    // Start the scheduler so SERVER_READY actually reaches the WS
-    // forwarder.
-    cluster.start_tasks();
-
-    let cluster_for_handler: Arc<dyn ClusterTrait> = Arc::clone(&cluster) as Arc<dyn ClusterTrait>;
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    manager
-        .expect_handle_new_connection()
-        .returning(move |_conn_id, ws_tx, _token| {
-            let c: Arc<dyn ClusterTrait> = Arc::clone(&cluster_for_handler);
-            Box::pin(async move {
-                // Install the WS sender on the cluster so close() can
-                // route a WsOutbound::Close through it.
-                c.set_connection(Some(ws_tx)).await;
-                Some(c)
-            })
-        });
-    manager.expect_handle_pong().returning(|_| ());
-    manager
-        .expect_remove_connection()
-        .returning(|_, _| Box::pin(async {}));
-    manager.expect_report_websocket_error().returning(|_, _| ());
-
-    let (port, server_handle) = start_http_server(db.clone(), manager).await;
+    let (cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
     let (sink, mut stream) = connect_websocket(port, &token).await;
@@ -354,33 +360,7 @@ async fn test_server_initiated_close_sends_close_frame_to_client() {
 #[tokio::test]
 #[ignore = "inherently slow (~grace period); run with --ignored"]
 async fn test_close_handshake_timeout_forces_tcp_close() {
-    use adacs_job_controller::cluster::cluster::Cluster;
-
-    let db = setup_test_db().await;
-    let cluster: Arc<Cluster> = Cluster::new(test_cluster_config("ozstar"), None);
-    cluster.start_tasks();
-
-    let cluster_for_handler: Arc<dyn ClusterTrait> = Arc::clone(&cluster) as Arc<dyn ClusterTrait>;
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    manager
-        .expect_handle_new_connection()
-        .returning(move |_conn_id, ws_tx, _token| {
-            let c: Arc<dyn ClusterTrait> = Arc::clone(&cluster_for_handler);
-            Box::pin(async move {
-                c.set_connection(Some(ws_tx)).await;
-                Some(c)
-            })
-        });
-    manager.expect_handle_pong().returning(|_| ());
-    manager
-        .expect_remove_connection()
-        .returning(|_, _| Box::pin(async {}));
-    manager.expect_report_websocket_error().returning(|_, _| ());
-
-    let (port, server_handle) = start_http_server(db.clone(), manager).await;
+    let (cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
     let (sink, mut stream) = connect_websocket(port, &token).await;
