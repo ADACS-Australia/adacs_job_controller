@@ -1,16 +1,13 @@
+mod common;
+
 use adacs_job_controller::db::migration::migrator::Migrator;
+use common::make_db;
 use sea_orm::DbBackend;
 use sea_orm_migration::prelude::*;
 
-async fn setup_sqlite() -> sea_orm::DatabaseConnection {
-    sea_orm::Database::connect("sqlite::memory:")
-        .await
-        .expect("Failed to create in-memory SQLite database")
-}
-
 #[tokio::test]
 async fn test_all_migrations_up() {
-    let db = setup_sqlite().await;
+    let db = make_db().await;
 
     Migrator::up(&db, None)
         .await
@@ -47,7 +44,7 @@ async fn test_all_migrations_up() {
 
 #[tokio::test]
 async fn test_migrations_idempotent() {
-    let db = setup_sqlite().await;
+    let db = make_db().await;
 
     Migrator::up(&db, None)
         .await
@@ -59,7 +56,7 @@ async fn test_migrations_idempotent() {
 
 #[tokio::test]
 async fn test_migrations_down() {
-    let db = setup_sqlite().await;
+    let db = make_db().await;
 
     Migrator::up(&db, None)
         .await
