@@ -11,12 +11,10 @@ mod common;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use futures_util::StreamExt;
 use serde_json::json;
-use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tower::ServiceExt;
@@ -48,25 +46,9 @@ async fn start_http_server(
     db: sea_orm::DatabaseConnection,
     manager: MockClusterManagerTrait,
 ) -> (u16, tokio::task::JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
     let state = make_test_state(db, manager);
-
-    // Create router with both HTTP and WS routes
-    let mut app = create_router(state.clone());
-    app = app.merge(
-        Router::new()
-            .route(
-                "/job/ws/",
-                axum::routing::get(adacs_job_controller::websocket::server::ws_handler),
-            )
-            .with_state(state),
-    );
-
-    let handle = tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-    (port, handle)
+    let app = common::repeated_download::build_app(state);
+    common::repeated_download::start_server(app).await
 }
 
 /// Connect a real WebSocket client to the server
