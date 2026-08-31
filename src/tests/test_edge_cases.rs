@@ -161,8 +161,6 @@ fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
     let tx_for_new = Arc::clone(&tx_slot);
     let mut m = MockClusterManagerTrait::new();
     m.expect_is_application_shutting_down().returning(|| false);
-    m.expect_begin_application_shutdown().returning(|| 0);
-    m.expect_dedicated_download_clusters().returning(Vec::new);
     m.expect_get_file_download_admission().returning(|_| None);
 
     m.expect_get_file_download_cleanup_trigger()
@@ -253,10 +251,6 @@ async fn test_upload_zero_byte_file_succeeds() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -380,10 +374,6 @@ async fn test_upload_truncated_body_returns_error() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -528,10 +518,6 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -649,10 +635,6 @@ async fn test_download_timeout_when_cluster_never_responds() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -767,10 +749,6 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -875,10 +853,6 @@ async fn test_upload_queue_drain_timeout_returns_400() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1059,9 +1033,8 @@ async fn test_rapid_ws_connect_disconnect_stress() {
 
     // Build a manager that accepts many connections
     let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
     m.expect_is_application_shutting_down().returning(|| false);
-    m.expect_begin_application_shutdown().returning(|| 0);
-    m.expect_dedicated_download_clusters().returning(Vec::new);
     m.expect_handle_new_connection().returning(|_, ws_tx, _| {
         // Build a minimal cluster for each connection
         let mut cluster = MockClusterTrait::new();
@@ -1144,10 +1117,6 @@ async fn test_upload_missing_content_length_returns_400() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
@@ -1236,10 +1205,6 @@ async fn test_upload_oversized_content_length_returns_400() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -1347,10 +1312,6 @@ async fn test_download_expired_records_are_cleaned_up() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1452,8 +1413,6 @@ async fn test_ws_truncated_binary_message_no_crash() {
     let mut m = MockClusterManagerTrait::new();
     m.expect_get_file_download_admission().returning(|_| None);
     m.expect_is_application_shutting_down().returning(|| false);
-    m.expect_begin_application_shutdown().returning(|| 0);
-    m.expect_dedicated_download_clusters().returning(Vec::new);
     m.expect_get_file_download_admission().returning(|_| None);
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
     let tx_for_new = Arc::clone(&tx_slot);
@@ -1568,10 +1527,6 @@ async fn test_download_force_download_sets_attachment_disposition() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1672,10 +1627,6 @@ async fn test_download_without_force_download_sets_inline_disposition() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -1774,10 +1725,6 @@ async fn test_download_force_download_false_sets_inline_disposition() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2009,10 +1956,6 @@ async fn test_download_sanitizes_unsafe_filename_in_disposition() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2127,10 +2070,6 @@ async fn test_upload_large_body_is_chunked() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
@@ -2239,8 +2178,6 @@ async fn test_ws_concurrent_binary_messages() {
     m.expect_get_file_download_cleanup_trigger()
         .returning(|_| None);
     m.expect_is_application_shutting_down().returning(|| false);
-    m.expect_begin_application_shutdown().returning(|| 0);
-    m.expect_dedicated_download_clusters().returning(Vec::new);
     m.expect_handle_new_connection().returning(move |_, _, _| {
         let c = Arc::clone(&cluster_arc);
         Box::pin(async move { Some(c) })
@@ -2358,10 +2295,6 @@ async fn test_file_transfer_data_timeout_body_truncated() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2491,10 +2424,6 @@ async fn test_file_transfer_websocket_broken_truncates_download() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2607,10 +2536,6 @@ async fn test_file_transfer_no_details_returns_503() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -2751,10 +2676,6 @@ async fn test_continuous_file_uploads_sequential() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(cm.clone()));
@@ -2896,10 +2817,6 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(mc.clone()));
@@ -3139,12 +3056,6 @@ async fn test_job_finished_update_populates_cache() {
     http_manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    http_manager
-        .expect_begin_application_shutdown()
-        .returning(|| 0);
-    http_manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     http_manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(mc.clone()));
@@ -3411,10 +3322,6 @@ async fn test_large_file_uploads() {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
