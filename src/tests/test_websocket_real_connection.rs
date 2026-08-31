@@ -498,7 +498,7 @@ async fn test_websocket_connection_rejected_invalid_token() {
 /// - Queries the record back by its UUID
 ///
 /// # Assert
-/// - The record exists with a positive id
+/// - The record exists with id 1 (first insert in a fresh DB)
 /// - The record has the expected UUID
 #[tokio::test]
 async fn test_file_download_record_persistence() {
@@ -530,7 +530,10 @@ async fn test_file_download_record_persistence() {
         .unwrap()
         .unwrap();
 
-    assert!(record.id > 0, "download record should have a positive id");
+    assert_eq!(
+        record.id, 1,
+        "first download record in fresh DB should have id 1"
+    );
 
     // Re-query the record to confirm it is still readable after insertion
     let updated = file_download::Entity::find()
