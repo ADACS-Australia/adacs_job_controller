@@ -665,6 +665,22 @@ impl ClusterManager {
             self.pong_times.remove(&conn_id);
         }
     }
+
+    async fn register_connection(
+        &self,
+        conn_id: ConnectionId,
+        ws_sender: WsConnectionSender,
+        cluster_name: &str,
+        cluster: Arc<Cluster>,
+    ) -> Option<Arc<dyn ClusterTrait>> {
+        cluster.set_connection(Some(ws_sender)).await;
+        self.connection_map.insert(conn_id, cluster.clone());
+        self.pong_times.insert(conn_id, std::time::Instant::now());
+        self.reconnect_attempts.remove(cluster_name);
+        self.last_reconnect_attempt.remove(cluster_name);
+        tracing::info!("Cluster {} connected (conn_id={})", cluster_name, conn_id);
+        Some(cluster as Arc<dyn ClusterTrait>)
+    }
 }
 
 #[async_trait]
@@ -823,18 +839,9 @@ impl ClusterManagerTrait for ClusterManager {
                 }
 
                 // Authenticate LTK cluster
-                let cluster = Arc::clone(cluster);
-                cluster.set_connection(Some(ws_sender)).await;
-                self.connection_map.insert(conn_id, cluster.clone());
-                self.pong_times.insert(conn_id, std::time::Instant::now());
-                self.reconnect_attempts.remove(cluster_name);
-                self.last_reconnect_attempt.remove(cluster_name);
-                tracing::info!(
-                    "LTK cluster {} connected (conn_id={})",
-                    cluster_name,
-                    conn_id
-                );
-                return Some(cluster as Arc<dyn ClusterTrait>);
+                return self
+                    .register_connection(conn_id, ws_sender, cluster_name, Arc::clone(cluster))
+                    .await;
             }
         }
 
@@ -874,14 +881,9 @@ impl ClusterManagerTrait for ClusterManager {
                     return None;
                 }
 
-                let cluster = Arc::clone(cluster);
-                cluster.set_connection(Some(ws_sender)).await;
-                self.connection_map.insert(conn_id, cluster.clone());
-                self.pong_times.insert(conn_id, std::time::Instant::now());
-                self.reconnect_attempts.remove(&cluster_name);
-                self.last_reconnect_attempt.remove(&cluster_name);
-                tracing::info!("Cluster {} connected (conn_id={})", cluster_name, conn_id);
-                return Some(cluster as Arc<dyn ClusterTrait>);
+                return self
+                    .register_connection(conn_id, ws_sender, &cluster_name, Arc::clone(cluster))
+                    .await;
             }
         }
 
