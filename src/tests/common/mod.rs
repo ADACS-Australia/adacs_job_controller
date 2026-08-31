@@ -3,6 +3,9 @@
 
 pub mod repeated_download;
 
+use futures_util::StreamExt;
+use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
+
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::config::access_secrets::AccessSecret;
 use adacs_job_controller::config::clusters::ClusterConfig;
@@ -264,4 +267,49 @@ pub fn make_test_state_with_secrets(
         jwt_secrets: std::sync::Arc::new(secrets),
         client_timeout_seconds: None,
     }
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket test helpers
+// ---------------------------------------------------------------------------
+
+/// Connect a tokio-tungstenite WebSocket client to the given URL.
+pub async fn connect_ws(
+    url: &str,
+) -> (
+    futures_util::stream::SplitSink<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        TungsteniteMsg,
+    >,
+    futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+) {
+    let (ws_stream, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+    ws_stream.split()
+}
+
+/// Read the first binary message from the WS stream, with a timeout.
+pub async fn recv_binary(
+    stream: &mut futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+) -> Option<Vec<u8>> {
+    let timeout = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+        while let Some(msg) = stream.next().await {
+            if let Ok(TungsteniteMsg::Binary(data)) = msg {
+                return Some(data.to_vec());
+            }
+        }
+        None
+    })
+    .await;
+
+    timeout.unwrap_or(None)
 }
