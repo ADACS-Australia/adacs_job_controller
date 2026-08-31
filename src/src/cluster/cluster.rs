@@ -1077,44 +1077,32 @@ impl ClusterTrait for Cluster {
 
     async fn wait_for_queue_drain(&self, wait_for_empty: bool) -> bool {
         let current = self.queued_message_size.load(Ordering::Relaxed);
+        let drain_target = if wait_for_empty {
+            0
+        } else {
+            *MIN_FILE_BUFFER_SIZE as usize
+        };
+        let early_return_threshold = if wait_for_empty {
+            0
+        } else {
+            *MAX_FILE_BUFFER_SIZE as usize
+        };
 
-        if wait_for_empty {
-            if current == 0 {
-                return true;
-            }
-            let timeout = std::time::Duration::from_secs(*CLIENT_TIMEOUT_SECONDS);
-            let deadline = tokio::time::Instant::now() + timeout;
-            loop {
-                tokio::select! {
-                    () = self.queue_size_notify.notified() => {
-                        if self.queued_message_size.load(Ordering::Relaxed) == 0 {
-                            return true;
-                        }
-                    }
-                    () = tokio::time::sleep_until(deadline) => {
-                        return self.queued_message_size.load(Ordering::Relaxed) == 0;
+        if current <= early_return_threshold {
+            return true;
+        }
+
+        let timeout = std::time::Duration::from_secs(*CLIENT_TIMEOUT_SECONDS);
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            tokio::select! {
+                () = self.queue_size_notify.notified() => {
+                    if self.queued_message_size.load(Ordering::Relaxed) <= drain_target {
+                        return true;
                     }
                 }
-            }
-        } else {
-            if current <= (*MAX_FILE_BUFFER_SIZE) as usize {
-                return true;
-            }
-            let timeout = std::time::Duration::from_secs(*CLIENT_TIMEOUT_SECONDS);
-            let deadline = tokio::time::Instant::now() + timeout;
-            loop {
-                tokio::select! {
-                    () = self.queue_size_notify.notified() => {
-                        if self.queued_message_size.load(Ordering::Relaxed)
-                            <= *MIN_FILE_BUFFER_SIZE as usize
-                        {
-                            return true;
-                        }
-                    }
-                    () = tokio::time::sleep_until(deadline) => {
-                        return self.queued_message_size.load(Ordering::Relaxed)
-                            <= (*MIN_FILE_BUFFER_SIZE) as usize;
-                    }
+                () = tokio::time::sleep_until(deadline) => {
+                    return self.queued_message_size.load(Ordering::Relaxed) <= drain_target;
                 }
             }
         }
