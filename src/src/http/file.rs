@@ -941,48 +941,15 @@ pub async fn list_files(
     }
 
     // Request file list from cluster via WebSocket
-    let uuid = generate_uuid();
-    let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
-    state
-        .file_list_map
-        .insert(uuid.clone(), Arc::clone(&fl_state));
-
-    let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-    msg.push_uint(u32::try_from(job_id).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Job ID {job_id} exceeds maximum supported value"),
-        )
-    })?);
-    msg.push_string(&uuid);
-    msg.push_string(&s_bundle);
-    msg.push_string(&body.path);
-    msg.push_bool(body.recursive);
-    cluster.send_message(msg).await;
-
-    let timeout = std::time::Duration::from_secs(
-        state
-            .client_timeout_seconds
-            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
-    );
-    let wait_result = FileListState::wait_until_data_ready(&fl_state, timeout).await;
-
-    if wait_result.is_err() {
-        let mut locked = fl_state.lock().await;
-        locked.error = true;
-        locked.error_details = "Remote cluster took too long to respond.".to_string();
-    }
-
-    let locked = fl_state.lock().await;
-    if locked.error {
-        let details = locked.error_details.clone();
-        drop(locked);
-        state.file_list_map.remove(&uuid);
-        return Err((StatusCode::BAD_REQUEST, details));
-    }
-
-    let files = locked.files.clone();
-    drop(locked);
+    let files = request_file_list(
+        &state,
+        cluster.as_ref(),
+        &s_bundle,
+        job_id,
+        &body.path,
+        body.recursive,
+    )
+    .await?;
 
     let filtered = filter_files(&files, &body.path, body.recursive);
 
@@ -998,8 +965,6 @@ pub async fn list_files(
             let _ = spawn_background_cache(state_clone, cluster_clone, bundle_clone, job_id).await;
         });
     }
-
-    state.file_list_map.remove(&uuid);
 
     Ok(Json(serde_json::json!({ "files": filtered })))
 }
@@ -1026,21 +991,24 @@ async fn cache_file_list(state: &AppState, job_id: u64, files: &[FileInfo]) {
     }
 }
 
-/// Spawn a background file-list request to populate the cache for a completed job.
+/// Request a file list from a cluster over WebSocket and wait for the result.
+///
+/// Registers a fresh [`FileListState`] session, sends the `FILE_LIST` message,
+/// waits until the cluster responds (or the client timeout elapses), and
+/// removes the session from the map on every terminal path.
 ///
 /// # Errors
 ///
-/// Returns an error string if the cluster is offline.
-pub async fn spawn_background_cache(
-    state: AppState,
-    cluster: Arc<dyn crate::cluster::traits::ClusterTrait>,
-    bundle: String,
+/// Returns an HTTP error if the job ID exceeds the supported range or the
+/// cluster fails to respond before the client timeout.
+async fn request_file_list(
+    state: &AppState,
+    cluster: &dyn crate::cluster::traits::ClusterTrait,
+    bundle: &str,
     job_id: u64,
-) -> Result<(), String> {
-    if !cluster.is_online() {
-        return Err("Cluster offline".to_string());
-    }
-
+    path: &str,
+    recursive: bool,
+) -> Result<Vec<FileInfo>, (StatusCode, String)> {
     let uuid = generate_uuid();
     let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
     state
@@ -1048,13 +1016,16 @@ pub async fn spawn_background_cache(
         .insert(uuid.clone(), Arc::clone(&fl_state));
 
     let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-    let job_id_u32 = u32::try_from(job_id)
-        .map_err(|_| format!("Job ID {job_id} exceeds maximum supported value"))?;
-    msg.push_uint(job_id_u32);
+    msg.push_uint(u32::try_from(job_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Job ID {job_id} exceeds maximum supported value"),
+        )
+    })?);
     msg.push_string(&uuid);
-    msg.push_string(&bundle);
-    msg.push_string("");
-    msg.push_bool(true);
+    msg.push_string(bundle);
+    msg.push_string(path);
+    msg.push_bool(recursive);
     cluster.send_message(msg).await;
 
     let timeout = std::time::Duration::from_secs(
@@ -1071,18 +1042,43 @@ pub async fn spawn_background_cache(
     }
 
     let locked = fl_state.lock().await;
-    let files = if !locked.error {
-        Some(locked.files.clone())
-    } else {
-        None
-    };
-    drop(locked);
-
-    if let Some(files) = files {
-        cache_file_list(&state, job_id, &files).await;
+    if locked.error {
+        let details = locked.error_details.clone();
+        drop(locked);
+        state.file_list_map.remove(&uuid);
+        return Err((StatusCode::BAD_REQUEST, details));
     }
 
+    let files = locked.files.clone();
+    drop(locked);
+
     state.file_list_map.remove(&uuid);
+    Ok(files)
+}
+
+/// Spawn a background file-list request to populate the cache for a completed job.
+///
+/// # Errors
+///
+/// Returns an error string if the cluster is offline.
+pub async fn spawn_background_cache(
+    state: AppState,
+    cluster: Arc<dyn crate::cluster::traits::ClusterTrait>,
+    bundle: String,
+    job_id: u64,
+) -> Result<(), String> {
+    if !cluster.is_online() {
+        return Err("Cluster offline".to_string());
+    }
+
+    // Cache-on-success: any request failure is silently ignored so existing
+    // cached entries are preserved.
+    let Ok(files) = request_file_list(&state, cluster.as_ref(), &bundle, job_id, "", true).await
+    else {
+        return Ok(());
+    };
+
+    cache_file_list(&state, job_id, &files).await;
     Ok(())
 }
 
