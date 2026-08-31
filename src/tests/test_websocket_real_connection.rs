@@ -297,8 +297,16 @@ async fn test_server_initiated_close_sends_close_frame_to_client() {
     let (sink, mut stream) = connect_websocket(port, &token).await;
     // Drain SERVER_READY so the read loop is positioned to observe
     // whatever comes next.
-    let ready = recv_binary(&mut stream).await;
-    assert!(ready.is_some(), "Server should send SERVER_READY first");
+    let ready = recv_binary(&mut stream)
+        .await
+        .expect("Server should send SERVER_READY");
+    let ready_msg = Message::from_bytes(ready);
+    assert_eq!(
+        ready_msg.id(),
+        SERVER_READY,
+        "First message should be SERVER_READY"
+    );
+    assert_eq!(ready_msg.source(), SYSTEM_SOURCE);
 
     // Trigger the server-side disconnect path.
     Cluster::close(&cluster, false).await;
@@ -384,8 +392,16 @@ async fn test_close_handshake_timeout_forces_tcp_close() {
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
     let (sink, mut stream) = connect_websocket(port, &token).await;
-    let ready = recv_binary(&mut stream).await;
-    assert!(ready.is_some(), "Server should send SERVER_READY first");
+    let ready = recv_binary(&mut stream)
+        .await
+        .expect("Server should send SERVER_READY");
+    let ready_msg = Message::from_bytes(ready);
+    assert_eq!(
+        ready_msg.id(),
+        SERVER_READY,
+        "First message should be SERVER_READY"
+    );
+    assert_eq!(ready_msg.source(), SYSTEM_SOURCE);
 
     // Trigger server-side close.
     let close_start = std::time::Instant::now();
