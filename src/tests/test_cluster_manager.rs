@@ -1391,7 +1391,17 @@ async fn test_application_shutdown_rejects_dedicated_admission_only() {
     // Upload admission is unaffected.
     let ul_cluster = mgr.create_file_upload(&cluster, "ul-ok").await;
     assert_eq!(ul_cluster.name(), "cluster1");
-    assert!(mgr.get_file_upload("ul-ok").is_some());
+    let upload_state = mgr
+        .get_file_upload("ul-ok")
+        .expect("upload session created during shutdown must be retrievable");
+    assert!(
+        !upload_state.error.load(Ordering::Relaxed),
+        "fresh upload session must not be in error state"
+    );
+    assert!(
+        !upload_state.complete.load(Ordering::Relaxed),
+        "fresh upload session must not be marked complete"
+    );
 
     // LTK admission is unaffected.
     let ltk_mgr = make_manager(ltk_cluster_configs(), db.clone());
