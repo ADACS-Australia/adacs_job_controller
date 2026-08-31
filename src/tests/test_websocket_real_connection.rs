@@ -30,7 +30,7 @@ use adacs_job_controller::protocol::types::ClusterRole;
 
 use common::{
     connection_closes, encode_test_jwt, insert_test_job, make_test_state, online_cluster,
-    setup_test_db, test_cluster_config,
+    recv_binary_with_timeout, setup_test_db, test_cluster_config,
 };
 
 use sea_orm::{
@@ -87,25 +87,6 @@ async fn start_server_with_real_cluster_accepting()
 
     let (port, server_handle) = start_http_server(db.clone(), manager).await;
     (cluster, port, server_handle)
-}
-/// Receive a binary message from WebSocket with timeout
-async fn recv_binary(
-    stream: &mut futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-    >,
-) -> Option<Vec<u8>> {
-    let timeout = tokio::time::timeout(Duration::from_secs(2), async {
-        while let Some(msg) = stream.next().await {
-            if let Ok(TungsteniteMsg::Binary(data)) = msg {
-                return Some(data.to_vec());
-            }
-        }
-        None
-    })
-    .await;
-    timeout.ok().flatten()
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +169,7 @@ async fn test_real_websocket_connection_and_auth() {
     let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
 
     // Expect SERVER_READY (sent automatically after connection)
-    let response = recv_binary(&mut stream)
+    let response = recv_binary_with_timeout(&mut stream, Duration::from_secs(2))
         .await
         .expect("Server should send SERVER_READY");
     let msg = Message::from_bytes(response);
@@ -225,7 +206,7 @@ async fn test_server_initiated_close_sends_close_frame_to_client() {
     let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
     // Drain SERVER_READY so the read loop is positioned to observe
     // whatever comes next.
-    let ready = recv_binary(&mut stream)
+    let ready = recv_binary_with_timeout(&mut stream, Duration::from_secs(2))
         .await
         .expect("Server should send SERVER_READY");
     let ready_msg = Message::from_bytes(ready);
@@ -294,7 +275,7 @@ async fn test_close_handshake_timeout_forces_tcp_close() {
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
     let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
-    let ready = recv_binary(&mut stream)
+    let ready = recv_binary_with_timeout(&mut stream, Duration::from_secs(2))
         .await
         .expect("Server should send SERVER_READY");
     let ready_msg = Message::from_bytes(ready);
