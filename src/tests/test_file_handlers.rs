@@ -94,7 +94,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
     .unwrap();
 
     let file_id = body["fileId"].as_str().expect("fileId should be present");
-    assert!(!file_id.is_empty());
+    assert!(uuid::Uuid::parse_str(file_id).is_ok());
 
     // Verify the record is in the DB
     let record = file_download::Entity::find()
@@ -163,7 +163,7 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
     let file_ids = body["fileIds"].as_array().expect("fileIds should be array");
     assert_eq!(file_ids.len(), 3);
     for id in file_ids {
-        assert!(!id.as_str().unwrap_or("").is_empty());
+        assert!(uuid::Uuid::parse_str(id.as_str().unwrap_or("")).is_ok());
     }
 }
 
@@ -1959,7 +1959,7 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
     )
     .unwrap();
     let file_id = body["fileId"].as_str().expect("fileId should be present");
-    assert!(!file_id.is_empty());
+    assert!(uuid::Uuid::parse_str(file_id).is_ok());
 
     // Verify the record is in the DB with the resolved cluster/bundle and job=0
     let record = file_download::Entity::find()
@@ -2032,7 +2032,7 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
     )
     .unwrap();
     let file_id = body["fileId"].as_str().expect("fileId should be present");
-    assert!(!file_id.is_empty());
+    assert!(uuid::Uuid::parse_str(file_id).is_ok());
 
     // Verify the record is in the DB with the resolved cluster/bundle and job=0
     let record = file_download::Entity::find()
@@ -2451,7 +2451,7 @@ async fn test_create_file_download_works_without_content_type_header() {
     .unwrap();
 
     let file_id = body["fileId"].as_str().expect("fileId should be present");
-    assert!(!file_id.is_empty());
+    assert!(uuid::Uuid::parse_str(file_id).is_ok());
 }
 
 /// Tests that PATCH /file/ (list files) succeeds without Content-Type header.
