@@ -9,14 +9,11 @@
 
 mod common;
 
-use std::sync::Arc;
-
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use adacs_job_controller::app::AppState;
 use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
 use adacs_job_controller::config::access_secrets::AccessSecret;
@@ -37,15 +34,7 @@ fn test_router_with_manager(
     let db = futures::executor::block_on(sea_orm::Database::connect("sqlite::memory:"))
         .expect("sqlite in-memory connect failed");
 
-    let state = AppState {
-        db,
-        cluster_manager: Arc::new(manager),
-        file_list_map: Arc::new(dashmap::DashMap::new()),
-        jwt_secrets: std::sync::Arc::new(secrets),
-        client_timeout_seconds: None,
-    };
-
-    create_router(state)
+    create_router(common::make_test_state_with_secrets(db, manager, secrets))
 }
 
 // ---------------------------------------------------------------------------
