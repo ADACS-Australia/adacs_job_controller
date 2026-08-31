@@ -17,6 +17,36 @@ pub struct Message {
     priority: super::types::Priority,
 }
 
+/// Types that can be decoded from a fixed-size little-endian byte slice.
+trait FromLeBytes: Sized {
+    /// Number of bytes this type occupies on the wire.
+    const SIZE: usize;
+
+    /// Decode `Self` from `SIZE` little-endian bytes.
+    fn from_le_bytes(bytes: &[u8]) -> Self;
+}
+
+macro_rules! impl_from_le_bytes {
+    ($t:ty, $size:expr) => {
+        impl FromLeBytes for $t {
+            const SIZE: usize = $size;
+
+            fn from_le_bytes(bytes: &[u8]) -> Self {
+                <$t>::from_le_bytes(bytes.try_into().unwrap())
+            }
+        }
+    };
+}
+
+impl_from_le_bytes!(u16, 2);
+impl_from_le_bytes!(i16, 2);
+impl_from_le_bytes!(u32, 4);
+impl_from_le_bytes!(i32, 4);
+impl_from_le_bytes!(u64, 8);
+impl_from_le_bytes!(i64, 8);
+impl_from_le_bytes!(f32, 4);
+impl_from_le_bytes!(f64, 8);
+
 impl Message {
     /// Create a new outgoing message with source and ID in the header.
     #[must_use]
@@ -103,6 +133,19 @@ impl Message {
         }
     }
 
+    /// Pop a fixed-size little-endian value from the message buffer.
+    ///
+    /// If there are fewer than `T::SIZE` bytes remaining, a warning is logged
+    /// and the zero value for `T` is returned.
+    fn pop_le<T: FromLeBytes + Default>(&mut self) -> T {
+        if !self.check_remaining(T::SIZE) {
+            return T::default();
+        }
+        let bytes = &self.data[self.index..self.index + T::SIZE];
+        self.index += T::SIZE;
+        T::from_le_bytes(bytes)
+    }
+
     // --- Push / Pop: bool ---
 
     pub fn push_bool(&mut self, value: bool) {
@@ -151,13 +194,7 @@ impl Message {
     /// logged and `0` is returned.
     #[allow(dead_code)]
     pub fn pop_ushort(&mut self) -> u16 {
-        if !self.check_remaining(2) {
-            return 0;
-        }
-        let mut bytes = [0u8; 2];
-        bytes.copy_from_slice(&self.data[self.index..self.index + 2]);
-        self.index += 2;
-        u16::from_le_bytes(bytes)
+        self.pop_le()
     }
 
     #[allow(dead_code)]
@@ -171,13 +208,7 @@ impl Message {
     /// logged and `0` is returned.
     #[allow(dead_code)]
     pub fn pop_short(&mut self) -> i16 {
-        if !self.check_remaining(2) {
-            return 0;
-        }
-        let mut bytes = [0u8; 2];
-        bytes.copy_from_slice(&self.data[self.index..self.index + 2]);
-        self.index += 2;
-        i16::from_le_bytes(bytes)
+        self.pop_le()
     }
 
     // --- Push / Pop: u32 / i32 ---
@@ -191,13 +222,7 @@ impl Message {
     /// If there are fewer than 4 bytes remaining in the buffer, a warning is
     /// logged and `0` is returned.
     pub fn pop_uint(&mut self) -> u32 {
-        if !self.check_remaining(4) {
-            return 0;
-        }
-        let mut bytes = [0u8; 4];
-        bytes.copy_from_slice(&self.data[self.index..self.index + 4]);
-        self.index += 4;
-        u32::from_le_bytes(bytes)
+        self.pop_le()
     }
 
     #[allow(dead_code)]
@@ -211,13 +236,7 @@ impl Message {
     /// logged and `0` is returned.
     #[allow(dead_code)]
     pub fn pop_int(&mut self) -> i32 {
-        if !self.check_remaining(4) {
-            return 0;
-        }
-        let mut bytes = [0u8; 4];
-        bytes.copy_from_slice(&self.data[self.index..self.index + 4]);
-        self.index += 4;
-        i32::from_le_bytes(bytes)
+        self.pop_le()
     }
 
     // --- Push / Pop: u64 / i64 ---
@@ -231,13 +250,7 @@ impl Message {
     /// If there are fewer than 8 bytes remaining in the buffer, a warning is
     /// logged and `0` is returned.
     pub fn pop_ulong(&mut self) -> u64 {
-        if !self.check_remaining(8) {
-            return 0;
-        }
-        let mut bytes = [0u8; 8];
-        bytes.copy_from_slice(&self.data[self.index..self.index + 8]);
-        self.index += 8;
-        u64::from_le_bytes(bytes)
+        self.pop_le()
     }
 
     #[allow(dead_code)]
@@ -251,13 +264,7 @@ impl Message {
     /// logged and `0` is returned.
     #[allow(dead_code)]
     pub fn pop_long(&mut self) -> i64 {
-        if !self.check_remaining(8) {
-            return 0;
-        }
-        let mut bytes = [0u8; 8];
-        bytes.copy_from_slice(&self.data[self.index..self.index + 8]);
-        self.index += 8;
-        i64::from_le_bytes(bytes)
+        self.pop_le()
     }
 
     // --- Push / Pop: f32 / f64 ---
@@ -273,13 +280,7 @@ impl Message {
     /// logged and `0.0` is returned.
     #[allow(dead_code)]
     pub fn pop_float(&mut self) -> f32 {
-        if !self.check_remaining(4) {
-            return 0.0;
-        }
-        let mut bytes = [0u8; 4];
-        bytes.copy_from_slice(&self.data[self.index..self.index + 4]);
-        self.index += 4;
-        f32::from_le_bytes(bytes)
+        self.pop_le()
     }
 
     #[allow(dead_code)]
@@ -293,13 +294,7 @@ impl Message {
     /// logged and `0.0` is returned.
     #[allow(dead_code)]
     pub fn pop_double(&mut self) -> f64 {
-        if !self.check_remaining(8) {
-            return 0.0;
-        }
-        let mut bytes = [0u8; 8];
-        bytes.copy_from_slice(&self.data[self.index..self.index + 8]);
-        self.index += 8;
-        f64::from_le_bytes(bytes)
+        self.pop_le()
     }
 
     // --- Push / Pop: String ---
