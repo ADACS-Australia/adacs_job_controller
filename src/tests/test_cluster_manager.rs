@@ -6,6 +6,7 @@
 mod common;
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use adacs_job_controller::cluster::manager::ClusterManager;
 use adacs_job_controller::cluster::traits::ClusterManagerTrait;
@@ -757,8 +758,12 @@ async fn test_create_file_download_session() {
     assert_eq!(dl_cluster.name(), "cluster1");
 
     // Should be findable via get_file_download
-    let state = mgr.get_file_download("dl-uuid-1");
-    assert!(state.is_some());
+    let state = mgr
+        .get_file_download("dl-uuid-1")
+        .expect("fresh download session should be retrievable");
+    // Fresh session must not be polluted with received-data or error flags
+    assert!(!state.received_data.load(Ordering::Acquire));
+    assert!(!state.error.load(Ordering::Acquire));
 
     // Non-existent UUID should return None
     assert!(mgr.get_file_download("nonexistent").is_none());
@@ -786,8 +791,12 @@ async fn test_create_file_upload_session() {
     assert_eq!(ul_cluster.name(), "cluster1");
 
     // Should be findable via get_file_upload
-    let state = mgr.get_file_upload("ul-uuid-1");
-    assert!(state.is_some());
+    let state = mgr
+        .get_file_upload("ul-uuid-1")
+        .expect("fresh upload session should be retrievable");
+    // Fresh session must not be polluted with error or complete flags
+    assert!(!state.error.load(Ordering::Acquire));
+    assert!(!state.complete.load(Ordering::Acquire));
 
     // Non-existent UUID should return None
     assert!(mgr.get_file_upload("nonexistent").is_none());
