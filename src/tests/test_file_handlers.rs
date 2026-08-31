@@ -1861,7 +1861,8 @@ async fn test_create_download_app2_can_access_app1_job() {
             .unwrap(),
     )
     .unwrap();
-    assert!(body["fileId"].as_str().is_some());
+    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    assert!(uuid::Uuid::parse_str(file_id).is_ok());
 }
 
 /// Tests that app4 (without app1 in its applications list) cannot create a download for an app1 job.
