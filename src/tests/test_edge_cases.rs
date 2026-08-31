@@ -58,8 +58,8 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState, Priority};
 
 use common::{
-    encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages, setup_test_db,
-    test_cluster_config,
+    connect_ws, encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages,
+    recv_binary, setup_test_db, test_cluster_config,
 };
 
 use sea_orm::{
@@ -88,46 +88,6 @@ async fn start_test_server(router: axum::Router) -> u16 {
         axum::serve(listener, router).await.unwrap();
     });
     port
-}
-
-/// Connect a tokio-tungstenite WebSocket client.
-async fn connect_ws(
-    url: &str,
-) -> (
-    futures_util::stream::SplitSink<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-        TungsteniteMsg,
-    >,
-    futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-    >,
-) {
-    let (ws_stream, _) = tokio_tungstenite::connect_async(url).await.unwrap();
-    ws_stream.split()
-}
-
-/// Read the first binary message from the WS stream with a timeout.
-async fn recv_binary(
-    stream: &mut futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-    >,
-) -> Option<Vec<u8>> {
-    tokio::time::timeout(Duration::from_millis(500), async {
-        while let Some(msg) = stream.next().await {
-            if let Ok(TungsteniteMsg::Binary(data)) = msg {
-                return Some(data.to_vec());
-            }
-        }
-        None
-    })
-    .await
-    .unwrap_or(None)
 }
 
 /// Manager that accepts connections, captures the WS sender, and forwards via it.
