@@ -173,18 +173,18 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 
-    #[tokio::test]
-    async fn test_auth_valid_first_secret() {
-        let secrets = make_test_secrets();
-        let claims = serde_json::json!({"userId": 42});
-        let token = encode_jwt(&claims, &secrets[0].secret);
-
+    async fn assert_valid_auth(
+        secrets: Vec<AccessSecret>,
+        authorization: String,
+        expected_name: &str,
+        expected_user_id: i64,
+    ) {
         let app = test_router(secrets);
         let resp = app
             .oneshot(
                 Request::builder()
                     .uri("/test")
-                    .header("authorization", &token)
+                    .header("authorization", authorization)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -196,88 +196,36 @@ mod tests {
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["name"], "app1");
-        assert_eq!(json["payload"]["userId"], 42);
+        assert_eq!(json["name"], expected_name);
+        assert_eq!(json["payload"]["userId"], expected_user_id);
+    }
+
+    #[tokio::test]
+    async fn test_auth_valid_first_secret() {
+        let secrets = make_test_secrets();
+        let token = encode_jwt(&serde_json::json!({"userId": 42}), &secrets[0].secret);
+        assert_valid_auth(secrets, token, "app1", 42).await;
     }
 
     #[tokio::test]
     async fn test_auth_valid_bearer_prefix() {
         let secrets = make_test_secrets();
-        let claims = serde_json::json!({"userId": 7});
-        let token = encode_jwt(&claims, &secrets[0].secret);
-
-        let app = test_router(secrets);
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/test")
-                    .header("authorization", format!("Bearer {token}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["name"], "app1");
-        assert_eq!(json["payload"]["userId"], 7);
+        let token = encode_jwt(&serde_json::json!({"userId": 7}), &secrets[0].secret);
+        assert_valid_auth(secrets, format!("Bearer {token}"), "app1", 7).await;
     }
 
     #[tokio::test]
     async fn test_auth_valid_lowercase_bearer_prefix() {
         let secrets = make_test_secrets();
-        let claims = serde_json::json!({"userId": 13});
-        let token = encode_jwt(&claims, &secrets[0].secret);
-
-        let app = test_router(secrets);
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/test")
-                    .header("authorization", format!("bearer {token}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["name"], "app1");
-        assert_eq!(json["payload"]["userId"], 13);
+        let token = encode_jwt(&serde_json::json!({"userId": 13}), &secrets[0].secret);
+        assert_valid_auth(secrets, format!("bearer {token}"), "app1", 13).await;
     }
 
     #[tokio::test]
     async fn test_auth_valid_second_secret() {
         let secrets = make_test_secrets();
-        let claims = serde_json::json!({"userId": 99});
-        let token = encode_jwt(&claims, &secrets[1].secret);
-
-        let app = test_router(secrets);
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/test")
-                    .header("authorization", &token)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["name"], "app2");
+        let token = encode_jwt(&serde_json::json!({"userId": 99}), &secrets[1].secret);
+        assert_valid_auth(secrets, token, "app2", 99).await;
     }
 
     #[tokio::test]
