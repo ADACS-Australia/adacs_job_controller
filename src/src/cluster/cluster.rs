@@ -668,13 +668,22 @@ impl Cluster {
 
     // ---- FileDownload message handling ----
 
-    /// Forwards a file chunk to the HTTP download handler and sends `PAUSE_FILE_CHUNK_STREAM` when buffered bytes exceed the limit.
-    async fn handle_file_chunk(&self, message: &mut Message) {
+    /// Returns the active file-download session state, warning if none is set.
+    fn download_state(&self, message_name: &str) -> Option<&Arc<FileDownloadState>> {
         let Some(state) = &self.file_download_state else {
             tracing::warn!(
-                "Cluster[{}]: FILE_CHUNK received but no file_download_state",
-                self.name()
+                "Cluster[{}]: {} received but no file_download_state",
+                self.name(),
+                message_name
             );
+            return None;
+        };
+        Some(state)
+    }
+
+    /// Forwards a file chunk to the HTTP download handler and sends `PAUSE_FILE_CHUNK_STREAM` when buffered bytes exceed the limit.
+    async fn handle_file_chunk(&self, message: &mut Message) {
+        let Some(state) = self.download_state("FILE_CHUNK") else {
             return;
         };
 
@@ -728,11 +737,7 @@ impl Cluster {
 
     /// Handles FILE_DETAILS messages by extracting the file size and notifying waiting readers.
     fn handle_file_details(&self, message: &mut Message) {
-        let Some(state) = &self.file_download_state else {
-            tracing::warn!(
-                "Cluster[{}]: FILE_DETAILS received but no file_download_state",
-                self.name()
-            );
+        let Some(state) = self.download_state("FILE_DETAILS") else {
             return;
         };
 
@@ -754,11 +759,7 @@ impl Cluster {
 
     /// Records a file download error from the cluster and notifies waiting HTTP clients.
     async fn handle_file_error(&self, message: &mut Message) {
-        let Some(state) = &self.file_download_state else {
-            tracing::warn!(
-                "Cluster[{}]: FILE_ERROR received but no file_download_state",
-                self.name()
-            );
+        let Some(state) = self.download_state("FILE_ERROR") else {
             return;
         };
 
@@ -776,13 +777,22 @@ impl Cluster {
 
     // ---- FileUpload message handling ----
 
-    /// Signals that the file-upload server is ready and unblocks waiting upload readers.
-    fn handle_server_ready(&self) {
+    /// Returns the active file-upload session state, warning if none is set.
+    fn upload_state(&self, message_name: &str) -> Option<&Arc<FileUploadState>> {
         let Some(state) = &self.file_upload_state else {
             tracing::warn!(
-                "Cluster[{}]: SERVER_READY received but no file_upload_state",
-                self.name()
+                "Cluster[{}]: {} received but no file_upload_state",
+                self.name(),
+                message_name
             );
+            return None;
+        };
+        Some(state)
+    }
+
+    /// Signals that the file-upload server is ready and unblocks waiting upload readers.
+    fn handle_server_ready(&self) {
+        let Some(state) = self.upload_state("SERVER_READY") else {
             return;
         };
         state.data_ready.store(true, Ordering::Release);
@@ -791,11 +801,7 @@ impl Cluster {
 
     /// Stores the file upload error details and notifies any waiting readers.
     async fn handle_file_upload_error(&self, message: &mut Message) {
-        let Some(state) = &self.file_upload_state else {
-            tracing::warn!(
-                "Cluster[{}]: FILE_UPLOAD_ERROR received but no file_upload_state",
-                self.name()
-            );
+        let Some(state) = self.upload_state("FILE_UPLOAD_ERROR") else {
             return;
         };
         let details = message.pop_string();
@@ -812,11 +818,7 @@ impl Cluster {
 
     /// Marks the file upload as complete and notifies any waiting readers.
     fn handle_file_upload_complete(&self) {
-        let Some(state) = &self.file_upload_state else {
-            tracing::warn!(
-                "Cluster[{}]: FILE_UPLOAD_COMPLETE received but no file_upload_state",
-                self.name()
-            );
+        let Some(state) = self.upload_state("FILE_UPLOAD_COMPLETE") else {
             return;
         };
         state.complete.store(true, Ordering::Release);
