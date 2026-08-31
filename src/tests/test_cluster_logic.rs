@@ -534,9 +534,10 @@ async fn test_check_cancelling_jobs_resends_with_pending_history() {
         .filter(|data| Message::from_bytes((*data).clone()).id() == CANCEL_JOB)
         .collect();
 
-    assert!(
-        !cancel_msgs.is_empty(),
-        "Expected CANCEL_JOB despite Pending history row"
+    assert_eq!(
+        cancel_msgs.len(),
+        1,
+        "Expected exactly one CANCEL_JOB despite Pending history row"
     );
     cluster.stop();
 }
