@@ -328,23 +328,7 @@ pub async fn download_file(
         job_id
     );
 
-    tracing::trace!("HTTP: Fetching cluster '{}'", s_cluster);
-    let cluster = state
-        .cluster_manager
-        .get_cluster_by_name(&s_cluster)
-        .ok_or_else(|| {
-            tracing::warn!("HTTP: Cluster '{}' not found", s_cluster);
-            (StatusCode::BAD_REQUEST, "Invalid cluster".to_string())
-        })?;
-
-    if !cluster.is_online() {
-        tracing::warn!("HTTP: Cluster '{}' is offline", s_cluster);
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Remote Cluster Offline".to_string(),
-        ));
-    }
-    tracing::debug!("HTTP: Cluster '{}' is online", s_cluster);
+    let cluster = get_online_cluster(&state, &s_cluster)?;
 
     // Application shutdown: reject new dedicated admission via the same
     // typed error / status code already returned for offline clusters. No
@@ -678,23 +662,7 @@ pub async fn upload_file(
         s_bundle
     );
 
-    tracing::trace!("HTTP: Fetching cluster '{}'", s_cluster);
-    let cluster = state
-        .cluster_manager
-        .get_cluster_by_name(&s_cluster)
-        .ok_or_else(|| {
-            tracing::warn!("HTTP: Cluster '{}' not found", s_cluster);
-            (StatusCode::BAD_REQUEST, "Invalid cluster".to_string())
-        })?;
-
-    if !cluster.is_online() {
-        tracing::warn!("HTTP: Cluster '{}' is offline", s_cluster);
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Remote cluster is offline".to_string(),
-        ));
-    }
-    tracing::debug!("HTTP: Cluster '{}' is online", s_cluster);
+    let cluster = get_online_cluster(&state, &s_cluster)?;
 
     let uuid = generate_uuid();
     tracing::trace!("HTTP: Generated upload session UUID: {}", uuid);
@@ -891,17 +859,7 @@ pub async fn list_files(
         (cluster, bundle)
     };
 
-    let cluster = state
-        .cluster_manager
-        .get_cluster_by_name(&s_cluster)
-        .ok_or((StatusCode::BAD_REQUEST, "Invalid cluster".to_string()))?;
-
-    if !cluster.is_online() {
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Remote Cluster Offline".to_string(),
-        ));
-    }
+    let cluster = get_online_cluster(&state, &s_cluster)?;
 
     // Check if job is complete (enables caching)
     let job_complete = if job_id != 0 {
@@ -1009,6 +967,37 @@ pub async fn list_files(
 /// Deletes any existing rows for `job_id`, then inserts one row per file.
 async fn cache_file_list(state: &AppState, job_id: u64, files: &[FileInfo]) {
     crate::db::file_list_cache::replace_file_list(&state.db, job_id.cast_signed(), files).await;
+}
+
+/// Fetch a cluster by name and verify it is online.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - The cluster is not found
+/// - The cluster is offline
+fn get_online_cluster(
+    state: &AppState,
+    cluster_name: &str,
+) -> Result<Arc<dyn crate::cluster::traits::ClusterTrait>, (StatusCode, String)> {
+    tracing::trace!("HTTP: Fetching cluster '{}'", cluster_name);
+    let cluster = state
+        .cluster_manager
+        .get_cluster_by_name(cluster_name)
+        .ok_or_else(|| {
+            tracing::warn!("HTTP: Cluster '{}' not found", cluster_name);
+            (StatusCode::BAD_REQUEST, "Invalid cluster".to_string())
+        })?;
+
+    if !cluster.is_online() {
+        tracing::warn!("HTTP: Cluster '{}' is offline", cluster_name);
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Remote Cluster Offline".to_string(),
+        ));
+    }
+    tracing::debug!("HTTP: Cluster '{}' is online", cluster_name);
+    Ok(cluster)
 }
 
 /// Spawn a background file-list request to populate the cache for a completed job.
