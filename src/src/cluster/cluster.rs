@@ -581,6 +581,34 @@ impl Cluster {
         }
     }
 
+    /// Looks up the in-flight [`FileListState`] for a request UUID, warning when the app context is
+    /// missing or the UUID is unknown.
+    fn file_list_state_for_uuid(
+        &self,
+        message_name: &str,
+        uuid: &str,
+    ) -> Option<Arc<tokio::sync::Mutex<FileListState>>> {
+        let Some(ctx) = &self.app_context else {
+            tracing::warn!(
+                "Cluster[{}]: {message_name} received but no app_context (uuid={uuid})",
+                self.name()
+            );
+            return None;
+        };
+        let Some(fl_state) = ctx
+            .file_list_map
+            .get(uuid)
+            .map(|entry| entry.value().clone())
+        else {
+            tracing::warn!(
+                "Cluster[{}]: {message_name} received for unknown uuid={uuid}",
+                self.name()
+            );
+            return None;
+        };
+        Some(fl_state)
+    }
+
     /// Parses a `FILE_LIST` response payload into file entries and updates the matching [`FileListState`].
     async fn handle_file_list_response(&self, message: &mut Message) {
         const MIN_FILE_LIST_ENTRY_BYTES: usize = 17;
@@ -604,18 +632,7 @@ impl Cluster {
             });
         }
 
-        let Some(ctx) = &self.app_context else {
-            tracing::warn!(
-                "Cluster[{}]: FILE_LIST received but no app_context (uuid={uuid})",
-                self.name()
-            );
-            return;
-        };
-        let Some(fl_state) = ctx.file_list_map.get(&uuid) else {
-            tracing::warn!(
-                "Cluster[{}]: FILE_LIST received for unknown uuid={uuid}",
-                self.name()
-            );
+        let Some(fl_state) = self.file_list_state_for_uuid("FILE_LIST", &uuid) else {
             return;
         };
 
@@ -630,18 +647,7 @@ impl Cluster {
         let uuid = message.pop_string();
         let detail = message.pop_string();
 
-        let Some(ctx) = &self.app_context else {
-            tracing::warn!(
-                "Cluster[{}]: FILE_LIST_ERROR received but no app_context (uuid={uuid})",
-                self.name()
-            );
-            return;
-        };
-        let Some(fl_state) = ctx.file_list_map.get(&uuid) else {
-            tracing::warn!(
-                "Cluster[{}]: FILE_LIST_ERROR received for unknown uuid={uuid}",
-                self.name()
-            );
+        let Some(fl_state) = self.file_list_state_for_uuid("FILE_LIST_ERROR", &uuid) else {
             return;
         };
 
