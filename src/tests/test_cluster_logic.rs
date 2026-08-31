@@ -265,9 +265,10 @@ async fn test_check_unsubmitted_jobs_resends_old_pending() {
         })
         .collect();
 
-    assert!(
-        !submit_msgs.is_empty(),
-        "Expected at least one SUBMIT_JOB message"
+    assert_eq!(
+        submit_msgs.len(),
+        1,
+        "Expected exactly one SUBMIT_JOB message"
     );
     cluster.stop();
 }
@@ -964,9 +965,10 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
         })
         .collect();
 
-    assert!(
-        !submit_msgs.is_empty(),
-        "SUBMITTING state should trigger SUBMIT_JOB resubmission"
+    assert_eq!(
+        submit_msgs.len(),
+        1,
+        "SUBMITTING state should trigger exactly one SUBMIT_JOB resubmission"
     );
     cluster.stop();
 }
