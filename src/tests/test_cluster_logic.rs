@@ -9,7 +9,7 @@ mod common;
 
 use std::sync::Arc;
 
-use common::{setup_test_db, test_cluster_config};
+use common::{insert_job_history_at, setup_test_db, test_cluster_config};
 
 use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::traits::ClusterTrait;
@@ -52,26 +52,6 @@ async fn insert_job(
         cluster: Set(cluster.to_string()),
         bundle: Set(bundle.to_string()),
         application: Set(application.to_string()),
-    }
-    .insert(db)
-    .await
-    .unwrap();
-}
-
-async fn insert_history(
-    db: &DatabaseConnection,
-    job_id: i64,
-    timestamp: sea_orm::prelude::DateTime,
-    what: &str,
-    state: i32,
-) {
-    job_history::ActiveModel {
-        job_id: Set(job_id),
-        timestamp: Set(timestamp),
-        what: Set(what.to_string()),
-        state: Set(state),
-        details: Set(String::new()),
-        ..Default::default()
     }
     .insert(db)
     .await
@@ -231,7 +211,7 @@ async fn test_check_unsubmitted_jobs_resends_old_pending() {
     insert_job(&db, 1, "ozstar", "mybundle", "myapp", "{}").await;
 
     // Insert history with state=10 (PENDING) and timestamp far in the past
-    insert_history(&db, 1, old_timestamp(), "submit", 10).await;
+    insert_job_history_at(&db, 1, 10, "submit", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -290,7 +270,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
     insert_job(&db, 2, "ozstar", "mybundle", "myapp", "{}").await;
 
     // Insert history with state=10 and timestamp = NOW (within the ignore window)
-    insert_history(&db, 2, now_timestamp(), "submit", 10).await;
+    insert_job_history_at(&db, 2, 10, "submit", now_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -337,9 +317,9 @@ async fn test_check_unsubmitted_jobs_ignores_recent_terminal_state() {
     insert_job(&db, 5, "ozstar", "mybundle", "myapp", "{}").await;
 
     // Old PENDING row (would trigger resubmit on its own) ...
-    insert_history(&db, 5, old_timestamp(), "submit", 10).await;
+    insert_job_history_at(&db, 5, 10, "submit", old_timestamp()).await;
     // ... followed by a recent COMPLETED row within the ignore window.
-    insert_history(&db, 5, now_timestamp(), "complete", 500).await;
+    insert_job_history_at(&db, 5, 500, "complete", now_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -383,7 +363,7 @@ async fn test_check_unsubmitted_jobs_skips_offline_cluster() {
     let db = setup_test_db().await;
 
     insert_job(&db, 3, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 3, old_timestamp(), "sub", 10).await;
+    insert_job_history_at(&db, 3, 10, "sub", old_timestamp()).await;
 
     let ctx = make_app_context(db.clone());
     let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
@@ -414,7 +394,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
     let db = setup_test_db().await;
 
     insert_job(&db, 10, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 10, old_timestamp(), "cancel", 60).await;
+    insert_job_history_at(&db, 10, 60, "cancel", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -455,7 +435,7 @@ async fn test_check_cancelling_jobs_ignores_recent() {
     let db = setup_test_db().await;
 
     insert_job(&db, 11, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 11, now_timestamp(), "cancel", 60).await;
+    insert_job_history_at(&db, 11, 60, "cancel", now_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -496,8 +476,8 @@ async fn test_check_cancelling_jobs_resends_with_pending_history() {
     let db = setup_test_db().await;
 
     insert_job(&db, 12, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 12, old_timestamp(), "created", 10).await;
-    insert_history(&db, 12, old_timestamp(), "cancel", 60).await;
+    insert_job_history_at(&db, 12, 10, "created", old_timestamp()).await;
+    insert_job_history_at(&db, 12, 60, "cancel", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -546,7 +526,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
     let db = setup_test_db().await;
 
     insert_job(&db, 20, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 20, old_timestamp(), "delete", 80).await;
+    insert_job_history_at(&db, 20, 80, "delete", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -587,7 +567,7 @@ async fn test_check_deleting_jobs_ignores_recent() {
     let db = setup_test_db().await;
 
     insert_job(&db, 21, "ozstar", "b", "app", "{}").await;
-    insert_history(&db, 21, now_timestamp(), "delete", 80).await;
+    insert_job_history_at(&db, 21, 80, "delete", now_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -633,7 +613,7 @@ async fn test_check_unsubmitted_jobs_only_for_own_cluster() {
 
     // Job belongs to "nci", cluster is "ozstar" — should NOT resend
     insert_job(&db, 30, "nci", "b", "app", "{}").await;
-    insert_history(&db, 30, old_timestamp(), "sub", 10).await;
+    insert_job_history_at(&db, 30, 10, "sub", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -699,7 +679,7 @@ async fn test_check_unsubmitted_jobs_noop_for_non_matching_statuses() {
         let db = setup_test_db().await;
 
         insert_job(&db, 100, "ozstar", "b", "app", "{}").await;
-        insert_history(&db, 100, old_timestamp(), "test", state_val).await;
+        insert_job_history_at(&db, 100, state_val, "test", old_timestamp()).await;
 
         let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -762,7 +742,7 @@ async fn test_check_cancelling_jobs_noop_for_non_matching_statuses() {
         let db = setup_test_db().await;
 
         insert_job(&db, 200, "ozstar", "b", "app", "{}").await;
-        insert_history(&db, 200, old_timestamp(), "test", state_val).await;
+        insert_job_history_at(&db, 200, state_val, "test", old_timestamp()).await;
 
         let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -825,7 +805,7 @@ async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
         let db = setup_test_db().await;
 
         insert_job(&db, 300, "ozstar", "b", "app", "{}").await;
-        insert_history(&db, 300, old_timestamp(), "test", state_val).await;
+        insert_job_history_at(&db, 300, state_val, "test", old_timestamp()).await;
 
         let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -877,7 +857,7 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
     insert_job(&db, 400, "ozstar", "mybundle", "myapp", r#"{"key":"val"}"#).await;
 
     // Insert history with state=20 (SUBMITTING) and timestamp far in the past
-    insert_history(&db, 400, old_timestamp(), "submit", 20).await;
+    insert_job_history_at(&db, 400, 20, "submit", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -939,10 +919,10 @@ async fn test_check_unsubmitted_jobs_resends_all_stale_jobs_in_batch() {
             "{}",
         )
         .await;
-        insert_history(&db, job_id, old_timestamp(), "submit", 10).await;
+        insert_job_history_at(&db, job_id, 10, "submit", old_timestamp()).await;
     }
     insert_job(&db, 4, "ozstar", "bundle-4", "myapp", "{}").await;
-    insert_history(&db, 4, now_timestamp(), "submit", 10).await;
+    insert_job_history_at(&db, 4, 10, "submit", now_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
@@ -982,7 +962,7 @@ async fn test_check_unsubmitted_jobs_skips_job_id_exceeding_u32_range() {
 
     let oversized_id = i64::from(u32::MAX) + 1;
     insert_job(&db, oversized_id, "ozstar", "mybundle", "myapp", "{}").await;
-    insert_history(&db, oversized_id, old_timestamp(), "submit", 10).await;
+    insert_job_history_at(&db, oversized_id, 10, "submit", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
 
