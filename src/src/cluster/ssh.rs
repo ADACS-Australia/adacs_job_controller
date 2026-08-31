@@ -109,6 +109,14 @@ pub async fn run_remote_client(config: &ClusterConfig, token: &str) -> Result<()
     }
 }
 
+/// Build the remote `adacs_job_client` command executed on the cluster host.
+///
+/// Shared by the SSH and Kerberos connection paths so the command string
+/// (working directory, environment setup, binary name, token) stays in one place.
+fn build_remote_client_command(path: &str, token: &str) -> String {
+    format!("cd {path} && source env.sh && ./adacs_job_client {token}")
+}
+
 async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError> {
     tracing::debug!("SSH[{}]: Loading private key", config.name);
     let key_pair = load_private_key(&config.key).await?;
@@ -137,10 +145,7 @@ async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError
     authenticate_public_key(&mut session, &config.username, key_pair).await?;
     tracing::info!("SSH[{}]: Authentication successful", config.name);
 
-    let command = format!(
-        "cd {} && source env.sh && ./adacs_job_client {}",
-        config.path, token
-    );
+    let command = build_remote_client_command(&config.path, token);
     tracing::trace!(
         "SSH[{}]: Executing remote command: cd {} && source env.sh && ./adacs_job_client [TOKEN]",
         config.name,
@@ -263,10 +268,7 @@ async fn run_via_kerberos(config: &ClusterConfig, token: &str) -> Result<(), Ssh
         &config.kerberos_principal
     };
 
-    let remote_cmd = format!(
-        "cd {} && source env.sh && ./adacs_job_client {}",
-        config.path, token
-    );
+    let remote_cmd = build_remote_client_command(&config.path, token);
 
     let output = build_kerberos_ssh_command(principal, &config.host, &remote_cmd, &keytab_path)
         .output()
@@ -598,6 +600,14 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
             .unwrap();
 
         assert_eq!(parsed.algorithm(), Algorithm::Ed25519);
+    }
+
+    #[test]
+    fn build_remote_client_command_constructs_expected_string() {
+        assert_eq!(
+            build_remote_client_command("/srv/adacs", "secret-token"),
+            "cd /srv/adacs && source env.sh && ./adacs_job_client secret-token"
+        );
     }
 
     #[test]
