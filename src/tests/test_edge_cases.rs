@@ -1440,6 +1440,23 @@ async fn test_ws_truncated_binary_message_no_crash() {
 // Verifies the Content-Disposition header changes based on forceDownload.
 // ===========================================================================
 
+/// Creates a `FileDownloadState` simulating a completed 5-byte download: spawns a task that marks
+/// the file as fully received (`file_size=5`, `received_data`, `data_ready`) and delivers one
+/// "hello" chunk after a short delay.
+fn simulate_completed_download() -> Arc<FileDownloadState> {
+    let fd_state = Arc::new(FileDownloadState::new());
+    let fd_sim = Arc::clone(&fd_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fd_sim.file_size.store(5, Ordering::Release);
+        fd_sim.received_data.store(true, Ordering::Release);
+        fd_sim.data_ready.store(true, Ordering::Release);
+        fd_sim.data_notify.notify_waiters();
+        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
+    });
+    fd_state
+}
+
 /// Verifies that `forceDownload=true` sets `Content-Disposition: attachment` in the response.
 ///
 /// # Setup
@@ -1469,16 +1486,7 @@ async fn test_download_force_download_sets_attachment_disposition() {
     .await
     .unwrap();
 
-    let fd_state = Arc::new(FileDownloadState::new());
-    let fd_sim = Arc::clone(&fd_state);
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        fd_sim.file_size.store(5, Ordering::Release);
-        fd_sim.received_data.store(true, Ordering::Release);
-        fd_sim.data_ready.store(true, Ordering::Release);
-        fd_sim.data_notify.notify_waiters();
-        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
-    });
+    let fd_state = simulate_completed_download();
 
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
@@ -1569,16 +1577,7 @@ async fn test_download_without_force_download_sets_inline_disposition() {
     .await
     .unwrap();
 
-    let fd_state = Arc::new(FileDownloadState::new());
-    let fd_sim = Arc::clone(&fd_state);
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        fd_sim.file_size.store(5, Ordering::Release);
-        fd_sim.received_data.store(true, Ordering::Release);
-        fd_sim.data_ready.store(true, Ordering::Release);
-        fd_sim.data_notify.notify_waiters();
-        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
-    });
+    let fd_state = simulate_completed_download();
 
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
@@ -1667,16 +1666,7 @@ async fn test_download_force_download_false_sets_inline_disposition() {
     .await
     .unwrap();
 
-    let fd_state = Arc::new(FileDownloadState::new());
-    let fd_sim = Arc::clone(&fd_state);
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        fd_sim.file_size.store(5, Ordering::Release);
-        fd_sim.received_data.store(true, Ordering::Release);
-        fd_sim.data_ready.store(true, Ordering::Release);
-        fd_sim.data_notify.notify_waiters();
-        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
-    });
+    let fd_state = simulate_completed_download();
 
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
@@ -1791,16 +1781,7 @@ async fn assert_force_download_sets_attachment(
     .await
     .unwrap();
 
-    let fd_state = Arc::new(FileDownloadState::new());
-    let fd_sim = Arc::clone(&fd_state);
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        fd_sim.file_size.store(5, Ordering::Release);
-        fd_sim.received_data.store(true, Ordering::Release);
-        fd_sim.data_ready.store(true, Ordering::Release);
-        fd_sim.data_notify.notify_waiters();
-        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
-    });
+    let fd_state = simulate_completed_download();
 
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
@@ -1898,16 +1879,7 @@ async fn test_download_sanitizes_unsafe_filename_in_disposition() {
     .await
     .unwrap();
 
-    let fd_state = Arc::new(FileDownloadState::new());
-    let fd_sim = Arc::clone(&fd_state);
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        fd_sim.file_size.store(5, Ordering::Release);
-        fd_sim.received_data.store(true, Ordering::Release);
-        fd_sim.data_ready.store(true, Ordering::Release);
-        fd_sim.data_notify.notify_waiters();
-        let _ = fd_sim.chunk_sender.send(b"hello".to_vec());
-    });
+    let fd_state = simulate_completed_download();
 
     let fd_for_mgr = Arc::clone(&fd_state);
     let cluster = Arc::new(online_cluster_no_messages());
