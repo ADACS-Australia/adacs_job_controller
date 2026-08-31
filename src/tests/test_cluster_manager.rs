@@ -158,8 +158,7 @@ async fn test_constructor_with_clusters() {
     for i in 1..=3 {
         let name = format!("cluster{i}");
         let cluster = mgr.get_cluster_by_name(&name);
-        assert!(cluster.is_some(), "cluster {name} should exist");
-        let cluster = cluster.unwrap();
+        let cluster = cluster.expect("cluster {name} should exist");
         assert_eq!(cluster.name(), name);
         assert_eq!(cluster.cluster_details().host, format!("cluster{i}.com"));
         assert_eq!(cluster.cluster_details().username, format!("user{i}"));
@@ -1173,11 +1172,8 @@ async fn test_handle_new_connection_ltk_authenticates() {
     // Connect using the LTK token
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(1, tx, "super-secret-ltk").await;
-    assert!(
-        result.is_some(),
-        "LTK token match should authenticate the cluster"
-    );
-    assert_eq!(result.unwrap().name(), "ltk_cluster");
+    let result = result.expect("LTK token match should authenticate the cluster");
+    assert_eq!(result.name(), "ltk_cluster");
 
     // Cluster should now be online and findable by connection ID
     let cluster = mgr.get_cluster_by_name("ltk_cluster").unwrap();
