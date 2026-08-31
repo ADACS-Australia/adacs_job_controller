@@ -95,6 +95,22 @@ fn make_app_context(db: DatabaseConnection) -> Arc<AppContext> {
     })
 }
 
+/// Create an online `Cluster` for `"ozstar"` with a live WS sender and a
+/// started scheduler, returning the cluster and the outbound receiver.
+async fn make_online_cluster(
+    db: &DatabaseConnection,
+) -> (
+    Arc<Cluster>,
+    tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
+) {
+    let ctx = make_app_context(db.clone());
+    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster.set_connection(Some(tx)).await;
+    cluster.start_tasks();
+    (cluster, rx)
+}
+
 /// Make an `UPDATE_JOB` message with the given fields.
 fn make_update_job_message(job_id: u32, what: &str, status: u32, details: &str) -> Message {
     let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
@@ -227,15 +243,7 @@ async fn test_check_unsubmitted_jobs_resends_old_pending() {
     // Insert history with state=10 (PENDING) and timestamp far in the past
     insert_history(&db, 1, old_timestamp(), "submit", 10).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    // Set cluster online by giving it a real WS sender
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-
-    // Start the scheduler so queued messages are forwarded to the channel
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     // Call check_unsubmitted_jobs
     cluster.check_unsubmitted_jobs().await;
@@ -293,12 +301,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
     // Insert history with state=10 and timestamp = NOW (within the ignore window)
     insert_history(&db, 2, now_timestamp(), "submit", 10).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -347,12 +350,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_terminal_state() {
     // ... followed by a recent COMPLETED row within the ignore window.
     insert_history(&db, 5, now_timestamp(), "complete", 500).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -427,12 +425,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
     insert_job(&db, 10, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 10, old_timestamp(), "cancel", 60).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_cancelling_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -473,12 +466,7 @@ async fn test_check_cancelling_jobs_ignores_recent() {
     insert_job(&db, 11, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 11, now_timestamp(), "cancel", 60).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_cancelling_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -520,12 +508,7 @@ async fn test_check_cancelling_jobs_resends_with_pending_history() {
     insert_history(&db, 12, old_timestamp(), "created", 10).await;
     insert_history(&db, 12, old_timestamp(), "cancel", 60).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_cancelling_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -573,12 +556,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
     insert_job(&db, 20, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 20, old_timestamp(), "delete", 80).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_deleting_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -619,12 +597,7 @@ async fn test_check_deleting_jobs_ignores_recent() {
     insert_job(&db, 21, "ozstar", "b", "app", "{}").await;
     insert_history(&db, 21, now_timestamp(), "delete", 80).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_deleting_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -670,12 +643,7 @@ async fn test_check_unsubmitted_jobs_only_for_own_cluster() {
     insert_job(&db, 30, "nci", "b", "app", "{}").await;
     insert_history(&db, 30, old_timestamp(), "sub", 10).await;
 
-    let ctx = make_app_context(db);
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -741,12 +709,7 @@ async fn test_check_unsubmitted_jobs_noop_for_non_matching_statuses() {
         insert_job(&db, 100, "ozstar", "b", "app", "{}").await;
         insert_history(&db, 100, old_timestamp(), "test", state_val).await;
 
-        let ctx = make_app_context(db.clone());
-        let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-        cluster.set_connection(Some(tx)).await;
-        cluster.start_tasks();
+        let (cluster, mut rx) = make_online_cluster(&db).await;
 
         cluster.check_unsubmitted_jobs().await;
         cluster.wait_for_queue_drain(true).await;
@@ -809,12 +772,7 @@ async fn test_check_cancelling_jobs_noop_for_non_matching_statuses() {
         insert_job(&db, 200, "ozstar", "b", "app", "{}").await;
         insert_history(&db, 200, old_timestamp(), "test", state_val).await;
 
-        let ctx = make_app_context(db.clone());
-        let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-        cluster.set_connection(Some(tx)).await;
-        cluster.start_tasks();
+        let (cluster, mut rx) = make_online_cluster(&db).await;
 
         cluster.check_cancelling_jobs().await;
         cluster.wait_for_queue_drain(true).await;
@@ -877,12 +835,7 @@ async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
         insert_job(&db, 300, "ozstar", "b", "app", "{}").await;
         insert_history(&db, 300, old_timestamp(), "test", state_val).await;
 
-        let ctx = make_app_context(db.clone());
-        let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-        cluster.set_connection(Some(tx)).await;
-        cluster.start_tasks();
+        let (cluster, mut rx) = make_online_cluster(&db).await;
 
         cluster.check_deleting_jobs().await;
         cluster.wait_for_queue_drain(true).await;
@@ -934,12 +887,7 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
     // Insert history with state=20 (SUBMITTING) and timestamp far in the past
     insert_history(&db, 400, old_timestamp(), "submit", 20).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -1003,12 +951,7 @@ async fn test_check_unsubmitted_jobs_resends_all_stale_jobs_in_batch() {
     insert_job(&db, 4, "ozstar", "bundle-4", "myapp", "{}").await;
     insert_history(&db, 4, now_timestamp(), "submit", 10).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
@@ -1048,12 +991,7 @@ async fn test_check_unsubmitted_jobs_skips_job_id_exceeding_u32_range() {
     insert_job(&db, oversized_id, "ozstar", "mybundle", "myapp", "{}").await;
     insert_history(&db, oversized_id, old_timestamp(), "submit", 10).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
+    let (cluster, mut rx) = make_online_cluster(&db).await;
 
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
