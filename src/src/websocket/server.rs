@@ -369,7 +369,6 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
             );
             let grace = tokio::time::sleep(Duration::from_secs(WS_CLOSE_HANDSHAKE_GRACE_SECONDS));
             tokio::pin!(grace);
-            let mut handshake_completed = false;
             loop {
                 tokio::select! {
                     msg = ws_stream.next() => {
@@ -379,7 +378,6 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
                                     "WS: Received peer Close during grace period for conn_id={}: {:?}",
                                     conn_id, frame
                                 );
-                                handshake_completed = true;
                                 exit_reason = HandlerExitReason::GracefulCloseAcked;
                                 break;
                             }
@@ -388,7 +386,6 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
                                     "WS: Stream ended during grace period (conn_id={})",
                                     conn_id
                                 );
-                                handshake_completed = true;
                                 exit_reason = HandlerExitReason::GracefulCloseAcked;
                                 break;
                             }
@@ -405,10 +402,6 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
                         break;
                     }
                 }
-            }
-            if !handshake_completed {
-                // No additional warning here — the guard's Drop emits
-                // exactly one combined forced-fallback warning.
             }
             break;
         }
