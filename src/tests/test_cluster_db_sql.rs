@@ -128,7 +128,7 @@ async fn test_handle_job_save_insert() {
     let db_hash = model.bundle_hash.clone();
     let db_dir = model.working_directory.clone();
 
-    assert!(db_id > 0, "Auto id should be assigned");
+    assert_eq!(db_id, 1, "first insert into fresh table gets rowid 1");
     assert_eq!(db_job_id, 42);
     assert_eq!(db_sched_id, 0);
     assert!(model.submitting); // true → 1
