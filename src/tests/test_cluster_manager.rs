@@ -427,7 +427,6 @@ async fn test_handle_new_connection_valid_uuid() {
 
     // cluster2 should be findable by connection ID
     let found = mgr.get_cluster_by_connection(10);
-    assert!(found.is_some());
     assert_eq!(found.unwrap().name(), "cluster2");
 
     // Other clusters should still be offline
@@ -493,7 +492,6 @@ async fn test_handle_new_connection_already_connected_rejected() {
 
     // The original connection should still be active
     let found = mgr.get_cluster_by_connection(1);
-    assert!(found.is_some());
     assert_eq!(found.unwrap().name(), "cluster2");
 
     // The new connection should NOT be in the map
@@ -553,10 +551,8 @@ async fn test_remove_connection() {
 
     // Other clusters should still be online
     let found = mgr.get_cluster_by_connection(1);
-    assert!(found.is_some());
     assert_eq!(found.unwrap().name(), "cluster1");
     let found = mgr.get_cluster_by_connection(3);
-    assert!(found.is_some());
     assert_eq!(found.unwrap().name(), "cluster3");
 
     // Removing an invalid connection should not panic
@@ -1191,7 +1187,6 @@ async fn test_handle_new_connection_ltk_authenticates() {
     let cluster = mgr.get_cluster_by_name("ltk_cluster").unwrap();
     assert!(mgr.is_cluster_online(cluster.as_ref()));
     let found = mgr.get_cluster_by_connection(1);
-    assert!(found.is_some());
     assert_eq!(found.unwrap().name(), "ltk_cluster");
 }
 
