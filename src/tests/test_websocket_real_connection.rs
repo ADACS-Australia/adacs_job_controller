@@ -31,7 +31,8 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::ClusterRole;
 
 use common::{
-    encode_test_jwt, insert_test_job, make_test_state, setup_test_db, test_cluster_config,
+    encode_test_jwt, insert_test_job, make_test_state, online_cluster, setup_test_db,
+    test_cluster_config,
 };
 
 use sea_orm::{
@@ -112,24 +113,6 @@ async fn recv_binary(
     })
     .await;
     timeout.ok().flatten()
-}
-
-fn create_online_cluster(name: &str) -> MockClusterTrait {
-    let mut cluster = MockClusterTrait::new();
-    let name = name.to_string();
-    cluster.expect_name().returning(move || name.clone());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
-    cluster
 }
 
 // ---------------------------------------------------------------------------
@@ -550,9 +533,9 @@ async fn test_file_download_record_persistence() {
 async fn test_multiple_clusters_concurrent_job_submission() {
     let db = setup_test_db().await;
 
-    let ozstar = Arc::new(create_online_cluster("ozstar"));
-    let nci = Arc::new(create_online_cluster("nci"));
-    let gadi = Arc::new(create_online_cluster("gadi"));
+    let ozstar = Arc::new(online_cluster("ozstar"));
+    let nci = Arc::new(online_cluster("nci"));
+    let gadi = Arc::new(online_cluster("gadi"));
 
     let mut manager = MockClusterManagerTrait::new();
     let oz = Arc::clone(&ozstar);
