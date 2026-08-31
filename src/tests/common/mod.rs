@@ -51,6 +51,21 @@ pub fn online_cluster_no_messages() -> MockClusterTrait {
     c
 }
 
+/// Build a mock online cluster with the given name that forwards messages.
+pub fn online_cluster(name: &str) -> MockClusterTrait {
+    let mut c = MockClusterTrait::new();
+    let name = name.to_string();
+    let details_name = name.clone();
+    c.expect_name().returning(move || name.clone());
+    c.expect_is_online().returning(|| true);
+    c.expect_role().returning(|| ClusterRole::Master);
+    c.expect_role_string().returning(|| "master".to_string());
+    c.expect_cluster_details()
+        .returning(move || test_cluster_config(&details_name));
+    c.expect_send_message().returning(|_| Box::pin(async {}));
+    c
+}
+
 /// Build a mock offline cluster.
 pub fn offline_cluster() -> MockClusterTrait {
     let mut c = MockClusterTrait::new();
