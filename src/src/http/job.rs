@@ -530,14 +530,7 @@ pub async fn cancel_job(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let job = get_job_with_access_check(&state, &auth, body.job_id).await?;
 
-    let latest = job_history::Entity::find()
-        .filter(job_history::Column::JobId.eq(job.id))
-        .order_by_desc(job_history::Column::Timestamp)
-        .order_by_desc(job_history::Column::Id)
-        .one(&state.db)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
-        .ok_or((StatusCode::BAD_REQUEST, "No history for job".to_string()))?;
+    let latest = get_latest_job_history(&state, job.id).await?;
 
     let current_state = latest.state;
 
@@ -606,14 +599,7 @@ pub async fn delete_job(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let job = get_job_with_access_check(&state, &auth, body.job_id).await?;
 
-    let latest = job_history::Entity::find()
-        .filter(job_history::Column::JobId.eq(job.id))
-        .order_by_desc(job_history::Column::Timestamp)
-        .order_by_desc(job_history::Column::Id)
-        .one(&state.db)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
-        .ok_or((StatusCode::BAD_REQUEST, "No history for job".to_string()))?;
+    let latest = get_latest_job_history(&state, job.id).await?;
 
     let current_state = latest.state;
 
@@ -658,6 +644,27 @@ pub async fn delete_job(
     .await?;
 
     Ok(Json(serde_json::json!({ "deleted": body.job_id })))
+}
+
+/// Fetch the most recent history entry for a job.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Database query fails
+/// - Job has no history entries
+async fn get_latest_job_history(
+    state: &AppState,
+    job_id: i64,
+) -> Result<job_history::Model, (StatusCode, String)> {
+    job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(job_id))
+        .order_by_desc(job_history::Column::Timestamp)
+        .order_by_desc(job_history::Column::Id)
+        .one(&state.db)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
+        .ok_or((StatusCode::BAD_REQUEST, "No history for job".to_string()))
 }
 
 /// Fetch a job by ID and verify the requester's application has access to its cluster.
