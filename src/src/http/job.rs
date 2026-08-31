@@ -7,7 +7,7 @@ use crate::http::utils::LenientJson;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::sea_query::{Condition, Expr, Func, Query};
+use sea_orm::sea_query::{Condition, Expr, Func, Query, SelectStatement};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
     TransactionTrait,
@@ -246,6 +246,40 @@ pub async fn create_job(
 
 // ---- GET /job/apiv1/job/ ----
 
+/// Subquery of job IDs whose earliest SYSTEM_SOURCE history timestamp is
+/// strictly greater (`gt = true`) or strictly less (`gt = false`) than `cutoff`.
+fn min_timestamp_job_subquery(cutoff: chrono::NaiveDateTime, gt: bool) -> SelectStatement {
+    let cmp = if gt {
+        Expr::expr(Func::min(Expr::col(job_history::Column::Timestamp))).gt(cutoff)
+    } else {
+        Expr::expr(Func::min(Expr::col(job_history::Column::Timestamp))).lt(cutoff)
+    };
+    Query::select()
+        .column(job_history::Column::JobId)
+        .from(job_history::Entity)
+        .and_where(Expr::col(job_history::Column::What).eq(SYSTEM_SOURCE))
+        .group_by_col(job_history::Column::JobId)
+        .and_having(cmp)
+        .to_owned()
+}
+
+/// Subquery of job IDs that have a completion history entry whose timestamp is
+/// strictly greater (`gt = true`) or strictly less (`gt = false`) than `cutoff`.
+fn completion_timestamp_job_subquery(cutoff: chrono::NaiveDateTime, gt: bool) -> SelectStatement {
+    let cmp = if gt {
+        Expr::col(job_history::Column::Timestamp).gt(cutoff)
+    } else {
+        Expr::col(job_history::Column::Timestamp).lt(cutoff)
+    };
+    Query::select()
+        .distinct()
+        .column(job_history::Column::JobId)
+        .from(job_history::Entity)
+        .and_where(Expr::col(job_history::Column::What).eq(JOB_COMPLETION_SOURCE))
+        .and_where(cmp)
+        .to_owned()
+}
+
 /// Retrieve jobs filtered by various criteria.
 ///
 /// # Errors
@@ -312,13 +346,7 @@ pub async fn get_jobs(
         && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
     {
         let cutoff = dt.naive_utc();
-        let subq = Query::select()
-            .column(job_history::Column::JobId)
-            .from(job_history::Entity)
-            .and_where(Expr::col(job_history::Column::What).eq(SYSTEM_SOURCE))
-            .group_by_col(job_history::Column::JobId)
-            .and_having(Expr::expr(Func::min(Expr::col(job_history::Column::Timestamp))).gt(cutoff))
-            .to_owned();
+        let subq = min_timestamp_job_subquery(cutoff, true);
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
@@ -327,13 +355,7 @@ pub async fn get_jobs(
         && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
     {
         let cutoff = dt.naive_utc();
-        let subq = Query::select()
-            .column(job_history::Column::JobId)
-            .from(job_history::Entity)
-            .and_where(Expr::col(job_history::Column::What).eq(SYSTEM_SOURCE))
-            .group_by_col(job_history::Column::JobId)
-            .and_having(Expr::expr(Func::min(Expr::col(job_history::Column::Timestamp))).lt(cutoff))
-            .to_owned();
+        let subq = min_timestamp_job_subquery(cutoff, false);
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
@@ -342,13 +364,7 @@ pub async fn get_jobs(
         && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
     {
         let cutoff = dt.naive_utc();
-        let subq = Query::select()
-            .distinct()
-            .column(job_history::Column::JobId)
-            .from(job_history::Entity)
-            .and_where(Expr::col(job_history::Column::What).eq(JOB_COMPLETION_SOURCE))
-            .and_where(Expr::col(job_history::Column::Timestamp).gt(cutoff))
-            .to_owned();
+        let subq = completion_timestamp_job_subquery(cutoff, true);
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
@@ -357,13 +373,7 @@ pub async fn get_jobs(
         && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
     {
         let cutoff = dt.naive_utc();
-        let subq = Query::select()
-            .distinct()
-            .column(job_history::Column::JobId)
-            .from(job_history::Entity)
-            .and_where(Expr::col(job_history::Column::What).eq(JOB_COMPLETION_SOURCE))
-            .and_where(Expr::col(job_history::Column::Timestamp).lt(cutoff))
-            .to_owned();
+        let subq = completion_timestamp_job_subquery(cutoff, false);
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
