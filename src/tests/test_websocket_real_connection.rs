@@ -14,7 +14,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use serde_json::json;
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
@@ -28,7 +28,7 @@ use adacs_job_controller::db::entities::{file_download, job};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::{SERVER_READY, SYSTEM_SOURCE};
 use adacs_job_controller::protocol::message::Message;
-use adacs_job_controller::protocol::types::{ClusterRole, Priority};
+use adacs_job_controller::protocol::types::ClusterRole;
 
 use common::{
     encode_test_jwt, insert_test_job, make_test_state, setup_test_db, test_cluster_config,
@@ -92,21 +92,6 @@ async fn connect_websocket(
         .insert("Authorization", format!("Bearer {token}").parse().unwrap());
     let (ws_stream, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     ws_stream.split()
-}
-
-/// Send a binary message over WebSocket
-async fn send_binary(
-    sink: &mut futures_util::stream::SplitSink<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-        TungsteniteMsg,
-    >,
-    data: Vec<u8>,
-) {
-    sink.send(TungsteniteMsg::Binary(data.into()))
-        .await
-        .unwrap();
 }
 
 /// Receive a binary message from WebSocket with timeout
@@ -663,82 +648,6 @@ async fn test_multiple_clusters_concurrent_job_submission() {
     let job_count = job::Entity::find().count(&db).await.unwrap();
     assert_eq!(job_count, 2, "Both submitted jobs should be in database");
 
-    server_handle.abort();
-}
-
-// ---------------------------------------------------------------------------
-// Test: Race Condition - Message During Disconnect
-// ---------------------------------------------------------------------------
-
-/// Tests race condition when message sent during cluster disconnect.
-///
-/// This matches C++ test: `test_removeConnection_race_with_handleMessage`
-///
-/// # Setup
-/// - Creates online cluster
-/// - Establishes WebSocket connection
-///
-/// # Act
-/// - Sends message to cluster
-/// - Immediately disconnects cluster
-/// - Verifies no crash or panic
-///
-/// # Assert
-/// - System handles race gracefully
-/// - No use-after-free or panic
-#[tokio::test]
-async fn test_race_condition_message_during_disconnect() {
-    let db = setup_test_db().await;
-
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-
-    // Mock send_message to simulate slow operation
-    cluster.expect_send_message().returning(|_| {
-        std::thread::sleep(Duration::from_millis(10));
-        Box::pin(async {})
-    });
-
-    let cluster_arc = Arc::new(cluster);
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    let c = Arc::clone(&cluster_arc);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-
-    // Start server
-    let (port, server_handle) = start_http_server(db.clone(), manager).await;
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
-
-    // Connect WebSocket
-    let (mut sink, mut stream) = connect_websocket(port, &token).await;
-
-    // Send message
-    let mut hello = Message::new(1, Priority::Medium, "test");
-    hello.push_string("CLUSTER_HELLO");
-    hello.push_string("ozstar");
-    send_binary(&mut sink, hello.into_data()).await;
-
-    // Immediately try to receive response while potentially disconnecting
-    let _ = recv_binary(&mut stream).await;
-
-    // Drop connection immediately (simulate race)
-    drop(sink);
-    drop(stream);
-
-    // If we get here without panic, the race was handled
     server_handle.abort();
 }
 

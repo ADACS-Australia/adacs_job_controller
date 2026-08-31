@@ -1414,6 +1414,8 @@ async fn test_ws_truncated_binary_message_no_crash() {
     m.expect_get_file_download_admission().returning(|_| None);
     m.expect_is_application_shutting_down().returning(|| false);
     m.expect_get_file_download_admission().returning(|_| None);
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
     let tx_for_new = Arc::clone(&tx_slot);
     m.expect_handle_new_connection()
