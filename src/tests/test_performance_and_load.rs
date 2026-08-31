@@ -20,7 +20,10 @@ use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, Priority};
 
-use common::{encode_test_jwt, make_test_state, setup_test_db, test_cluster_config};
+use common::{
+    encode_test_jwt, make_test_state, online_cluster_no_messages, setup_test_db,
+    test_cluster_config,
+};
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
@@ -94,21 +97,7 @@ async fn test_large_binary_message_handling() {
 async fn test_http_concurrent_requests_stress() {
     let db = setup_test_db().await;
 
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
-
-    let cluster_arc = Arc::new(cluster);
+    let cluster_arc = Arc::new(online_cluster_no_messages());
 
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster_arc);
@@ -248,21 +237,7 @@ async fn test_priority_preemption_under_load() {
 async fn test_job_creation_atomicity() {
     let db = setup_test_db().await;
 
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
-
-    let cluster_arc = Arc::new(cluster);
+    let cluster_arc = Arc::new(online_cluster_no_messages());
 
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster_arc);
