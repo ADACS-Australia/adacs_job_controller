@@ -415,7 +415,8 @@ async fn test_create_job_job_id_exceeding_u32_returns_400() {
 // cancel_job tests — state machine exhaustively tested
 // ---------------------------------------------------------------------------
 
-async fn run_cancel(
+async fn run_job_request(
+    method: &str,
     job_id: i64,
     db: &sea_orm::DatabaseConnection,
     manager: MockClusterManagerTrait,
@@ -427,7 +428,7 @@ async fn run_cancel(
     let resp = app
         .oneshot(
             Request::builder()
-                .method("PATCH")
+                .method(method)
                 .uri("/job/apiv1/job/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
@@ -442,6 +443,14 @@ async fn run_cancel(
         .await
         .unwrap();
     (status, String::from_utf8_lossy(&bytes).to_string())
+}
+
+async fn run_cancel(
+    job_id: i64,
+    db: &sea_orm::DatabaseConnection,
+    manager: MockClusterManagerTrait,
+) -> (StatusCode, String) {
+    run_job_request("PATCH", job_id, db, manager).await
 }
 
 fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
@@ -929,29 +938,7 @@ async fn run_delete(
     db: &sea_orm::DatabaseConnection,
     manager: MockClusterManagerTrait,
 ) -> (StatusCode, String) {
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(
-                    serde_json::json!({ "jobId": job_id }).to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    (status, String::from_utf8_lossy(&bytes).to_string())
+    run_job_request("DELETE", job_id, db, manager).await
 }
 
 /// Tests that deleting a PENDING job transitions it directly to Deleted without a WS message.
