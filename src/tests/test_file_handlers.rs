@@ -1720,7 +1720,10 @@ async fn test_upload_file_success_full_flow() {
     )
     .unwrap();
     assert_eq!(body["status"].as_str().unwrap(), "completed");
-    assert!(body["uploadId"].as_str().is_some());
+    let upload_id = body["uploadId"]
+        .as_str()
+        .expect("uploadId should be present");
+    assert!(uuid::Uuid::parse_str(upload_id).is_ok());
 }
 
 /// Tests that a cluster error during upload propagates to a 400 response.
