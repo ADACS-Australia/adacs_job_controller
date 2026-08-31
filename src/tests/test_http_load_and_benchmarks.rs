@@ -17,13 +17,12 @@ use serde_json::json;
 use tokio::sync::Semaphore;
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
+use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
 use adacs_job_controller::db::entities::job;
 use adacs_job_controller::http::server::create_router;
-use adacs_job_controller::protocol::types::ClusterRole;
 
 use common::{
-    encode_test_jwt, insert_test_job, make_test_state, setup_test_db, test_cluster_config,
+    encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages, setup_test_db,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
@@ -52,20 +51,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 async fn test_http_concurrent_job_creation_moderate_load() {
     let db = setup_test_db().await;
 
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
-    let cluster_arc = Arc::new(cluster);
+    let cluster_arc = Arc::new(online_cluster_no_messages());
 
     let mut manager = MockClusterManagerTrait::new();
     manager.expect_get_cluster_by_name().returning(move |_| {
@@ -178,20 +164,7 @@ async fn test_http_concurrent_job_creation_moderate_load() {
 async fn test_http_concurrent_job_creation_heavy_load() {
     let db = setup_test_db().await;
 
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
-    let cluster_arc = Arc::new(cluster);
+    let cluster_arc = Arc::new(online_cluster_no_messages());
 
     let mut manager = MockClusterManagerTrait::new();
     manager.expect_get_cluster_by_name().returning(move |_| {
@@ -308,20 +281,7 @@ async fn test_http_concurrent_job_creation_heavy_load() {
 async fn test_benchmark_job_creation_performance() {
     let db = setup_test_db().await;
 
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
-    let cluster_arc = Arc::new(cluster);
+    let cluster_arc = Arc::new(online_cluster_no_messages());
 
     let mut manager = MockClusterManagerTrait::new();
     manager.expect_get_cluster_by_name().returning(move |_| {
@@ -478,20 +438,7 @@ async fn test_benchmark_database_query_performance() {
 async fn test_connection_pool_exhaustion() {
     let db = setup_test_db().await;
 
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
-    let cluster_arc = Arc::new(cluster);
+    let cluster_arc = Arc::new(online_cluster_no_messages());
 
     let mut manager = MockClusterManagerTrait::new();
     manager.expect_get_cluster_by_name().returning(move |_| {
