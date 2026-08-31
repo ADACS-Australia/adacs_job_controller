@@ -82,9 +82,8 @@ pub fn create_router(state: AppState) -> Router {
         }
     } else if requests_per_second > 0 {
         tracing::warn!(
-            "HTTP: Invalid rate limiter config (burst_size {}, interval {}ms); rate limiting disabled",
-            burst_size,
-            (1000u64.saturating_div(requests_per_second)).max(1)
+            "HTTP: Invalid rate limiter config (burst_size {}); rate limiting disabled",
+            burst_size
         );
     } else {
         tracing::debug!("HTTP: Rate limiting disabled");
