@@ -1312,13 +1312,16 @@ async fn test_download_expired_records_are_cleaned_up() {
         "Expired download record should have been cleaned up"
     );
 
-    // Fresh record should still exist
+    // Fresh record should still exist unchanged
     let fresh = file_download::Entity::find()
         .filter(file_download::Column::Uuid.eq("fresh-uuid"))
         .one(&db)
         .await
         .unwrap();
-    assert!(fresh.is_some(), "Fresh download record should still exist");
+    let fresh = fresh.expect("Fresh download record should still exist");
+    assert_eq!(fresh.path, "/fresh.txt");
+    assert_eq!(fresh.cluster, "ozstar");
+    assert_eq!(fresh.bundle, "b");
 }
 
 // ===========================================================================
