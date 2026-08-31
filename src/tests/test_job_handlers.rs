@@ -22,8 +22,9 @@ use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_job_history_at,
-    insert_test_job, make_test_state, make_test_state_with_secrets, offline_cluster, setup_test_db,
-    test_cluster_config, test_jwt_secrets_multi,
+    insert_test_job, make_test_state, make_test_state_with_secrets,
+    mock_cluster_manager_no_clusters, offline_cluster, setup_test_db, test_cluster_config,
+    test_jwt_secrets_multi,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -276,7 +277,7 @@ async fn test_create_job_cluster_not_in_secret_returns_400() {
 #[tokio::test]
 async fn test_create_job_parameters_too_long_returns_400() {
     let db = setup_test_db().await;
-    let manager = manager_no_clusters();
+    let manager = mock_cluster_manager_no_clusters();
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -320,7 +321,7 @@ async fn test_create_job_parameters_too_long_returns_400() {
 #[tokio::test]
 async fn test_create_job_bundle_too_long_returns_400() {
     let db = setup_test_db().await;
-    let manager = manager_no_clusters();
+    let manager = mock_cluster_manager_no_clusters();
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -481,12 +482,6 @@ fn manager_with_offline_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Mes
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
     (manager, sent)
-}
-
-fn manager_no_clusters() -> MockClusterManagerTrait {
-    let mut m = MockClusterManagerTrait::new();
-    m.expect_get_cluster_by_name().returning(|_| None);
-    m
 }
 
 /// Tests that a PENDING job is directly transitioned to Cancelled without a WS message.
@@ -652,7 +647,7 @@ async fn test_cancel_job_already_cancelling_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Cancelling as i32, "system").await;
-    let (status, body) = run_cancel(job_id, &db, manager_no_clusters()).await;
+    let (status, body) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("invalid state"), "body: {body}");
 }
@@ -672,7 +667,7 @@ async fn test_cancel_job_already_cancelled_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Cancelled as i32, "system").await;
-    let (status, body) = run_cancel(job_id, &db, manager_no_clusters()).await;
+    let (status, body) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("invalid state"), "body: {body}");
 }
@@ -692,7 +687,7 @@ async fn test_cancel_job_completed_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Completed as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -711,7 +706,7 @@ async fn test_cancel_job_wall_time_exceeded_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::WallTimeExceeded as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -730,7 +725,7 @@ async fn test_cancel_job_out_of_memory_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::OutOfMemory as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -749,7 +744,7 @@ async fn test_cancel_job_error_state_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Error as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -768,7 +763,7 @@ async fn test_cancel_job_deleting_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Deleting as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -787,7 +782,7 @@ async fn test_cancel_job_deleted_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Deleted as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -900,7 +895,7 @@ async fn test_cancel_delete_app3_cannot_access_app1_job_on_shared_cluster() {
 
     let app = create_router(make_test_state_with_secrets(
         db,
-        manager_no_clusters(),
+        mock_cluster_manager_no_clusters(),
         secrets.clone(),
     ));
     let token = encode_jwt_for_secret(&secrets[2], &serde_json::json!({"userId": 10}));
@@ -1110,7 +1105,7 @@ async fn test_delete_job_submitting_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -1129,7 +1124,7 @@ async fn test_delete_job_submitted_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Submitted as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -1148,7 +1143,7 @@ async fn test_delete_job_queued_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Queued as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -1167,7 +1162,7 @@ async fn test_delete_job_running_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -1186,7 +1181,7 @@ async fn test_delete_job_cancelling_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Cancelling as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -1205,7 +1200,7 @@ async fn test_delete_job_deleting_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Deleting as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -1224,7 +1219,7 @@ async fn test_delete_job_already_deleted_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Deleted as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, manager_no_clusters()).await;
+    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
