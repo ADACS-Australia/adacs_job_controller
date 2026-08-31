@@ -917,7 +917,10 @@ async fn test_handle_new_connection_file_upload_duplicate_rejected() {
     );
 
     // Original connection remains active; the new one is not registered
-    assert!(mgr.get_cluster_by_connection(60).is_some());
+    assert_eq!(
+        mgr.get_cluster_by_connection(60).unwrap().name(),
+        "cluster1"
+    );
     assert!(mgr.get_cluster_by_connection(61).is_none());
 }
 
@@ -1217,7 +1220,10 @@ async fn test_handle_new_connection_ltk_duplicate_rejected() {
     );
 
     // Original connection remains active; the new one is not registered
-    assert!(mgr.get_cluster_by_connection(1).is_some());
+    assert_eq!(
+        mgr.get_cluster_by_connection(1).unwrap().name(),
+        "ltk_cluster"
+    );
     assert!(mgr.get_cluster_by_connection(2).is_none());
 }
 
@@ -1406,7 +1412,10 @@ async fn test_application_shutdown_rejects_file_download_ws_admission() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let first = mgr.handle_new_connection(201, tx, "dl-first").await;
     assert_eq!(first.as_ref().unwrap().name(), "cluster1");
-    assert!(mgr.get_cluster_by_connection(201).is_some());
+    assert_eq!(
+        mgr.get_cluster_by_connection(201).unwrap().name(),
+        "cluster1"
+    );
 
     mgr.begin_application_shutdown();
 
