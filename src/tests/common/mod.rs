@@ -120,6 +120,13 @@ pub fn mock_cluster_manager_no_clusters() -> MockClusterManagerTrait {
 // SQLite test database helpers
 // ---------------------------------------------------------------------------
 
+/// Create a fresh in-memory `SQLite` database connection (no schema).
+pub async fn make_db() -> sea_orm::DatabaseConnection {
+    sea_orm::Database::connect("sqlite::memory:")
+        .await
+        .expect("sqlite in-memory connect failed")
+}
+
 /// Create a fresh in-memory `SQLite` database with all HTTP handler tables.
 pub async fn setup_test_db() -> sea_orm::DatabaseConnection {
     let db = sea_orm::Database::connect("sqlite::memory:")
