@@ -227,9 +227,6 @@ async fn test_create_file_download_rejects_empty_paths() {
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
