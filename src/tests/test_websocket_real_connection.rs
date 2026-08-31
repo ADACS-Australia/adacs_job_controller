@@ -620,8 +620,9 @@ async fn test_multiple_clusters_concurrent_job_submission() {
             .await
             .unwrap();
 
-        assert!(
-            resp.status() == StatusCode::OK || resp.status() == StatusCode::CREATED,
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
             "Job submission to {} should succeed, got: {:?}",
             cluster_name,
             resp.status()
