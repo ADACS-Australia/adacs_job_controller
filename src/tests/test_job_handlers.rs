@@ -503,7 +503,9 @@ async fn test_cancel_job_pending_directly_cancelled_no_ws() {
     let (status, body) = run_cancel(job_id, &db, manager).await;
 
     assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body.contains(&job_id.to_string()));
+    let body: serde_json::Value =
+        serde_json::from_str(&body).expect("cancel response should be valid JSON");
+    assert_eq!(body["cancelled"].as_i64(), Some(job_id));
 
     // Latest state should be Cancelled
     let latest = job_history::Entity::find()
