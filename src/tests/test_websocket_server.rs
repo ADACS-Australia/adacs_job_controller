@@ -71,6 +71,24 @@ async fn connection_closes(
     timeout.unwrap_or(false)
 }
 
+/// Poll `cond` every 5ms until `timeout` elapses.
+/// Returns `true` as soon as `cond()` returns `true`, otherwise `false`.
+async fn wait_until<F>(timeout: std::time::Duration, cond: F) -> bool
+where
+    F: Fn() -> bool,
+{
+    let start = std::time::Instant::now();
+    loop {
+        if start.elapsed() > timeout {
+            return false;
+        }
+        if cond() {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Build mock cluster manager helpers
 // ---------------------------------------------------------------------------
@@ -321,19 +339,13 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
     sink.close().await.unwrap();
 
     // The server should forward the disconnect to remove_connection
-    let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_millis(100);
-    loop {
-        if start.elapsed() > timeout {
-            break;
-        }
-        if removed_count.load(Ordering::SeqCst) > 0 {
-            return; // Test passed
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
-
-    panic!("Client disconnect should have been forwarded to manager.remove_connection");
+    assert!(
+        wait_until(std::time::Duration::from_millis(100), || {
+            removed_count.load(Ordering::SeqCst) > 0
+        })
+        .await,
+        "Client disconnect should have been forwarded to manager.remove_connection"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -434,20 +446,13 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
         .unwrap();
 
     // Wait for message to be processed with timeout
-    let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_millis(100);
-    loop {
-        if start.elapsed() > timeout {
-            break;
-        }
-        let ids = received.lock().unwrap().clone();
-        if ids.contains(&UPDATE_JOB) {
-            return; // Test passed
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
-
-    panic!("UPDATE_JOB should have been dispatched to cluster.handle_message");
+    assert!(
+        wait_until(std::time::Duration::from_millis(100), || {
+            received.lock().unwrap().contains(&UPDATE_JOB)
+        })
+        .await,
+        "UPDATE_JOB should have been dispatched to cluster.handle_message"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -542,19 +547,13 @@ async fn test_ws_pong_handled() {
         .unwrap();
 
     // Wait for handle_pong to be invoked, with a timeout
-    let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_millis(100);
-    loop {
-        if start.elapsed() > timeout {
-            break;
-        }
-        if pong_handled.load(Ordering::SeqCst) {
-            return; // Test passed
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
-
-    panic!("Pong should have been forwarded to manager.handle_pong");
+    assert!(
+        wait_until(std::time::Duration::from_millis(100), || {
+            pong_handled.load(Ordering::SeqCst)
+        })
+        .await,
+        "Pong should have been forwarded to manager.handle_pong"
+    );
 }
 
 // ---------------------------------------------------------------------------
