@@ -43,21 +43,6 @@ pub fn test_cluster_config(name: &str) -> ClusterConfig {
     }
 }
 
-/// Create a test `ClusterConfig` with LTK configured.
-pub fn test_cluster_config_with_ltk(name: &str, ltk: &str) -> ClusterConfig {
-    ClusterConfig {
-        name: name.to_string(),
-        host: "localhost".to_string(),
-        username: "testuser".to_string(),
-        path: "/home/testuser/jobcontroller".to_string(),
-        key: String::new(),
-        connection_type: "manual".to_string(),
-        keytab: String::new(),
-        kerberos_principal: String::new(),
-        ltk: Some(ltk.to_string()),
-    }
-}
-
 /// Build a mock online cluster that never sends messages.
 pub fn online_cluster_no_messages() -> MockClusterTrait {
     let mut c = MockClusterTrait::new();
