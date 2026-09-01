@@ -193,6 +193,36 @@ pub fn manager_with_online_cluster_no_messages() -> MockClusterManagerTrait {
 }
 
 // ---------------------------------------------------------------------------
+// WebSocket test helpers
+// ---------------------------------------------------------------------------
+
+/// Check whether a WS connection was closed (Close frame / transport error / EOF)
+/// within the given timeout.
+pub async fn connection_closes(
+    stream: &mut futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+    timeout: std::time::Duration,
+) -> bool {
+    use futures_util::StreamExt;
+
+    let result = tokio::time::timeout(timeout, async {
+        while let Some(msg) = stream.next().await {
+            match msg {
+                Ok(tokio_tungstenite::tungstenite::Message::Close(_)) | Err(_) => return true,
+                _ => {}
+            }
+        }
+        true // stream ended
+    })
+    .await;
+
+    result.unwrap_or(false)
+}
+
+// ---------------------------------------------------------------------------
 // SQLite test database helpers
 // ---------------------------------------------------------------------------
 
