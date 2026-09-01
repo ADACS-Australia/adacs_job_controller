@@ -100,6 +100,12 @@ async fn make_manager_with_three_clusters(db: &DatabaseConnection) -> Arc<Cluste
     make_manager(three_cluster_configs(), db.clone())
 }
 
+async fn make_ltk_manager() -> Arc<ClusterManager> {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    make_manager(ltk_cluster_configs(), db)
+}
+
 fn ltk_cluster_configs() -> Vec<ClusterConfig> {
     vec![ClusterConfig {
         name: "ltk_cluster".to_string(),
@@ -1151,9 +1157,7 @@ async fn test_check_pings_evicts_dead_connection() {
 /// Returns `Some`, the cluster comes online, and it is findable by connection ID.
 #[tokio::test]
 async fn test_handle_new_connection_ltk_authenticates() {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(ltk_cluster_configs(), db.clone());
+    let mgr = make_ltk_manager().await;
 
     // Cluster is offline before connecting
     let cluster = mgr.get_cluster_by_name("ltk_cluster").unwrap();
@@ -1184,9 +1188,7 @@ async fn test_handle_new_connection_ltk_authenticates() {
 /// The first call returns `Some` and brings the cluster online; the second call returns `None` and does not register a new connection.
 #[tokio::test]
 async fn test_handle_new_connection_ltk_duplicate_rejected() {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(ltk_cluster_configs(), db.clone());
+    let mgr = make_ltk_manager().await;
 
     // First LTK connection authenticates
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1232,9 +1234,7 @@ async fn test_handle_new_connection_ltk_rate_limiting_sleep() {
         std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "100");
     }
 
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(ltk_cluster_configs(), db);
+    let mgr = make_ltk_manager().await;
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let start = std::time::Instant::now();
