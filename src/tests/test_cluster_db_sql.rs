@@ -10,7 +10,6 @@ use common::make_db;
 
 use std::sync::{Arc, Mutex};
 
-use adacs_job_controller::cluster::traits::MockClusterTrait;
 use adacs_job_controller::db::cluster_db::maybe_handle_cluster_db_message;
 use adacs_job_controller::db::models::{BundleJob, ClusterJob, ClusterJobStatus};
 use adacs_job_controller::protocol::constants::*;
@@ -18,6 +17,7 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::Priority;
 
 use adacs_job_controller::db::entities::{bundle_job, cluster_job, cluster_job_status};
+use common::mock_cluster_capturing;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Schema,
@@ -37,22 +37,6 @@ async fn setup_cluster_db(db: &DatabaseConnection) {
     ] {
         db.execute(stmt).await.unwrap();
     }
-}
-
-/// Build a mock cluster that captures all `send_message` calls.
-fn mock_cluster_capturing(name: &str) -> (MockClusterTrait, Arc<Mutex<Vec<Message>>>) {
-    let sent = Arc::new(Mutex::new(Vec::<Message>::new()));
-    let sent_clone = Arc::clone(&sent);
-
-    let mut mock = MockClusterTrait::new();
-    let n = name.to_string();
-    mock.expect_name().returning(move || n.clone());
-    mock.expect_send_message().returning(move |msg| {
-        sent_clone.lock().unwrap().push(msg);
-        Box::pin(async {})
-    });
-
-    (mock, sent)
 }
 
 /// Build a ready-to-dispatch `Message` by creating it, pushing payload, then round-tripping

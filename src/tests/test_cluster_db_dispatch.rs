@@ -6,28 +6,15 @@
 //!   1. Verifying dispatch routing (handled vs unhandled message IDs)
 //!   2. Verifying the response message format via the mock's captured `send_message` calls
 
-use std::sync::{Arc, Mutex};
+mod common;
 
-use adacs_job_controller::cluster::traits::{ClusterTrait, MockClusterTrait};
+use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::db::models::{BundleJob, ClusterJob, ClusterJobStatus};
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::Priority;
 
-/// Helper: create a `MockClusterTrait` that captures all sent messages.
-fn mock_cluster_capturing_messages() -> (MockClusterTrait, Arc<Mutex<Vec<Message>>>) {
-    let sent = Arc::new(Mutex::new(Vec::<Message>::new()));
-    let sent_clone = Arc::clone(&sent);
-
-    let mut mock = MockClusterTrait::new();
-    mock.expect_name().returning(|| "test_cluster".to_string());
-    mock.expect_send_message().returning(move |msg| {
-        sent_clone.lock().unwrap().push(msg);
-        Box::pin(async {})
-    });
-
-    (mock, sent)
-}
+use common::mock_cluster_capturing;
 
 // ---------------------------------------------------------------------------
 // Dispatch routing: known DB message IDs return true
@@ -323,7 +310,7 @@ fn test_db_jobstatus_get_by_job_id_request_format() {
 /// Verifies that the mock cluster helper correctly captures a single sent message.
 ///
 /// # Setup
-/// A `MockClusterTrait` is created via `mock_cluster_capturing_messages`, which attaches
+/// A `MockClusterTrait` is created via `mock_cluster_capturing`, which attaches
 /// a shared `Vec` to the `send_message` expectation.
 ///
 /// # Act
@@ -333,7 +320,7 @@ fn test_db_jobstatus_get_by_job_id_request_format() {
 /// The captured message vector contains exactly one entry with the correct message ID and source.
 #[tokio::test]
 async fn test_mock_cluster_captures_sent_messages() {
-    let (mock, sent) = mock_cluster_capturing_messages();
+    let (mock, sent) = mock_cluster_capturing("test_cluster");
 
     // Simulate what the DB dispatcher would do: create and send a response
     let mut response = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
@@ -360,7 +347,7 @@ async fn test_mock_cluster_captures_sent_messages() {
 /// The captured message vector contains exactly 5 entries.
 #[tokio::test]
 async fn test_mock_cluster_multiple_messages() {
-    let (mock, sent) = mock_cluster_capturing_messages();
+    let (mock, sent) = mock_cluster_capturing("test_cluster");
 
     for i in 0..5 {
         let mut msg = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
