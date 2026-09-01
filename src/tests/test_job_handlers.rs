@@ -454,12 +454,12 @@ async fn run_cancel(
     run_job_request("PATCH", job_id, db, manager).await
 }
 
-fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
+fn manager_with_cluster(online: bool) -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
     let sent = Arc::new(Mutex::new(vec![]));
     let cluster = Arc::new(cluster_capturing_messages(
         "ozstar",
         Arc::clone(&sent),
-        true,
+        online,
     ));
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
@@ -469,19 +469,12 @@ fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Mess
     (manager, sent)
 }
 
+fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
+    manager_with_cluster(true)
+}
+
 fn manager_with_offline_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
-    let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(cluster_capturing_messages(
-        "ozstar",
-        Arc::clone(&sent),
-        false,
-    ));
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    (manager, sent)
+    manager_with_cluster(false)
 }
 
 /// Tests that a PENDING job is directly transitioned to Cancelled without a WS message.
