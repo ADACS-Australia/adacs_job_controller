@@ -483,7 +483,7 @@ pub async fn connect_ws(
     ws_stream.split()
 }
 
-/// Read the first binary message from the WS stream, with a timeout.
+/// Read the first binary message from the WS stream, with a 500ms timeout.
 pub async fn recv_binary(
     stream: &mut futures_util::stream::SplitStream<
         tokio_tungstenite::WebSocketStream<
@@ -491,7 +491,19 @@ pub async fn recv_binary(
         >,
     >,
 ) -> Option<Vec<u8>> {
-    let timeout = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+    recv_binary_with_timeout(stream, std::time::Duration::from_millis(500)).await
+}
+
+/// Read the first binary message from the WS stream, with a configurable timeout.
+pub async fn recv_binary_with_timeout(
+    stream: &mut futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+    timeout: std::time::Duration,
+) -> Option<Vec<u8>> {
+    tokio::time::timeout(timeout, async {
         while let Some(msg) = stream.next().await {
             if let Ok(TungsteniteMsg::Binary(data)) = msg {
                 return Some(data.to_vec());
@@ -499,7 +511,6 @@ pub async fn recv_binary(
         }
         None
     })
-    .await;
-
-    timeout.unwrap_or(None)
+    .await
+    .unwrap_or(None)
 }
