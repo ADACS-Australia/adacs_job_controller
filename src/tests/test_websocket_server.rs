@@ -8,7 +8,6 @@ mod common;
 
 use std::sync::Arc;
 
-use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
@@ -21,21 +20,13 @@ use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, Priority};
 
-use common::{connect_ws, make_test_state, recv_binary, setup_test_db, test_cluster_config};
+use common::{
+    connect_ws, make_test_state, recv_binary, setup_test_db, test_cluster_config, ws_router,
+};
 
 // ---------------------------------------------------------------------------
 // Test server helpers
 // ---------------------------------------------------------------------------
-
-/// Build the axum Router that contains only the WebSocket endpoint.
-fn ws_router(state: adacs_job_controller::app::AppState) -> Router {
-    Router::new()
-        .route(
-            "/job/ws/",
-            axum::routing::get(adacs_job_controller::websocket::server::ws_handler),
-        )
-        .with_state(state)
-}
 
 /// Start an axum server on a random OS-assigned port.
 /// Returns a `TestServer` RAII guard that aborts the server on drop.
