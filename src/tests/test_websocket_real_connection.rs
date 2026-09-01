@@ -20,17 +20,16 @@ use tower::ServiceExt;
 
 use adacs_job_controller::cluster::cluster::Cluster;
 use adacs_job_controller::cluster::traits::{
-    ClusterManagerTrait, ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsOutbound,
+    ClusterManagerTrait, ClusterTrait, MockClusterManagerTrait,
 };
 use adacs_job_controller::db::entities::{file_download, job};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::{SERVER_READY, SYSTEM_SOURCE};
 use adacs_job_controller::protocol::message::Message;
-use adacs_job_controller::protocol::types::ClusterRole;
 
 use common::{
-    connection_closes, encode_test_jwt, insert_test_job, make_test_state, online_cluster,
-    recv_binary_with_timeout, setup_test_db, test_cluster_config,
+    connection_closes, encode_test_jwt, forwarding_cluster, insert_test_job, make_test_state,
+    online_cluster, recv_binary_with_timeout, setup_test_db, test_cluster_config,
 };
 
 use sea_orm::{
@@ -119,29 +118,7 @@ async fn test_real_websocket_connection_and_auth() {
     // Create cluster that forwards messages through WebSocket
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
 
-    let tx_for_send = Arc::clone(&tx_slot);
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster
-        .expect_role_string()
-        .returning(|| "master test".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    cluster.expect_send_message().returning(move |msg| {
-        if let Some(tx) = tx_for_send.lock().unwrap().as_ref() {
-            let _ = tx.send(WsOutbound::Binary(msg.into_data()));
-        }
-        Box::pin(async {})
-    });
-    cluster
-        .expect_handle_message()
-        .returning(|_| Box::pin(async {}));
-
-    let cluster_arc: Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> =
-        Arc::new(cluster);
+    let cluster_arc = forwarding_cluster("ozstar", &tx_slot);
 
     let tx_for_new = Arc::clone(&tx_slot);
     let mut manager = MockClusterManagerTrait::new();
