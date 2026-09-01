@@ -20,6 +20,7 @@ use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, Priority};
 
+use common::repeated_download::connect_ws as connect_ws_auth;
 use common::{
     connect_ws, make_test_state, recv_binary, setup_test_db, test_cluster_config, ws_router,
 };
@@ -164,18 +165,7 @@ async fn test_ws_invalid_token_disconnects() {
     let port = server.port;
 
     // Connect with an invalid Bearer token
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
-        .into_client_request()
-        .unwrap();
-    request
-        .headers_mut()
-        .insert("Authorization", "Bearer bad_token".parse().unwrap());
-
-    let (_, mut stream) = tokio_tungstenite::connect_async(request)
-        .await
-        .unwrap()
-        .0
-        .split();
+    let (_, mut stream) = connect_ws_auth(port, "bad_token").await;
 
     let closed = connection_closes(&mut stream).await;
     assert!(closed, "Server should close connection for invalid token");
@@ -235,18 +225,7 @@ async fn test_ws_valid_token_receives_server_ready() {
     let port = server.port;
 
     // Connect with Authorization: Bearer header
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
-        .into_client_request()
-        .unwrap();
-    request
-        .headers_mut()
-        .insert("Authorization", "Bearer valid-token".parse().unwrap());
-
-    let (_, mut stream) = tokio_tungstenite::connect_async(request)
-        .await
-        .unwrap()
-        .0
-        .split();
+    let (_, mut stream) = connect_ws_auth(port, "valid-token").await;
 
     // The server should send SERVER_READY after accepting the connection
     let data = recv_binary(&mut stream)
@@ -288,18 +267,7 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
     let port = server.port;
 
     // Connect with Authorization: Bearer header
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
-        .into_client_request()
-        .unwrap();
-    request
-        .headers_mut()
-        .insert("Authorization", "Bearer valid-token".parse().unwrap());
-
-    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
-        .await
-        .unwrap()
-        .0
-        .split();
+    let (mut sink, mut stream) = connect_ws_auth(port, "valid-token").await;
 
     // Receive SERVER_READY
     recv_binary(&mut stream).await;
@@ -387,18 +355,7 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
     let port = server.port;
 
     // Connect with Authorization: Bearer header
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
-        .into_client_request()
-        .unwrap();
-    request
-        .headers_mut()
-        .insert("Authorization", "Bearer valid-token".parse().unwrap());
-
-    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
-        .await
-        .unwrap()
-        .0
-        .split();
+    let (mut sink, mut stream) = connect_ws_auth(port, "valid-token").await;
 
     // Wait for SERVER_READY
     recv_binary(&mut stream).await;
@@ -494,18 +451,7 @@ async fn test_ws_pong_handled() {
     let port = server.port;
 
     // Connect with Authorization: Bearer header
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
-        .into_client_request()
-        .unwrap();
-    request
-        .headers_mut()
-        .insert("Authorization", "Bearer valid-token".parse().unwrap());
-
-    let (mut sink, mut stream) = tokio_tungstenite::connect_async(request)
-        .await
-        .unwrap()
-        .0
-        .split();
+    let (mut sink, mut stream) = connect_ws_auth(port, "valid-token").await;
 
     // Wait for SERVER_READY
     recv_binary(&mut stream).await;
