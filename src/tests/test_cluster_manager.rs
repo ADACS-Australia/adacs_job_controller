@@ -95,6 +95,11 @@ fn make_manager(configs: Vec<ClusterConfig>, db: DatabaseConnection) -> Arc<Clus
     ClusterManager::new(configs, db, file_list_map)
 }
 
+async fn make_manager_with_three_clusters(db: &DatabaseConnection) -> Arc<ClusterManager> {
+    setup_cluster_uuid_table(db).await;
+    make_manager(three_cluster_configs(), db.clone())
+}
+
 fn ltk_cluster_configs() -> Vec<ClusterConfig> {
     vec![ClusterConfig {
         name: "ltk_cluster".to_string(),
@@ -223,8 +228,7 @@ async fn test_is_cluster_online_initially_offline() {
 #[tokio::test]
 async fn test_reconnect_clusters_inserts_uuids() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Before reconnect, no UUIDs
     assert_eq!(count_uuids(&db).await, 0);
@@ -247,8 +251,7 @@ async fn test_reconnect_clusters_inserts_uuids() {
 #[tokio::test]
 async fn test_reconnect_clusters_skips_online() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Insert a UUID for cluster2 and connect it
     let uuid = uuid::Uuid::new_v4().to_string();
@@ -293,8 +296,7 @@ async fn test_reconnect_clusters_skips_online() {
 #[tokio::test]
 async fn test_handle_new_connection_expire_uuids() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Insert an expired UUID (timestamp older than MAX_TOKEN_EXPIRY_SECONDS)
     let expiry = (*CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS).cast_signed();
@@ -354,8 +356,7 @@ async fn test_handle_new_connection_expire_uuids() {
 #[tokio::test]
 async fn test_handle_new_connection_valid_uuid() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Insert UUIDs for a fake cluster (should not match any real cluster)
     let mut last_uuid = String::new();
@@ -448,8 +449,7 @@ async fn test_handle_new_connection_valid_uuid() {
 #[tokio::test]
 async fn test_handle_new_connection_already_connected_rejected() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Insert UUID for cluster2 and connect it
     cluster_uuid::ActiveModel {
@@ -510,8 +510,7 @@ async fn test_handle_new_connection_already_connected_rejected() {
 #[tokio::test]
 async fn test_remove_connection() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Connect all three clusters
     for i in 1..=3u64 {
@@ -656,8 +655,7 @@ async fn test_constructor_connection_types() {
 #[tokio::test]
 async fn test_reconnect_clusters_deletes_stale_uuids() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // First call inserts 3 UUIDs (one per cluster)
     mgr.reconnect_clusters().await;
@@ -718,8 +716,7 @@ async fn test_reconnect_clusters_skips_ltk_clusters() {
 #[tokio::test]
 async fn test_handle_pong_records_timestamp() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // handle_pong should not panic even without a connection
     mgr.handle_pong(1);
@@ -740,8 +737,7 @@ async fn test_handle_pong_records_timestamp() {
 #[tokio::test]
 async fn test_create_file_download_session() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
     let dl_cluster = mgr.create_file_download(&cluster, "dl-uuid-1").await;
@@ -773,8 +769,7 @@ async fn test_create_file_download_session() {
 #[tokio::test]
 async fn test_create_file_upload_session() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
     let ul_cluster = mgr.create_file_upload(&cluster, "ul-uuid-1").await;
@@ -806,8 +801,7 @@ async fn test_create_file_upload_session() {
 #[tokio::test]
 async fn test_handle_new_connection_file_download() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Create a file download session
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
@@ -836,8 +830,7 @@ async fn test_handle_new_connection_file_download() {
 #[tokio::test]
 async fn test_handle_new_connection_file_download_duplicate_rejected() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Create a file download session
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
@@ -870,8 +863,7 @@ async fn test_handle_new_connection_file_download_duplicate_rejected() {
 #[tokio::test]
 async fn test_handle_new_connection_file_upload() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Create a file upload session
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
@@ -900,8 +892,7 @@ async fn test_handle_new_connection_file_upload() {
 #[tokio::test]
 async fn test_handle_new_connection_file_upload_duplicate_rejected() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Create a file upload session
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
@@ -941,8 +932,7 @@ async fn test_handle_new_connection_file_upload_duplicate_rejected() {
 #[tokio::test]
 async fn test_remove_connection_file_download_cleanup() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Create and connect a file download session
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
@@ -975,8 +965,7 @@ async fn test_remove_connection_file_download_cleanup() {
 #[tokio::test]
 async fn test_remove_connection_file_upload_cleanup() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     // Create and connect a file upload session
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
@@ -1042,8 +1031,7 @@ async fn connect_cluster(
 #[tokio::test]
 async fn test_pong_times_initialized_after_connection() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let _rx = connect_cluster(&mgr, &db, "cluster1", 1).await;
 
@@ -1076,8 +1064,7 @@ async fn test_pong_times_initialized_after_connection() {
 #[tokio::test]
 async fn test_check_pings_send_ping_success() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let mut rx = connect_cluster(&mgr, &db, "cluster1", 1).await;
 
@@ -1122,8 +1109,7 @@ async fn test_check_pings_send_ping_success() {
 #[tokio::test]
 async fn test_check_pings_evicts_dead_connection() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let _rx = connect_cluster(&mgr, &db, "cluster1", 1).await;
 
@@ -1283,8 +1269,7 @@ async fn test_handle_new_connection_ltk_rate_limiting_sleep() {
 #[tokio::test]
 async fn test_application_shutdown_flag_starts_false() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     assert!(!mgr.is_application_shutting_down());
 }
@@ -1293,8 +1278,7 @@ async fn test_application_shutdown_flag_starts_false() {
 #[tokio::test]
 async fn test_application_shutdown_begin_is_idempotent() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let first = mgr.begin_application_shutdown();
     assert_eq!(first, 0, "no sessions registered, should report 0");
@@ -1310,8 +1294,7 @@ async fn test_application_shutdown_begin_is_idempotent() {
 #[tokio::test]
 async fn test_application_shutdown_triggers_every_registered_session() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
     let _dl_a = mgr.create_file_download(&cluster, "dl-a").await;
@@ -1359,8 +1342,7 @@ async fn test_application_shutdown_triggers_every_registered_session() {
 #[tokio::test]
 async fn test_application_shutdown_rejects_dedicated_admission_only() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     mgr.begin_application_shutdown();
     assert!(mgr.is_application_shutting_down());
@@ -1412,8 +1394,7 @@ async fn test_application_shutdown_rejects_dedicated_admission_only() {
 #[tokio::test]
 async fn test_application_shutdown_rejects_file_download_ws_admission() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
     let _dl_first = mgr.create_file_download(&cluster, "dl-first").await;
@@ -1446,8 +1427,7 @@ async fn test_application_shutdown_rejects_file_download_ws_admission() {
 #[tokio::test]
 async fn test_dedicated_download_clusters_snapshot() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     assert_eq!(mgr.dedicated_download_clusters().len(), 0);
 
@@ -1466,8 +1446,7 @@ async fn test_dedicated_download_clusters_snapshot() {
 #[tokio::test]
 async fn test_application_shutdown_drains_dedicated_tasks_within_bound() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
 
     let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
     let _dl_cluster = mgr.create_file_download(&cluster, "dl-drain").await;
@@ -1515,8 +1494,7 @@ async fn test_application_shutdown_drains_dedicated_tasks_within_bound() {
 #[tokio::test]
 async fn test_application_shutdown_flag_visible_through_trait_object() {
     let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
-    let mgr = make_manager(three_cluster_configs(), db.clone());
+    let mgr = make_manager_with_three_clusters(&db).await;
     let trait_mgr: std::sync::Arc<dyn ClusterManagerTrait> = mgr.clone();
 
     assert!(!trait_mgr.is_application_shutting_down());
