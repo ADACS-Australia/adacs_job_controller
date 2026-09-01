@@ -16,7 +16,6 @@ use axum::http::{Request, StatusCode};
 use futures_util::StreamExt;
 use serde_json::json;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tower::ServiceExt;
 
 use adacs_job_controller::cluster::cluster::Cluster;
@@ -89,33 +88,6 @@ async fn start_server_with_real_cluster_accepting()
     let (port, server_handle) = start_http_server(db.clone(), manager).await;
     (cluster, port, server_handle)
 }
-
-/// Connect a real WebSocket client to the server
-async fn connect_websocket(
-    port: u16,
-    token: &str,
-) -> (
-    futures_util::stream::SplitSink<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-        TungsteniteMsg,
-    >,
-    futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-    >,
-) {
-    let url = format!("ws://127.0.0.1:{port}/job/ws/");
-    let mut request = url.into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("Authorization", format!("Bearer {token}").parse().unwrap());
-    let (ws_stream, _) = tokio_tungstenite::connect_async(request).await.unwrap();
-    ws_stream.split()
-}
-
 /// Receive a binary message from WebSocket with timeout
 async fn recv_binary(
     stream: &mut futures_util::stream::SplitStream<
@@ -213,7 +185,7 @@ async fn test_real_websocket_connection_and_auth() {
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
     // Connect real WebSocket client
-    let (sink, mut stream) = connect_websocket(port, &token).await;
+    let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
 
     // Expect SERVER_READY (sent automatically after connection)
     let response = recv_binary(&mut stream)
@@ -250,7 +222,7 @@ async fn test_server_initiated_close_sends_close_frame_to_client() {
     let (cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
-    let (sink, mut stream) = connect_websocket(port, &token).await;
+    let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
     // Drain SERVER_READY so the read loop is positioned to observe
     // whatever comes next.
     let ready = recv_binary(&mut stream)
@@ -321,7 +293,7 @@ async fn test_close_handshake_timeout_forces_tcp_close() {
     let (cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
-    let (sink, mut stream) = connect_websocket(port, &token).await;
+    let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
     let ready = recv_binary(&mut stream)
         .await
         .expect("Server should send SERVER_READY");
@@ -411,7 +383,8 @@ async fn test_websocket_connection_rejected_invalid_token() {
 
     // Connect with invalid Bearer token via the Authorization header
     // (the server ignores the ?token= query param).
-    let (_sink, mut stream) = connect_websocket(port, "invalid_token_12345").await;
+    let (_sink, mut stream) =
+        common::repeated_download::connect_ws(port, "invalid_token_12345").await;
 
     // Connection should be closed by the server.
     let closed = tokio::time::timeout(Duration::from_secs(2), async {
