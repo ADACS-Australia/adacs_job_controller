@@ -9,16 +9,15 @@ mod common;
 
 use std::sync::Arc;
 
-use common::{insert_job_history_at, setup_test_db, test_cluster_config};
+use common::{insert_job_history_at, make_app_context, setup_test_db, test_cluster_config};
 
-use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
+use adacs_job_controller::cluster::cluster::Cluster;
 use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::cluster::traits::WsOutbound;
 use adacs_job_controller::db::entities::{job, job_history};
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::Priority;
-use dashmap::DashMap;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
@@ -57,13 +56,6 @@ async fn insert_job(
     .insert(db)
     .await
     .unwrap();
-}
-
-fn make_app_context(db: DatabaseConnection) -> Arc<AppContext> {
-    Arc::new(AppContext {
-        db,
-        file_list_map: Arc::new(DashMap::new()),
-    })
 }
 
 /// Create an online `Cluster` for `"ozstar"` with a live WS sender and a
