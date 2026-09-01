@@ -27,7 +27,7 @@ use common::{
     insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
     manager_with_online_cluster_no_messages, offline_cluster, online_cluster,
     online_cluster_no_messages, setup_test_db, test_cluster_config, test_jwt_secrets,
-    test_jwt_secrets_multi,
+    test_jwt_secrets_multi, upload_cluster,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
@@ -1876,19 +1876,7 @@ async fn test_upload_file_server_error_returns_400() {
     let fu_for_manager = Arc::clone(&fu_state);
 
     let cluster_main = Arc::new(online_cluster_no_messages());
-    let upload_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| Box::pin(async {}));
-        c.expect_wait_for_queue_drain()
-            .returning(|_| Box::pin(async { true }));
-        Arc::new(c)
-    };
+    let upload_cluster = Arc::new(upload_cluster());
 
     let uc = Arc::clone(&upload_cluster);
     let mut manager = MockClusterManagerTrait::new();

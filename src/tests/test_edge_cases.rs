@@ -58,7 +58,7 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 
 use common::{
     connect_ws, encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages,
-    recv_binary, setup_test_db, test_cluster_config, ws_router,
+    recv_binary, setup_test_db, test_cluster_config, upload_cluster, ws_router,
 };
 
 use sea_orm::{
@@ -264,19 +264,7 @@ async fn test_upload_truncated_body_returns_error() {
 
     let fu_for_manager = Arc::clone(&fu_state);
 
-    let upload_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| Box::pin(async {}));
-        c.expect_wait_for_queue_drain()
-            .returning(|_| Box::pin(async { true }));
-        Arc::new(c)
-    };
+    let upload_cluster = Arc::new(upload_cluster());
 
     let cluster_main = Arc::new(online_cluster_no_messages());
     let uc = Arc::clone(&upload_cluster);
@@ -639,19 +627,7 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
 
     let fu_for_manager = Arc::clone(&fu_state);
 
-    let upload_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| Box::pin(async {}));
-        c.expect_wait_for_queue_drain()
-            .returning(|_| Box::pin(async { true }));
-        Arc::new(c)
-    };
+    let upload_cluster = Arc::new(upload_cluster());
 
     let cluster_main = Arc::new(online_cluster_no_messages());
     let uc = Arc::clone(&upload_cluster);
@@ -1095,19 +1071,7 @@ async fn test_upload_oversized_content_length_returns_400() {
 
     let fu_for_manager = Arc::clone(&fu_state);
 
-    let upload_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| Box::pin(async {}));
-        c.expect_wait_for_queue_drain()
-            .returning(|_| Box::pin(async { true }));
-        Arc::new(c)
-    };
+    let upload_cluster = Arc::new(upload_cluster());
 
     let cluster_main = Arc::new(online_cluster_no_messages());
     let uc = Arc::clone(&upload_cluster);
@@ -2448,32 +2412,8 @@ async fn test_continuous_file_uploads_sequential() {
     let states_for_mock = Arc::clone(&states);
     let cluster_main = Arc::new(online_cluster_no_messages());
 
-    let upload_cluster1 = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| Box::pin(async {}));
-        c.expect_wait_for_queue_drain()
-            .returning(|_| Box::pin(async { true }));
-        Arc::new(c)
-    };
-    let upload_cluster2 = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| Box::pin(async {}));
-        c.expect_wait_for_queue_drain()
-            .returning(|_| Box::pin(async { true }));
-        Arc::new(c)
-    };
+    let upload_cluster1 = Arc::new(upload_cluster());
+    let upload_cluster2 = Arc::new(upload_cluster());
 
     let upload_cluster_queue: Arc<StdMutex<VecDeque<Arc<dyn ClusterTrait>>>> =
         Arc::new(StdMutex::new(VecDeque::from([
@@ -2607,19 +2547,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
         Arc::new(c)
     };
 
-    let upload_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| Box::pin(async {}));
-        c.expect_wait_for_queue_drain()
-            .returning(|_| Box::pin(async { true }));
-        Arc::new(c)
-    };
+    let upload_cluster = Arc::new(upload_cluster());
     let uc = Arc::clone(&upload_cluster);
 
     let fu_for_manager = Arc::clone(&fu_state);
