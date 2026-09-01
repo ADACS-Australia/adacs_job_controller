@@ -9,7 +9,6 @@ mod common;
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
-use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
@@ -31,12 +30,8 @@ use common::{
 /// Start an axum server on a random OS-assigned port.
 /// Returns a `TestServer` RAII guard that aborts the server on drop.
 async fn start_test_server(state: adacs_job_controller::app::AppState) -> common::TestServer {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
     let app = ws_router(state);
-    let handle = tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap_or(());
-    });
+    let (port, handle) = common::repeated_download::start_server(app).await;
     common::TestServer::new(port, handle)
 }
 
