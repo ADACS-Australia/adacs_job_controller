@@ -380,6 +380,10 @@ pub async fn get_jobs(
     // job_steps: job must have at least one history entry matching a (what, state) pair
     if let Some(ref steps_str) = params.job_steps {
         let steps = parse_job_steps(steps_str);
+        if steps.is_empty() && !steps_str.trim().is_empty() {
+            // A malformed filter (e.g. no valid (what, state) pairs) must not widen the result set.
+            return Ok(Json(serde_json::json!([])));
+        }
         if !steps.is_empty() {
             let mut step_cond = Condition::any();
             for (what, sv) in &steps {
