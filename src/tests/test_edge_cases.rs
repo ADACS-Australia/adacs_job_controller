@@ -69,32 +69,6 @@ use sea_orm::{
 // Helpers
 // ===========================================================================
 
-/// Manager that accepts connections, captures the WS sender, and forwards via it.
-fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
-    let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
-
-    let cluster_arc = common::forwarding_cluster(name, &tx_slot);
-
-    let tx_for_new = Arc::clone(&tx_slot);
-    let mut m = MockClusterManagerTrait::new();
-    m.expect_is_application_shutting_down().returning(|| false);
-    m.expect_get_file_download_admission().returning(|_| None);
-
-    m.expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    m.expect_handle_new_connection()
-        .returning(move |_, ws_tx, _| {
-            *tx_for_new.lock().unwrap() = Some(ws_tx);
-            let c = Arc::clone(&cluster_arc);
-            Box::pin(async move { Some(c) })
-        });
-    m.expect_remove_connection()
-        .returning(|_, _| Box::pin(async {}));
-    m.expect_report_websocket_error().returning(|_, _| ());
-    m.expect_handle_pong().returning(|_| ());
-    m
-}
-
 // ===========================================================================
 // 1. ZERO-BYTE UPLOAD
 //
@@ -864,7 +838,7 @@ async fn test_download_file_error_from_cluster_propagates() {
 #[tokio::test]
 async fn test_ws_drop_during_binary_exchange_no_crash() {
     let db = setup_test_db().await;
-    let manager = manager_with_forwarding_cluster("ozstar");
+    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", None);
     let state = make_test_state(db, manager);
     let (port, _handle) = common::repeated_download::start_server(ws_router(state)).await;
 

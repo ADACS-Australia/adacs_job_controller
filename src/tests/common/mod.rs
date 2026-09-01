@@ -148,6 +148,52 @@ pub fn upload_cluster() -> MockClusterTrait {
     c
 }
 
+/// Build a mock manager that accepts connections, captures the WS sender, and
+/// forwards messages through the captured sender via [`forwarding_cluster`].
+///
+/// If `accepted_token` is `Some`, connections are only accepted when the token
+/// extracted from the request matches it; otherwise any token is accepted.
+///
+/// Returns the manager together with a counter of `remove_connection`
+/// invocations, so tests can assert the server forwards disconnects.
+pub fn manager_with_forwarding_cluster(
+    name: &str,
+    accepted_token: Option<&str>,
+) -> (MockClusterManagerTrait, Arc<std::sync::atomic::AtomicUsize>) {
+    let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
+
+    let removed_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let cluster_arc = forwarding_cluster(name, &tx_slot);
+
+    let tx_for_new = Arc::clone(&tx_slot);
+    let removed_for_manager = Arc::clone(&removed_count);
+    let accepted: Option<String> = accepted_token.map(str::to_string);
+    let mut m = MockClusterManagerTrait::new();
+    m.expect_is_application_shutting_down().returning(|| false);
+    m.expect_get_file_download_admission().returning(|_| None);
+    m.expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    m.expect_handle_new_connection()
+        .returning(move |_, ws_tx, token| {
+            if let Some(ref accepted) = accepted
+                && token != accepted.as_str()
+            {
+                return Box::pin(async { None });
+            }
+            *tx_for_new.lock().unwrap() = Some(ws_tx);
+            let c = Arc::clone(&cluster_arc);
+            Box::pin(async move { Some(c) })
+        });
+    m.expect_remove_connection().returning(move |_, _| {
+        removed_for_manager.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async {})
+    });
+    m.expect_report_websocket_error().returning(|_, _| ());
+    m.expect_handle_pong().returning(|_| ());
+    (m, removed_count)
+}
+
 /// Create test JWT secrets for HTTP handler tests.
 pub fn test_jwt_secrets() -> Vec<AccessSecret> {
     vec![AccessSecret {
