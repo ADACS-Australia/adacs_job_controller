@@ -15,7 +15,7 @@ use crate::cluster::file_upload::FileUploadState;
 use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
-use crate::http::utils::filter_files;
+use crate::http::utils::{filter_files, job_id_to_u32};
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
     RESUME_FILE_CHUNK_STREAM, UPLOAD_FILE,
@@ -697,15 +697,7 @@ pub async fn upload_file(
 
     tracing::trace!("HTTP: Sending UPLOAD_FILE message to cluster");
     let mut msg = Message::new(UPLOAD_FILE, Priority::Highest, &uuid);
-    msg.push_uint(u32::try_from(params.job_id.unwrap_or(0)).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Job ID {} exceeds maximum supported value",
-                params.job_id.unwrap_or(0)
-            ),
-        )
-    })?);
+    msg.push_uint(job_id_to_u32(params.job_id.unwrap_or(0))?);
     msg.push_string(&s_bundle);
     msg.push_string(&target_path);
     msg.push_ulong(content_length);
@@ -988,12 +980,7 @@ async fn request_file_list(
         .insert(uuid.clone(), Arc::clone(&fl_state));
 
     let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-    msg.push_uint(u32::try_from(job_id).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Job ID {job_id} exceeds maximum supported value"),
-        )
-    })?);
+    msg.push_uint(job_id_to_u32(job_id)?);
     msg.push_string(&uuid);
     msg.push_string(bundle);
     msg.push_string(path);
