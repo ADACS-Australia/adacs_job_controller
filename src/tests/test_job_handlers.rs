@@ -22,7 +22,7 @@ use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_job_history_at,
-    insert_test_job, make_test_state, make_test_state_with_secrets,
+    insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
     mock_cluster_manager_no_clusters, offline_cluster, setup_test_db, test_cluster_config,
     test_jwt_secrets_multi,
 };
@@ -51,28 +51,6 @@ fn cluster_capturing_messages(
         Box::pin(async {})
     });
     c
-}
-/// Insert a job with an explicit ID (used to exercise the `u32::MAX` conversion guard).
-async fn insert_test_job_with_id(
-    db: &sea_orm::DatabaseConnection,
-    id: i64,
-    cluster: &str,
-    bundle: &str,
-    application: &str,
-) -> i64 {
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
-    job::ActiveModel {
-        id: Set(id),
-        user: Set(1),
-        parameters: Set("{}".to_string()),
-        cluster: Set(cluster.to_string()),
-        bundle: Set(bundle.to_string()),
-        application: Set(application.to_string()),
-    }
-    .insert(db)
-    .await
-    .expect("insert test job with id failed")
-    .id
 }
 
 // ---------------------------------------------------------------------------
