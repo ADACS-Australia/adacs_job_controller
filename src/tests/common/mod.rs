@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 
 use futures_util::StreamExt;
-use std::sync::Arc;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 
 use adacs_job_controller::cluster::traits::{
@@ -258,6 +257,31 @@ pub async fn insert_test_job(
     .insert(db)
     .await
     .expect("insert test job failed")
+    .id
+}
+
+/// Insert a job with an explicit ID (used to exercise the `u32::MAX` conversion guard).
+pub async fn insert_test_job_with_id(
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+    cluster: &str,
+    bundle: &str,
+    application: &str,
+) -> i64 {
+    use adacs_job_controller::db::entities::job;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+
+    job::ActiveModel {
+        id: Set(id),
+        user: Set(1),
+        parameters: Set("{}".to_string()),
+        cluster: Set(cluster.to_string()),
+        bundle: Set(bundle.to_string()),
+        application: Set(application.to_string()),
+    }
+    .insert(db)
+    .await
+    .expect("insert test job with id failed")
     .id
 }
 
