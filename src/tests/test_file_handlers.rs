@@ -24,8 +24,9 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_test_job, make_test_state,
-    make_test_state_with_secrets, offline_cluster, online_cluster, online_cluster_no_messages,
-    setup_test_db, test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi,
+    make_test_state_with_secrets, manager_with_online_cluster_no_messages, offline_cluster,
+    online_cluster, online_cluster_no_messages, setup_test_db, test_cluster_config,
+    test_jwt_secrets, test_jwt_secrets_multi,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
@@ -56,12 +57,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let manager = manager_with_online_cluster_no_messages();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 10}));
@@ -124,12 +120,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
 async fn test_create_file_download_multiple_paths_returns_file_ids() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let manager = manager_with_online_cluster_no_messages();
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
@@ -715,12 +706,7 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     }
 
     // Cluster manager should NOT be asked to send a FILE_LIST message
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let manager = manager_with_online_cluster_no_messages();
     // send_message should NOT be called (already mocked with .returning in cluster)
 
     let app = create_router(make_test_state(db.clone(), manager));
@@ -2244,12 +2230,7 @@ async fn test_create_download_empty_path_list_returns_empty_file_ids() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let manager = manager_with_online_cluster_no_messages();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 10}));
@@ -2412,12 +2393,7 @@ async fn test_create_file_download_works_without_content_type_header() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let manager = manager_with_online_cluster_no_messages();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 10}));
@@ -2487,12 +2463,7 @@ async fn test_list_files_works_without_content_type_header() {
         .unwrap();
     }
 
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let manager = manager_with_online_cluster_no_messages();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));

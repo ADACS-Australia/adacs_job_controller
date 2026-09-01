@@ -4,6 +4,7 @@
 pub mod repeated_download;
 
 use futures_util::StreamExt;
+use std::sync::Arc;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
@@ -114,6 +115,17 @@ pub fn mock_cluster_manager_no_clusters() -> MockClusterManagerTrait {
     mock_manager.expect_get_file_download().returning(|_| None);
     mock_manager.expect_get_file_upload().returning(|_| None);
     mock_manager
+}
+
+/// Build a mock `ClusterManagerTrait` wired to a single online cluster that never sends messages.
+pub fn manager_with_online_cluster_no_messages() -> MockClusterManagerTrait {
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    manager
 }
 
 // ---------------------------------------------------------------------------
