@@ -17,13 +17,9 @@ use serde_json::json;
 use tokio::sync::Semaphore;
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
 use adacs_job_controller::db::entities::job;
-use adacs_job_controller::http::server::create_router;
 
-use common::{
-    encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages, setup_test_db,
-};
+use common::{insert_test_job, make_app_with_online_cluster, setup_test_db};
 
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
@@ -49,23 +45,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 /// - Database remains consistent
 #[tokio::test]
 async fn test_http_concurrent_job_creation_moderate_load() {
-    let db = setup_test_db().await;
-
-    let cluster_arc = Arc::new(online_cluster_no_messages());
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(move |_| {
-        Some(Arc::clone(&cluster_arc)
-            as Arc<
-                dyn adacs_job_controller::cluster::traits::ClusterTrait,
-            >)
-    });
-    manager
-        .expect_handle_new_connection()
-        .returning(move |_, _, _| Box::pin(async move { None }));
-
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+    let (app, db, token) = make_app_with_online_cluster().await;
 
     // Send 100 concurrent requests
     let num_requests = 100;
@@ -162,23 +142,7 @@ async fn test_http_concurrent_job_creation_moderate_load() {
 /// - Response times reasonable (< 5s average)
 #[tokio::test]
 async fn test_http_concurrent_job_creation_heavy_load() {
-    let db = setup_test_db().await;
-
-    let cluster_arc = Arc::new(online_cluster_no_messages());
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(move |_| {
-        Some(Arc::clone(&cluster_arc)
-            as Arc<
-                dyn adacs_job_controller::cluster::traits::ClusterTrait,
-            >)
-    });
-    manager
-        .expect_handle_new_connection()
-        .returning(move |_, _, _| Box::pin(async move { None }));
-
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+    let (app, _db, token) = make_app_with_online_cluster().await;
 
     // Send 200 concurrent requests
     let num_requests = 200;
@@ -279,23 +243,7 @@ async fn test_http_concurrent_job_creation_heavy_load() {
 /// It measures baseline performance for regression detection.
 #[tokio::test]
 async fn test_benchmark_job_creation_performance() {
-    let db = setup_test_db().await;
-
-    let cluster_arc = Arc::new(online_cluster_no_messages());
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(move |_| {
-        Some(Arc::clone(&cluster_arc)
-            as Arc<
-                dyn adacs_job_controller::cluster::traits::ClusterTrait,
-            >)
-    });
-    manager
-        .expect_handle_new_connection()
-        .returning(move |_, _, _| Box::pin(async move { None }));
-
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+    let (app, _db, token) = make_app_with_online_cluster().await;
 
     // Warmup
     for _ in 0..10 {
@@ -436,23 +384,7 @@ async fn test_benchmark_database_query_performance() {
 /// - No resource leaks
 #[tokio::test]
 async fn test_connection_pool_exhaustion() {
-    let db = setup_test_db().await;
-
-    let cluster_arc = Arc::new(online_cluster_no_messages());
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(move |_| {
-        Some(Arc::clone(&cluster_arc)
-            as Arc<
-                dyn adacs_job_controller::cluster::traits::ClusterTrait,
-            >)
-    });
-    manager
-        .expect_handle_new_connection()
-        .returning(move |_, _, _| Box::pin(async move { None }));
-
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+    let (app, _db, token) = make_app_with_online_cluster().await;
 
     // Limit concurrent connections to simulate pool exhaustion
     let semaphore = Arc::new(Semaphore::new(10)); // Only 10 concurrent
