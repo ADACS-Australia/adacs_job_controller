@@ -210,6 +210,33 @@ pub fn make_test_state(
     }
 }
 
+/// Build an HTTP router wired to an online cluster mock and a fresh test DB.
+///
+/// Returns `(app, db, token)`: the fully-wired router, the fresh in-memory
+/// test database, and a valid JWT for `testapp`.
+pub async fn make_app_with_online_cluster() -> (axum::Router, sea_orm::DatabaseConnection, String) {
+    let db = setup_test_db().await;
+
+    let cluster_arc = std::sync::Arc::new(online_cluster_no_messages());
+
+    let mut manager = MockClusterManagerTrait::new();
+    manager.expect_get_cluster_by_name().returning(move |_| {
+        Some(std::sync::Arc::clone(&cluster_arc)
+            as std::sync::Arc<
+                dyn adacs_job_controller::cluster::traits::ClusterTrait,
+            >)
+    });
+    manager
+        .expect_handle_new_connection()
+        .returning(move |_, _, _| Box::pin(async move { None }));
+
+    let app =
+        adacs_job_controller::http::server::create_router(make_test_state(db.clone(), manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1, "application": "testapp"}));
+
+    (app, db, token)
+}
+
 /// Insert a job into the test database. Returns the inserted job id.
 pub async fn insert_test_job(
     db: &sea_orm::DatabaseConnection,
