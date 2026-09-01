@@ -238,6 +238,27 @@ mod tests {
         assert_eq!(parse_csv_u64("abc,2,def"), vec![2]);
     }
 
+    /// Verifies that a job ID within the `u32` range is converted successfully.
+    #[test]
+    fn test_job_id_to_u32_success() {
+        assert_eq!(job_id_to_u32(0), Ok(0));
+        assert_eq!(job_id_to_u32(42), Ok(42));
+    }
+
+    /// Verifies that the maximum `u32` value is accepted as the boundary.
+    #[test]
+    fn test_job_id_to_u32_max_boundary() {
+        assert_eq!(job_id_to_u32(u64::from(u32::MAX)), Ok(u32::MAX));
+    }
+
+    /// Verifies that a job ID exceeding the `u32` range returns a 400 error.
+    #[test]
+    fn test_job_id_to_u32_overflow() {
+        let err = job_id_to_u32(u64::from(u32::MAX) + 1).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("exceeds maximum supported value"));
+    }
+
     /// Verifies that `parse_job_steps` parses a well-formed `what,state,what,state` string
     /// into the expected (what, state) pairs.
     #[test]
