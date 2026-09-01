@@ -27,6 +27,19 @@ use common::{
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
+/// Builds an app with a single online cluster mock and a fresh router.
+fn make_app_with_online_cluster(db: sea_orm::DatabaseConnection) -> axum::Router {
+    let cluster_arc = Arc::new(online_cluster_no_messages());
+
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster_arc);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+
+    create_router(make_test_state(db, manager))
+}
+
 // ===========================================================================
 // Large Message Fragmentation Tests
 // ===========================================================================
@@ -97,15 +110,7 @@ async fn test_large_binary_message_handling() {
 async fn test_http_concurrent_requests_stress() {
     let db = setup_test_db().await;
 
-    let cluster_arc = Arc::new(online_cluster_no_messages());
-
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster_arc);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app_with_online_cluster(db.clone());
     let token = encode_test_jwt(&serde_json::json!({
         "userId": 42,
         "clusters": ["ozstar"]
@@ -237,15 +242,7 @@ async fn test_priority_preemption_under_load() {
 async fn test_job_creation_atomicity() {
     let db = setup_test_db().await;
 
-    let cluster_arc = Arc::new(online_cluster_no_messages());
-
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster_arc);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app_with_online_cluster(db.clone());
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
 
     // Create job with valid data
