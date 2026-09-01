@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 
 use futures_util::StreamExt;
-use std::sync::Arc;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 
 use adacs_job_controller::cluster::traits::{
@@ -39,21 +38,6 @@ pub fn test_cluster_config(name: &str) -> ClusterConfig {
         keytab: String::new(),
         kerberos_principal: String::new(),
         ltk: None,
-    }
-}
-
-/// Create a test `ClusterConfig` with LTK configured.
-pub fn test_cluster_config_with_ltk(name: &str, ltk: &str) -> ClusterConfig {
-    ClusterConfig {
-        name: name.to_string(),
-        host: "localhost".to_string(),
-        username: "testuser".to_string(),
-        path: "/home/testuser/jobcontroller".to_string(),
-        key: String::new(),
-        connection_type: "manual".to_string(),
-        keytab: String::new(),
-        kerberos_principal: String::new(),
-        ltk: Some(ltk.to_string()),
     }
 }
 
