@@ -16,7 +16,7 @@ use sea_orm::{
 use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
-use crate::http::utils::{parse_csv_u64, parse_job_steps};
+use crate::http::utils::{job_id_to_u32, parse_csv_u64, parse_job_steps};
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
 };
@@ -201,12 +201,7 @@ pub async fn create_job(
         );
         let source = format!("{job_id}_{}", body.cluster);
         let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, &source);
-        msg.push_uint(u32::try_from(job_id).map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Job ID {job_id} exceeds maximum supported value"),
-            )
-        })?);
+        msg.push_uint(job_id_to_u32(job_id as u64)?);
         msg.push_string(&body.bundle);
         msg.push_string(&body.parameters);
         tracing::trace!(
@@ -499,12 +494,7 @@ async fn record_job_transition(
     if !pending && cluster_obj.is_online() {
         let source = format!("{}_{}", job_id, job.cluster);
         let mut msg = Message::new(wire_msg_id, Priority::Medium, &source);
-        msg.push_uint(u32::try_from(job_id).map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Job ID {} exceeds maximum supported value", job_id),
-            )
-        })?);
+        msg.push_uint(job_id_to_u32(job_id)?);
         cluster_obj.send_message(msg).await;
     }
 
