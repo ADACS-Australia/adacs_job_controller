@@ -94,29 +94,7 @@ async fn start_test_server(router: axum::Router) -> u16 {
 fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
 
-    let tx_for_send = Arc::clone(&tx_slot);
-    let mut cluster = MockClusterTrait::new();
-    let n = name.to_string();
-    cluster.expect_name().returning(move || n.clone());
-    cluster
-        .expect_role_string()
-        .returning(|| "master test".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("test"));
-    cluster.expect_send_message().returning(move |msg| {
-        if let Some(tx) = tx_for_send.lock().unwrap().as_ref() {
-            let _ = tx.send(WsOutbound::Binary(msg.into_data()));
-        }
-        Box::pin(async {})
-    });
-    cluster
-        .expect_handle_message()
-        .returning(|_| Box::pin(async {}));
-
-    let cluster_arc: Arc<dyn ClusterTrait> = Arc::new(cluster);
+    let cluster_arc = common::forwarding_cluster(name, &tx_slot);
 
     let tx_for_new = Arc::clone(&tx_slot);
     let mut m = MockClusterManagerTrait::new();
