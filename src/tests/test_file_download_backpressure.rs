@@ -10,25 +10,15 @@ mod common;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use common::test_cluster_config;
+use common::{make_app_context, test_cluster_config};
 
-use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
+use adacs_job_controller::cluster::cluster::Cluster;
 use adacs_job_controller::cluster::file_download::FileDownloadState;
 use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::cluster::traits::WsOutbound;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::Priority;
-use dashmap::DashMap;
-
-fn make_app_context() -> Arc<AppContext> {
-    let db = futures::executor::block_on(sea_orm::Database::connect("sqlite::memory:"))
-        .expect("sqlite in-memory connect failed");
-    Arc::new(AppContext {
-        db,
-        file_list_map: Arc::new(DashMap::new()),
-    })
-}
 
 /// Build a `FILE_CHUNK` message with the given data.
 fn make_file_chunk_message(data: &[u8]) -> Message {
@@ -60,11 +50,12 @@ async fn make_file_download_cluster() -> (
 ) {
     let download_state = Arc::new(FileDownloadState::new());
     let pause_lock = Arc::new(tokio::sync::Mutex::new(()));
+    let db = common::make_db().await;
     let cluster = Cluster::new_file_download(
         test_cluster_config("test"),
         "test_uuid".to_string(),
         Arc::clone(&download_state),
-        Some(make_app_context()),
+        Some(make_app_context(db)),
         pause_lock,
     );
 

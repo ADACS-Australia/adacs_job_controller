@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 
+use adacs_job_controller::cluster::cluster::AppContext;
 use adacs_job_controller::cluster::traits::{
     ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsConnectionSender, WsOutbound,
 };
@@ -225,6 +226,14 @@ pub async fn connection_closes(
 // ---------------------------------------------------------------------------
 // SQLite test database helpers
 // ---------------------------------------------------------------------------
+
+/// Build an `Arc<AppContext>` wrapping the given database connection.
+pub fn make_app_context(db: sea_orm::DatabaseConnection) -> Arc<AppContext> {
+    Arc::new(AppContext {
+        db,
+        file_list_map: std::sync::Arc::new(dashmap::DashMap::new()),
+    })
+}
 
 /// Create a fresh in-memory `SQLite` database connection (no schema).
 pub async fn make_db() -> sea_orm::DatabaseConnection {
