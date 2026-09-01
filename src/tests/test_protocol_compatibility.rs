@@ -305,19 +305,37 @@ fn test_bundle_job_full_roundtrip_via_message() {
 // Cross-module: message ID constants are consistent
 // ---------------------------------------------------------------------------
 
-/// Verifies that all DB-related message ID constants have unique values.
+/// Verifies that all message ID constants are unique across every category.
 ///
 /// # Setup
-/// An array of all 13 DB message ID constants is assembled.
+/// An array of all 30 message ID constants (job-control, file transfer, and DB) is assembled.
 ///
 /// # Act
 /// Each ID is inserted into a `HashSet`.
 ///
 /// # Assert
-/// No duplicate IDs are found; the assertion fails with the duplicate value if any collision occurs.
+/// No duplicate IDs are found, including cross-category collisions; the assertion fails with
+/// the duplicate value if any collision occurs.
 #[test]
-fn test_all_db_message_ids_are_unique() {
+fn test_all_message_ids_are_unique() {
     let ids = [
+        SERVER_READY,
+        SUBMIT_JOB,
+        UPDATE_JOB,
+        CANCEL_JOB,
+        DELETE_JOB,
+        DOWNLOAD_FILE,
+        FILE_DETAILS,
+        FILE_ERROR,
+        FILE_CHUNK,
+        PAUSE_FILE_CHUNK_STREAM,
+        RESUME_FILE_CHUNK_STREAM,
+        FILE_LIST,
+        FILE_LIST_ERROR,
+        UPLOAD_FILE,
+        FILE_UPLOAD_CHUNK,
+        FILE_UPLOAD_ERROR,
+        FILE_UPLOAD_COMPLETE,
         DB_JOB_GET_BY_JOB_ID,
         DB_JOB_GET_BY_ID,
         DB_JOB_GET_RUNNING_JOBS,
@@ -335,57 +353,6 @@ fn test_all_db_message_ids_are_unique() {
     let mut seen = std::collections::HashSet::new();
     for id in &ids {
         assert!(seen.insert(*id), "Duplicate message ID: {id}");
-    }
-}
-
-/// Verifies that all file transfer message ID constants have unique values.
-///
-/// # Setup
-/// An array of all 12 file-related message ID constants is assembled.
-///
-/// # Act
-/// Each ID is inserted into a `HashSet`.
-///
-/// # Assert
-/// No duplicate IDs are found; the assertion fails with the duplicate value if any collision occurs.
-#[test]
-fn test_all_file_message_ids_are_unique() {
-    let ids = [
-        DOWNLOAD_FILE,
-        FILE_DETAILS,
-        FILE_ERROR,
-        FILE_CHUNK,
-        PAUSE_FILE_CHUNK_STREAM,
-        RESUME_FILE_CHUNK_STREAM,
-        FILE_LIST,
-        FILE_LIST_ERROR,
-        UPLOAD_FILE,
-        FILE_UPLOAD_CHUNK,
-        FILE_UPLOAD_ERROR,
-        FILE_UPLOAD_COMPLETE,
-    ];
-    let mut seen = std::collections::HashSet::new();
-    for id in &ids {
-        assert!(seen.insert(*id), "Duplicate file message ID: {id}");
-    }
-}
-
-/// Verifies that all job-control message ID constants have unique values.
-///
-/// # Setup
-/// An array of the 5 job-control message ID constants is assembled.
-///
-/// # Act
-/// Each ID is inserted into a `HashSet`.
-///
-/// # Assert
-/// No duplicate IDs are found; the assertion fails with the duplicate value if any collision occurs.
-#[test]
-fn test_all_job_message_ids_are_unique() {
-    let ids = [SERVER_READY, SUBMIT_JOB, UPDATE_JOB, CANCEL_JOB, DELETE_JOB];
-    let mut seen = std::collections::HashSet::new();
-    for id in &ids {
-        assert!(seen.insert(*id), "Duplicate job message ID: {id}");
     }
 }
 
