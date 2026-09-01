@@ -11,9 +11,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::traits::{
-    ClusterTrait, MockClusterManagerTrait, MockClusterTrait,
-};
+use adacs_job_controller::cluster::traits::{ClusterTrait, MockClusterTrait};
 use adacs_job_controller::db::entities::job;
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
@@ -21,7 +19,7 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, Priority};
 
 use common::{
-    encode_test_jwt, make_test_state, online_cluster_no_messages, setup_test_db,
+    encode_test_jwt, make_test_state, manager_with_online_cluster_no_messages, setup_test_db,
     test_cluster_config,
 };
 
@@ -29,15 +27,10 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 /// Builds an app with a single online cluster mock and a fresh router.
 fn make_app_with_online_cluster(db: sea_orm::DatabaseConnection) -> axum::Router {
-    let cluster_arc = Arc::new(online_cluster_no_messages());
-
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster_arc);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-
-    create_router(make_test_state(db, manager))
+    create_router(make_test_state(
+        db,
+        manager_with_online_cluster_no_messages(),
+    ))
 }
 
 // ===========================================================================
