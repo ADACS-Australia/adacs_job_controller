@@ -12,17 +12,15 @@ use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
-use adacs_job_controller::cluster::traits::{
-    ClusterTrait, MockClusterManagerTrait, MockClusterTrait,
-};
+use adacs_job_controller::cluster::traits::{ClusterTrait, MockClusterManagerTrait};
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
-use adacs_job_controller::protocol::types::{ClusterRole, Priority};
+use adacs_job_controller::protocol::types::Priority;
 
 use common::repeated_download::connect_ws as connect_ws_auth;
 use common::{
-    connect_ws, connection_closes, make_test_state, recv_binary, setup_test_db,
-    test_cluster_config, ws_router,
+    connect_ws, connection_closes, make_test_state, online_cluster, recv_binary, setup_test_db,
+    ws_router,
 };
 
 // ---------------------------------------------------------------------------
@@ -283,21 +281,7 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
 
     // Build a cluster that captures handle_message calls
     let received_clone = StdArc::clone(&received);
-    let mut mock_cluster = MockClusterTrait::new();
-    mock_cluster
-        .expect_name()
-        .returning(|| "ozstar".to_string());
-    mock_cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    mock_cluster.expect_is_online().returning(|| true);
-    mock_cluster.expect_role().returning(|| ClusterRole::Master);
-    mock_cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    mock_cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
+    let mut mock_cluster = online_cluster("ozstar");
     mock_cluster
         .expect_handle_message()
         .returning(move |msg: Message| {
@@ -378,21 +362,7 @@ async fn test_ws_pong_handled() {
     let pong_handled = Arc::new(AtomicBool::new(false));
 
     // Build a minimal cluster for the accepted connection
-    let mut mock_cluster = MockClusterTrait::new();
-    mock_cluster
-        .expect_name()
-        .returning(|| "ozstar".to_string());
-    mock_cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    mock_cluster.expect_is_online().returning(|| true);
-    mock_cluster.expect_role().returning(|| ClusterRole::Master);
-    mock_cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    mock_cluster
-        .expect_send_message()
-        .returning(|_| Box::pin(async {}));
+    let mut mock_cluster = online_cluster("ozstar");
     mock_cluster
         .expect_handle_message()
         .returning(|_| Box::pin(async {}));
