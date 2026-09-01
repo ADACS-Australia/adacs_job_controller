@@ -422,11 +422,7 @@ pub async fn download_file(
         }
     };
 
-    let timeout = std::time::Duration::from_secs(
-        state
-            .client_timeout_seconds
-            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
-    );
+    let timeout = std::time::Duration::from_secs(client_timeout_secs(&state));
     let ready = wait_until_data_ready(&fd_state.data_ready, &fd_state.data_notify, timeout).await;
 
     if ready.is_err() {
@@ -480,9 +476,7 @@ pub async fn download_file(
     let fd_state_stream = Arc::clone(&fd_state);
     let min_buffer = *settings::MIN_FILE_BUFFER_SIZE;
     let uuid_for_resume = uuid.clone();
-    let chunk_timeout_secs = state
-        .client_timeout_seconds
-        .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS);
+    let chunk_timeout_secs = client_timeout_secs(&state);
 
     // For zero-length files there is nothing to stream, but the lifecycle must
     // still observe `Complete` exactly once. Fire the trigger before the body
@@ -722,11 +716,7 @@ pub async fn upload_file(
         "File upload session not found".to_string(),
     ))?;
 
-    let timeout = std::time::Duration::from_secs(
-        state
-            .client_timeout_seconds
-            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
-    );
+    let timeout = std::time::Duration::from_secs(client_timeout_secs(&state));
     let ready = wait_until_data_ready(&fu_state.data_ready, &fu_state.data_notify, timeout).await;
 
     if ready.is_err() {
@@ -1010,11 +1000,7 @@ async fn request_file_list(
     msg.push_bool(recursive);
     cluster.send_message(msg).await;
 
-    let timeout = std::time::Duration::from_secs(
-        state
-            .client_timeout_seconds
-            .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS),
-    );
+    let timeout = std::time::Duration::from_secs(client_timeout_secs(state));
     let wait_result = FileListState::wait_until_data_ready(&fl_state, timeout).await;
 
     if wait_result.is_err() {
@@ -1121,4 +1107,11 @@ pub async fn resolve_cluster_bundle_for_file_list(
         ))?;
 
     Ok((j.cluster, j.bundle))
+}
+
+/// Resolve the client timeout in seconds, falling back to the configured default.
+fn client_timeout_secs(state: &AppState) -> u64 {
+    state
+        .client_timeout_seconds
+        .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS)
 }
