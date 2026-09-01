@@ -69,8 +69,6 @@ use sea_orm::{
 // Helpers
 // ===========================================================================
 
-
-
 /// Manager that accepts connections, captures the WS sender, and forwards via it.
 fn manager_with_forwarding_cluster(name: &str) -> MockClusterManagerTrait {
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
