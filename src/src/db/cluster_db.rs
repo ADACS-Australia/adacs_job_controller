@@ -191,6 +191,13 @@ async fn send_single_row_response<T>(
     cluster.send_message(response).await;
 }
 
+/// Sends a `DB_RESPONSE` carrying the saved row ID (0 if the write failed).
+async fn send_save_response(cluster: &dyn ClusterTrait, db_request_id: u32, saved_id: u64) {
+    let mut response = prepare_response(db_request_id);
+    response.push_ulong(saved_id);
+    cluster.send_message(response).await;
+}
+
 // ---- DB_JOB_* handlers ----
 
 /// Looks up cluster jobs by external job ID and sends a `DB_RESPONSE` with matching rows.
@@ -316,15 +323,14 @@ async fn handle_job_save(
         .insert(db)
         .await;
 
-        let mut response = prepare_response(db_request_id);
-        match result {
-            Ok(model) => response.push_ulong(model.id.cast_unsigned()),
+        let saved_id = match result {
+            Ok(model) => model.id.cast_unsigned(),
             Err(e) => {
                 tracing::error!("ClusterDB[{}]: insert failed: {}", cluster.name(), e);
-                response.push_ulong(0);
+                0
             }
-        }
-        cluster.send_message(response).await;
+        };
+        send_save_response(cluster, db_request_id, saved_id).await;
     } else {
         // Update
         let active = cluster_job::ActiveModel {
@@ -344,9 +350,7 @@ async fn handle_job_save(
             tracing::error!("ClusterDB[{}]: update failed: {}", cluster_name, e);
         }
 
-        let mut response = prepare_response(db_request_id);
-        response.push_ulong(job.id.cast_unsigned());
-        cluster.send_message(response).await;
+        send_save_response(cluster, db_request_id, job.id.cast_unsigned()).await;
     }
 }
 
@@ -452,15 +456,14 @@ async fn handle_jobstatus_save(
         .insert(db)
         .await;
 
-        let mut response = prepare_response(db_request_id);
-        match result {
-            Ok(model) => response.push_ulong(model.id.cast_unsigned()),
+        let saved_id = match result {
+            Ok(model) => model.id.cast_unsigned(),
             Err(e) => {
                 tracing::error!("ClusterDB[{}]: insert failed: {}", cluster.name(), e);
-                response.push_ulong(0);
+                0
             }
-        }
-        cluster.send_message(response).await;
+        };
+        send_save_response(cluster, db_request_id, saved_id).await;
     } else {
         // Update
         let active = cluster_job_status::ActiveModel {
@@ -473,9 +476,7 @@ async fn handle_jobstatus_save(
             tracing::error!("ClusterDB[{}]: update failed: {}", cluster.name(), e);
         }
 
-        let mut response = prepare_response(db_request_id);
-        response.push_ulong(status.id.cast_unsigned());
-        cluster.send_message(response).await;
+        send_save_response(cluster, db_request_id, status.id.cast_unsigned()).await;
     }
 }
 
