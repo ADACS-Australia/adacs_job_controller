@@ -71,6 +71,13 @@ fn parse_response(msg: Message) -> (u32, Message) {
     (db_request_id, parsed)
 }
 
+/// Assert exactly one response was captured and parse it into `(db_request_id, body)`.
+fn first_response(sent: &Arc<Mutex<Vec<Message>>>) -> (u32, Message) {
+    let captured = sent.lock().unwrap();
+    assert_eq!(captured.len(), 1);
+    parse_response(captured[0].clone())
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_SAVE — insert (id == 0)
 // ---------------------------------------------------------------------------
@@ -137,9 +144,7 @@ async fn test_handle_job_save_insert() {
     assert!(!model.running);
 
     // Verify response: DB_RESPONSE with db_request_id=100
-    let captured = sent.lock().unwrap();
-    assert_eq!(captured.len(), 1);
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 100);
     let returned_id = body.pop_ulong();
     // SeaORM with SQLite returns the real id
@@ -226,9 +231,7 @@ async fn test_handle_job_save_update() {
     assert!(model.running);
 
     // Response: db_request_id=200, then existing_id
-    let captured = sent.lock().unwrap();
-    assert_eq!(captured.len(), 1);
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 200);
     assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
@@ -281,8 +284,7 @@ async fn test_handle_job_get_by_id_found() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 301);
 
     let count = body.pop_uint();
@@ -327,8 +329,7 @@ async fn test_handle_job_get_by_id_not_found() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 302);
     assert_eq!(body.pop_uint(), 0);
 }
@@ -378,8 +379,7 @@ async fn test_handle_job_get_by_job_id_found() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 400);
     let count = body.pop_uint();
     assert_eq!(count, 1);
@@ -441,8 +441,7 @@ async fn test_handle_job_get_by_job_id_cluster_scoping() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 401);
     let count = body.pop_uint();
     assert_eq!(count, 1, "Only 1 row for 'ozstar' despite shared job_id=77");
@@ -504,8 +503,7 @@ async fn test_handle_job_get_running_jobs() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 500);
     let count = body.pop_uint();
     assert_eq!(count, 1, "Only 1 running job for 'ozstar'");
@@ -567,8 +565,7 @@ async fn test_handle_job_delete() {
         .unwrap();
     assert_eq!(count, 0, "Row should be deleted");
 
-    let captured = sent.lock().unwrap();
-    let (req_id, _) = parse_response(captured[0].clone());
+    let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 600);
 }
 
@@ -622,7 +619,7 @@ async fn test_handle_jobstatus_save_insert() {
     assert_eq!(db_what, "scheduler_id");
     assert_eq!(db_state, 500);
 
-    let (req_id, mut body) = parse_response(sent.lock().unwrap()[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 700);
     let new_id = body.pop_ulong();
     let actual = cluster_job_status::Entity::find()
@@ -696,8 +693,7 @@ async fn test_handle_jobstatus_save_update() {
     assert_eq!(db_what, "new_what");
     assert_eq!(db_state, 999);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 701);
     assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
@@ -744,8 +740,7 @@ async fn test_handle_jobstatus_get_by_job_id() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 800);
     let count = body.pop_uint();
     assert_eq!(count, 2, "Should return only statuses for job 20");
@@ -807,8 +802,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 900);
     let count = body.pop_uint();
     assert_eq!(count, 1, "Only job 30 with what='cpu_time'");
@@ -875,8 +869,7 @@ async fn test_handle_jobstatus_delete_by_id_list() {
     let whats: Vec<String> = remaining.iter().map(|m| m.what.clone()).collect();
     assert_eq!(whats, vec!["b", "d"]);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, _) = parse_response(captured[0].clone());
+    let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 1000);
 }
 
@@ -933,8 +926,7 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
     let whats: Vec<String> = remaining.iter().map(|m| m.what.clone()).collect();
     assert_eq!(whats, vec!["b", "d"]);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, _) = parse_response(captured[0].clone());
+    let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 1000);
 }
 
@@ -988,7 +980,7 @@ async fn test_handle_bundle_create_or_update_new() {
     assert_eq!(db_cluster, "ozstar");
     assert_eq!(db_hash, "myhash");
 
-    let (req_id, mut body) = parse_response(sent.lock().unwrap()[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 1100);
     let new_id = body.pop_ulong();
     let actual = bundle_job::Entity::find()
@@ -1064,8 +1056,7 @@ async fn test_handle_bundle_create_or_update_existing() {
     let count = bundle_job::Entity::find().count(&db).await.unwrap();
     assert_eq!(count, 1);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 1101);
     assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
@@ -1131,8 +1122,7 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
     let count = bundle_job::Entity::find().count(&db).await.unwrap();
     assert_eq!(count, 1);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 1102);
     assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
@@ -1178,8 +1168,7 @@ async fn test_handle_bundle_get_by_id_found() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 1200);
     let count = body.pop_uint();
     assert_eq!(count, 1);
@@ -1216,8 +1205,7 @@ async fn test_handle_bundle_get_by_id_not_found() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 1201);
     assert_eq!(body.pop_uint(), 0);
 }
@@ -1268,8 +1256,7 @@ async fn test_handle_bundle_delete() {
         .unwrap();
     assert_eq!(count, 0);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, _) = parse_response(captured[0].clone());
+    let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 1300);
 }
 
@@ -1368,8 +1355,7 @@ async fn test_handle_jobstatus_get_by_job_id_nonexistent_job() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 5001);
     assert_eq!(body.pop_uint(), 0, "Non-existent job should return count=0");
 }
@@ -1438,8 +1424,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
     assert!(handled);
 
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 5002);
     assert_eq!(body.pop_uint(), 0, "Non-existent job should return count=0");
 }
@@ -1505,7 +1490,7 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
     assert!(handled);
 
     // In Rust (no FK), the insert succeeds — response contains the new row ID
-    let (req_id, mut body) = parse_response(sent.lock().unwrap()[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 5003);
     let returned_id = body.pop_ulong();
     // The insert succeeds, so returned_id should be the new row ID
@@ -1599,8 +1584,7 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
     );
 
     // Response should contain id=0 (error)
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 5004);
     let returned_id = body.pop_ulong();
     assert_eq!(returned_id, 0, "Wrong hash should return id=0 (error)");
@@ -1661,8 +1645,7 @@ async fn test_handle_bundle_create_or_update_unknown_id_inserts() {
     assert_eq!(count, 1);
 
     // Response returns the new non-zero row id
-    let captured = sent.lock().unwrap();
-    let (req_id, mut body) = parse_response(captured[0].clone());
+    let (req_id, mut body) = first_response(&sent);
     assert_eq!(req_id, 5006);
     let returned_id = body.pop_ulong();
     assert!(
@@ -1721,7 +1704,6 @@ async fn test_handle_bundle_delete_nonexistent_is_noop() {
     );
 
     // Response is still sent (db_request_id echoed)
-    let captured = sent.lock().unwrap();
-    let (req_id, _) = parse_response(captured[0].clone());
+    let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 5005);
 }
