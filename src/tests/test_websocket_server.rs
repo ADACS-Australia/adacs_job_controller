@@ -21,8 +21,8 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, Priority};
 
 use common::{
-    connect_ws, connection_closes, make_test_state, recv_binary, setup_test_db, test_cluster_config,
-    ws_router,
+    connect_ws, connection_closes, make_test_state, recv_binary, setup_test_db,
+    test_cluster_config, ws_router,
 };
 
 // ---------------------------------------------------------------------------

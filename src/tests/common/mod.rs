@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 
 use futures_util::StreamExt;
-use std::sync::Arc;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 
 use adacs_job_controller::cluster::traits::{
