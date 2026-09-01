@@ -222,6 +222,27 @@ async fn send_rows_response<T>(
     cluster.send_message(response).await;
 }
 
+/// Builds a `DB_RESPONSE` for a single-row lookup: count=1 followed by the row
+/// when present, or count=0 when absent, then sends it.
+async fn send_single_row_response<T>(
+    cluster: &dyn ClusterTrait,
+    db_request_id: u32,
+    row: Option<T>,
+    to_message: impl Fn(&T, &mut Message),
+) {
+    let mut response = prepare_response(db_request_id);
+    match row {
+        Some(ref r) => {
+            response.push_uint(1);
+            to_message(r, &mut response);
+        }
+        None => {
+            response.push_uint(0);
+        }
+    }
+    cluster.send_message(response).await;
+}
+
 // ---- DB_JOB_* handlers ----
 
 /// Looks up cluster jobs by external job ID and sends a `DB_RESPONSE` with matching rows.
@@ -271,17 +292,7 @@ async fn handle_job_get_by_id(
         .unwrap_or(None)
         .map(ClusterJob::from);
 
-    let mut response = prepare_response(db_request_id);
-    match row {
-        Some(ref job) => {
-            response.push_uint(1);
-            job.to_message(&mut response);
-        }
-        None => {
-            response.push_uint(0);
-        }
-    }
-    cluster.send_message(response).await;
+    send_single_row_response(cluster, db_request_id, row, |r, msg| r.to_message(msg)).await;
 }
 
 /// Returns all running jobs for this cluster and sends them in a `DB_RESPONSE`.
@@ -666,17 +677,7 @@ async fn handle_bundle_get_by_id(
         .unwrap_or(None)
         .map(BundleJob::from);
 
-    let mut response = prepare_response(db_request_id);
-    match row {
-        Some(ref bundle) => {
-            response.push_uint(1);
-            bundle.to_message(&mut response);
-        }
-        None => {
-            response.push_uint(0);
-        }
-    }
-    cluster.send_message(response).await;
+    send_single_row_response(cluster, db_request_id, row, |r, msg| r.to_message(msg)).await;
 }
 
 /// Deletes a bundle job by ID and sends an empty `DB_RESPONSE`.
