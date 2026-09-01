@@ -749,6 +749,20 @@ impl Cluster {
         );
     }
 
+    /// Records a transfer error and notifies any waiting readers.
+    async fn record_transfer_error(
+        error_details: &tokio::sync::Mutex<String>,
+        error: &AtomicBool,
+        data_ready: &AtomicBool,
+        data_notify: &Notify,
+        details: String,
+    ) {
+        *error_details.lock().await = details;
+        error.store(true, Ordering::Release);
+        data_ready.store(true, Ordering::Release);
+        data_notify.notify_one();
+    }
+
     /// Records a file download error from the cluster and notifies waiting HTTP clients.
     async fn handle_file_error(&self, message: &mut Message) {
         let Some(state) = self.download_state("FILE_ERROR") else {
@@ -761,10 +775,14 @@ impl Cluster {
             self.name(),
             details
         );
-        *state.error_details.lock().await = details;
-        state.error.store(true, Ordering::Release);
-        state.data_ready.store(true, Ordering::Release);
-        state.data_notify.notify_one();
+        Self::record_transfer_error(
+            &state.error_details,
+            &state.error,
+            &state.data_ready,
+            &state.data_notify,
+            details,
+        )
+        .await;
     }
 
     // ---- FileUpload message handling ----
@@ -802,10 +820,14 @@ impl Cluster {
             self.name(),
             details
         );
-        *state.error_details.lock().await = details;
-        state.error.store(true, Ordering::Release);
-        state.data_ready.store(true, Ordering::Release);
-        state.data_notify.notify_one();
+        Self::record_transfer_error(
+            &state.error_details,
+            &state.error,
+            &state.data_ready,
+            &state.data_notify,
+            details,
+        )
+        .await;
     }
 
     /// Marks the file upload as complete and notifies any waiting readers.
