@@ -390,9 +390,10 @@ pub async fn download_file(
     let job_id_u32 = match u32::try_from(job_id) {
         Ok(value) => value,
         Err(_) => {
-            if let Some(guard) = pre_response_guard.take() {
-                let _ = guard.trigger(DownloadShutdownReason::ResponseError);
-            }
+            fire_guard(
+                &mut pre_response_guard,
+                DownloadShutdownReason::ResponseError,
+            );
             return Err((
                 StatusCode::BAD_REQUEST,
                 format!("Job ID {job_id} exceeds maximum supported value"),
@@ -412,9 +413,10 @@ pub async fn download_file(
     let fd_state = match state.cluster_manager.get_file_download(&uuid) {
         Some(state) => state,
         None => {
-            if let Some(guard) = pre_response_guard.take() {
-                let _ = guard.trigger(DownloadShutdownReason::ResponseError);
-            }
+            fire_guard(
+                &mut pre_response_guard,
+                DownloadShutdownReason::ResponseError,
+            );
             return Err((
                 StatusCode::BAD_REQUEST,
                 "File download session not found".to_string(),
@@ -433,16 +435,15 @@ pub async fn download_file(
 
     if fd_state.error.load(Ordering::Acquire) {
         let details = fd_state.error_details.lock().await.clone();
-        if let Some(guard) = pre_response_guard.take() {
-            let _ = guard.trigger(DownloadShutdownReason::FileError);
-        }
+        fire_guard(&mut pre_response_guard, DownloadShutdownReason::FileError);
         return Err((StatusCode::BAD_REQUEST, details));
     }
 
     if !fd_state.received_data.load(Ordering::Acquire) {
-        if let Some(guard) = pre_response_guard.take() {
-            let _ = guard.trigger(DownloadShutdownReason::ClusterOffline);
-        }
+        fire_guard(
+            &mut pre_response_guard,
+            DownloadShutdownReason::ClusterOffline,
+        );
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Remote Cluster Offline".to_string(),
@@ -604,6 +605,15 @@ pub async fn download_file(
         })?;
 
     Ok(response)
+}
+
+/// Fire the pre-response cleanup guard for a terminal download path, if one is
+/// still armed. Taking the guard disarms its `Drop` impl, so the typed reason
+/// is delivered exactly once.
+fn fire_guard(guard: &mut Option<PreResponseGuard>, reason: DownloadShutdownReason) {
+    if let Some(guard) = guard.take() {
+        let _ = guard.trigger(reason);
+    }
 }
 
 // ---- PUT /job/apiv1/file/upload/ (Stream file upload) ----

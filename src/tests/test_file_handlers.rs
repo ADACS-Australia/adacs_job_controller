@@ -15,7 +15,7 @@ use axum::http::{Request, StatusCode};
 use rand::{Rng, SeedableRng};
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::file_download::FileDownloadState;
+use adacs_job_controller::cluster::file_download::{DownloadSession, FileDownloadState};
 use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
@@ -661,6 +661,168 @@ async fn test_download_file_error_from_cluster_returns_400() {
         .unwrap();
     assert!(
         String::from_utf8_lossy(&body).contains("File not found"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+/// Verifies 400 Bad Request when the download record's job ID exceeds `u32::MAX`.
+///
+/// # Setup
+/// Inserts a download record whose `job` column exceeds `u32::MAX`. Wires an
+/// online cluster and a real cleanup trigger so the pre-response guard's
+/// `Some` path (`fire_guard`) is exercised.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "exceeds maximum supported value".
+#[tokio::test]
+async fn test_download_file_job_id_exceeding_u32_returns_400() {
+    let db = setup_test_db().await;
+    let uuid = "huge-job-uuid".to_string();
+    let huge: i64 = i64::from(u32::MAX) + 1;
+    file_download::ActiveModel {
+        user: Set(1),
+        job: Set(huge),
+        cluster: Set("ozstar".to_string()),
+        bundle: Set("b".to_string()),
+        uuid: Set(uuid.clone()),
+        path: Set(String::new()),
+        timestamp: Set(chrono::Utc::now().naive_utc()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    let c2 = Arc::new(online_cluster_no_messages());
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&c2);
+            Box::pin(
+                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
+            )
+        });
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let session = DownloadSession::new(uuid.clone(), Arc::new(FileDownloadState::new()), tx);
+    let trigger = session.cleanup_trigger();
+    let trigger_for_mock = trigger.clone();
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(move |_| Some(trigger_for_mock.clone()));
+
+    let app = create_router(make_test_state(db, manager));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("exceeds maximum supported value"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+/// Verifies 400 Bad Request when the download session is missing after the
+/// download record resolves (cluster online, session not found).
+///
+/// # Setup
+/// Inserts a download record. Wires an online cluster, a real cleanup trigger,
+/// and a manager whose `get_file_download` returns `None`.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "File download session not found".
+#[tokio::test]
+async fn test_download_file_session_not_found_returns_400() {
+    let db = setup_test_db().await;
+    let uuid = "missing-session-uuid".to_string();
+    file_download::ActiveModel {
+        user: Set(1),
+        job: Set(0),
+        cluster: Set("ozstar".to_string()),
+        bundle: Set("b".to_string()),
+        uuid: Set(uuid.clone()),
+        path: Set(String::new()),
+        timestamp: Set(chrono::Utc::now().naive_utc()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    let c2 = Arc::new(online_cluster_no_messages());
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&c2);
+            Box::pin(
+                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
+            )
+        });
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let session = DownloadSession::new(uuid.clone(), Arc::new(FileDownloadState::new()), tx);
+    let trigger = session.cleanup_trigger();
+    let trigger_for_mock = trigger.clone();
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(move |_| Some(trigger_for_mock.clone()));
+    manager.expect_get_file_download().returning(|_| None);
+
+    let app = create_router(make_test_state(db, manager));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("File download session not found"),
         "body: {}",
         String::from_utf8_lossy(&body)
     );
