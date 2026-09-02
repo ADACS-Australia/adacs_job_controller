@@ -231,6 +231,31 @@ async fn test_http_concurrent_job_creation_heavy_load() {
 // Performance Benchmark Tests
 // ---------------------------------------------------------------------------
 
+/// Sends a single job-creation request and returns the raw response.
+async fn post_create_job(
+    app: axum::Router,
+    token: String,
+    bundle: &str,
+) -> Result<axum::http::Response<Body>, std::convert::Infallible> {
+    let job_data = json!({
+        "cluster": "ozstar",
+        "bundle": bundle,
+        "application": "testapp",
+        "parameters": "{}"
+    });
+
+    app.oneshot(
+        Request::builder()
+            .method("POST")
+            .uri("/job/apiv1/job/")
+            .header("content-type", "application/json")
+            .header("authorization", &token)
+            .body(Body::from(job_data.to_string()))
+            .unwrap(),
+    )
+    .await
+}
+
 /// Benchmarks job creation performance.
 ///
 /// Measures:
@@ -247,25 +272,7 @@ async fn test_benchmark_job_creation_performance() {
 
     // Warmup
     for _ in 0..10 {
-        let job_data = json!({
-            "cluster": "ozstar",
-            "bundle": "warmup",
-            "application": "testapp",
-            "parameters": "{}"
-        });
-
-        let _ = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/job/apiv1/job/")
-                    .header("content-type", "application/json")
-                    .header("authorization", &token)
-                    .body(Body::from(job_data.to_string()))
-                    .unwrap(),
-            )
-            .await;
+        let _ = post_create_job(app.clone(), token.clone(), "warmup").await;
     }
 
     // Benchmark run
@@ -273,25 +280,8 @@ async fn test_benchmark_job_creation_performance() {
     let mut response_times = Vec::with_capacity(num_requests);
 
     for i in 0..num_requests {
-        let job_data = json!({
-            "cluster": "ozstar",
-            "bundle": format!("bench_{}", i),
-            "application": "testapp",
-            "parameters": "{}"
-        });
-
         let start = Instant::now();
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/job/apiv1/job/")
-                    .header("content-type", "application/json")
-                    .header("authorization", &token)
-                    .body(Body::from(job_data.to_string()))
-                    .unwrap(),
-            )
+        let resp = post_create_job(app.clone(), token.clone(), &format!("bench_{i}"))
             .await
             .unwrap();
 
@@ -400,24 +390,7 @@ async fn test_connection_pool_exhaustion() {
         let handle = tokio::spawn(async move {
             let permit = sem_clone.acquire().await.unwrap();
 
-            let job_data = json!({
-                "cluster": "ozstar",
-                "bundle": format!("stress_{}", i),
-                "application": "testapp",
-                "parameters": "{}"
-            });
-
-            let result = app_clone
-                .oneshot(
-                    Request::builder()
-                        .method("POST")
-                        .uri("/job/apiv1/job/")
-                        .header("content-type", "application/json")
-                        .header("authorization", &token_clone)
-                        .body(Body::from(job_data.to_string()))
-                        .unwrap(),
-                )
-                .await;
+            let result = post_create_job(app_clone, token_clone, &format!("stress_{i}")).await;
 
             drop(permit); // Release semaphore
             result.is_ok()
