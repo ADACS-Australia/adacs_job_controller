@@ -57,6 +57,23 @@ where
 // Build mock cluster manager helpers
 // ---------------------------------------------------------------------------
 
+/// Mock manager that accepts every connection and returns the given cluster,
+/// with no file download admission, a no-op `remove_connection` and a no-op
+/// `report_websocket_error`. Callers must set their own `handle_pong`
+/// expectation.
+fn manager_accepting_cluster(cluster: Arc<dyn ClusterTrait>) -> MockClusterManagerTrait {
+    let mut m = MockClusterManagerTrait::new();
+    m.expect_get_file_download_admission().returning(|_| None);
+    m.expect_handle_new_connection().returning(move |_, _, _| {
+        let c = Arc::clone(&cluster);
+        Box::pin(async move { Some(c) })
+    });
+    m.expect_remove_connection()
+        .returning(|_, _| Box::pin(async {}));
+    m.expect_report_websocket_error().returning(|_, _| ());
+    m
+}
+
 /// Mock manager where `handle_new_connection` always returns `None` (invalid token).
 fn manager_rejecting_connections() -> MockClusterManagerTrait {
     let mut m = MockClusterManagerTrait::new();
@@ -240,22 +257,8 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
         });
 
     let cluster: Arc<dyn ClusterTrait> = Arc::new(mock_cluster);
-    let cluster_for_manager = Arc::clone(&cluster);
 
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-    manager
-        .expect_handle_new_connection()
-        .returning(move |_, _, _| {
-            let c = Arc::clone(&cluster_for_manager);
-            Box::pin(async move { Some(c) })
-        });
-    manager
-        .expect_remove_connection()
-        .returning(|_, _| Box::pin(async {}));
-    manager.expect_report_websocket_error().returning(|_, _| ());
+    let mut manager = manager_accepting_cluster(cluster);
     manager.expect_handle_pong().returning(|_| ());
 
     let state = make_test_state(db, manager);
@@ -318,24 +321,10 @@ async fn test_ws_pong_handled() {
         .returning(|_| Box::pin(async {}));
 
     let cluster: Arc<dyn ClusterTrait> = Arc::new(mock_cluster);
-    let cluster_for_manager = Arc::clone(&cluster);
 
     // Build a manager that records handle_pong invocations
     let pong_flag = Arc::clone(&pong_handled);
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_handle_new_connection()
-        .returning(move |_, _, _| {
-            let c = Arc::clone(&cluster_for_manager);
-            Box::pin(async move { Some(c) })
-        });
-    manager
-        .expect_remove_connection()
-        .returning(|_, _| Box::pin(async {}));
-    manager.expect_report_websocket_error().returning(|_, _| ());
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
+    let mut manager = manager_accepting_cluster(cluster);
     manager.expect_handle_pong().returning(move |_| {
         pong_flag.store(true, Ordering::SeqCst);
     });
