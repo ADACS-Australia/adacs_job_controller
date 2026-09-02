@@ -67,11 +67,7 @@ async fn make_online_cluster(
     tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
 ) {
     let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
-    (cluster, rx)
+    common::make_online_cluster("ozstar", Some(ctx)).await
 }
 
 /// Make an `UPDATE_JOB` message with the given fields.
