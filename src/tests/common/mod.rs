@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::Message as TungsteniteMsg;
 
-use adacs_job_controller::cluster::cluster::AppContext;
+use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::traits::{
     ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsConnectionSender, WsOutbound,
 };
@@ -41,6 +41,22 @@ pub fn test_cluster_config(name: &str) -> ClusterConfig {
         kerberos_principal: String::new(),
         ltk: None,
     }
+}
+
+/// Create an online `Cluster` with a live WS sender and a started scheduler,
+/// returning the cluster and the outbound receiver.
+pub async fn make_online_cluster(
+    name: &str,
+    ctx: Option<Arc<AppContext>>,
+) -> (
+    Arc<Cluster>,
+    tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
+) {
+    let cluster = Cluster::new(test_cluster_config(name), ctx);
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster.set_connection(Some(tx)).await;
+    cluster.start_tasks();
+    (cluster, rx)
 }
 
 /// Build a mock online cluster that never sends messages.

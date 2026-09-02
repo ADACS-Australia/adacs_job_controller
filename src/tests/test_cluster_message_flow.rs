@@ -23,11 +23,7 @@ async fn make_online_cluster() -> (
     Arc<Cluster>,
     tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
 ) {
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
-    cluster.set_connection(Some(tx)).await;
-    cluster.start_tasks();
-    (cluster, rx)
+    common::make_online_cluster("test_cluster", None).await
 }
 
 // ---------------------------------------------------------------------------
