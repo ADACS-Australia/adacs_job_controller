@@ -1251,8 +1251,7 @@ async fn test_get_jobs_returns_all_application_jobs() {
     let other_job = insert_test_job(&db, "ozstar", "b3", "other_app").await;
     insert_job_history(&db, other_job, JobStatus::Running as i32, "system").await;
 
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(|_| None);
+    let manager = mock_cluster_manager_no_clusters();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1304,8 +1303,7 @@ async fn test_get_jobs_with_job_ids_filter() {
     let job2 = insert_test_job(&db, "ozstar", "b2", "testapp").await;
     insert_job_history(&db, job2, JobStatus::Running as i32, "system").await;
 
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(|_| None);
+    let manager = mock_cluster_manager_no_clusters();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1348,8 +1346,7 @@ async fn test_get_jobs_with_job_ids_filter() {
 #[tokio::test]
 async fn test_get_jobs_conflicting_time_filters_returns_400() {
     let db = setup_test_db().await;
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(|_| None);
+    let manager = mock_cluster_manager_no_clusters();
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1386,8 +1383,7 @@ async fn test_get_jobs_history_in_response() {
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
     insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
 
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(|_| None);
+    let manager = mock_cluster_manager_no_clusters();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1477,8 +1473,7 @@ fn ts_secs(secs: i64) -> chrono::NaiveDateTime {
 }
 
 async fn get_jobs_with_query(db: sea_orm::DatabaseConnection, query: &str) -> serde_json::Value {
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(|_| None);
+    let manager = mock_cluster_manager_no_clusters();
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
