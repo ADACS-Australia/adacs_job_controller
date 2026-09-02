@@ -88,13 +88,16 @@ fn make_update_job_message(job_id: u32, what: &str, status: u32, details: &str) 
     Message::from_bytes(msg.into_data())
 }
 
-/// Drain all pending `WsOutbound` messages from the channel, keeping only the
-/// binary payloads (non-binary messages are skipped).
-fn drain_binary_messages(rx: &mut UnboundedReceiver<WsOutbound>) -> Vec<Vec<u8>> {
+/// Drain all pending `WsOutbound` messages from the channel, returning only
+/// those whose protocol message id matches `id` (parsed as `Message`s).
+fn drain_messages_with_id(rx: &mut UnboundedReceiver<WsOutbound>, id: u32) -> Vec<Message> {
     let mut messages = Vec::new();
     while let Ok(outbound) = rx.try_recv() {
         if let WsOutbound::Binary(data) = outbound {
-            messages.push(data);
+            let msg = Message::from_bytes(data);
+            if msg.id() == id {
+                messages.push(msg);
+            }
         }
     }
     messages
@@ -227,21 +230,8 @@ async fn test_check_unsubmitted_jobs_resends_old_pending() {
     // Wait for scheduler to forward all queued messages
     cluster.wait_for_queue_drain(true).await;
 
-    // Drain channel
-    let messages = drain_binary_messages(&mut rx);
-
     // Expect at least one SUBMIT_JOB message + the SERVER_READY that gets sent on connection
-    let submit_msgs: Vec<_> = messages
-        .iter()
-        .filter_map(|data| {
-            let msg = Message::from_bytes(data.clone());
-            if msg.id() == SUBMIT_JOB {
-                Some(msg)
-            } else {
-                None
-            }
-        })
-        .collect();
+    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
 
     assert_eq!(
         submit_msgs.len(),
@@ -277,13 +267,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_state() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let messages = drain_binary_messages(&mut rx);
-
-    let submit_msgs: Vec<_> = messages
-        .iter()
-        .filter(|data| Message::from_bytes((*data).clone()).id() == SUBMIT_JOB)
-        .collect();
-
+    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
     assert!(
         submit_msgs.is_empty(),
         "Recent job should NOT trigger SUBMIT_JOB"
@@ -320,13 +304,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_terminal_state() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let messages = drain_binary_messages(&mut rx);
-
-    let submit_msgs: Vec<_> = messages
-        .iter()
-        .filter(|data| Message::from_bytes((*data).clone()).id() == SUBMIT_JOB)
-        .collect();
-
+    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
     assert!(
         submit_msgs.is_empty(),
         "Job with recent terminal state should NOT trigger SUBMIT_JOB"
@@ -388,13 +366,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
     cluster.check_cancelling_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let messages = drain_binary_messages(&mut rx);
-
-    let cancel_msgs: Vec<_> = messages
-        .iter()
-        .filter(|data| Message::from_bytes((*data).clone()).id() == CANCEL_JOB)
-        .collect();
-
+    let cancel_msgs = drain_messages_with_id(&mut rx, CANCEL_JOB);
     assert_eq!(cancel_msgs.len(), 1, "Expected exactly one CANCEL_JOB");
     cluster.stop();
 }
@@ -465,13 +437,7 @@ async fn test_check_cancelling_jobs_resends_with_pending_history() {
     cluster.check_cancelling_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let messages = drain_binary_messages(&mut rx);
-
-    let cancel_msgs: Vec<_> = messages
-        .iter()
-        .filter(|data| Message::from_bytes((*data).clone()).id() == CANCEL_JOB)
-        .collect();
-
+    let cancel_msgs = drain_messages_with_id(&mut rx, CANCEL_JOB);
     assert_eq!(
         cancel_msgs.len(),
         1,
@@ -508,13 +474,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
     cluster.check_deleting_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let messages = drain_binary_messages(&mut rx);
-
-    let delete_msgs: Vec<_> = messages
-        .iter()
-        .filter(|data| Message::from_bytes((*data).clone()).id() == DELETE_JOB)
-        .collect();
-
+    let delete_msgs = drain_messages_with_id(&mut rx, DELETE_JOB);
     assert_eq!(delete_msgs.len(), 1, "Expected exactly one DELETE_JOB");
     cluster.stop();
 }
@@ -833,20 +793,7 @@ async fn test_check_unsubmitted_jobs_resends_old_submitting() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let messages = drain_binary_messages(&mut rx);
-
-    let submit_msgs: Vec<_> = messages
-        .iter()
-        .filter_map(|data| {
-            let msg = Message::from_bytes(data.clone());
-            if msg.id() == SUBMIT_JOB {
-                Some(msg)
-            } else {
-                None
-            }
-        })
-        .collect();
-
+    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
     assert_eq!(
         submit_msgs.len(),
         1,
@@ -932,20 +879,7 @@ async fn test_check_unsubmitted_jobs_skips_job_id_exceeding_u32_range() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let messages = drain_binary_messages(&mut rx);
-
-    let submit_msgs: Vec<_> = messages
-        .iter()
-        .filter_map(|data| {
-            let msg = Message::from_bytes(data.clone());
-            if msg.id() == SUBMIT_JOB {
-                Some(msg)
-            } else {
-                None
-            }
-        })
-        .collect();
-
+    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
     assert!(
         submit_msgs.is_empty(),
         "Job id exceeding u32 range should be skipped, not resubmitted"
