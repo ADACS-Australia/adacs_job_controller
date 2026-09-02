@@ -11,16 +11,16 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::traits::{ClusterTrait, MockClusterTrait};
+use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::db::entities::job;
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
-use adacs_job_controller::protocol::types::{ClusterRole, Priority};
+use adacs_job_controller::protocol::types::Priority;
 
 use common::{
-    encode_test_jwt, make_test_state, manager_with_online_cluster_no_messages, setup_test_db,
-    test_cluster_config,
+    encode_test_jwt, make_test_state, manager_with_online_cluster_no_messages,
+    online_cluster_no_messages, setup_test_db, test_cluster_config,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -41,16 +41,7 @@ fn make_app_with_online_cluster(db: sea_orm::DatabaseConnection) -> axum::Router
 /// Matches C++ test: `test_websocket_large_message_fragmentation`
 #[tokio::test]
 async fn test_large_binary_message_handling() {
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
+    let mut cluster = online_cluster_no_messages();
 
     let received_messages = Arc::new(StdMutex::new(vec![]));
     let received_clone = Arc::clone(&received_messages);
