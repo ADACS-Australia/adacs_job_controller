@@ -35,6 +35,14 @@ async fn start_test_server(state: adacs_job_controller::app::AppState) -> common
     common::TestServer::new(port, handle)
 }
 
+/// Start a test server with a fresh test DB and the given cluster manager.
+/// Returns a `TestServer` RAII guard that aborts the server on drop.
+async fn start_server(manager: MockClusterManagerTrait) -> common::TestServer {
+    let db = setup_test_db().await;
+    let state = make_test_state(db, manager);
+    start_test_server(state).await
+}
+
 /// Poll `cond` every 5ms until `timeout` elapses.
 /// Returns `true` as soon as `cond()` returns `true`, otherwise `false`.
 async fn wait_until<F>(timeout: std::time::Duration, cond: F) -> bool
@@ -81,9 +89,7 @@ fn manager_rejecting_connections() -> MockClusterManagerTrait {
 /// The server closes the connection.
 #[tokio::test]
 async fn test_ws_invalid_token_disconnects() {
-    let db = setup_test_db().await;
-    let state = make_test_state(db, manager_rejecting_connections());
-    let server = start_test_server(state).await;
+    let server = start_server(manager_rejecting_connections()).await;
     let port = server.port;
 
     // Connect with an invalid Bearer token
@@ -109,9 +115,7 @@ async fn test_ws_invalid_token_disconnects() {
 /// The server closes the connection.
 #[tokio::test]
 async fn test_ws_no_token_disconnects() {
-    let db = setup_test_db().await;
-    let state = make_test_state(db, manager_rejecting_connections());
-    let server = start_test_server(state).await;
+    let server = start_server(manager_rejecting_connections()).await;
     let port = server.port;
 
     // Connect without any token query param
@@ -140,10 +144,8 @@ async fn test_ws_no_token_disconnects() {
 /// The first binary message received has id `SERVER_READY` and source `SYSTEM_SOURCE`.
 #[tokio::test]
 async fn test_ws_valid_token_receives_server_ready() {
-    let db = setup_test_db().await;
     let (manager, _) = common::manager_with_forwarding_cluster("ozstar", None);
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let server = start_server(manager).await;
     let port = server.port;
 
     // Connect with Authorization: Bearer header
@@ -182,10 +184,8 @@ async fn test_ws_valid_token_receives_server_ready() {
 async fn test_ws_valid_token_handles_disconnect_gracefully() {
     use std::sync::atomic::Ordering;
 
-    let db = setup_test_db().await;
     let (manager, removed_count) = common::manager_with_forwarding_cluster("ozstar", None);
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let server = start_server(manager).await;
     let port = server.port;
 
     // Connect with Authorization: Bearer header
@@ -226,7 +226,6 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
 async fn test_ws_binary_message_dispatched_to_cluster() {
     use std::sync::{Arc as StdArc, Mutex};
 
-    let db = setup_test_db().await;
     let received = StdArc::new(Mutex::new(Vec::<u32>::new()));
 
     // Build a cluster that captures handle_message calls
@@ -258,8 +257,7 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
     manager.expect_report_websocket_error().returning(|_, _| ());
     manager.expect_handle_pong().returning(|_| ());
 
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let server = start_server(manager).await;
     let port = server.port;
 
     // Connect with Authorization: Bearer header
@@ -308,7 +306,6 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
 async fn test_ws_pong_handled() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    let db = setup_test_db().await;
     let pong_handled = Arc::new(AtomicBool::new(false));
 
     // Build a minimal cluster for the accepted connection
@@ -340,8 +337,7 @@ async fn test_ws_pong_handled() {
         pong_flag.store(true, Ordering::SeqCst);
     });
 
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let server = start_server(manager).await;
     let port = server.port;
 
     // Connect with Authorization: Bearer header
@@ -381,10 +377,8 @@ async fn test_ws_pong_handled() {
 /// Connection succeeds and receives `SERVER_READY`.
 #[tokio::test]
 async fn test_ws_lowercase_bearer_scheme_accepted() {
-    let db = setup_test_db().await;
     let (manager, _) = common::manager_with_forwarding_cluster("ozstar", None);
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let server = start_server(manager).await;
     let port = server.port;
 
     // Connect with lowercase "bearer " scheme prefix
@@ -432,10 +426,8 @@ async fn test_ws_lowercase_bearer_scheme_accepted() {
 /// Connection is rejected (no `SERVER_READY`).
 #[tokio::test]
 async fn test_ws_missing_authorization_header() {
-    let db = setup_test_db().await;
     let manager = manager_rejecting_connections();
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let server = start_server(manager).await;
     let port = server.port;
 
     // Connect without Authorization header
@@ -466,10 +458,8 @@ async fn test_ws_missing_authorization_header() {
 /// Connection is rejected because the malformed header yields no valid token.
 #[tokio::test]
 async fn test_ws_malformed_authorization_header() {
-    let db = setup_test_db().await;
     let (manager, _) = common::manager_with_forwarding_cluster("ozstar", Some("valid"));
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let server = start_server(manager).await;
     let port = server.port;
 
     // Connect with malformed Authorization header (no "Bearer " prefix)
@@ -512,10 +502,8 @@ async fn test_ws_malformed_authorization_header() {
 /// Connection is rejected (breaking change verified).
 #[tokio::test]
 async fn test_ws_query_param_rejected() {
-    let db = setup_test_db().await;
     let (manager, _) = common::manager_with_forwarding_cluster("ozstar", Some("valid"));
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let server = start_server(manager).await;
     let port = server.port;
 
     // Connect with old query parameter method (should be rejected)
