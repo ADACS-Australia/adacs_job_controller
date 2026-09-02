@@ -237,6 +237,19 @@ fn test_db_response_format_empty_result() {
 // Verify DB_JOB_GET_BY_JOB_ID message format (request side)
 // ---------------------------------------------------------------------------
 
+/// Round-trips a DB request message through `into_data` / `from_bytes` and asserts
+/// that the parsed message ID, `db_request_id`, and `job_id` match the original values.
+fn assert_request_roundtrip(msg_id: u32, db_request_id: u32, job_id: u64) {
+    let mut msg = Message::new(msg_id, Priority::Highest, SYSTEM_SOURCE);
+    msg.push_uint(db_request_id);
+    msg.push_ulong(job_id);
+
+    let mut parsed = Message::from_bytes(msg.into_data());
+    assert_eq!(parsed.id(), msg_id);
+    assert_eq!(parsed.pop_uint(), db_request_id);
+    assert_eq!(parsed.pop_ulong(), job_id);
+}
+
 /// Verifies that a `DB_JOB_GET_BY_JOB_ID` request message serializes and parses correctly.
 ///
 /// # Setup
@@ -249,14 +262,7 @@ fn test_db_response_format_empty_result() {
 /// The parsed message ID, `db_request_id`, and `job_id` match the original values.
 #[test]
 fn test_db_job_get_by_job_id_request_format() {
-    let mut msg = Message::new(DB_JOB_GET_BY_JOB_ID, Priority::Highest, SYSTEM_SOURCE);
-    msg.push_uint(50); // db_request_id
-    msg.push_ulong(123); // job_id
-
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.id(), DB_JOB_GET_BY_JOB_ID);
-    assert_eq!(parsed.pop_uint(), 50);
-    assert_eq!(parsed.pop_ulong(), 123);
+    assert_request_roundtrip(DB_JOB_GET_BY_JOB_ID, 50, 123);
 }
 
 /// Verifies that a `DB_JOB_GET_BY_ID` request message serializes and parses correctly.
@@ -271,14 +277,7 @@ fn test_db_job_get_by_job_id_request_format() {
 /// The parsed message ID, `db_request_id`, and record `id` match the original values.
 #[test]
 fn test_db_job_get_by_id_request_format() {
-    let mut msg = Message::new(DB_JOB_GET_BY_ID, Priority::Highest, SYSTEM_SOURCE);
-    msg.push_uint(51); // db_request_id
-    msg.push_ulong(456); // id
-
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.id(), DB_JOB_GET_BY_ID);
-    assert_eq!(parsed.pop_uint(), 51);
-    assert_eq!(parsed.pop_ulong(), 456);
+    assert_request_roundtrip(DB_JOB_GET_BY_ID, 51, 456);
 }
 
 /// Verifies that a `DB_JOBSTATUS_GET_BY_JOB_ID` request message serializes and parses correctly.
@@ -293,14 +292,7 @@ fn test_db_job_get_by_id_request_format() {
 /// The parsed message ID, `db_request_id`, and `job_id` match the original values.
 #[test]
 fn test_db_jobstatus_get_by_job_id_request_format() {
-    let mut msg = Message::new(DB_JOBSTATUS_GET_BY_JOB_ID, Priority::Highest, SYSTEM_SOURCE);
-    msg.push_uint(60); // db_request_id
-    msg.push_ulong(789); // job_id
-
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.id(), DB_JOBSTATUS_GET_BY_JOB_ID);
-    assert_eq!(parsed.pop_uint(), 60);
-    assert_eq!(parsed.pop_ulong(), 789);
+    assert_request_roundtrip(DB_JOBSTATUS_GET_BY_JOB_ID, 60, 789);
 }
 
 // ---------------------------------------------------------------------------
