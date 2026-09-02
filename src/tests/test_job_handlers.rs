@@ -1061,6 +1061,14 @@ async fn test_delete_job_error_sends_delete_ws_message() {
 }
 
 // Invalid states for delete
+async fn assert_delete_rejected_for_state(state: JobStatus) {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, state as i32, "system").await;
+    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
 /// Tests that deleting a Submitting job returns 400 Bad Request.
 ///
 /// # Setup
@@ -1073,11 +1081,7 @@ async fn test_delete_job_error_sends_delete_ws_message() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_submitting_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_delete_rejected_for_state(JobStatus::Submitting).await;
 }
 
 /// Tests that deleting a Submitted job returns 400 Bad Request.
@@ -1092,11 +1096,7 @@ async fn test_delete_job_submitting_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_submitted_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Submitted as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_delete_rejected_for_state(JobStatus::Submitted).await;
 }
 
 /// Tests that deleting a Queued job returns 400 Bad Request.
@@ -1111,11 +1111,7 @@ async fn test_delete_job_submitted_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_queued_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Queued as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_delete_rejected_for_state(JobStatus::Queued).await;
 }
 
 /// Tests that deleting a Running job returns 400 Bad Request.
@@ -1130,11 +1126,7 @@ async fn test_delete_job_queued_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_running_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_delete_rejected_for_state(JobStatus::Running).await;
 }
 
 /// Tests that deleting a Cancelling job returns 400 Bad Request.
@@ -1149,11 +1141,7 @@ async fn test_delete_job_running_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_cancelling_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Cancelling as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_delete_rejected_for_state(JobStatus::Cancelling).await;
 }
 
 /// Tests that deleting a job already in Deleting state returns 400 Bad Request.
@@ -1168,11 +1156,7 @@ async fn test_delete_job_cancelling_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_deleting_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Deleting as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_delete_rejected_for_state(JobStatus::Deleting).await;
 }
 
 /// Tests that deleting an already Deleted job returns 400 Bad Request.
@@ -1187,11 +1171,7 @@ async fn test_delete_job_deleting_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_already_deleted_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Deleted as i32, "system").await;
-    let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_delete_rejected_for_state(JobStatus::Deleted).await;
 }
 
 /// Tests that deleting a job whose ID exceeds `u32::MAX` returns 400 instead of
