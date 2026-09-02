@@ -26,6 +26,34 @@ async fn make_online_cluster() -> (
     common::make_online_cluster("test_cluster", None).await
 }
 
+/// Create a file-download `Cluster` for `uuid`, returning the `FileDownloadState`
+/// and the cluster.
+fn make_file_download_cluster(uuid: &str) -> (Arc<FileDownloadState>, Arc<Cluster>) {
+    let download_state = Arc::new(FileDownloadState::new());
+    let lock = Arc::new(tokio::sync::Mutex::new(()));
+    let cluster = Cluster::new_file_download(
+        common::test_cluster_config("test_cluster"),
+        uuid.to_string(),
+        Arc::clone(&download_state),
+        None,
+        lock,
+    );
+    (download_state, cluster)
+}
+
+/// Create a file-upload `Cluster` for `uuid`, returning the `FileUploadState`
+/// and the cluster.
+fn make_file_upload_cluster(uuid: &str) -> (Arc<FileUploadState>, Arc<Cluster>) {
+    let upload_state = Arc::new(FileUploadState::new());
+    let cluster = Cluster::new_file_upload(
+        common::test_cluster_config("test_cluster"),
+        uuid.to_string(),
+        Arc::clone(&upload_state),
+        None,
+    );
+    (upload_state, cluster)
+}
+
 // ---------------------------------------------------------------------------
 // Priority queue ordering
 // ---------------------------------------------------------------------------
@@ -158,15 +186,7 @@ async fn test_multiple_messages_same_priority_round_robin() {
 /// After `FILE_CHUNK`: `received_bytes=4` and the 4-byte chunk is available in the receiver channel.
 #[tokio::test]
 async fn test_file_download_chunk_flow() {
-    let download_state = Arc::new(FileDownloadState::new());
-    let lock = Arc::new(tokio::sync::Mutex::new(()));
-    let cluster = Cluster::new_file_download(
-        common::test_cluster_config("test_cluster"),
-        "dl-uuid-1".to_string(),
-        Arc::clone(&download_state),
-        None,
-        lock,
-    );
+    let (download_state, cluster) = make_file_download_cluster("dl-uuid-1");
 
     // Simulate receiving FILE_DETAILS -- must go through from_bytes to parse header
     let mut details_msg = Message::new(FILE_DETAILS, Priority::Medium, "test");
@@ -204,15 +224,7 @@ async fn test_file_download_chunk_flow() {
 /// The `error` flag is set, `data_ready` is set, and `error_details` equals `"Permission denied"`.
 #[tokio::test]
 async fn test_file_download_error_flow() {
-    let download_state = Arc::new(FileDownloadState::new());
-    let lock = Arc::new(tokio::sync::Mutex::new(()));
-    let cluster = Cluster::new_file_download(
-        common::test_cluster_config("test_cluster"),
-        "dl-uuid-err".to_string(),
-        Arc::clone(&download_state),
-        None,
-        lock,
-    );
+    let (download_state, cluster) = make_file_download_cluster("dl-uuid-err");
 
     let mut err_msg = Message::new(FILE_ERROR, Priority::Medium, "test");
     err_msg.push_string("Permission denied");
@@ -279,13 +291,7 @@ async fn test_download_messages_on_master_cluster_are_noop() {
 /// `upload_state.data_ready` is set to `true`.
 #[tokio::test]
 async fn test_file_upload_server_ready_flow() {
-    let upload_state = Arc::new(FileUploadState::new());
-    let cluster = Cluster::new_file_upload(
-        common::test_cluster_config("test_cluster"),
-        "ul-uuid-1".to_string(),
-        Arc::clone(&upload_state),
-        None,
-    );
+    let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-1");
 
     // SERVER_READY signals the upload cluster is ready -- must go through from_bytes
     let ready_msg = Message::new(SERVER_READY, Priority::Medium, "test");
@@ -307,13 +313,7 @@ async fn test_file_upload_server_ready_flow() {
 /// The `error` flag is set, `data_ready` is set, and `error_details` equals `"Disk full"`.
 #[tokio::test]
 async fn test_file_upload_error_flow() {
-    let upload_state = Arc::new(FileUploadState::new());
-    let cluster = Cluster::new_file_upload(
-        common::test_cluster_config("test_cluster"),
-        "ul-uuid-err".to_string(),
-        Arc::clone(&upload_state),
-        None,
-    );
+    let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-err");
 
     let mut err_msg = Message::new(FILE_UPLOAD_ERROR, Priority::Medium, "test");
     err_msg.push_string("Disk full");
@@ -337,13 +337,7 @@ async fn test_file_upload_error_flow() {
 /// The `complete` and `data_ready` flags are all set to `true`.
 #[tokio::test]
 async fn test_file_upload_complete_flow() {
-    let upload_state = Arc::new(FileUploadState::new());
-    let cluster = Cluster::new_file_upload(
-        common::test_cluster_config("test_cluster"),
-        "ul-uuid-done".to_string(),
-        Arc::clone(&upload_state),
-        None,
-    );
+    let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-done");
 
     let complete_msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Medium, "test");
     let complete_msg = Message::from_bytes(complete_msg.into_data());
@@ -925,13 +919,7 @@ async fn test_send_message_queues_correctly() {
 /// Neither the `error` nor the `complete` flag is set on the upload state.
 #[tokio::test]
 async fn test_file_upload_unrecognized_message_no_crash() {
-    let upload_state = Arc::new(FileUploadState::new());
-    let cluster = Cluster::new_file_upload(
-        common::test_cluster_config("test_cluster"),
-        "ul-uuid-unknown".to_string(),
-        Arc::clone(&upload_state),
-        None,
-    );
+    let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-unknown");
 
     // Send a message with an ID that the file upload handler doesn't handle
     let unknown_msg = Message::new(999_999, Priority::Medium, "test");
