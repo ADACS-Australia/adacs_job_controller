@@ -342,6 +342,28 @@ pub async fn insert_test_job_with_id(
     .id
 }
 
+/// Insert a file download record for the default test user (user=1, job=0,
+/// cluster=ozstar, bundle=b). Returns the inserted record id.
+pub async fn insert_file_download(db: &sea_orm::DatabaseConnection, uuid: &str, path: &str) -> i64 {
+    use adacs_job_controller::db::entities::file_download;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+
+    file_download::ActiveModel {
+        user: Set(1),
+        job: Set(0),
+        cluster: Set("ozstar".to_string()),
+        bundle: Set("b".to_string()),
+        uuid: Set(uuid.to_string()),
+        path: Set(path.to_string()),
+        timestamp: Set(chrono::Utc::now().naive_utc()),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .expect("insert test file download failed")
+    .id
+}
+
 /// Insert a job history record with the given state.
 pub async fn insert_job_history(
     db: &sea_orm::DatabaseConnection,
