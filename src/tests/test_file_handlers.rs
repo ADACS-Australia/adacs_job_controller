@@ -23,8 +23,8 @@ use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState};
 
 use common::{
-    encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_test_job,
-    insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
+    encode_jwt_for_secret, encode_test_jwt, insert_file_download, insert_job_history,
+    insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
     manager_with_online_cluster_no_messages, offline_cluster, online_cluster,
     online_cluster_no_messages, setup_test_db, test_cluster_config, test_jwt_secrets,
     test_jwt_secrets_multi, upload_cluster,
@@ -375,19 +375,7 @@ async fn test_download_file_cluster_offline_returns_503() {
     let db = setup_test_db().await;
     // Insert a file download record pointing at "ozstar"
     let uuid = "test-uuid-1234".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid.clone()),
-        path: Set(String::new()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid, "").await;
 
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
@@ -438,19 +426,7 @@ async fn test_download_file_streams_chunks() {
     let mut uuids = Vec::new();
     for i in 0..5 {
         let uuid = format!("download-uuid-{i}");
-        file_download::ActiveModel {
-            user: Set(1),
-            job: Set(0),
-            cluster: Set("ozstar".to_string()),
-            bundle: Set("b".to_string()),
-            uuid: Set(uuid.clone()),
-            path: Set(String::new()),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        insert_file_download(&db, &uuid, "").await;
         uuids.push(uuid);
     }
 
@@ -589,19 +565,7 @@ async fn test_download_file_streams_chunks() {
 async fn test_download_file_error_from_cluster_returns_400() {
     let db = setup_test_db().await;
     let uuid = "error-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid.clone()),
-        path: Set("/file.txt".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid, "/file.txt").await;
 
     let fd_state = Arc::new(FileDownloadState::new());
     let fd_sim = Arc::clone(&fd_state);
@@ -764,19 +728,7 @@ async fn test_download_file_job_id_exceeding_u32_returns_400() {
 async fn test_download_file_session_not_found_returns_400() {
     let db = setup_test_db().await;
     let uuid = "missing-session-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid.clone()),
-        path: Set(String::new()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid, "").await;
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
