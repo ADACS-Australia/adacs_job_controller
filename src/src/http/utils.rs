@@ -94,6 +94,10 @@ pub fn parse_job_steps(s: &str) -> Vec<(String, u32)> {
     let mut result = Vec::new();
     let mut i = 0;
     while i + 1 < parts.len() {
+        if parts[i].is_empty() {
+            i += 1;
+            continue;
+        }
         if let Ok(state) = parts[i + 1].parse::<u32>() {
             result.push((parts[i].to_string(), state));
             i += 2;
@@ -303,6 +307,15 @@ mod tests {
     fn test_parse_job_steps_empty() {
         let steps = parse_job_steps("");
         assert!(steps.is_empty());
+    }
+
+    /// Verifies that an empty `what` token is dropped rather than producing a
+    /// bogus ("", state) pair, consistent with `parse_csv_u64` skipping empty
+    /// segments.
+    #[test]
+    fn test_parse_job_steps_skips_empty_what_token() {
+        let steps = parse_job_steps(",500");
+        assert!(steps.is_empty(), "empty what token must be dropped");
     }
 
     /// Verifies that `parse_job_steps` trims whitespace around each CSV token.
