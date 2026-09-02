@@ -432,6 +432,14 @@ async fn run_cancel(
     run_job_request("PATCH", job_id, db, manager).await
 }
 
+async fn assert_cancel_rejected_for_state(state: JobStatus) {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, state as i32, "system").await;
+    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
 fn manager_with_cluster(online: bool) -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
     let sent = Arc::new(Mutex::new(vec![]));
     let cluster = Arc::new(cluster_capturing_messages(
@@ -643,118 +651,34 @@ async fn test_cancel_job_already_cancelled_returns_400() {
     assert!(body.contains("invalid state"), "body: {body}");
 }
 
-/// Tests that cancelling a Completed job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Completed history entry.
-///
-/// # Act
-/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_cancel_job_completed_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Completed as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_cancel_rejected_for_state(JobStatus::Completed).await;
 }
 
-/// Tests that cancelling a `WallTimeExceeded` job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a `WallTimeExceeded` history entry.
-///
-/// # Act
-/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_cancel_job_wall_time_exceeded_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::WallTimeExceeded as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_cancel_rejected_for_state(JobStatus::WallTimeExceeded).await;
 }
 
-/// Tests that cancelling an `OutOfMemory` job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with an `OutOfMemory` history entry.
-///
-/// # Act
-/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_cancel_job_out_of_memory_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::OutOfMemory as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_cancel_rejected_for_state(JobStatus::OutOfMemory).await;
 }
 
-/// Tests that cancelling an Error-state job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with an Error history entry.
-///
-/// # Act
-/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_cancel_job_error_state_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Error as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_cancel_rejected_for_state(JobStatus::Error).await;
 }
 
-/// Tests that cancelling a Deleting job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Deleting history entry.
-///
-/// # Act
-/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_cancel_job_deleting_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Deleting as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_cancel_rejected_for_state(JobStatus::Deleting).await;
 }
 
-/// Tests that cancelling an already Deleted job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Deleted history entry.
-///
-/// # Act
-/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_cancel_job_deleted_returns_400() {
-    let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Deleted as i32, "system").await;
-    let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_cancel_rejected_for_state(JobStatus::Deleted).await;
 }
 
 /// Tests that cancelling a non-existent job ID returns 400 with "did not exist".
