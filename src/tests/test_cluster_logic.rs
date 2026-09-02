@@ -7,6 +7,8 @@
 
 mod common;
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use common::{insert_job_history_at, make_app_context, setup_test_db, test_cluster_config};
@@ -630,6 +632,39 @@ const UNSUBMITTED_NOOP_STATES: &[i32] = &[
     500, // Completed
 ];
 
+/// Runs `check` for each non-matching status in `states` and asserts that no message
+/// with `message_id` is emitted for any of them.
+async fn assert_noop_for_states(
+    states: &[i32],
+    job_id: i64,
+    check: impl for<'a> Fn(&'a Arc<Cluster>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>,
+    message_id: u32,
+    message_name: &str,
+) {
+    for &state_val in states {
+        let db = setup_test_db().await;
+
+        insert_job(&db, job_id, "ozstar", "b", "app", "{}").await;
+        insert_job_history_at(&db, job_id, state_val, "test", old_timestamp()).await;
+
+        let (cluster, mut rx) = make_online_cluster(&db).await;
+
+        check(&cluster).await;
+        cluster.wait_for_queue_drain(true).await;
+
+        let matching: Vec<_> = drain_binary_messages(&mut rx)
+            .into_iter()
+            .filter(|d| Message::from_bytes(d.clone()).id() == message_id)
+            .collect();
+
+        assert!(
+            matching.is_empty(),
+            "State {state_val} should NOT trigger {message_name}"
+        );
+        cluster.stop();
+    }
+}
+
 /// Verifies that `check_unsubmitted_jobs` does not trigger `SUBMIT_JOB` for any status
 /// other than PENDING (10) or SUBMITTING (20).
 ///
@@ -644,36 +679,14 @@ const UNSUBMITTED_NOOP_STATES: &[i32] = &[
 /// No `SUBMIT_JOB` messages appear for any of the non-matching status values.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_noop_for_non_matching_statuses() {
-    for &state_val in UNSUBMITTED_NOOP_STATES {
-        let db = setup_test_db().await;
-
-        insert_job(&db, 100, "ozstar", "b", "app", "{}").await;
-        insert_job_history_at(&db, 100, state_val, "test", old_timestamp()).await;
-
-        let (cluster, mut rx) = make_online_cluster(&db).await;
-
-        cluster.check_unsubmitted_jobs().await;
-        cluster.wait_for_queue_drain(true).await;
-
-        let submit_msgs: Vec<_> = {
-            let mut msgs = Vec::new();
-            while let Ok(outbound) = rx.try_recv() {
-                let WsOutbound::Binary(data) = outbound else {
-                    continue;
-                };
-                msgs.push(data);
-            }
-            msgs.into_iter()
-                .filter(|d| Message::from_bytes(d.clone()).id() == SUBMIT_JOB)
-                .collect()
-        };
-
-        assert!(
-            submit_msgs.is_empty(),
-            "State {state_val} should NOT trigger SUBMIT_JOB"
-        );
-        cluster.stop();
-    }
+    assert_noop_for_states(
+        UNSUBMITTED_NOOP_STATES,
+        100,
+        |cluster| Box::pin(cluster.check_unsubmitted_jobs()),
+        SUBMIT_JOB,
+        "SUBMIT_JOB",
+    )
+    .await;
 }
 
 /// All `JobStatus` values that should NOT trigger `check_cancelling_jobs`.
@@ -707,36 +720,14 @@ const CANCELLING_NOOP_STATES: &[i32] = &[
 /// No `CANCEL_JOB` messages appear for any of the non-matching status values.
 #[tokio::test]
 async fn test_check_cancelling_jobs_noop_for_non_matching_statuses() {
-    for &state_val in CANCELLING_NOOP_STATES {
-        let db = setup_test_db().await;
-
-        insert_job(&db, 200, "ozstar", "b", "app", "{}").await;
-        insert_job_history_at(&db, 200, state_val, "test", old_timestamp()).await;
-
-        let (cluster, mut rx) = make_online_cluster(&db).await;
-
-        cluster.check_cancelling_jobs().await;
-        cluster.wait_for_queue_drain(true).await;
-
-        let cancel_msgs: Vec<_> = {
-            let mut msgs = Vec::new();
-            while let Ok(outbound) = rx.try_recv() {
-                let WsOutbound::Binary(data) = outbound else {
-                    continue;
-                };
-                msgs.push(data);
-            }
-            msgs.into_iter()
-                .filter(|d| Message::from_bytes(d.clone()).id() == CANCEL_JOB)
-                .collect()
-        };
-
-        assert!(
-            cancel_msgs.is_empty(),
-            "State {state_val} should NOT trigger CANCEL_JOB"
-        );
-        cluster.stop();
-    }
+    assert_noop_for_states(
+        CANCELLING_NOOP_STATES,
+        200,
+        |cluster| Box::pin(cluster.check_cancelling_jobs()),
+        CANCEL_JOB,
+        "CANCEL_JOB",
+    )
+    .await;
 }
 
 /// All `JobStatus` values that should NOT trigger `check_deleting_jobs`.
@@ -770,36 +761,14 @@ const DELETING_NOOP_STATES: &[i32] = &[
 /// No `DELETE_JOB` messages appear for any of the non-matching status values.
 #[tokio::test]
 async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
-    for &state_val in DELETING_NOOP_STATES {
-        let db = setup_test_db().await;
-
-        insert_job(&db, 300, "ozstar", "b", "app", "{}").await;
-        insert_job_history_at(&db, 300, state_val, "test", old_timestamp()).await;
-
-        let (cluster, mut rx) = make_online_cluster(&db).await;
-
-        cluster.check_deleting_jobs().await;
-        cluster.wait_for_queue_drain(true).await;
-
-        let delete_msgs: Vec<_> = {
-            let mut msgs = Vec::new();
-            while let Ok(outbound) = rx.try_recv() {
-                let WsOutbound::Binary(data) = outbound else {
-                    continue;
-                };
-                msgs.push(data);
-            }
-            msgs.into_iter()
-                .filter(|d| Message::from_bytes(d.clone()).id() == DELETE_JOB)
-                .collect()
-        };
-
-        assert!(
-            delete_msgs.is_empty(),
-            "State {state_val} should NOT trigger DELETE_JOB"
-        );
-        cluster.stop();
-    }
+    assert_noop_for_states(
+        DELETING_NOOP_STATES,
+        300,
+        |cluster| Box::pin(cluster.check_deleting_jobs()),
+        DELETE_JOB,
+        "DELETE_JOB",
+    )
+    .await;
 }
 
 // ---------------------------------------------------------------------------
