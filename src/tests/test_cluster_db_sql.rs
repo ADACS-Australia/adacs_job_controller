@@ -39,6 +39,12 @@ async fn setup_cluster_db(db: &DatabaseConnection) {
     }
 }
 
+async fn make_cluster_db() -> DatabaseConnection {
+    let db = make_db().await;
+    setup_cluster_db(&db).await;
+    db
+}
+
 /// Build a ready-to-dispatch `Message` by creating it, pushing payload, then round-tripping
 /// through `into_data()` / `from_bytes()` so `id()` / `source()` are properly cached.
 fn dispatch_message(id: u32, push: impl FnOnce(&mut Message)) -> Message {
@@ -80,8 +86,7 @@ fn first_response(sent: &Arc<Mutex<Vec<Message>>>) -> (u32, Message) {
 /// contains `db_request_id=100` and the assigned row id.
 #[tokio::test]
 async fn test_handle_job_save_insert() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
 
@@ -157,8 +162,7 @@ async fn test_handle_job_save_insert() {
 /// `db_request_id=200` and the existing row id.
 #[tokio::test]
 async fn test_handle_job_save_update() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     // Pre-insert a row
     let inserted = cluster_job::ActiveModel {
@@ -238,8 +242,7 @@ async fn test_handle_job_save_update() {
 /// fields matching the inserted row.
 #[tokio::test]
 async fn test_handle_job_get_by_id_found() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let inserted = cluster_job::ActiveModel {
         job_id: Set(55),
@@ -301,8 +304,7 @@ async fn test_handle_job_get_by_id_found() {
 /// The `DB_RESPONSE` contains `db_request_id=302` and count=0.
 #[tokio::test]
 async fn test_handle_job_get_by_id_not_found() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_JOB_GET_BY_ID, |m| {
@@ -334,8 +336,7 @@ async fn test_handle_job_get_by_id_not_found() {
 /// The `DB_RESPONSE` contains `db_request_id=400`, `count=1`, and a `ClusterJob` with `job_id=77`.
 #[tokio::test]
 async fn test_handle_job_get_by_job_id_found() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     cluster_job::ActiveModel {
         job_id: Set(77),
@@ -390,8 +391,7 @@ async fn test_handle_job_get_by_job_id_found() {
 /// (`cluster="ozstar"`), excluding the nci row.
 #[tokio::test]
 async fn test_handle_job_get_by_job_id_cluster_scoping() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let mut ozstar_id = 0;
     for cluster in ["ozstar", "nci"] {
@@ -452,8 +452,7 @@ async fn test_handle_job_get_by_job_id_cluster_scoping() {
 /// job (`job_id=1`).
 #[tokio::test]
 async fn test_handle_job_get_running_jobs() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     // 1 running job for ozstar, 1 non-running for ozstar, 1 running for nci
     for (job_id, running, cluster) in [
@@ -512,8 +511,7 @@ async fn test_handle_job_get_running_jobs() {
 /// No row with the given id remains in `cluster_job`; the `DB_RESPONSE` echoes `db_request_id=600`.
 #[tokio::test]
 async fn test_handle_job_delete() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let inserted = cluster_job::ActiveModel {
         job_id: Set(88),
@@ -571,8 +569,7 @@ async fn test_handle_job_delete() {
 /// contains `db_request_id=700` and the assigned row id.
 #[tokio::test]
 async fn test_handle_jobstatus_save_insert() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let status = ClusterJobStatus {
         id: 0,
@@ -637,8 +634,7 @@ async fn test_handle_jobstatus_save_insert() {
 /// `db_request_id=701` and the existing row id.
 #[tokio::test]
 async fn test_handle_jobstatus_save_update() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let inserted = cluster_job_status::ActiveModel {
         job_id: Set(10),
@@ -700,8 +696,7 @@ async fn test_handle_jobstatus_save_update() {
 /// and whats "a" and "b".
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     for (jid, what, state) in [(20i64, "a", 1i32), (20i64, "b", 2i32), (21i64, "c", 3i32)] {
         cluster_job_status::ActiveModel {
@@ -757,8 +752,7 @@ async fn test_handle_jobstatus_get_by_job_id() {
 /// with `job_id=30`, `what="cpu_time`", state=42.
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_and_what() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     for (jid, what, state) in [
         (30i64, "cpu_time", 42i32),
@@ -814,8 +808,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
 /// `db_request_id=1000`.
 #[tokio::test]
 async fn test_handle_jobstatus_delete_by_id_list() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     // Insert 4 statuses; we'll delete 2 of them
     let mut ids = Vec::new();
@@ -872,8 +865,7 @@ async fn test_handle_jobstatus_delete_by_id_list() {
 /// missing ids, and the `DB_RESPONSE` echoes `db_request_id=1000`.
 #[tokio::test]
 async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
@@ -933,8 +925,7 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
 /// `bundle_hash="myhash`"; the `DB_RESPONSE` contains `db_request_id=1100`.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_new() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let bundle = BundleJob {
         id: 0,
@@ -999,8 +990,7 @@ async fn test_handle_bundle_create_or_update_new() {
 /// `DB_RESPONSE` contains `db_request_id=1101` and the existing row id.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_existing() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let inserted = bundle_job::ActiveModel {
         content: Set("old".to_string()),
@@ -1065,8 +1055,7 @@ async fn test_handle_bundle_create_or_update_existing() {
 /// the `DB_RESPONSE` contains `db_request_id=1102` and the existing row id.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let inserted = bundle_job::ActiveModel {
         content: Set("old".to_string()),
@@ -1129,8 +1118,7 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
 /// the correct id and content.
 #[tokio::test]
 async fn test_handle_bundle_get_by_id_found() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let inserted = bundle_job::ActiveModel {
         content: Set("bundle_content".to_string()),
@@ -1177,8 +1165,7 @@ async fn test_handle_bundle_get_by_id_found() {
 /// The `DB_RESPONSE` contains `db_request_id=1201` and count=0.
 #[tokio::test]
 async fn test_handle_bundle_get_by_id_not_found() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_BUNDLE_GET_JOB_BY_ID, |m| {
@@ -1210,8 +1197,7 @@ async fn test_handle_bundle_get_by_id_not_found() {
 /// No row with the given id remains in `bundle_job`; the `DB_RESPONSE` echoes `db_request_id=1300`.
 #[tokio::test]
 async fn test_handle_bundle_delete() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let inserted = bundle_job::ActiveModel {
         content: Set("c".to_string()),
@@ -1260,8 +1246,7 @@ async fn test_handle_bundle_delete() {
 /// The handler returns `false` and no messages are sent to the cluster.
 #[tokio::test]
 async fn test_unhandled_message_returns_false() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
 
@@ -1306,8 +1291,7 @@ async fn test_unhandled_message_returns_false() {
 /// The `DB_RESPONSE` contains `db_request_id=5001` and count=0.
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_nonexistent_job() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     // Insert a real job so the DB is not empty
     let inserted = cluster_job::ActiveModel {
@@ -1363,8 +1347,7 @@ async fn test_handle_jobstatus_get_by_job_id_nonexistent_job() {
 /// The `DB_RESPONSE` contains `db_request_id=5002` and count=0.
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     // Insert a real job
     let inserted = cluster_job::ActiveModel {
@@ -1433,8 +1416,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
 /// non-existent `job_id`; the `DB_RESPONSE` echoes `db_request_id=5003`.
 #[tokio::test]
 async fn test_handle_jobstatus_save_nonexistent_job_fk() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     // Insert a real job to establish a known ID range
     let inserted = cluster_job::ActiveModel {
@@ -1520,8 +1502,7 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
 /// the `DB_RESPONSE` returns id=0 (error).
 #[tokio::test]
 async fn test_handle_bundle_update_wrong_hash_returns_error() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     // Create an initial bundle with hash "original_hash"
     let inserted = bundle_job::ActiveModel {
@@ -1595,8 +1576,7 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
 /// returns the new non-zero row id.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_unknown_id_inserts() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     let bundle = BundleJob {
         id: 99999, // non-existent id > 0
@@ -1656,8 +1636,7 @@ async fn test_handle_bundle_create_or_update_unknown_id_inserts() {
 /// The existing bundle row is unaffected; the `DB_RESPONSE` echoes `db_request_id=5005`.
 #[tokio::test]
 async fn test_handle_bundle_delete_nonexistent_is_noop() {
-    let db = make_db().await;
-    setup_cluster_db(&db).await;
+    let db = make_cluster_db().await;
 
     // Insert a bundle to ensure table is not empty
     bundle_job::ActiveModel {
