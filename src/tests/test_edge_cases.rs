@@ -69,6 +69,38 @@ use sea_orm::{
 // Helpers
 // ===========================================================================
 
+/// Manager with the standard online-cluster + upload-cluster mock setup used by upload tests.
+fn manager_with_online_and_upload_clusters<T: ClusterTrait + 'static>(
+    cluster_main: &Arc<T>,
+    upload_cluster: &Arc<T>,
+    fu_for_manager: Arc<FileUploadState>,
+) -> MockClusterManagerTrait {
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    let cm = Arc::clone(cluster_main);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(cm.clone()));
+    let uc = Arc::clone(upload_cluster);
+    manager.expect_create_file_upload().returning(move |_, _| {
+        let c = Arc::clone(&uc);
+        Box::pin(async move { c as Arc<dyn ClusterTrait> })
+    });
+    manager
+        .expect_get_file_upload()
+        .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    manager
+}
+
 // ===========================================================================
 // 1. ZERO-BYTE UPLOAD
 //
@@ -129,30 +161,8 @@ async fn test_upload_zero_byte_file_succeeds() {
     };
 
     let cluster_main = Arc::new(online_cluster_no_messages());
-    let uc = Arc::clone(&upload_cluster);
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let cm = Arc::clone(&cluster_main);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(cm.clone()));
-    manager.expect_create_file_upload().returning(move |_, _| {
-        let c = Arc::clone(&uc);
-        Box::pin(async move { c as Arc<dyn ClusterTrait> })
-    });
-    manager
-        .expect_get_file_upload()
-        .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -241,30 +251,8 @@ async fn test_upload_truncated_body_returns_error() {
     let upload_cluster = Arc::new(upload_cluster());
 
     let cluster_main = Arc::new(online_cluster_no_messages());
-    let uc = Arc::clone(&upload_cluster);
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let cm = Arc::clone(&cluster_main);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(cm.clone()));
-    manager.expect_create_file_upload().returning(move |_, _| {
-        let c = Arc::clone(&uc);
-        Box::pin(async move { c as Arc<dyn ClusterTrait> })
-    });
-    manager
-        .expect_get_file_upload()
-        .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
 
     // Start real server so we can make a real TCP connection and truncate it
     let state = make_test_state(db, manager);
@@ -604,30 +592,8 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
     let upload_cluster = Arc::new(upload_cluster());
 
     let cluster_main = Arc::new(online_cluster_no_messages());
-    let uc = Arc::clone(&upload_cluster);
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let cm = Arc::clone(&cluster_main);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(cm.clone()));
-    manager.expect_create_file_upload().returning(move |_, _| {
-        let c = Arc::clone(&uc);
-        Box::pin(async move { c as Arc<dyn ClusterTrait> })
-    });
-    manager
-        .expect_get_file_upload()
-        .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -708,30 +674,8 @@ async fn test_upload_queue_drain_timeout_returns_400() {
     };
 
     let cluster_main = Arc::new(online_cluster_no_messages());
-    let uc = Arc::clone(&upload_cluster);
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let cm = Arc::clone(&cluster_main);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(cm.clone()));
-    manager.expect_create_file_upload().returning(move |_, _| {
-        let c = Arc::clone(&uc);
-        Box::pin(async move { c as Arc<dyn ClusterTrait> })
-    });
-    manager
-        .expect_get_file_upload()
-        .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
