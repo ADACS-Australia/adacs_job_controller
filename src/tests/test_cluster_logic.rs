@@ -70,6 +70,13 @@ async fn make_online_cluster(
     common::make_online_cluster("ozstar", Some(ctx)).await
 }
 
+/// Create an offline `Cluster` for `"ozstar"` with an `AppContext` but no WS
+/// connection (no `set_connection` call).
+fn make_offline_cluster(db: &DatabaseConnection) -> Arc<Cluster> {
+    let ctx = make_app_context(db.clone());
+    Cluster::new(test_cluster_config("ozstar"), Some(ctx))
+}
+
 /// Make an `UPDATE_JOB` message with the given fields.
 fn make_update_job_message(job_id: u32, what: &str, status: u32, details: &str) -> Message {
     let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
@@ -114,8 +121,7 @@ fn drain_binary_messages(rx: &mut UnboundedReceiver<WsOutbound>) -> Vec<Vec<u8>>
 async fn test_handle_update_job_inserts_history() {
     let db = setup_test_db().await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
+    let cluster = make_offline_cluster(&db);
 
     let msg = make_update_job_message(42, "job_submission", 10, "submitted to scheduler");
 
@@ -151,8 +157,7 @@ async fn test_handle_update_job_inserts_history() {
 async fn test_handle_update_job_multiple_updates() {
     let db = setup_test_db().await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
+    let cluster = make_offline_cluster(&db);
 
     for (state, what) in [(10u32, "queued"), (40, "running"), (500, "complete")] {
         let msg = make_update_job_message(7, what, state, "details");
@@ -348,8 +353,7 @@ async fn test_check_unsubmitted_jobs_skips_offline_cluster() {
     insert_job(&db, 3, "ozstar", "b", "app", "{}").await;
     insert_job_history_at(&db, 3, 10, "sub", old_timestamp()).await;
 
-    let ctx = make_app_context(db.clone());
-    let cluster = Cluster::new(test_cluster_config("ozstar"), Some(ctx));
+    let cluster = make_offline_cluster(&db);
     // Do NOT call set_connection — cluster is offline
 
     // Should return early without panicking
