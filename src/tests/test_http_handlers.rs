@@ -37,6 +37,12 @@ fn test_router_with_manager(
     create_router(common::make_test_state_with_secrets(db, manager, secrets))
 }
 
+/// Create a Router wired to a mock cluster manager with no clusters and default test JWT secrets.
+fn test_router() -> Router {
+    let manager = common::mock_cluster_manager_no_clusters();
+    test_router_with_manager(manager, test_jwt_secrets())
+}
+
 // ---------------------------------------------------------------------------
 // Authentication tests (apply to all routes)
 // ---------------------------------------------------------------------------
@@ -44,8 +50,7 @@ fn test_router_with_manager(
 /// Sends POST /job/apiv1/job/ with the given optional `Authorization` header
 /// value and asserts the response is 403 Forbidden.
 async fn assert_post_job_forbidden(auth_header: Option<&str>) {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let mut builder = Request::builder()
         .method("POST")
@@ -108,8 +113,7 @@ async fn test_auth_wrong_secret_returns_forbidden() {
 /// Verifies 400 Bad Request with body containing "does not have access".
 #[tokio::test]
 async fn test_create_job_no_cluster_access_returns_bad_request() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
 
@@ -151,8 +155,7 @@ async fn test_create_job_no_cluster_access_returns_bad_request() {
 /// Verifies 400 response with body containing "Invalid cluster".
 #[tokio::test]
 async fn test_create_job_cluster_not_found_returns_bad_request() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
 
@@ -195,8 +198,7 @@ async fn test_create_job_cluster_not_found_returns_bad_request() {
 /// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_list_files_no_auth_returns_forbidden() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let resp = app
         .oneshot(
@@ -231,8 +233,7 @@ async fn test_list_files_no_auth_returns_forbidden() {
 /// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_get_jobs_no_auth_returns_forbidden() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let resp = app
         .oneshot(
@@ -264,8 +265,7 @@ async fn test_get_jobs_no_auth_returns_forbidden() {
 /// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_upload_file_no_auth_returns_forbidden() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
     let resp = app
         .oneshot(
             Request::builder()
@@ -297,8 +297,7 @@ async fn test_upload_file_no_auth_returns_forbidden() {
 #[tokio::test]
 async fn test_list_files_valid_auth_missing_cluster_returns_error() {
     // Authenticated but cluster not in secret -> should get BAD_REQUEST
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
@@ -336,8 +335,7 @@ async fn test_list_files_valid_auth_missing_cluster_returns_error() {
 /// Verifies the response is not 404 (indicates the route exists).
 #[tokio::test]
 async fn test_routes_exist_for_job_api() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let resp = app
         .oneshot(
@@ -367,8 +365,7 @@ async fn test_routes_exist_for_job_api() {
 /// Verifies the response is not 404 (indicates the route exists).
 #[tokio::test]
 async fn test_routes_exist_for_file_api() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let resp = app
         .oneshot(
@@ -397,8 +394,7 @@ async fn test_routes_exist_for_file_api() {
 /// Verifies the response is not 404 (indicates the route exists).
 #[tokio::test]
 async fn test_upload_route_exists() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let resp = app
         .oneshot(
@@ -617,8 +613,7 @@ async fn test_cluster_get_cluster_details() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_file_api_path_regression() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     for method in ["POST", "GET", "PATCH"] {
         let resp = app
@@ -654,8 +649,7 @@ async fn test_file_api_path_regression() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_file_upload_api_path_regression() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     let resp = app
         .oneshot(
@@ -686,8 +680,7 @@ async fn test_file_upload_api_path_regression() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_job_api_path_regression() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
+    let app = test_router();
 
     for method in ["GET", "POST", "PATCH", "DELETE"] {
         let resp = app
