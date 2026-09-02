@@ -37,6 +37,12 @@ async fn setup_cluster_uuid_table(db: &DatabaseConnection) {
     db.execute(stmt).await.unwrap();
 }
 
+async fn make_cluster_db() -> DatabaseConnection {
+    let db = make_db().await;
+    setup_cluster_uuid_table(&db).await;
+    db
+}
+
 async fn count_uuids(db: &DatabaseConnection) -> u64 {
     cluster_uuid::Entity::find().count(db).await.unwrap()
 }
@@ -101,8 +107,7 @@ async fn make_manager_with_three_clusters(db: &DatabaseConnection) -> Arc<Cluste
 }
 
 async fn make_ltk_manager() -> Arc<ClusterManager> {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
+    let db = make_cluster_db().await;
     make_manager(ltk_cluster_configs(), db)
 }
 
@@ -136,8 +141,7 @@ fn ltk_cluster_configs() -> Vec<ClusterConfig> {
 /// Returns `None` because no clusters were configured.
 #[tokio::test]
 async fn test_constructor_empty_config() {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
+    let db = make_cluster_db().await;
 
     let mgr = make_manager(vec![], db);
     // No clusters should exist
@@ -156,8 +160,7 @@ async fn test_constructor_empty_config() {
 /// Each configured cluster is found with correct name, host, username, path, and key; the non-existent name returns `None`.
 #[tokio::test]
 async fn test_constructor_with_clusters() {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
+    let db = make_cluster_db().await;
 
     let configs = three_cluster_configs();
     let mgr = make_manager(configs, db);
@@ -190,8 +193,7 @@ async fn test_constructor_with_clusters() {
 /// Returns `None` because no connection with that ID exists.
 #[tokio::test]
 async fn test_get_cluster_by_connection() {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
+    let db = make_cluster_db().await;
     let mgr = make_manager(three_cluster_configs(), db);
 
     // Getting a cluster by invalid connection should return None
@@ -210,8 +212,7 @@ async fn test_get_cluster_by_connection() {
 /// All clusters report offline (`false`) since no connections have been established.
 #[tokio::test]
 async fn test_is_cluster_online_initially_offline() {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
+    let db = make_cluster_db().await;
     let mgr = make_manager(three_cluster_configs(), db);
 
     for i in 1..=3 {
@@ -576,8 +577,7 @@ async fn test_remove_connection() {
 /// Each cluster reports the correct `connection_type`, `key`, `keytab`, and `kerberos_principal` fields as specified in its config.
 #[tokio::test]
 async fn test_constructor_connection_types() {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
+    let db = make_cluster_db().await;
 
     let configs = vec![
         ClusterConfig {
@@ -688,8 +688,7 @@ async fn test_reconnect_clusters_deletes_stale_uuids() {
 /// Exactly two UUID rows are inserted (one per non-LTK cluster), and the LTK cluster is not present in the UUID list.
 #[tokio::test]
 async fn test_reconnect_clusters_skips_ltk_clusters() {
-    let db = make_db().await;
-    setup_cluster_uuid_table(&db).await;
+    let db = make_cluster_db().await;
 
     let mut configs = ltk_cluster_configs();
     configs.extend(three_cluster_configs().into_iter().take(2));
