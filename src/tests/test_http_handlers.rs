@@ -41,84 +41,44 @@ fn test_router_with_manager(
 // Authentication tests (apply to all routes)
 // ---------------------------------------------------------------------------
 
-/// Tests that POST /job/apiv1/job/ with no auth returns 403 Forbidden.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends POST /job/apiv1/job/ with no Authorization header.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
-#[tokio::test]
-async fn test_auth_no_token_returns_forbidden() {
+/// Sends POST /job/apiv1/job/ with the given optional `Authorization` header
+/// value and asserts the response is 403 Forbidden.
+async fn assert_post_job_forbidden(auth_header: Option<&str>) {
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
 
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/job/apiv1/job/")
+        .header("content-type", "application/json");
+    if let Some(value) = auth_header {
+        builder = builder.header("authorization", value);
+    }
+
     let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(builder.body(Body::empty()).unwrap())
         .await
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+/// Tests that POST /job/apiv1/job/ with no auth returns 403 Forbidden.
+#[tokio::test]
+async fn test_auth_no_token_returns_forbidden() {
+    assert_post_job_forbidden(None).await;
 }
 
 /// Tests that POST /job/apiv1/job/ with invalid token returns 403 Forbidden.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends POST /job/apiv1/job/ with Authorization: Bearer `invalid_token`.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_auth_bad_token_returns_forbidden() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", "Bearer invalid_token")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_post_job_forbidden(Some("Bearer invalid_token")).await;
 }
 
 /// Tests that POST /job/apiv1/job/ with token signed by wrong secret returns 403.
-///
-/// # Setup
-/// Creates a router with known JWT secrets.
-/// Creates a token signed with a different secret.
-///
-/// # Act
-/// Sends POST /job/apiv1/job/ with the mismatched token.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_auth_wrong_secret_returns_forbidden() {
     use jsonwebtoken::{Header, encode};
-
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     // Create a token signed with a secret not in the config
     let payload = serde_json::json!({"userId": 42});
@@ -129,20 +89,7 @@ async fn test_auth_wrong_secret_returns_forbidden() {
     )
     .unwrap();
 
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_post_job_forbidden(Some(&token)).await;
 }
 
 // ---------------------------------------------------------------------------
