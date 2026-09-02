@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use adacs_job_controller::cluster::manager::ClusterManager;
-use adacs_job_controller::cluster::traits::ClusterManagerTrait;
+use adacs_job_controller::cluster::traits::{ClusterManagerTrait, ClusterTrait};
 use adacs_job_controller::config::clusters::ClusterConfig;
 use adacs_job_controller::config::settings::*;
 
@@ -56,6 +56,30 @@ async fn get_uuid_clusters(db: &DatabaseConnection) -> Vec<String> {
         .into_iter()
         .map(|m| m.cluster)
         .collect()
+}
+
+/// Creates a file download session for cluster1 and connects it with `conn_id`.
+async fn connect_file_download(
+    mgr: &Arc<ClusterManager>,
+    token: &str,
+    conn_id: u64,
+) -> Option<Arc<dyn ClusterTrait>> {
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let _dl_cluster = mgr.create_file_download(&cluster, token).await;
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    mgr.handle_new_connection(conn_id, tx, token).await
+}
+
+/// Creates a file upload session for cluster1 and connects it with `conn_id`.
+async fn connect_file_upload(
+    mgr: &Arc<ClusterManager>,
+    token: &str,
+    conn_id: u64,
+) -> Option<Arc<dyn ClusterTrait>> {
+    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let _ul_cluster = mgr.create_file_upload(&cluster, token).await;
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    mgr.handle_new_connection(conn_id, tx, token).await
 }
 
 fn three_cluster_configs() -> Vec<ClusterConfig> {
@@ -808,13 +832,8 @@ async fn test_handle_new_connection_file_download() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    // Create a file download session
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
-    let _dl_cluster = mgr.create_file_download(&cluster, "dl-token-1").await;
-
     // Connect using the file download token
-    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let result = mgr.handle_new_connection(50, tx, "dl-token-1").await;
+    let result = connect_file_download(&mgr, "dl-token-1", 50).await;
     assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Should be trackable by connection
@@ -837,13 +856,8 @@ async fn test_handle_new_connection_file_download_duplicate_rejected() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    // Create a file download session
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
-    let _dl_cluster = mgr.create_file_download(&cluster, "dl-token-dup").await;
-
     // First connection binds the session
-    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let result = mgr.handle_new_connection(50, tx, "dl-token-dup").await;
+    let result = connect_file_download(&mgr, "dl-token-dup", 50).await;
     assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Second connection to the same token must be rejected
@@ -870,13 +884,8 @@ async fn test_handle_new_connection_file_upload() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    // Create a file upload session
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
-    let _ul_cluster = mgr.create_file_upload(&cluster, "ul-token-1").await;
-
     // Connect using the file upload token
-    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let result = mgr.handle_new_connection(60, tx, "ul-token-1").await;
+    let result = connect_file_upload(&mgr, "ul-token-1", 60).await;
     assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Should be trackable by connection
@@ -899,13 +908,8 @@ async fn test_handle_new_connection_file_upload_duplicate_rejected() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    // Create a file upload session
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
-    let _ul_cluster = mgr.create_file_upload(&cluster, "ul-token-dup").await;
-
     // First connection authenticates
-    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let result = mgr.handle_new_connection(60, tx, "ul-token-dup").await;
+    let result = connect_file_upload(&mgr, "ul-token-dup", 60).await;
     assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Second connection with the same token must be rejected
@@ -940,11 +944,7 @@ async fn test_remove_connection_file_download_cleanup() {
     let mgr = make_manager_with_three_clusters(&db).await;
 
     // Create and connect a file download session
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
-    let _dl_cluster = mgr.create_file_download(&cluster, "dl-cleanup").await;
-
-    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let result = mgr.handle_new_connection(70, tx, "dl-cleanup").await;
+    let result = connect_file_download(&mgr, "dl-cleanup", 70).await;
     assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Remove the connection
@@ -973,11 +973,7 @@ async fn test_remove_connection_file_upload_cleanup() {
     let mgr = make_manager_with_three_clusters(&db).await;
 
     // Create and connect a file upload session
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
-    let _ul_cluster = mgr.create_file_upload(&cluster, "ul-cleanup").await;
-
-    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-    let result = mgr.handle_new_connection(80, tx, "ul-cleanup").await;
+    let result = connect_file_upload(&mgr, "ul-cleanup", 80).await;
     assert_eq!(result.as_ref().unwrap().name(), "cluster1");
 
     // Remove the connection
