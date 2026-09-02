@@ -1099,6 +1099,39 @@ fn make_app_context_with_file_list_map() -> (
     (ctx, file_list_map)
 }
 
+/// Create a `Cluster` with an `AppContext` backed by an empty `file_list_map`,
+/// returning the cluster and the map for assertions.
+#[allow(clippy::type_complexity)]
+fn make_file_list_cluster() -> (
+    Arc<Cluster>,
+    Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
+) {
+    let (ctx, file_list_map) = make_app_context_with_file_list_map();
+    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
+    (cluster, file_list_map)
+}
+
+/// Build a `FILE_LIST` message with the given claimed entry count and entries.
+fn build_file_list_message(uuid: &str, num_files: u32, entries: &[(&str, bool, u64)]) -> Message {
+    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
+    msg.push_string(uuid);
+    msg.push_uint(num_files);
+    for (name, is_dir, size) in entries {
+        msg.push_string(name);
+        msg.push_bool(*is_dir);
+        msg.push_ulong(*size);
+    }
+    Message::from_bytes(msg.into_data())
+}
+
+/// Build a `FILE_LIST_ERROR` message with the given uuid and detail string.
+fn build_file_list_error_message(uuid: &str, details: &str) -> Message {
+    let mut msg = Message::new(FILE_LIST_ERROR, Priority::Medium, "test");
+    msg.push_string(uuid);
+    msg.push_string(details);
+    Message::from_bytes(msg.into_data())
+}
+
 /// Verifies that a `FILE_LIST` message for an unregistered UUID does not modify the file list map.
 ///
 /// # Setup
@@ -1112,22 +1145,13 @@ fn make_app_context_with_file_list_map() -> (
 /// The `file_list_map` remains empty.
 #[tokio::test]
 async fn test_handle_file_list_unknown_uuid_is_noop() {
-    let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
+    let (cluster, file_list_map) = make_file_list_cluster();
 
-    let uuid = "unknown-uuid";
-
-    // Build FILE_LIST message
-    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
-    msg.push_string(uuid);
-    msg.push_uint(2);
-    msg.push_string("/file1");
-    msg.push_bool(false);
-    msg.push_ulong(100);
-    msg.push_string("/file2");
-    msg.push_bool(false);
-    msg.push_ulong(200);
-    let msg = Message::from_bytes(msg.into_data());
+    let msg = build_file_list_message(
+        "unknown-uuid",
+        2,
+        &[("/file1", false, 100), ("/file2", false, 200)],
+    );
 
     cluster.handle_message(msg).await;
 
@@ -1150,8 +1174,7 @@ async fn test_handle_file_list_unknown_uuid_is_noop() {
 /// and `data_ready` is set to `true`.
 #[tokio::test]
 async fn test_handle_file_list_populates_file_entries() {
-    let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
+    let (cluster, file_list_map) = make_file_list_cluster();
 
     let uuid = "test-fl-uuid";
 
@@ -1169,22 +1192,15 @@ async fn test_handle_file_list_populates_file_entries() {
     }
 
     // Send FILE_LIST message
-    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
-    msg.push_string(uuid);
-    msg.push_uint(3);
-    // Directory
-    msg.push_string("/");
-    msg.push_bool(true);
-    msg.push_ulong(0);
-    // File 1
-    msg.push_string("/file1");
-    msg.push_bool(false);
-    msg.push_ulong(0x1234);
-    // File 2
-    msg.push_string("/file2");
-    msg.push_bool(false);
-    msg.push_ulong(0x4321);
-    let msg = Message::from_bytes(msg.into_data());
+    let msg = build_file_list_message(
+        uuid,
+        3,
+        &[
+            ("/", true, 0),
+            ("/file1", false, 0x1234),
+            ("/file2", false, 0x4321),
+        ],
+    );
 
     cluster.handle_message(msg).await;
 
@@ -1225,8 +1241,7 @@ async fn test_handle_file_list_populates_file_entries() {
 /// The `FileListState` contains the 2 entries that were present and `data_ready` is set to `true`.
 #[tokio::test]
 async fn test_handle_file_list_truncated_message_graceful() {
-    let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
+    let (cluster, file_list_map) = make_file_list_cluster();
 
     let uuid = "test-fl-truncated";
 
@@ -1235,16 +1250,11 @@ async fn test_handle_file_list_truncated_message_graceful() {
     file_list_map.insert(uuid.to_string(), Arc::clone(&fl_state));
 
     // Build FILE_LIST message claiming 5 entries but only carrying 2
-    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
-    msg.push_string(uuid);
-    msg.push_uint(5);
-    msg.push_string("/file1");
-    msg.push_bool(false);
-    msg.push_ulong(0x1234);
-    msg.push_string("/file2");
-    msg.push_bool(false);
-    msg.push_ulong(0x4321);
-    let msg = Message::from_bytes(msg.into_data());
+    let msg = build_file_list_message(
+        uuid,
+        5,
+        &[("/file1", false, 0x1234), ("/file2", false, 0x4321)],
+    );
 
     cluster.handle_message(msg).await;
 
@@ -1283,15 +1293,9 @@ async fn test_handle_file_list_truncated_message_graceful() {
 /// The `file_list_map` remains empty.
 #[tokio::test]
 async fn test_handle_file_list_error_unknown_uuid_is_noop() {
-    let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
+    let (cluster, file_list_map) = make_file_list_cluster();
 
-    let uuid = "unknown-err-uuid";
-
-    let mut msg = Message::new(FILE_LIST_ERROR, Priority::Medium, "test");
-    msg.push_string(uuid);
-    msg.push_string("details");
-    let msg = Message::from_bytes(msg.into_data());
+    let msg = build_file_list_error_message("unknown-err-uuid", "details");
 
     cluster.handle_message(msg).await;
 
@@ -1312,8 +1316,7 @@ async fn test_handle_file_list_error_unknown_uuid_is_noop() {
 /// and `files` remains empty.
 #[tokio::test]
 async fn test_handle_file_list_error_sets_error_state() {
-    let (ctx, file_list_map) = make_app_context_with_file_list_map();
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), Some(ctx));
+    let (cluster, file_list_map) = make_file_list_cluster();
 
     let uuid = "test-fle-uuid";
 
@@ -1329,10 +1332,7 @@ async fn test_handle_file_list_error_sets_error_state() {
         assert!(!state.data_ready);
     }
 
-    let mut msg = Message::new(FILE_LIST_ERROR, Priority::Medium, "test");
-    msg.push_string(uuid);
-    msg.push_string("details");
-    let msg = Message::from_bytes(msg.into_data());
+    let msg = build_file_list_error_message(uuid, "details");
 
     cluster.handle_message(msg).await;
 
@@ -1363,16 +1363,10 @@ async fn test_file_list_messages_on_master_cluster_are_noop() {
 
     let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
-    let mut list_msg = Message::new(FILE_LIST, Priority::Medium, "test");
-    list_msg.push_string("no-ctx-uuid");
-    list_msg.push_uint(0);
-    let list_msg = Message::from_bytes(list_msg.into_data());
+    let list_msg = build_file_list_message("no-ctx-uuid", 0, &[]);
     cluster.handle_message(list_msg).await;
 
-    let mut err_msg = Message::new(FILE_LIST_ERROR, Priority::Medium, "test");
-    err_msg.push_string("no-ctx-uuid");
-    err_msg.push_string("details");
-    let err_msg = Message::from_bytes(err_msg.into_data());
+    let err_msg = build_file_list_error_message("no-ctx-uuid", "details");
     cluster.handle_message(err_msg).await;
 
     assert_eq!(cluster.role(), ClusterRole::Master);
