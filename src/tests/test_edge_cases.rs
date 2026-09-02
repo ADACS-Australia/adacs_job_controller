@@ -57,8 +57,9 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState, Priority};
 
 use common::{
-    connect_ws, encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages,
-    recv_binary, setup_test_db, test_cluster_config, upload_cluster, ws_router,
+    connect_ws, encode_test_jwt, insert_file_download, insert_test_job, make_test_state,
+    online_cluster_no_messages, recv_binary, setup_test_db, test_cluster_config, upload_cluster,
+    ws_router,
 };
 
 use sea_orm::{
@@ -347,19 +348,7 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
 
     // Insert a download record
     let uuid_val = "dl-drop-test".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/big_file.bin".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/big_file.bin").await;
 
     let fd_state = Arc::new(FileDownloadState::new());
     let fd_sim = Arc::clone(&fd_state);
@@ -485,19 +474,7 @@ async fn test_download_timeout_when_cluster_never_responds() {
     adacs_job_controller::db::schema::create_test_schema(&db).await;
 
     let uuid_val = "timeout-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/file.txt".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/file.txt").await;
 
     // Create a FileDownloadState that NEVER gets signaled
     let fd_state = Arc::new(FileDownloadState::new());
@@ -1381,19 +1358,7 @@ async fn test_download_without_force_download_sets_inline_disposition() {
     let db = setup_test_db().await;
 
     let uuid_val = "inline-dl-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/path/to/report.pdf".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/path/to/report.pdf").await;
 
     let fd_state = simulate_completed_download();
 
@@ -1470,19 +1435,7 @@ async fn test_download_force_download_false_sets_inline_disposition() {
     let db = setup_test_db().await;
 
     let uuid_val = "force-false-dl-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/path/to/report.pdf".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/path/to/report.pdf").await;
 
     let fd_state = simulate_completed_download();
 
@@ -1585,19 +1538,7 @@ async fn assert_force_download_sets_attachment(
     uuid_val: String,
     force_param: &str,
 ) {
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/path/to/report.pdf".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/path/to/report.pdf").await;
 
     let fd_state = simulate_completed_download();
 
@@ -1683,19 +1624,7 @@ async fn test_download_sanitizes_unsafe_filename_in_disposition() {
     let db = setup_test_db().await;
 
     let uuid_val = "unsafe-dl-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/path/to/evil\"name\r\n.pdf".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/path/to/evil\"name\r\n.pdf").await;
 
     let fd_state = simulate_completed_download();
 
@@ -2006,19 +1935,7 @@ async fn test_file_transfer_data_timeout_body_truncated() {
     let db = setup_test_db().await;
 
     let uuid_val = "data-timeout-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/big.bin".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/big.bin").await;
 
     let fd_state = Arc::new(FileDownloadState::new());
 
@@ -2130,19 +2047,7 @@ async fn test_file_transfer_websocket_broken_truncates_download() {
     let db = setup_test_db().await;
 
     let uuid_val = "ws-broken-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/large.bin".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/large.bin").await;
 
     let fd_state = Arc::new(FileDownloadState::new());
 
@@ -2257,19 +2162,7 @@ async fn test_file_transfer_no_details_returns_503() {
     let db = setup_test_db().await;
 
     let uuid_val = "no-details-uuid".to_string();
-    file_download::ActiveModel {
-        user: Set(1),
-        job: Set(0),
-        cluster: Set("ozstar".to_string()),
-        bundle: Set("b".to_string()),
-        uuid: Set(uuid_val.clone()),
-        path: Set("/file.txt".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_file_download(&db, &uuid_val, "/file.txt").await;
 
     let fd_state = Arc::new(FileDownloadState::new());
 
