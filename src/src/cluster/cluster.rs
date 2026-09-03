@@ -98,16 +98,20 @@ fn empty_priority_queues() -> PriorityQueue {
 }
 
 impl Cluster {
-    /// Create a new master cluster.
-    #[must_use]
-    pub fn new(details: ClusterConfig, app_context: Option<Arc<AppContext>>) -> Arc<Self> {
+    /// Shared field initialization common to every cluster role.
+    fn new_base(
+        details: ClusterConfig,
+        role: ClusterRole,
+        role_string: String,
+        app_context: Option<Arc<AppContext>>,
+    ) -> Self {
         let queue = empty_priority_queues();
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
-        Arc::new(Self {
-            role_string: format!("master {}", details.name),
+        Self {
+            role_string,
             details,
-            role: ClusterRole::Master,
+            role,
             connection_tx,
             connection_rx,
             queue,
@@ -121,7 +125,19 @@ impl Cluster {
             file_upload_state: None,
             uuid: None,
             file_download_pause_resume_lock: Arc::new(tokio::sync::Mutex::new(())),
-        })
+        }
+    }
+
+    /// Create a new master cluster.
+    #[must_use]
+    pub fn new(details: ClusterConfig, app_context: Option<Arc<AppContext>>) -> Arc<Self> {
+        let role_string = format!("master {}", details.name);
+        Arc::new(Self::new_base(
+            details,
+            ClusterRole::Master,
+            role_string,
+            app_context,
+        ))
     }
 
     /// Create a file-download cluster.
@@ -132,27 +148,16 @@ impl Cluster {
         app_context: Option<Arc<AppContext>>,
         pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
     ) -> Arc<Self> {
-        let queue = empty_priority_queues();
-        let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
-
-        Arc::new(Self {
-            role_string: format!("file download {uuid}"),
+        let mut cluster = Self::new_base(
             details,
-            role: ClusterRole::FileDownload,
-            connection_tx,
-            connection_rx,
-            queue,
-            queued_message_size: AtomicUsize::new(0),
-            data_notify: Notify::new(),
-            queue_size_notify: Notify::new(),
-            running: AtomicBool::new(true),
-            download_task_handles: std::sync::Mutex::new(Vec::new()),
+            ClusterRole::FileDownload,
+            format!("file download {uuid}"),
             app_context,
-            file_download_state: Some(download_state),
-            file_upload_state: None,
-            uuid: Some(uuid),
-            file_download_pause_resume_lock: pause_resume_lock,
-        })
+        );
+        cluster.file_download_state = Some(download_state);
+        cluster.uuid = Some(uuid);
+        cluster.file_download_pause_resume_lock = pause_resume_lock;
+        Arc::new(cluster)
     }
 
     /// Create a file-upload cluster.
@@ -162,27 +167,15 @@ impl Cluster {
         upload_state: Arc<FileUploadState>,
         app_context: Option<Arc<AppContext>>,
     ) -> Arc<Self> {
-        let queue = empty_priority_queues();
-        let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
-
-        Arc::new(Self {
-            role_string: format!("file upload {uuid}"),
+        let mut cluster = Self::new_base(
             details,
-            role: ClusterRole::FileUpload,
-            connection_tx,
-            connection_rx,
-            queue,
-            queued_message_size: AtomicUsize::new(0),
-            data_notify: Notify::new(),
-            queue_size_notify: Notify::new(),
-            running: AtomicBool::new(true),
-            download_task_handles: std::sync::Mutex::new(Vec::new()),
+            ClusterRole::FileUpload,
+            format!("file upload {uuid}"),
             app_context,
-            file_download_state: None,
-            file_upload_state: Some(upload_state),
-            uuid: Some(uuid),
-            file_download_pause_resume_lock: Arc::new(tokio::sync::Mutex::new(())),
-        })
+        );
+        cluster.file_upload_state = Some(upload_state);
+        cluster.uuid = Some(uuid);
+        Arc::new(cluster)
     }
 
     pub fn uuid(&self) -> Option<&str> {
