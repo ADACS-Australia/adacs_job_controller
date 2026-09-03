@@ -108,13 +108,13 @@ fn drain_messages_with_id(rx: &mut UnboundedReceiver<WsOutbound>, id: u32) -> Ve
 /// Drain all pending `WsOutbound` messages from the channel, keeping only the
 /// binary payloads (non-binary messages are skipped).
 fn drain_binary_messages(rx: &mut UnboundedReceiver<WsOutbound>) -> Vec<Vec<u8>> {
-    let mut messages = Vec::new();
+    let mut payloads = Vec::new();
     while let Ok(outbound) = rx.try_recv() {
         if let WsOutbound::Binary(data) = outbound {
-            messages.push(data);
+            payloads.push(data);
         }
     }
-    messages
+    payloads
 }
 
 // ---------------------------------------------------------------------------
