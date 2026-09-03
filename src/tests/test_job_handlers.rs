@@ -23,8 +23,7 @@ use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_job_history_at,
     insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
-    mock_cluster_manager_no_clusters, offline_cluster, setup_test_db, test_cluster_config,
-    test_jwt_secrets_multi,
+    mock_cluster_manager_no_clusters, setup_test_db, test_cluster_config, test_jwt_secrets_multi,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -71,18 +70,7 @@ fn cluster_capturing_messages(
 #[tokio::test]
 async fn test_create_job_cluster_online_inserts_and_submits() {
     let db = setup_test_db().await;
-    let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(cluster_capturing_messages(
-        "ozstar",
-        Arc::clone(&sent),
-        true,
-    ));
-
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let (manager, sent) = manager_with_online_cluster();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
@@ -156,12 +144,7 @@ async fn test_create_job_cluster_online_inserts_and_submits() {
 #[tokio::test]
 async fn test_create_job_cluster_offline_only_pending_no_ws_message() {
     let db = setup_test_db().await;
-    let cluster = Arc::new(offline_cluster());
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let (manager, _) = manager_with_offline_cluster();
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -348,17 +331,7 @@ async fn test_create_job_job_id_exceeding_u32_returns_400() {
     let db = setup_test_db().await;
     insert_test_job_with_id(&db, i64::from(u32::MAX), "ozstar", "b", "testapp").await;
 
-    let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(cluster_capturing_messages(
-        "ozstar",
-        Arc::clone(&sent),
-        true,
-    ));
-    let mut manager = MockClusterManagerTrait::new();
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
+    let (manager, sent) = manager_with_online_cluster();
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
