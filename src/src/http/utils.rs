@@ -1,4 +1,4 @@
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::protocol::types::FileInfo;
 use axum::extract::{FromRequest, Request};
@@ -139,6 +139,25 @@ fn weak_canonical(path: &str) -> String {
     result.to_string_lossy().to_string()
 }
 
+/// Returns true if `path` is equal to or a descendant of `dir`, comparing path
+/// components so that sibling directories sharing a string prefix (e.g. `/test`
+/// vs `/testdir`) are not treated as descendants.
+fn is_within(path: &Path, dir: &Path) -> bool {
+    let mut path_components = path.components();
+    let mut dir_components = dir.components();
+    loop {
+        match (path_components.next(), dir_components.next()) {
+            (Some(p), Some(d)) => {
+                if p != d {
+                    return false;
+                }
+            }
+            (Some(_) | None, None) => return true,
+            (None, Some(_)) => return false,
+        }
+    }
+}
+
 /// Filters a list of files by path and recursion flag, canonicalising the target path before matching.
 #[must_use]
 pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec<FileInfo> {
@@ -182,7 +201,7 @@ pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec
                 .unwrap_or_default();
 
             if normalized_file_name == abs_path
-                || parent_path.starts_with(&abs_path)
+                || is_within(Path::new(&parent_path), Path::new(&abs_path))
                 || normalized_file_name == abs_path_no_trail
             {
                 matched.push(file.clone());
@@ -637,6 +656,19 @@ mod tests {
 
         let result = filter_files(&files, "/testdir/", true);
         assert_eq!(names(&result), expected_names);
+    }
+
+    /// Verifies that recursive filtering from `/test` does not leak files from the
+    /// sibling directory `/testdir`, which shares a string prefix.
+    #[test]
+    fn test_cpp_absolute_path_recursive_sibling_prefix_no_leak() {
+        let files = cpp_file_list();
+        let result = filter_files(&files, "/test", true);
+        let result_names = names(&result);
+        assert_eq!(result_names, vec!["/test"]);
+        assert!(!result_names.contains(&"/testdir"));
+        assert!(!result_names.contains(&"/testdir/file"));
+        assert!(!result_names.contains(&"/test2"));
     }
 
     /// Verifies that recursive filtering from `/testdir/testdir1` works with and without a leading
