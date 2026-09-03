@@ -88,6 +88,39 @@ async fn start_server_with_real_cluster_accepting()
     (cluster, port, server_handle)
 }
 
+/// Connect a real WebSocket client and assert the server sends a
+/// `SERVER_READY` message from `SYSTEM_SOURCE` as the first message.
+/// Returns the sink and stream for the caller to continue with.
+async fn connect_and_expect_server_ready(
+    port: u16,
+    token: &str,
+) -> (
+    futures_util::stream::SplitSink<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        TungsteniteMsg,
+    >,
+    futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+) {
+    let (sink, mut stream) = common::repeated_download::connect_ws(port, token).await;
+    let ready = recv_binary_with_timeout(&mut stream, Duration::from_secs(2))
+        .await
+        .expect("Server should send SERVER_READY");
+    let ready_msg = Message::from_bytes(ready);
+    assert_eq!(
+        ready_msg.id(),
+        SERVER_READY,
+        "First message should be SERVER_READY"
+    );
+    assert_eq!(ready_msg.source(), SYSTEM_SOURCE);
+    (sink, stream)
+}
+
 // ---------------------------------------------------------------------------
 // Test: Real WebSocket Connection and Authentication
 // ---------------------------------------------------------------------------
@@ -142,20 +175,8 @@ async fn test_real_websocket_connection_and_auth() {
     let (port, server_handle) = start_http_server(db.clone(), manager).await;
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
-    // Connect real WebSocket client
-    let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
-
-    // Expect SERVER_READY (sent automatically after connection)
-    let response = recv_binary_with_timeout(&mut stream, Duration::from_secs(2))
-        .await
-        .expect("Server should send SERVER_READY");
-    let msg = Message::from_bytes(response);
-    assert_eq!(
-        msg.id(),
-        SERVER_READY,
-        "First message should be SERVER_READY"
-    );
-    assert_eq!(msg.source(), SYSTEM_SOURCE);
+    // Connect real WebSocket client and expect SERVER_READY
+    let (sink, _stream) = connect_and_expect_server_ready(port, &token).await;
 
     // Cleanup
     drop(sink);
@@ -180,19 +201,7 @@ async fn test_server_initiated_close_sends_close_frame_to_client() {
     let (cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
-    let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
-    // Drain SERVER_READY so the read loop is positioned to observe
-    // whatever comes next.
-    let ready = recv_binary_with_timeout(&mut stream, Duration::from_secs(2))
-        .await
-        .expect("Server should send SERVER_READY");
-    let ready_msg = Message::from_bytes(ready);
-    assert_eq!(
-        ready_msg.id(),
-        SERVER_READY,
-        "First message should be SERVER_READY"
-    );
-    assert_eq!(ready_msg.source(), SYSTEM_SOURCE);
+    let (sink, mut stream) = connect_and_expect_server_ready(port, &token).await;
 
     // Trigger the server-side disconnect path.
     Cluster::close(&cluster, false).await;
@@ -251,17 +260,7 @@ async fn test_close_handshake_timeout_forces_tcp_close() {
     let (cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
     let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
 
-    let (sink, mut stream) = common::repeated_download::connect_ws(port, &token).await;
-    let ready = recv_binary_with_timeout(&mut stream, Duration::from_secs(2))
-        .await
-        .expect("Server should send SERVER_READY");
-    let ready_msg = Message::from_bytes(ready);
-    assert_eq!(
-        ready_msg.id(),
-        SERVER_READY,
-        "First message should be SERVER_READY"
-    );
-    assert_eq!(ready_msg.source(), SYSTEM_SOURCE);
+    let (sink, mut stream) = connect_and_expect_server_ready(port, &token).await;
 
     // Trigger server-side close.
     let close_start = std::time::Instant::now();
