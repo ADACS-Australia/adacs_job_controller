@@ -522,12 +522,6 @@ pub async fn cancel_job(
     // TODO: Content-Type tolerance - remove when client sends proper headers
     LenientJson(body): LenientJson<JobIdRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let job = get_job_with_access_check(&state, &auth, body.job_id).await?;
-
-    let latest = get_latest_job_history(&state, job.id).await?;
-
-    let current_state = latest.state;
-
     let invalid_states = [
         JobStatus::Cancelling as i32,
         JobStatus::Cancelled as i32,
@@ -539,21 +533,8 @@ pub async fn cancel_job(
         JobStatus::Completed as i32,
     ];
 
-    if invalid_states.contains(&current_state) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Job is in invalid state".to_string(),
-        ));
-    }
-
-    // Validate cluster exists (checked after state check so state errors take priority)
-    let cluster_obj = state
-        .cluster_manager
-        .get_cluster_by_name(&job.cluster)
-        .ok_or((
-            StatusCode::BAD_REQUEST,
-            "Cluster for job did not exist".to_string(),
-        ))?;
+    let (job, cluster_obj, current_state) =
+        load_job_for_transition(&state, &auth, body.job_id, &invalid_states).await?;
 
     record_job_transition(
         &state,
@@ -591,12 +572,6 @@ pub async fn delete_job(
     // TODO: Content-Type tolerance - remove when client sends proper headers
     LenientJson(body): LenientJson<JobIdRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let job = get_job_with_access_check(&state, &auth, body.job_id).await?;
-
-    let latest = get_latest_job_history(&state, job.id).await?;
-
-    let current_state = latest.state;
-
     let invalid_states = [
         JobStatus::Submitting as i32,
         JobStatus::Submitted as i32,
@@ -606,6 +581,49 @@ pub async fn delete_job(
         JobStatus::Deleting as i32,
         JobStatus::Deleted as i32,
     ];
+
+    let (job, cluster_obj, current_state) =
+        load_job_for_transition(&state, &auth, body.job_id, &invalid_states).await?;
+
+    record_job_transition(
+        &state,
+        &cluster_obj,
+        &job,
+        body.job_id,
+        current_state,
+        JobStatus::Deleted,
+        "Job deleted",
+        JobStatus::Deleting,
+        "Job deleting",
+        DELETE_JOB,
+    )
+    .await?;
+
+    Ok(Json(serde_json::json!({ "deleted": body.job_id })))
+}
+
+/// Load a job, its latest history state, and its cluster for a cancel/delete transition,
+/// validating that the current state is not in `invalid_states`.
+///
+/// # Errors
+///
+/// Returns an HTTP error if:
+/// - Authorization fails or job is not accessible
+/// - Job is not found
+/// - Job history is not found
+/// - Job state does not allow the transition
+/// - Cluster is not found
+async fn load_job_for_transition(
+    state: &AppState,
+    auth: &AuthResult,
+    job_id: u64,
+    invalid_states: &[i32],
+) -> Result<(job::Model, Arc<dyn ClusterTrait>, i32), (StatusCode, String)> {
+    let job = get_job_with_access_check(state, auth, job_id).await?;
+
+    let latest = get_latest_job_history(state, job.id).await?;
+
+    let current_state = latest.state;
 
     if invalid_states.contains(&current_state) {
         return Err((
@@ -623,21 +641,7 @@ pub async fn delete_job(
             "Cluster for job did not exist".to_string(),
         ))?;
 
-    record_job_transition(
-        &state,
-        &cluster_obj,
-        &job,
-        body.job_id,
-        current_state,
-        JobStatus::Deleted,
-        "Job deleted",
-        JobStatus::Deleting,
-        "Job deleting",
-        DELETE_JOB,
-    )
-    .await?;
-
-    Ok(Json(serde_json::json!({ "deleted": body.job_id })))
+    Ok((job, cluster_obj, current_state))
 }
 
 /// Fetch the most recent history entry for a job.
