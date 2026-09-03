@@ -1099,6 +1099,16 @@ fn make_file_list_cluster() -> (
     (cluster, file_list_map)
 }
 
+/// Register a UUID in the `file_list_map`, returning the associated `FileListState`.
+fn register_file_list_uuid(
+    file_list_map: &Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
+    uuid: &str,
+) -> Arc<tokio::sync::Mutex<FileListState>> {
+    let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+    file_list_map.insert(uuid.to_string(), Arc::clone(&fl_state));
+    fl_state
+}
+
 /// Build a `FILE_LIST` message with the given claimed entry count and entries.
 fn build_file_list_message(uuid: &str, num_files: u32, entries: &[(&str, bool, u64)]) -> Message {
     let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
@@ -1167,8 +1177,7 @@ async fn test_handle_file_list_populates_file_entries() {
     let uuid = "test-fl-uuid";
 
     // Register UUID in the file list map
-    let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
-    file_list_map.insert(uuid.to_string(), Arc::clone(&fl_state));
+    let fl_state = register_file_list_uuid(&file_list_map, uuid);
 
     // Verify initial state
     {
@@ -1234,8 +1243,7 @@ async fn test_handle_file_list_truncated_message_graceful() {
     let uuid = "test-fl-truncated";
 
     // Register UUID in the file list map
-    let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
-    file_list_map.insert(uuid.to_string(), Arc::clone(&fl_state));
+    let fl_state = register_file_list_uuid(&file_list_map, uuid);
 
     // Build FILE_LIST message claiming 5 entries but only carrying 2
     let msg = build_file_list_message(
@@ -1308,8 +1316,7 @@ async fn test_handle_file_list_error_sets_error_state() {
 
     let uuid = "test-fle-uuid";
 
-    let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
-    file_list_map.insert(uuid.to_string(), Arc::clone(&fl_state));
+    let fl_state = register_file_list_uuid(&file_list_map, uuid);
 
     // Verify initial state
     {
