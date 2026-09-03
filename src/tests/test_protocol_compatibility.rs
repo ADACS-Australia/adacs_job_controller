@@ -178,6 +178,26 @@ fn test_file_list_response_with_multiple_entries() {
 // Full round-trip tests for DB model serialization
 // ---------------------------------------------------------------------------
 
+/// Wraps a model in a `*_SAVE` message, round-trips it through `into_data` / `from_bytes`,
+/// and verifies the message id and `db_request_id` survive intact before handing the parsed
+/// message to `assert_fields` for per-type field checks.
+fn roundtrip_save_message<F, G>(msg_id: u32, db_request_id: u32, to_msg: F, assert_fields: G)
+where
+    F: FnOnce(&mut Message),
+    G: FnOnce(&mut Message),
+{
+    let mut msg = Message::new(msg_id, Priority::Highest, SYSTEM_SOURCE);
+    msg.push_uint(db_request_id);
+    to_msg(&mut msg);
+
+    let mut parsed = Message::from_bytes(msg.into_data());
+    assert_eq!(parsed.source(), SYSTEM_SOURCE);
+    assert_eq!(parsed.id(), msg_id);
+    assert_eq!(parsed.pop_uint(), db_request_id);
+
+    assert_fields(&mut parsed);
+}
+
 /// Verifies that a `ClusterJob` struct survives a full serialization round-trip inside a `DB_JOB_SAVE` message.
 ///
 /// # Setup
@@ -204,29 +224,24 @@ fn test_cluster_job_full_roundtrip_via_message() {
         deleted: false,
     };
 
-    // Wrap in a DB_JOB_SAVE message like the cluster client would
-    let mut msg = Message::new(DB_JOB_SAVE, Priority::Highest, SYSTEM_SOURCE);
-    let db_request_id: u32 = 777;
-    msg.push_uint(db_request_id);
-    original.to_message(&mut msg);
-
-    // Parse back
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.source(), SYSTEM_SOURCE);
-    assert_eq!(parsed.id(), DB_JOB_SAVE);
-    assert_eq!(parsed.pop_uint(), db_request_id);
-
-    let restored = ClusterJob::from_message(&mut parsed);
-    assert_eq!(restored.id, original.id);
-    assert_eq!(restored.job_id, original.job_id);
-    assert_eq!(restored.scheduler_id, original.scheduler_id);
-    assert_eq!(restored.submitting, original.submitting);
-    assert_eq!(restored.submitting_count, original.submitting_count);
-    assert_eq!(restored.bundle_hash, original.bundle_hash);
-    assert_eq!(restored.working_directory, original.working_directory);
-    assert_eq!(restored.running, original.running);
-    assert_eq!(restored.deleting, original.deleting);
-    assert_eq!(restored.deleted, original.deleted);
+    roundtrip_save_message(
+        DB_JOB_SAVE,
+        777,
+        |m| original.to_message(m),
+        |parsed| {
+            let restored = ClusterJob::from_message(parsed);
+            assert_eq!(restored.id, original.id);
+            assert_eq!(restored.job_id, original.job_id);
+            assert_eq!(restored.scheduler_id, original.scheduler_id);
+            assert_eq!(restored.submitting, original.submitting);
+            assert_eq!(restored.submitting_count, original.submitting_count);
+            assert_eq!(restored.bundle_hash, original.bundle_hash);
+            assert_eq!(restored.working_directory, original.working_directory);
+            assert_eq!(restored.running, original.running);
+            assert_eq!(restored.deleting, original.deleting);
+            assert_eq!(restored.deleted, original.deleted);
+        },
+    );
 }
 
 /// Verifies that a `ClusterJobStatus` struct survives a full serialization round-trip inside a `DB_JOBSTATUS_SAVE` message.
@@ -249,20 +264,18 @@ fn test_cluster_job_status_full_roundtrip_via_message() {
         state: 500,
     };
 
-    let mut msg = Message::new(DB_JOBSTATUS_SAVE, Priority::Highest, SYSTEM_SOURCE);
-    let db_request_id: u32 = 888;
-    msg.push_uint(db_request_id);
-    original.to_message(&mut msg);
-
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.id(), DB_JOBSTATUS_SAVE);
-    assert_eq!(parsed.pop_uint(), db_request_id);
-
-    let restored = ClusterJobStatus::from_message(&mut parsed);
-    assert_eq!(restored.id, original.id);
-    assert_eq!(restored.job_id, original.job_id);
-    assert_eq!(restored.what, original.what);
-    assert_eq!(restored.state, original.state);
+    roundtrip_save_message(
+        DB_JOBSTATUS_SAVE,
+        888,
+        |m| original.to_message(m),
+        |parsed| {
+            let restored = ClusterJobStatus::from_message(parsed);
+            assert_eq!(restored.id, original.id);
+            assert_eq!(restored.job_id, original.job_id);
+            assert_eq!(restored.what, original.what);
+            assert_eq!(restored.state, original.state);
+        },
+    );
 }
 
 /// Verifies that a `BundleJob` struct survives a full serialization round-trip inside a `DB_BUNDLE_CREATE_OR_UPDATE_JOB` message.
@@ -283,22 +296,16 @@ fn test_bundle_job_full_roundtrip_via_message() {
         content: r##"{"script":"#!/bin/bash\necho hello"}"##.to_string(),
     };
 
-    let mut msg = Message::new(
+    roundtrip_save_message(
         DB_BUNDLE_CREATE_OR_UPDATE_JOB,
-        Priority::Highest,
-        SYSTEM_SOURCE,
+        999,
+        |m| original.to_message(m),
+        |parsed| {
+            let restored = BundleJob::from_message(parsed);
+            assert_eq!(restored.id, original.id);
+            assert_eq!(restored.content, original.content);
+        },
     );
-    let db_request_id: u32 = 999;
-    msg.push_uint(db_request_id);
-    original.to_message(&mut msg);
-
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.id(), DB_BUNDLE_CREATE_OR_UPDATE_JOB);
-    assert_eq!(parsed.pop_uint(), db_request_id);
-
-    let restored = BundleJob::from_message(&mut parsed);
-    assert_eq!(restored.id, original.id);
-    assert_eq!(restored.content, original.content);
 }
 
 // ---------------------------------------------------------------------------
