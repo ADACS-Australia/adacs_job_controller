@@ -69,6 +69,39 @@ use sea_orm::{
 // Helpers
 // ===========================================================================
 
+/// Build a mock cluster manager wired for a file download: admission allowed,
+/// no cleanup trigger, app not shutting down, an online cluster for any name
+/// lookup, a fresh online cluster from `create_file_download`, and
+/// `get_file_download` returning the given state.
+fn download_manager(fd: Arc<FileDownloadState>) -> MockClusterManagerTrait {
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_file_download_admission()
+        .returning(|_| None);
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    let cluster = Arc::new(online_cluster_no_messages());
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    let c2 = Arc::new(online_cluster_no_messages());
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&c2);
+            Box::pin(async move { c as Arc<dyn ClusterTrait> })
+        });
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd)));
+    manager
+}
+
 // ===========================================================================
 // 1. ZERO-BYTE UPLOAD
 //
@@ -384,34 +417,7 @@ async fn test_download_client_disconnect_mid_stream_no_crash() {
         }
     });
 
-    let fd_for_manager = Arc::clone(&fd_state);
-    let cluster = Arc::new(online_cluster_no_messages());
-
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(async move { c as Arc<dyn ClusterTrait> })
-        });
-    manager
-        .expect_get_file_download()
-        .returning(move |_| Some(Arc::clone(&fd_for_manager)));
+    let manager = download_manager(Arc::clone(&fd_state));
 
     let state = make_test_state(db, manager);
     let (port, _handle) = common::repeated_download::start_server(create_router(state)).await;
@@ -501,34 +507,8 @@ async fn test_download_timeout_when_cluster_never_responds() {
 
     // Create a FileDownloadState that NEVER gets signaled
     let fd_state = Arc::new(FileDownloadState::new());
-    let fd_for_manager = Arc::clone(&fd_state);
 
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(async move { c as Arc<dyn ClusterTrait> })
-        });
-    manager
-        .expect_get_file_download()
-        .returning(move |_| Some(Arc::clone(&fd_for_manager)));
+    let manager = download_manager(Arc::clone(&fd_state));
 
     let http_state = AppState {
         db,
@@ -1156,32 +1136,7 @@ async fn test_download_expired_records_are_cleaned_up() {
     fd_state.data_ready.store(true, Ordering::Release);
 
     let fd_for_mgr = Arc::clone(&fd_state);
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(async move { c as Arc<dyn ClusterTrait> })
-        });
-    manager
-        .expect_get_file_download()
-        .returning(move |_| Some(Arc::clone(&fd_for_mgr)));
+    let manager = download_manager(fd_for_mgr);
 
     let app = create_router(make_test_state(db.clone(), manager));
 
@@ -1397,33 +1352,7 @@ async fn test_download_without_force_download_sets_inline_disposition() {
 
     let fd_state = simulate_completed_download();
 
-    let fd_for_mgr = Arc::clone(&fd_state);
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(async move { c as Arc<dyn ClusterTrait> })
-        });
-    manager
-        .expect_get_file_download()
-        .returning(move |_| Some(Arc::clone(&fd_for_mgr)));
+    let manager = download_manager(Arc::clone(&fd_state));
 
     let app = create_router(make_test_state(db, manager));
 
