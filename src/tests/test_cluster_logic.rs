@@ -105,6 +105,18 @@ fn drain_messages_with_id(rx: &mut UnboundedReceiver<WsOutbound>, id: u32) -> Ve
     messages
 }
 
+/// Drain all pending `WsOutbound` messages from the channel, returning the raw
+/// binary payload of each `WsOutbound::Binary` message.
+fn drain_binary_messages(rx: &mut UnboundedReceiver<WsOutbound>) -> Vec<Vec<u8>> {
+    let mut messages = Vec::new();
+    while let Ok(outbound) = rx.try_recv() {
+        if let WsOutbound::Binary(data) = outbound {
+            messages.push(data);
+        }
+    }
+    messages
+}
+
 // ---------------------------------------------------------------------------
 // handle_update_job: verify JobserverJobhistory row is inserted
 // ---------------------------------------------------------------------------
