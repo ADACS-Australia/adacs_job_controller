@@ -68,6 +68,24 @@ fn first_response(sent: &Arc<Mutex<Vec<Message>>>) -> (u32, Message) {
     parse_response(captured[0].clone())
 }
 
+/// Insert a `cluster_job_status` row and return the inserted model (for its id).
+async fn insert_cluster_job_status(
+    db: &DatabaseConnection,
+    job_id: i64,
+    what: &str,
+    state: i32,
+) -> cluster_job_status::Model {
+    cluster_job_status::ActiveModel {
+        job_id: Set(job_id),
+        what: Set(what.to_string()),
+        state: Set(state),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap()
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_SAVE — insert (id == 0)
 // ---------------------------------------------------------------------------
@@ -636,15 +654,7 @@ async fn test_handle_jobstatus_save_insert() {
 async fn test_handle_jobstatus_save_update() {
     let db = make_cluster_db().await;
 
-    let inserted = cluster_job_status::ActiveModel {
-        job_id: Set(10),
-        what: Set("old_what".to_string()),
-        state: Set(1),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted = insert_cluster_job_status(&db, 10, "old_what", 1).await;
     let existing_id = inserted.id;
 
     let status = ClusterJobStatus {
@@ -699,15 +709,7 @@ async fn test_handle_jobstatus_get_by_job_id() {
     let db = make_cluster_db().await;
 
     for (jid, what, state) in [(20i64, "a", 1i32), (20i64, "b", 2i32), (21i64, "c", 3i32)] {
-        cluster_job_status::ActiveModel {
-            job_id: Set(jid),
-            what: Set(what.to_string()),
-            state: Set(state),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        insert_cluster_job_status(&db, jid, what, state).await;
     }
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -759,15 +761,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
         (30i64, "wall_time", 88i32),
         (31i64, "cpu_time", 99i32),
     ] {
-        cluster_job_status::ActiveModel {
-            job_id: Set(jid),
-            what: Set(what.to_string()),
-            state: Set(state),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        insert_cluster_job_status(&db, jid, what, state).await;
     }
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -813,15 +807,7 @@ async fn test_handle_jobstatus_delete_by_id_list() {
     // Insert 4 statuses; we'll delete 2 of them
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
-        let inserted = cluster_job_status::ActiveModel {
-            job_id: Set(1),
-            what: Set(what.to_string()),
-            state: Set(state),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let inserted = insert_cluster_job_status(&db, 1, what, state).await;
         ids.push(inserted.id.cast_unsigned());
     }
 
@@ -869,15 +855,7 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
 
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
-        let inserted = cluster_job_status::ActiveModel {
-            job_id: Set(1),
-            what: Set(what.to_string()),
-            state: Set(state),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let inserted = insert_cluster_job_status(&db, 1, what, state).await;
         ids.push(inserted.id.cast_unsigned());
     }
 
@@ -1369,15 +1347,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
     let job_row_id = inserted.id;
 
     // Insert a real status for the existing job
-    cluster_job_status::ActiveModel {
-        job_id: Set(job_row_id),
-        what: Set("cpu_time".to_string()),
-        state: Set(100),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_cluster_job_status(&db, job_row_id, "cpu_time", 100).await;
 
     // Query with a non-existent job ID
     let invalid_job_id = (job_row_id + 100).cast_unsigned();
