@@ -472,10 +472,17 @@ impl ClusterManager {
 
             // Delete any existing UUIDs for this cluster before inserting a new one
             tracing::trace!("ClusterManager: Deleting old UUIDs for cluster '{}'", name);
-            let _ = cluster_uuid::Entity::delete_many()
+            if let Err(e) = cluster_uuid::Entity::delete_many()
                 .filter(cluster_uuid::Column::Cluster.eq(name.as_str()))
                 .exec(&self.db)
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    "ClusterManager: Failed to delete old UUIDs for cluster '{}': {}",
+                    name,
+                    e
+                );
+            }
 
             tracing::trace!(
                 "ClusterManager: Inserting new UUID record for cluster '{}'",
@@ -847,10 +854,13 @@ impl ClusterManagerTrait for ClusterManager {
                 (*CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS).cast_signed(),
             )
             .unwrap_or_default();
-        let _ = cluster_uuid::Entity::delete_many()
+        if let Err(e) = cluster_uuid::Entity::delete_many()
             .filter(cluster_uuid::Column::Timestamp.lte(cutoff))
             .exec(&self.db)
-            .await;
+            .await
+        {
+            tracing::warn!("ClusterManager: Failed to delete expired UUIDs: {}", e);
+        }
 
         // Now look up the token (only non-expired ones remain)
         let row = cluster_uuid::Entity::find()
@@ -864,10 +874,17 @@ impl ClusterManagerTrait for ClusterManager {
             let cluster_name = r.cluster.clone();
 
             // Delete ALL UUID records for this cluster
-            let _ = cluster_uuid::Entity::delete_many()
+            if let Err(e) = cluster_uuid::Entity::delete_many()
                 .filter(cluster_uuid::Column::Cluster.eq(cluster_name.as_str()))
                 .exec(&self.db)
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    "ClusterManager: Failed to delete UUIDs for cluster '{}': {}",
+                    cluster_name,
+                    e
+                );
+            }
 
             if let Some(cluster) = clusters.get(&cluster_name) {
                 // If this cluster is already connected, reject the new connection
