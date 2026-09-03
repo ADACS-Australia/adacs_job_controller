@@ -105,6 +105,31 @@ fn drain_messages_with_id(rx: &mut UnboundedReceiver<WsOutbound>, id: u32) -> Ve
     messages
 }
 
+/// Shared helper for the "resend old state" tests: inserts a job with an old
+/// history row, runs `check` (which triggers the resend path), and asserts
+/// exactly one message with `msg_id` is emitted.
+async fn assert_resend_for_old_state(
+    job_id: i64,
+    state: i32,
+    what: &str,
+    msg_id: u32,
+    check: impl FnOnce(&Cluster) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>,
+) {
+    let db = setup_test_db().await;
+
+    insert_job(&db, job_id, "ozstar", "mybundle", "myapp", "{}").await;
+    insert_job_history_at(&db, job_id, state, what, old_timestamp()).await;
+
+    let (cluster, mut rx) = make_online_cluster(&db).await;
+
+    check(&cluster).await;
+    cluster.wait_for_queue_drain(true).await;
+
+    let msgs = drain_messages_with_id(&mut rx, msg_id);
+    assert_eq!(msgs.len(), 1, "Expected exactly one resend message");
+    cluster.stop();
+}
+
 // ---------------------------------------------------------------------------
 // handle_update_job: verify JobserverJobhistory row is inserted
 // ---------------------------------------------------------------------------
@@ -216,31 +241,12 @@ async fn test_handle_update_job_no_app_context_does_not_panic() {
 /// At least one `SUBMIT_JOB` message is present in the drained output.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_resends_old_pending() {
-    let db = setup_test_db().await;
-
-    // Insert a job on "ozstar"
-    insert_job(&db, 1, "ozstar", "mybundle", "myapp", "{}").await;
-
-    // Insert history with state=10 (PENDING) and timestamp far in the past
-    insert_job_history_at(&db, 1, 10, "submit", old_timestamp()).await;
-
-    let (cluster, mut rx) = make_online_cluster(&db).await;
-
-    // Call check_unsubmitted_jobs
-    cluster.check_unsubmitted_jobs().await;
-
-    // Wait for scheduler to forward all queued messages
-    cluster.wait_for_queue_drain(true).await;
-
-    // Expect at least one SUBMIT_JOB message + the SERVER_READY that gets sent on connection
-    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
-
-    assert_eq!(
-        submit_msgs.len(),
-        1,
-        "Expected exactly one SUBMIT_JOB message"
-    );
-    cluster.stop();
+    assert_resend_for_old_state(1, 10, "submit", SUBMIT_JOB, |cluster| {
+        Box::pin(async move {
+            cluster.check_unsubmitted_jobs().await;
+        })
+    })
+    .await;
 }
 
 /// Verifies that `check_unsubmitted_jobs` does NOT re-send `SUBMIT_JOB` for a job
@@ -358,19 +364,12 @@ async fn test_check_unsubmitted_jobs_skips_offline_cluster() {
 /// At least one `CANCEL_JOB` message is present in the output.
 #[tokio::test]
 async fn test_check_cancelling_jobs_resends_old_cancelling() {
-    let db = setup_test_db().await;
-
-    insert_job(&db, 10, "ozstar", "b", "app", "{}").await;
-    insert_job_history_at(&db, 10, 60, "cancel", old_timestamp()).await;
-
-    let (cluster, mut rx) = make_online_cluster(&db).await;
-
-    cluster.check_cancelling_jobs().await;
-    cluster.wait_for_queue_drain(true).await;
-
-    let cancel_msgs = drain_messages_with_id(&mut rx, CANCEL_JOB);
-    assert_eq!(cancel_msgs.len(), 1, "Expected exactly one CANCEL_JOB");
-    cluster.stop();
+    assert_resend_for_old_state(10, 60, "cancel", CANCEL_JOB, |cluster| {
+        Box::pin(async move {
+            cluster.check_cancelling_jobs().await;
+        })
+    })
+    .await;
 }
 
 /// Verifies that `check_cancelling_jobs` does NOT re-send `CANCEL_JOB` for a job
@@ -466,19 +465,12 @@ async fn test_check_cancelling_jobs_resends_with_pending_history() {
 /// At least one `DELETE_JOB` message is present in the output.
 #[tokio::test]
 async fn test_check_deleting_jobs_resends_old_deleting() {
-    let db = setup_test_db().await;
-
-    insert_job(&db, 20, "ozstar", "b", "app", "{}").await;
-    insert_job_history_at(&db, 20, 80, "delete", old_timestamp()).await;
-
-    let (cluster, mut rx) = make_online_cluster(&db).await;
-
-    cluster.check_deleting_jobs().await;
-    cluster.wait_for_queue_drain(true).await;
-
-    let delete_msgs = drain_messages_with_id(&mut rx, DELETE_JOB);
-    assert_eq!(delete_msgs.len(), 1, "Expected exactly one DELETE_JOB");
-    cluster.stop();
+    assert_resend_for_old_state(20, 80, "delete", DELETE_JOB, |cluster| {
+        Box::pin(async move {
+            cluster.check_deleting_jobs().await;
+        })
+    })
+    .await;
 }
 
 /// Verifies that `check_deleting_jobs` does NOT re-send `DELETE_JOB` for a job
@@ -612,10 +604,7 @@ async fn assert_noop_for_states(
         check(&cluster).await;
         cluster.wait_for_queue_drain(true).await;
 
-        let matching: Vec<_> = drain_binary_messages(&mut rx)
-            .into_iter()
-            .filter(|d| Message::from_bytes(d.clone()).id() == message_id)
-            .collect();
+        let matching: Vec<_> = drain_messages_with_id(&mut rx, message_id);
 
         assert!(
             matching.is_empty(),
@@ -750,25 +739,12 @@ async fn test_check_deleting_jobs_noop_for_non_matching_statuses() {
 /// At least one `SUBMIT_JOB` message is present in the output.
 #[tokio::test]
 async fn test_check_unsubmitted_jobs_resends_old_submitting() {
-    let db = setup_test_db().await;
-
-    insert_job(&db, 400, "ozstar", "mybundle", "myapp", r#"{"key":"val"}"#).await;
-
-    // Insert history with state=20 (SUBMITTING) and timestamp far in the past
-    insert_job_history_at(&db, 400, 20, "submit", old_timestamp()).await;
-
-    let (cluster, mut rx) = make_online_cluster(&db).await;
-
-    cluster.check_unsubmitted_jobs().await;
-    cluster.wait_for_queue_drain(true).await;
-
-    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
-    assert_eq!(
-        submit_msgs.len(),
-        1,
-        "SUBMITTING state should trigger exactly one SUBMIT_JOB resubmission"
-    );
-    cluster.stop();
+    assert_resend_for_old_state(400, 20, "submit", SUBMIT_JOB, |cluster| {
+        Box::pin(async move {
+            cluster.check_unsubmitted_jobs().await;
+        })
+    })
+    .await;
 }
 
 /// Verifies that resend logic handles multiple stale jobs in one pass and emits one resubmission
