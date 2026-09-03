@@ -53,6 +53,27 @@ where
     }
 }
 
+/// Read the first binary message and assert it is a `SERVER_READY` message
+/// from `SYSTEM_SOURCE`.
+async fn recv_server_ready(
+    stream: &mut futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+) {
+    let data = recv_binary(stream)
+        .await
+        .expect("Expected SERVER_READY binary message");
+    let msg = Message::from_bytes(data);
+    assert_eq!(
+        msg.id(),
+        SERVER_READY,
+        "First message should be SERVER_READY"
+    );
+    assert_eq!(msg.source(), SYSTEM_SOURCE);
+}
+
 // ---------------------------------------------------------------------------
 // Build mock cluster manager helpers
 // ---------------------------------------------------------------------------
@@ -150,16 +171,7 @@ async fn test_ws_valid_token_receives_server_ready() {
     let (_, mut stream) = connect_ws_auth(port, "valid-token").await;
 
     // The server should send SERVER_READY after accepting the connection
-    let data = recv_binary(&mut stream)
-        .await
-        .expect("Expected SERVER_READY binary message");
-    let msg = Message::from_bytes(data);
-    assert_eq!(
-        msg.id(),
-        SERVER_READY,
-        "First message should be SERVER_READY"
-    );
-    assert_eq!(msg.source(), SYSTEM_SOURCE);
+    recv_server_ready(&mut stream).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -402,16 +414,7 @@ async fn test_ws_lowercase_bearer_scheme_accepted() {
         .split();
 
     // The server should send SERVER_READY after accepting the connection
-    let data = recv_binary(&mut stream)
-        .await
-        .expect("Expected SERVER_READY binary message");
-    let msg = Message::from_bytes(data);
-    assert_eq!(
-        msg.id(),
-        SERVER_READY,
-        "First message should be SERVER_READY"
-    );
-    assert_eq!(msg.source(), SYSTEM_SOURCE);
+    recv_server_ready(&mut stream).await;
 
     sink.close().await.unwrap();
 }
