@@ -35,6 +35,19 @@ async fn start_test_server(state: adacs_job_controller::app::AppState) -> common
     common::TestServer::new(port, handle)
 }
 
+/// Start a test server backed by a forwarding cluster manager that accepts
+/// connections matching `valid_token` (or any token when `None`).
+/// Returns the server guard and the manager's `remove_connection` counter.
+async fn start_server_with_forwarding_cluster(
+    db: sea_orm::DatabaseConnection,
+    valid_token: Option<&str>,
+) -> (common::TestServer, Arc<std::sync::atomic::AtomicUsize>) {
+    let (manager, removed_count) = common::manager_with_forwarding_cluster("ozstar", valid_token);
+    let state = make_test_state(db, manager);
+    let server = start_test_server(state).await;
+    (server, removed_count)
+}
+
 /// Poll `cond` every 5ms until `timeout` elapses.
 /// Returns `true` as soon as `cond()` returns `true`, otherwise `false`.
 async fn wait_until<F>(timeout: std::time::Duration, cond: F) -> bool
@@ -140,10 +153,7 @@ async fn test_ws_no_token_disconnects() {
 /// The first binary message received has id `SERVER_READY` and source `SYSTEM_SOURCE`.
 #[tokio::test]
 async fn test_ws_valid_token_receives_server_ready() {
-    let db = setup_test_db().await;
-    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", None);
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let (server, _) = start_server_with_forwarding_cluster(setup_test_db().await, None).await;
     let port = server.port;
 
     // Connect with Authorization: Bearer header
@@ -182,10 +192,8 @@ async fn test_ws_valid_token_receives_server_ready() {
 async fn test_ws_valid_token_handles_disconnect_gracefully() {
     use std::sync::atomic::Ordering;
 
-    let db = setup_test_db().await;
-    let (manager, removed_count) = common::manager_with_forwarding_cluster("ozstar", None);
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let (server, removed_count) =
+        start_server_with_forwarding_cluster(setup_test_db().await, None).await;
     let port = server.port;
 
     // Connect with Authorization: Bearer header
@@ -381,10 +389,7 @@ async fn test_ws_pong_handled() {
 /// Connection succeeds and receives `SERVER_READY`.
 #[tokio::test]
 async fn test_ws_lowercase_bearer_scheme_accepted() {
-    let db = setup_test_db().await;
-    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", None);
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let (server, _) = start_server_with_forwarding_cluster(setup_test_db().await, None).await;
     let port = server.port;
 
     // Connect with lowercase "bearer " scheme prefix
@@ -466,10 +471,8 @@ async fn test_ws_missing_authorization_header() {
 /// Connection is rejected because the malformed header yields no valid token.
 #[tokio::test]
 async fn test_ws_malformed_authorization_header() {
-    let db = setup_test_db().await;
-    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", Some("valid"));
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let (server, _) =
+        start_server_with_forwarding_cluster(setup_test_db().await, Some("valid")).await;
     let port = server.port;
 
     // Connect with malformed Authorization header (no "Bearer " prefix)
@@ -512,10 +515,8 @@ async fn test_ws_malformed_authorization_header() {
 /// Connection is rejected (breaking change verified).
 #[tokio::test]
 async fn test_ws_query_param_rejected() {
-    let db = setup_test_db().await;
-    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", Some("valid"));
-    let state = make_test_state(db, manager);
-    let server = start_test_server(state).await;
+    let (server, _) =
+        start_server_with_forwarding_cluster(setup_test_db().await, Some("valid")).await;
     let port = server.port;
 
     // Connect with old query parameter method (should be rejected)
