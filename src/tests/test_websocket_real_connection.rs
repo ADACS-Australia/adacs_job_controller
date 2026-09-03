@@ -20,7 +20,7 @@ use tower::ServiceExt;
 
 use adacs_job_controller::cluster::cluster::Cluster;
 use adacs_job_controller::cluster::traits::{
-    ClusterManagerTrait, ClusterTrait, MockClusterManagerTrait,
+    ClusterManagerTrait, ClusterTrait, MockClusterManagerTrait, MockClusterTrait,
 };
 use adacs_job_controller::db::entities::{file_download, job};
 use adacs_job_controller::http::server::create_router;
@@ -431,18 +431,17 @@ async fn test_file_download_record_persistence() {
 /// # Assert
 /// - All jobs inserted into database
 /// - All clusters received their jobs
-#[tokio::test]
-async fn test_multiple_clusters_concurrent_job_submission() {
-    let db = setup_test_db().await;
-
-    let ozstar = Arc::new(online_cluster("ozstar"));
-    let nci = Arc::new(online_cluster("nci"));
-    let gadi = Arc::new(online_cluster("gadi"));
-
+/// Builds a `MockClusterManagerTrait` that resolves the three standard
+/// clusters (ozstar, nci, gadi) by name and accepts new connections.
+fn three_cluster_manager(
+    ozstar: &Arc<MockClusterTrait>,
+    nci: &Arc<MockClusterTrait>,
+    gadi: &Arc<MockClusterTrait>,
+) -> MockClusterManagerTrait {
     let mut manager = MockClusterManagerTrait::new();
-    let oz = Arc::clone(&ozstar);
-    let nc = Arc::clone(&nci);
-    let ga = Arc::clone(&gadi);
+    let oz = Arc::clone(ozstar);
+    let nc = Arc::clone(nci);
+    let ga = Arc::clone(gadi);
 
     manager
         .expect_get_cluster_by_name()
@@ -470,6 +469,18 @@ async fn test_multiple_clusters_concurrent_job_submission() {
     manager
         .expect_handle_new_connection()
         .returning(move |_, _, _| Box::pin(async move { None }));
+    manager
+}
+
+#[tokio::test]
+async fn test_multiple_clusters_concurrent_job_submission() {
+    let db = setup_test_db().await;
+
+    let ozstar = Arc::new(online_cluster("ozstar"));
+    let nci = Arc::new(online_cluster("nci"));
+    let gadi = Arc::new(online_cluster("gadi"));
+
+    let manager = three_cluster_manager(&ozstar, &nci, &gadi);
 
     // Start real HTTP server
     let (_port, server_handle) = start_http_server(db.clone(), manager).await;
@@ -479,27 +490,10 @@ async fn test_multiple_clusters_concurrent_job_submission() {
     let clusters = ["ozstar", "nci"];
 
     for (i, cluster_name) in clusters.iter().enumerate() {
-        let oz2 = Arc::clone(&ozstar);
-        let nc2 = Arc::clone(&nci);
-        let ga2 = Arc::clone(&gadi);
-        let app = create_router(make_test_state(db.clone(), {
-            let mut manager = MockClusterManagerTrait::new();
-            manager
-                .expect_get_cluster_by_name()
-                .returning(move |name| match name {
-                    "ozstar" => Some(Arc::clone(&oz2)
-                        as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
-                    "nci" => Some(Arc::clone(&nc2)
-                        as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
-                    "gadi" => Some(Arc::clone(&ga2)
-                        as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait>),
-                    _ => None,
-                });
-            manager
-                .expect_handle_new_connection()
-                .returning(move |_, _, _| Box::pin(async move { None }));
-            manager
-        }));
+        let app = create_router(make_test_state(
+            db.clone(),
+            three_cluster_manager(&ozstar, &nci, &gadi),
+        ));
 
         let job_data = json!({
             "cluster": cluster_name,
