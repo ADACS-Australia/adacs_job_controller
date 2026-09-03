@@ -45,6 +45,27 @@ async fn make_cluster_db() -> DatabaseConnection {
     db
 }
 
+/// Insert a real cluster job row (fixed "ozstar" job) and return its row id.
+async fn insert_cluster_job(db: &DatabaseConnection) -> i64 {
+    cluster_job::ActiveModel {
+        job_id: Set(42),
+        scheduler_id: Set(0),
+        submitting: Set(false),
+        submitting_count: Set(0),
+        bundle_hash: Set("hash".to_string()),
+        working_directory: Set("/work".to_string()),
+        running: Set(false),
+        deleting: Set(false),
+        deleted: Set(false),
+        cluster: Set("ozstar".to_string()),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap()
+    .id
+}
+
 /// Build a ready-to-dispatch `Message` by creating it, pushing payload, then round-tripping
 /// through `into_data()` / `from_bytes()` so `id()` / `source()` are properly cached.
 fn dispatch_message(id: u32, push: impl FnOnce(&mut Message)) -> Message {
@@ -1294,23 +1315,7 @@ async fn test_handle_jobstatus_get_by_job_id_nonexistent_job() {
     let db = make_cluster_db().await;
 
     // Insert a real job so the DB is not empty
-    let inserted = cluster_job::ActiveModel {
-        job_id: Set(42),
-        scheduler_id: Set(0),
-        submitting: Set(false),
-        submitting_count: Set(0),
-        bundle_hash: Set("hash".to_string()),
-        working_directory: Set("/work".to_string()),
-        running: Set(false),
-        deleting: Set(false),
-        deleted: Set(false),
-        cluster: Set("ozstar".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
-    let job_row_id = inserted.id;
+    let job_row_id = insert_cluster_job(&db).await;
 
     // Request statuses for a job ID that doesn't exist
     let invalid_job_id = (job_row_id + 100).cast_unsigned();
@@ -1350,23 +1355,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
     let db = make_cluster_db().await;
 
     // Insert a real job
-    let inserted = cluster_job::ActiveModel {
-        job_id: Set(42),
-        scheduler_id: Set(0),
-        submitting: Set(false),
-        submitting_count: Set(0),
-        bundle_hash: Set("hash".to_string()),
-        working_directory: Set("/work".to_string()),
-        running: Set(false),
-        deleting: Set(false),
-        deleted: Set(false),
-        cluster: Set("ozstar".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
-    let job_row_id = inserted.id;
+    let job_row_id = insert_cluster_job(&db).await;
 
     // Insert a real status for the existing job
     cluster_job_status::ActiveModel {
@@ -1419,23 +1408,7 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
     let db = make_cluster_db().await;
 
     // Insert a real job to establish a known ID range
-    let inserted = cluster_job::ActiveModel {
-        job_id: Set(42),
-        scheduler_id: Set(0),
-        submitting: Set(false),
-        submitting_count: Set(0),
-        bundle_hash: Set("hash".to_string()),
-        working_directory: Set("/work".to_string()),
-        running: Set(false),
-        deleting: Set(false),
-        deleted: Set(false),
-        cluster: Set("ozstar".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
-    let job_row_id = inserted.id;
+    let job_row_id = insert_cluster_job(&db).await;
 
     // Save a status referencing a non-existent job (no FK enforcement in Rust)
     let invalid_job_id = job_row_id + 999;
