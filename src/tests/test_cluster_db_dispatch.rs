@@ -24,6 +24,26 @@ use common::mock_cluster_capturing;
 // but we CAN test the message format construction and model serialization
 // that feeds into the dispatcher. This verifies the protocol contract.
 
+/// Builds a `DB_*_SAVE` message with a `db_request_id`, round-trips it through
+/// `into_data` / `from_bytes`, and asserts the message ID, source, and
+/// `db_request_id` are recovered. Returns the parsed message so the caller can
+/// deserialize and assert its model-specific fields.
+fn roundtrip_save_message(
+    id: u32,
+    db_request_id: u32,
+    build: impl FnOnce(&mut Message),
+) -> Message {
+    let mut msg = Message::new(id, Priority::Highest, SYSTEM_SOURCE);
+    msg.push_uint(db_request_id);
+    build(&mut msg);
+
+    let mut parsed = Message::from_bytes(msg.into_data());
+    assert_eq!(parsed.id(), id);
+    assert_eq!(parsed.source(), SYSTEM_SOURCE);
+    assert_eq!(parsed.pop_uint(), db_request_id);
+    parsed
+}
+
 /// Verifies that a `DB_JOB_SAVE` message can be constructed with a `ClusterJob` payload and parsed back correctly.
 ///
 /// # Setup
@@ -38,7 +58,6 @@ use common::mock_cluster_capturing;
 /// and all `ClusterJob` fields survive deserialization without loss.
 #[test]
 fn test_db_job_save_message_construction() {
-    // Build a DB_JOB_SAVE message exactly as the cluster client would
     let job = ClusterJob {
         id: 0, // new
         job_id: 42,
@@ -52,19 +71,7 @@ fn test_db_job_save_message_construction() {
         deleted: false,
     };
 
-    let mut msg = Message::new(DB_JOB_SAVE, Priority::Highest, SYSTEM_SOURCE);
-    let db_request_id: u32 = 100;
-    msg.push_uint(db_request_id);
-    job.to_message(&mut msg);
-
-    // Parse back and verify: the dispatcher reads db_request_id first, then ClusterJob
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.id(), DB_JOB_SAVE);
-    assert_eq!(parsed.source(), SYSTEM_SOURCE);
-
-    let req_id = parsed.pop_uint();
-    assert_eq!(req_id, db_request_id);
-
+    let mut parsed = roundtrip_save_message(DB_JOB_SAVE, 100, |msg| job.to_message(msg));
     let restored = ClusterJob::from_message(&mut parsed);
     assert_eq!(restored.job_id, 42);
     assert!(restored.submitting);
@@ -92,15 +99,7 @@ fn test_db_jobstatus_save_message_construction() {
         state: 500,
     };
 
-    let mut msg = Message::new(DB_JOBSTATUS_SAVE, Priority::Highest, SYSTEM_SOURCE);
-    msg.push_uint(200); // db_request_id
-    status.to_message(&mut msg);
-
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.id(), DB_JOBSTATUS_SAVE);
-    let req_id = parsed.pop_uint();
-    assert_eq!(req_id, 200);
-
+    let mut parsed = roundtrip_save_message(DB_JOBSTATUS_SAVE, 200, |msg| status.to_message(msg));
     let restored = ClusterJobStatus::from_message(&mut parsed);
     assert_eq!(restored.job_id, 42);
     assert_eq!(restored.what, "scheduler_id");
@@ -125,19 +124,9 @@ fn test_db_bundle_create_or_update_message_construction() {
         content: r#"{"key":"value"}"#.to_string(),
     };
 
-    let mut msg = Message::new(
-        DB_BUNDLE_CREATE_OR_UPDATE_JOB,
-        Priority::Highest,
-        SYSTEM_SOURCE,
-    );
-    msg.push_uint(300); // db_request_id
-    bundle.to_message(&mut msg);
-
-    let mut parsed = Message::from_bytes(msg.into_data());
-    assert_eq!(parsed.id(), DB_BUNDLE_CREATE_OR_UPDATE_JOB);
-    let req_id = parsed.pop_uint();
-    assert_eq!(req_id, 300);
-
+    let mut parsed = roundtrip_save_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, 300, |msg| {
+        bundle.to_message(msg);
+    });
     let restored = BundleJob::from_message(&mut parsed);
     assert_eq!(restored.content, r#"{"key":"value"}"#);
 }
