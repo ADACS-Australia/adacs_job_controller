@@ -38,6 +38,41 @@ use std::sync::atomic::Ordering;
 // Helpers
 // ---------------------------------------------------------------------------
 
+fn file_list_cluster(
+    file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
+    extra: Arc<dyn Fn(String) -> futures::future::BoxFuture<'static, ()> + Send + Sync>,
+) -> Arc<MockClusterTrait> {
+    let mut c = MockClusterTrait::new();
+    c.expect_name().returning(|| "ozstar".to_string());
+    c.expect_is_online().returning(|| true);
+    c.expect_role().returning(|| ClusterRole::Master);
+    c.expect_role_string().returning(|| "master".to_string());
+    c.expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
+    c.expect_send_message().returning(move |msg| {
+        let mut m = adacs_job_controller::protocol::message::Message::from_bytes(msg.into_data());
+        let _job_id = m.pop_uint();
+        let uuid = m.pop_string();
+        let (flm, extra) = (Arc::clone(&file_list_map), Arc::clone(&extra));
+        Box::pin(async move {
+            extra(uuid.clone()).await;
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            if let Some(state_arc) = flm.get(&uuid) {
+                let mut locked = state_arc.lock().await;
+                locked.files = vec![FileInfo {
+                    file_name: "/output/result.txt".to_string(),
+                    file_size: 512,
+                    permissions: 0o644,
+                    is_directory: false,
+                }];
+                locked.data_ready = true;
+                locked.notify.notify_waiters();
+            }
+        })
+    });
+    Arc::new(c)
+}
+
 // ---------------------------------------------------------------------------
 // POST /job/apiv1/file/ — create file download records
 // ---------------------------------------------------------------------------
@@ -880,43 +915,8 @@ async fn test_list_files_ws_response_populates_result() {
     // The fl_state will be populated by a background task simulating the WS handler
     let file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
         Arc::new(dashmap::DashMap::new());
-    let file_list_map_clone = Arc::clone(&file_list_map);
 
-    let cluster = {
-        let flm = Arc::clone(&file_list_map_clone);
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(move |msg| {
-            // Parse the UUID from the FILE_LIST message, then signal it
-            let mut m =
-                adacs_job_controller::protocol::message::Message::from_bytes(msg.into_data());
-            let _job_id = m.pop_uint();
-            let uuid = m.pop_string();
-
-            let flm2 = Arc::clone(&flm);
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                if let Some(state_arc) = flm2.get(&uuid) {
-                    let mut locked = state_arc.lock().await;
-                    locked.files = vec![FileInfo {
-                        file_name: "/output/result.txt".to_string(),
-                        file_size: 512,
-                        permissions: 0o644,
-                        is_directory: false,
-                    }];
-                    locked.data_ready = true;
-                    locked.notify.notify_waiters();
-                }
-            });
-            Box::pin(async {})
-        });
-        Arc::new(c)
-    };
+    let cluster = file_list_cluster(Arc::clone(&file_list_map), Arc::new(|_| Box::pin(async {})));
 
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
@@ -994,29 +994,15 @@ async fn test_list_files_completed_job_populates_cache() {
 
     let file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
         Arc::new(dashmap::DashMap::new());
-    let file_list_map_clone = Arc::clone(&file_list_map);
 
     let db_for_mock = db.clone();
     let job_id_for_mock = job_id;
-    let cluster = {
-        let flm = Arc::clone(&file_list_map_clone);
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(move |msg| {
-            let mut m =
-                adacs_job_controller::protocol::message::Message::from_bytes(msg.into_data());
-            let _job_id = m.pop_uint();
-            let uuid = m.pop_string();
-
-            let flm2 = Arc::clone(&flm);
+    let cluster = file_list_cluster(
+        Arc::clone(&file_list_map),
+        Arc::new(move |_uuid| {
             let db2 = db_for_mock.clone();
             let jid = job_id_for_mock;
-            tokio::spawn(async move {
+            Box::pin(async move {
                 // Simulate a stale cache row appearing while the request is in flight
                 let _ = file_list_cache::ActiveModel {
                     job_id: Set(jid),
@@ -1028,23 +1014,9 @@ async fn test_list_files_completed_job_populates_cache() {
                 }
                 .insert(&db2)
                 .await;
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                if let Some(state_arc) = flm2.get(&uuid) {
-                    let mut locked = state_arc.lock().await;
-                    locked.files = vec![FileInfo {
-                        file_name: "/output/result.txt".to_string(),
-                        file_size: 512,
-                        permissions: 0o644,
-                        is_directory: false,
-                    }];
-                    locked.data_ready = true;
-                    locked.notify.notify_waiters();
-                }
-            });
-            Box::pin(async {})
-        });
-        Arc::new(c)
-    };
+            })
+        }),
+    );
 
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
@@ -1145,42 +1117,8 @@ async fn test_spawn_background_cache_replaces_stale_rows() {
 
     let file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
         Arc::new(dashmap::DashMap::new());
-    let file_list_map_clone = Arc::clone(&file_list_map);
 
-    let cluster = {
-        let flm = Arc::clone(&file_list_map_clone);
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(move |msg| {
-            let mut m =
-                adacs_job_controller::protocol::message::Message::from_bytes(msg.into_data());
-            let _job_id = m.pop_uint();
-            let uuid = m.pop_string();
-
-            let flm2 = Arc::clone(&flm);
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                if let Some(state_arc) = flm2.get(&uuid) {
-                    let mut locked = state_arc.lock().await;
-                    locked.files = vec![FileInfo {
-                        file_name: "/output/result.txt".to_string(),
-                        file_size: 512,
-                        permissions: 0o644,
-                        is_directory: false,
-                    }];
-                    locked.data_ready = true;
-                    locked.notify.notify_waiters();
-                }
-            });
-            Box::pin(async {})
-        });
-        Arc::new(c)
-    };
+    let cluster = file_list_cluster(Arc::clone(&file_list_map), Arc::new(|_| Box::pin(async {})));
 
     let state = adacs_job_controller::app::AppState {
         db: db.clone(),
