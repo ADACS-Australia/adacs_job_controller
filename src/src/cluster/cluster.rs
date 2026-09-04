@@ -559,9 +559,19 @@ impl Cluster {
             let db = ctx.db.clone();
             let file_list_map = ctx.file_list_map.clone();
             let uuid_bg = uuid.clone();
+            let cluster_name = self.name();
             tokio::spawn(async move {
                 let timeout = std::time::Duration::from_secs(*CLIENT_TIMEOUT_SECONDS);
-                let _ = FileListState::wait_until_data_ready(&fl_state, timeout).await;
+                let _ = FileListState::wait_until_data_ready(&fl_state, timeout)
+                    .await
+                    .inspect_err(|_| {
+                        tracing::warn!(
+                            "Cluster[{}]: Timed out waiting for FILE_LIST_RESPONSE for job {} (uuid {}); file-list cache not populated",
+                            cluster_name,
+                            job_id,
+                            uuid_bg
+                        );
+                    });
 
                 let files = {
                     let locked = fl_state.lock().await;
