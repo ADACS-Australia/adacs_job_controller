@@ -87,6 +87,37 @@ pub fn online_cluster(name: &str) -> MockClusterTrait {
     c
 }
 
+/// Build a mock master cluster with the given name and cluster-config name.
+///
+/// Sets the common master-cluster boilerplate (`name`, `role` = Master,
+/// `role_string` = "master", `is_online` = true, `cluster_details`); callers
+/// add any further expectations (e.g. `send_message`) on top.
+pub fn master_cluster(name: &str, details_name: &str) -> MockClusterTrait {
+    let mut c = MockClusterTrait::new();
+    let n = name.to_string();
+    let d = details_name.to_string();
+    c.expect_name().returning(move || n.clone());
+    c.expect_role_string().returning(|| "master".to_string());
+    c.expect_is_online().returning(|| true);
+    c.expect_role().returning(|| ClusterRole::Master);
+    c.expect_cluster_details()
+        .returning(move || test_cluster_config(&d));
+    c
+}
+
+/// Drain all pending binary `WsOutbound` messages from the channel as raw bytes.
+pub fn drain_binary_messages(
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
+) -> Vec<Vec<u8>> {
+    let mut messages = Vec::new();
+    while let Ok(outbound) = rx.try_recv() {
+        if let WsOutbound::Binary(data) = outbound {
+            messages.push(data);
+        }
+    }
+    messages
+}
+
 /// Build a mock cluster that captures all `send_message` calls.
 pub fn mock_cluster_capturing(name: &str) -> (MockClusterTrait, Arc<Mutex<Vec<Message>>>) {
     let sent = Arc::new(Mutex::new(Vec::<Message>::new()));

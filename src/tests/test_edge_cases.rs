@@ -47,18 +47,19 @@ use adacs_job_controller::cluster::cluster::{AppContext, Cluster};
 use adacs_job_controller::cluster::file_download::FileDownloadState;
 use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{
-    ClusterTrait, MockClusterManagerTrait, MockClusterTrait, WsConnectionSender, WsOutbound,
+    ClusterTrait, MockClusterManagerTrait, WsConnectionSender, WsOutbound,
 };
 use adacs_job_controller::config::settings::FILE_CHUNK_SIZE;
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
-use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState, Priority};
+use adacs_job_controller::protocol::types::{FileInfo, FileListState, Priority};
 
 use common::{
-    connect_ws, encode_test_jwt, insert_test_job, make_test_state, online_cluster_no_messages,
-    recv_binary, setup_test_db, test_cluster_config, upload_cluster, ws_router,
+    connect_ws, encode_test_jwt, insert_test_job, make_test_state, master_cluster,
+    online_cluster_no_messages, recv_binary, setup_test_db, test_cluster_config, upload_cluster,
+    ws_router,
 };
 
 use sea_orm::{
@@ -112,13 +113,7 @@ async fn test_upload_zero_byte_file_succeeds() {
 
     let upload_cluster = {
         let sent2 = Arc::clone(&sent_msgs);
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
+        let mut c = master_cluster("ozstar-up", "ozstar");
         c.expect_send_message().returning(move |msg| {
             sent2.lock().unwrap().push(msg);
             Box::pin(async {})
@@ -693,13 +688,7 @@ async fn test_upload_queue_drain_timeout_returns_400() {
 
     // Upload cluster that always fails queue drain
     let upload_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
+        let mut c = master_cluster("ozstar-up", "ozstar");
         c.expect_send_message().returning(|_| Box::pin(async {}));
         // Queue drain always fails (timeout)
         c.expect_wait_for_queue_drain()
@@ -905,16 +894,7 @@ async fn test_rapid_ws_connect_disconnect_stress() {
     m.expect_is_application_shutting_down().returning(|| false);
     m.expect_handle_new_connection().returning(|_, ws_tx, _| {
         // Build a minimal cluster for each connection
-        let mut cluster = MockClusterTrait::new();
-        cluster.expect_name().returning(|| "ozstar".to_string());
-        cluster
-            .expect_role_string()
-            .returning(|| "master".to_string());
-        cluster.expect_is_online().returning(|| true);
-        cluster.expect_role().returning(|| ClusterRole::Master);
-        cluster
-            .expect_cluster_details()
-            .returning(|| test_cluster_config("test"));
+        let mut cluster = master_cluster("ozstar", "test");
         cluster.expect_send_message().returning(move |msg| {
             let _ = ws_tx.send(WsOutbound::Binary(msg.into_data()));
             Box::pin(async {})
@@ -1242,16 +1222,7 @@ async fn test_download_expired_records_are_cleaned_up() {
 async fn test_ws_truncated_binary_message_no_crash() {
     let db = setup_test_db().await;
 
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("test"));
+    let mut cluster = master_cluster("ozstar", "test");
     // send_message used to forward SERVER_READY
     let (fwd_tx, _fwd_rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     let fwd_tx = Arc::new(StdMutex::new(Some(fwd_tx)));
@@ -1796,13 +1767,7 @@ async fn test_upload_large_body_is_chunked() {
 
     let upload_cluster = {
         let sent2 = Arc::clone(&sent_msgs);
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
+        let mut c = master_cluster("ozstar-up", "ozstar");
         c.expect_send_message().returning(move |msg| {
             sent2.lock().unwrap().push(msg);
             Box::pin(async {})
@@ -1908,16 +1873,7 @@ async fn test_ws_concurrent_binary_messages() {
     let msg_count = Arc::new(AtomicUsize::new(0));
     let mc = Arc::clone(&msg_count);
 
-    let mut cluster = MockClusterTrait::new();
-    cluster.expect_name().returning(|| "ozstar".to_string());
-    cluster
-        .expect_role_string()
-        .returning(|| "master".to_string());
-    cluster.expect_is_online().returning(|| true);
-    cluster.expect_role().returning(|| ClusterRole::Master);
-    cluster
-        .expect_cluster_details()
-        .returning(|| test_cluster_config("test"));
+    let mut cluster = master_cluster("ozstar", "test");
     cluster
         .expect_send_message()
         .returning(|_| Box::pin(async {}));
@@ -2507,13 +2463,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
     let caps_for_main = Arc::clone(&captured_msgs);
 
     let main_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
+        let mut c = master_cluster("ozstar", "ozstar");
         c.expect_send_message().returning(move |msg| {
             caps_for_main.lock().unwrap().push(msg);
             Box::pin(async {})
@@ -2749,13 +2699,7 @@ async fn test_job_finished_update_populates_cache() {
     let send_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let sc = Arc::clone(&send_count);
     let mock_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
+        let mut c = master_cluster("ozstar", "ozstar");
         // send_message should NOT be called (cache hit means no WS FILE_LIST request)
         c.expect_send_message().returning(move |_| {
             sc.fetch_add(1, Ordering::Relaxed);
@@ -3012,13 +2956,7 @@ async fn test_large_file_uploads() {
 
     let upload_cluster = {
         let sent2 = Arc::clone(&sent_msgs);
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-upload".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
+        let mut c = master_cluster("ozstar-upload", "ozstar");
         c.expect_send_message().returning(move |msg| {
             sent2.lock().unwrap().push(msg);
             Box::pin(async {})

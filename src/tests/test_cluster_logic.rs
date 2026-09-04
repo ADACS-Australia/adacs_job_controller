@@ -11,7 +11,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use common::{insert_job_history_at, make_app_context, setup_test_db, test_cluster_config};
+use common::{
+    drain_binary_messages, insert_job_history_at, make_app_context, setup_test_db,
+    test_cluster_config,
+};
 
 use adacs_job_controller::cluster::cluster::Cluster;
 use adacs_job_controller::cluster::traits::ClusterTrait;
