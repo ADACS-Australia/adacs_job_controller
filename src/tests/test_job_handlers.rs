@@ -1852,6 +1852,33 @@ async fn test_create_job_works_without_content_type_header() {
     assert_eq!(job_id, 1);
 }
 
+/// Send a job request (cancel/delete) without a Content-Type header and return
+/// the response status. Used to verify the handler still parses the JSON body.
+async fn run_job_request_without_content_type(
+    method: &str,
+    job_id: i64,
+    db: sea_orm::DatabaseConnection,
+    manager: MockClusterManagerTrait,
+) -> StatusCode {
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    app.oneshot(
+        Request::builder()
+            .method(method)
+            .uri("/job/apiv1/job/")
+            // NOTE: No content-type header
+            .header("authorization", &token)
+            .body(Body::from(
+                serde_json::json!({ "jobId": job_id }).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+    .status()
+}
+
 /// Tests that PATCH /job/ (cancel) succeeds without Content-Type header.
 ///
 /// # Setup
@@ -1868,26 +1895,9 @@ async fn test_cancel_job_works_without_content_type_header() {
     let job_id = insert_test_job_with_state(&db, JobStatus::Pending).await;
 
     let (manager, _) = manager_with_online_cluster();
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+    let status = run_job_request_without_content_type("PATCH", job_id, db, manager).await;
 
-    // Send request WITHOUT Content-Type header
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("PATCH")
-                .uri("/job/apiv1/job/")
-                // NOTE: No content-type header
-                .header("authorization", &token)
-                .body(Body::from(
-                    serde_json::json!({ "jobId": job_id }).to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(status, StatusCode::OK);
 }
 
 /// Tests that DELETE /job/ succeeds without Content-Type header.
@@ -1906,26 +1916,9 @@ async fn test_delete_job_works_without_content_type_header() {
     let job_id = insert_test_job_with_state(&db, JobStatus::Pending).await;
 
     let (manager, _) = manager_with_online_cluster();
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+    let status = run_job_request_without_content_type("DELETE", job_id, db, manager).await;
 
-    // Send request WITHOUT Content-Type header
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/job/apiv1/job/")
-                // NOTE: No content-type header
-                .header("authorization", &token)
-                .body(Body::from(
-                    serde_json::json!({ "jobId": job_id }).to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(status, StatusCode::OK);
 }
 
 /// Tests that invalid JSON is still rejected even without Content-Type header.
