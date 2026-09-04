@@ -89,7 +89,7 @@ pub async fn maybe_handle_cluster_db_message(
     );
 
     macro_rules! db_dispatch {
-        ($id:ident, $handler:ident) => {
+        ($id:ident, $handler:path) => {
             if message.id() == $id {
                 tracing::trace!(
                     "ClusterDB[{}]: Handling {}",
@@ -105,7 +105,7 @@ pub async fn maybe_handle_cluster_db_message(
     db_dispatch!(DB_JOB_GET_BY_JOB_ID, handle_job_get_by_job_id);
     db_dispatch!(DB_JOB_GET_BY_ID, handle_job_get_by_id);
     db_dispatch!(DB_JOB_GET_RUNNING_JOBS, handle_job_get_running_jobs);
-    db_dispatch!(DB_JOB_DELETE, handle_job_delete);
+    db_dispatch!(DB_JOB_DELETE, handle_delete_by_id::<cluster_job::Entity>);
     db_dispatch!(DB_JOB_SAVE, handle_job_save);
     db_dispatch!(
         DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT,
@@ -122,7 +122,10 @@ pub async fn maybe_handle_cluster_db_message(
         handle_bundle_create_or_update
     );
     db_dispatch!(DB_BUNDLE_GET_JOB_BY_ID, handle_bundle_get_by_id);
-    db_dispatch!(DB_BUNDLE_DELETE_JOB, handle_bundle_delete);
+    db_dispatch!(
+        DB_BUNDLE_DELETE_JOB,
+        handle_delete_by_id::<bundle_job::Entity>
+    );
 
     tracing::trace!(
         "ClusterDB[{}]: Message ID {} not a DB message - not handled",
@@ -278,16 +281,18 @@ async fn handle_job_get_running_jobs(
     .await;
 }
 
-/// Deletes a cluster job row by primary key and sends an empty DB response.
-async fn handle_job_delete(
+/// Deletes a row by primary key and sends an empty `DB_RESPONSE`.
+async fn handle_delete_by_id<E: EntityTrait>(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
-) {
+) where
+    <E::PrimaryKey as sea_orm::PrimaryKeyTrait>::ValueType: From<i64>,
+{
     let db_request_id = message.pop_uint();
     let id = message.pop_ulong().cast_signed();
 
-    if let Err(e) = cluster_job::Entity::delete_by_id(id).exec(db).await {
+    if let Err(e) = E::delete_by_id(id).exec(db).await {
         tracing::error!("ClusterDB[{}]: delete failed: {}", cluster.name(), e);
     }
 
@@ -627,23 +632,6 @@ async fn handle_bundle_get_by_id(
         .map(BundleJob::from);
 
     send_single_row_response(cluster, db_request_id, row, |r, msg| r.to_message(msg)).await;
-}
-
-/// Deletes a bundle job by ID and sends an empty `DB_RESPONSE`.
-async fn handle_bundle_delete(
-    message: &mut Message,
-    cluster: &dyn ClusterTrait,
-    db: &sea_orm::DatabaseConnection,
-) {
-    let db_request_id = message.pop_uint();
-    let id = message.pop_ulong().cast_signed();
-
-    if let Err(e) = bundle_job::Entity::delete_by_id(id).exec(db).await {
-        tracing::error!("ClusterDB[{}]: delete failed: {}", cluster.name(), e);
-    }
-
-    let response = prepare_response(db_request_id);
-    cluster.send_message(response).await;
 }
 
 #[cfg(test)]
