@@ -360,7 +360,15 @@ impl Cluster {
                                         priority_val,
                                         source
                                     );
-                                    let _ = sender.send(WsOutbound::Binary(data));
+                                    if let Err(e) = sender.send(WsOutbound::Binary(data)) {
+                                        tracing::warn!(
+                                            "Cluster[{}]: Failed to send message (source {}, priority {}) - WS forwarder unavailable: {}",
+                                            self.name(),
+                                            source,
+                                            priority_val,
+                                            e
+                                        );
+                                    }
                                     total_sent += 1;
                                 } else {
                                     tracing::warn!(
