@@ -96,22 +96,15 @@ async fn test_auth_wrong_secret_returns_forbidden() {
 // Job API: POST (create job) tests
 // ---------------------------------------------------------------------------
 
-/// Tests that POST /job/apiv1/job/ with valid auth but no cluster access returns 400.
-///
-/// # Setup
-/// Creates a router with a mock manager. The test JWT secret allows "ozstar" and "nci".
-///
-/// # Act
-/// Sends POST /job/apiv1/job/ with a valid token but cluster "unknown" (not in secret).
-///
-/// # Assert
-/// Verifies 400 Bad Request with body containing "does not have access".
-#[tokio::test]
-async fn test_create_job_no_cluster_access_returns_bad_request() {
+/// Sends POST /job/apiv1/job/ with a valid token and the given `cluster` and
+/// asserts the response is 400 Bad Request with a body containing `expected`.
+async fn assert_create_job_bad_request(cluster: &str, expected: &str) {
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
+
+    let body = format!(r#"{{"cluster":"{cluster}","parameters":"p","bundle":"b"}}"#);
 
     let resp = app
         .oneshot(
@@ -120,9 +113,7 @@ async fn test_create_job_no_cluster_access_returns_bad_request() {
                 .uri("/job/apiv1/job/")
                 .header("content-type", "application/json")
                 .header("authorization", &token)
-                .body(Body::from(
-                    r#"{"cluster":"unknown","parameters":"p","bundle":"b"}"#,
-                ))
+                .body(Body::from(body))
                 .unwrap(),
         )
         .await
@@ -133,50 +124,19 @@ async fn test_create_job_no_cluster_access_returns_bad_request() {
         .await
         .unwrap();
     let body_str = String::from_utf8_lossy(&body);
-    assert!(
-        body_str.contains("does not have access"),
-        "body was: {body_str}"
-    );
+    assert!(body_str.contains(expected), "body was: {body_str}");
+}
+
+/// Tests that POST /job/apiv1/job/ with valid auth but no cluster access returns 400.
+#[tokio::test]
+async fn test_create_job_no_cluster_access_returns_bad_request() {
+    assert_create_job_bad_request("unknown", "does not have access").await;
 }
 
 /// Tests that a known-cluster-name that the manager cannot find returns 400.
-///
-/// # Setup
-/// Creates a router with a mock manager that returns no cluster for any name.
-///
-/// # Act
-/// Sends POST /job/apiv1/job/ with a valid token and cluster "ozstar" (in the secret).
-///
-/// # Assert
-/// Verifies 400 response with body containing "Invalid cluster".
 #[tokio::test]
 async fn test_create_job_cluster_not_found_returns_bad_request() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-
-    let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(
-                    r#"{"cluster":"ozstar","parameters":"p","bundle":"b"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let body_str = String::from_utf8_lossy(&body);
-    assert!(body_str.contains("Invalid cluster"), "body was: {body_str}");
+    assert_create_job_bad_request("ozstar", "Invalid cluster").await;
 }
 
 // ---------------------------------------------------------------------------
