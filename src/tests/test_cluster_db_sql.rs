@@ -68,6 +68,50 @@ fn first_response(sent: &Arc<Mutex<Vec<Message>>>) -> (u32, Message) {
     parse_response(captured[0].clone())
 }
 
+/// Shared dispatch+assert flow for the `DB_BUNDLE_CREATE_OR_UPDATE_JOB` insert path.
+///
+/// Dispatches the message with the given bundle id, request id, and hash against a fresh
+/// in-memory DB, then verifies a new row was inserted with the supplied content, cluster,
+/// and hash, and that the `DB_RESPONSE` echoes the request id and returns the inserted row
+/// id. Returns `(db, inserted model, returned id)` so callers can add test-specific checks.
+async fn assert_bundle_create_or_update_inserts(
+    bundle_id: i64,
+    req_id: u32,
+    hash: &str,
+) -> (DatabaseConnection, bundle_job::Model, u64) {
+    let db = make_cluster_db().await;
+
+    let bundle = BundleJob {
+        id: bundle_id,
+        content: r#"{"script":"run.sh"}"#.to_string(),
+    };
+
+    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(req_id);
+        bundle.to_message(m);
+        m.push_string(hash);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let model = bundle_job::Entity::find()
+        .filter(bundle_job::Column::BundleHash.eq(hash))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.content, r#"{"script":"run.sh"}"#);
+    assert_eq!(model.cluster, "ozstar");
+    assert_eq!(model.bundle_hash, hash);
+
+    let (resp_req_id, mut body) = first_response(&sent);
+    assert_eq!(resp_req_id, req_id);
+    let returned_id = body.pop_ulong();
+    (db, model, returned_id)
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_SAVE — insert (id == 0)
 // ---------------------------------------------------------------------------
@@ -925,45 +969,7 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
 /// `bundle_hash="myhash`"; the `DB_RESPONSE` contains `db_request_id=1100`.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_new() {
-    let db = make_cluster_db().await;
-
-    let bundle = BundleJob {
-        id: 0,
-        content: r#"{"script":"run.sh"}"#.to_string(),
-    };
-
-    let (mock, sent) = mock_cluster_capturing("ozstar");
-    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
-        m.push_uint(1100);
-        bundle.to_message(m);
-        m.push_string("myhash");
-    });
-
-    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
-    assert!(handled);
-
-    let model = bundle_job::Entity::find()
-        .filter(bundle_job::Column::BundleHash.eq("myhash"))
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    let db_content = model.content.clone();
-    let db_cluster = model.cluster.clone();
-    let db_hash = model.bundle_hash.clone();
-    assert_eq!(db_content, r#"{"script":"run.sh"}"#);
-    assert_eq!(db_cluster, "ozstar");
-    assert_eq!(db_hash, "myhash");
-
-    let (req_id, mut body) = first_response(&sent);
-    assert_eq!(req_id, 1100);
-    let new_id = body.pop_ulong();
-    let actual = bundle_job::Entity::find()
-        .filter(bundle_job::Column::BundleHash.eq("myhash"))
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
+    let (_db, actual, new_id) = assert_bundle_create_or_update_inserts(0, 1100, "myhash").await;
     assert_eq!(
         new_id,
         actual.id.cast_unsigned(),
@@ -1576,42 +1582,14 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
 /// returns the new non-zero row id.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_unknown_id_inserts() {
-    let db = make_cluster_db().await;
-
-    let bundle = BundleJob {
-        id: 99999, // non-existent id > 0
-        content: r#"{"script":"run.sh"}"#.to_string(),
-    };
-
-    let (mock, sent) = mock_cluster_capturing("ozstar");
-    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
-        m.push_uint(5006);
-        bundle.to_message(m);
-        m.push_string("unknown_id_hash");
-    });
-
-    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
-    assert!(handled);
-
-    // A new row is inserted with the supplied content, cluster, and hash
-    let model = bundle_job::Entity::find()
-        .filter(bundle_job::Column::BundleHash.eq("unknown_id_hash"))
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(model.content, r#"{"script":"run.sh"}"#);
-    assert_eq!(model.cluster, "ozstar");
-    assert_eq!(model.bundle_hash, "unknown_id_hash");
+    let (db, model, returned_id) =
+        assert_bundle_create_or_update_inserts(99999, 5006, "unknown_id_hash").await;
 
     // Only one row exists (the unknown id was not reused)
     let count = bundle_job::Entity::find().count(&db).await.unwrap();
     assert_eq!(count, 1);
 
     // Response returns the new non-zero row id
-    let (req_id, mut body) = first_response(&sent);
-    assert_eq!(req_id, 5006);
-    let returned_id = body.pop_ulong();
     assert!(
         returned_id > 0 && returned_id == model.id.cast_unsigned(),
         "returned_id={returned_id}"
