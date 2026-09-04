@@ -536,6 +536,14 @@ impl Cluster {
         let model = job::Entity::find_by_id(i64::from(job_id))
             .one(&ctx.db)
             .await
+            .inspect_err(|e| {
+                tracing::error!(
+                    "Cluster[{}]: failed to load job {} for file-list caching: {}",
+                    self.name(),
+                    job_id,
+                    e
+                );
+            })
             .ok()
             .flatten();
 
