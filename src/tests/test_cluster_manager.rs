@@ -58,6 +58,23 @@ async fn get_uuid_clusters(db: &DatabaseConnection) -> Vec<String> {
         .collect()
 }
 
+async fn insert_cluster_uuid(
+    db: &DatabaseConnection,
+    cluster: &str,
+    uuid: &str,
+    timestamp: chrono::NaiveDateTime,
+) {
+    cluster_uuid::ActiveModel {
+        cluster: Set(cluster.to_string()),
+        uuid: Set(uuid.to_string()),
+        timestamp: Set(timestamp),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+}
+
 fn three_cluster_configs() -> Vec<ClusterConfig> {
     vec![
         ClusterConfig {
@@ -262,15 +279,7 @@ async fn test_reconnect_clusters_skips_online() {
 
     // Insert a UUID for cluster2 and connect it
     let uuid = uuid::Uuid::new_v4().to_string();
-    cluster_uuid::ActiveModel {
-        id: sea_orm::ActiveValue::NotSet,
-        cluster: Set("cluster2".to_string()),
-        uuid: Set(uuid.clone()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_cluster_uuid(&db, "cluster2", &uuid, chrono::Utc::now().naive_utc()).await;
 
     // Connect cluster2 via handle_new_connection
     let conn_id = 100;
@@ -309,15 +318,7 @@ async fn test_handle_new_connection_expire_uuids() {
     let expiry = (*CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS).cast_signed();
     let expired_ts =
         chrono::Utc::now().naive_utc() - chrono::Duration::try_seconds(expiry).unwrap();
-    cluster_uuid::ActiveModel {
-        cluster: Set("cluster1".to_string()),
-        uuid: Set("expired_uuid".to_string()),
-        timestamp: Set(expired_ts),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_cluster_uuid(&db, "cluster1", "expired_uuid", expired_ts).await;
 
     assert_eq!(count_uuids(&db).await, 1);
 
@@ -332,15 +333,7 @@ async fn test_handle_new_connection_expire_uuids() {
     // Now insert a non-expired UUID and verify it ISN'T cleaned up
     let recent_ts =
         chrono::Utc::now().naive_utc() - chrono::Duration::try_seconds(expiry - 1).unwrap();
-    cluster_uuid::ActiveModel {
-        cluster: Set("cluster1".to_string()),
-        uuid: Set("recent_uuid".to_string()),
-        timestamp: Set(recent_ts),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_cluster_uuid(&db, "cluster1", "recent_uuid", recent_ts).await;
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(2, tx, "also_not_real").await;
@@ -369,15 +362,13 @@ async fn test_handle_new_connection_valid_uuid() {
     let mut last_uuid = String::new();
     for i in 0..5 {
         last_uuid = format!("fake-uuid-{i}");
-        cluster_uuid::ActiveModel {
-            cluster: Set("not_real_cluster".to_string()),
-            uuid: Set(last_uuid.clone()),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        insert_cluster_uuid(
+            &db,
+            "not_real_cluster",
+            &last_uuid,
+            chrono::Utc::now().naive_utc(),
+        )
+        .await;
     }
 
     // All clusters should be offline
@@ -405,15 +396,7 @@ async fn test_handle_new_connection_valid_uuid() {
     let mut last_uuid = String::new();
     for i in 0..5 {
         last_uuid = format!("real-uuid-{i}");
-        cluster_uuid::ActiveModel {
-            cluster: Set("cluster2".to_string()),
-            uuid: Set(last_uuid.clone()),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        insert_cluster_uuid(&db, "cluster2", &last_uuid, chrono::Utc::now().naive_utc()).await;
     }
 
     // Connect with the last UUID
@@ -459,15 +442,13 @@ async fn test_handle_new_connection_already_connected_rejected() {
     let mgr = make_manager_with_three_clusters(&db).await;
 
     // Insert UUID for cluster2 and connect it
-    cluster_uuid::ActiveModel {
-        cluster: Set("cluster2".to_string()),
-        uuid: Set("uuid-first".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_cluster_uuid(
+        &db,
+        "cluster2",
+        "uuid-first",
+        chrono::Utc::now().naive_utc(),
+    )
+    .await;
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(1, tx, "uuid-first").await;
@@ -478,15 +459,13 @@ async fn test_handle_new_connection_already_connected_rejected() {
     assert!(mgr.is_cluster_online(cluster2.as_ref()));
 
     // Insert another UUID for the same cluster and try to connect again
-    cluster_uuid::ActiveModel {
-        cluster: Set("cluster2".to_string()),
-        uuid: Set("uuid-second".to_string()),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_cluster_uuid(
+        &db,
+        "cluster2",
+        "uuid-second",
+        chrono::Utc::now().naive_utc(),
+    )
+    .await;
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(2, tx, "uuid-second").await;
@@ -523,15 +502,7 @@ async fn test_remove_connection() {
     for i in 1..=3u64 {
         let name = format!("cluster{i}");
         let uuid = format!("uuid-{i}");
-        cluster_uuid::ActiveModel {
-            cluster: Set(name.clone()),
-            uuid: Set(uuid.clone()),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        insert_cluster_uuid(&db, &name, &uuid, chrono::Utc::now().naive_utc()).await;
 
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let result = mgr.handle_new_connection(i, tx, &uuid).await;
@@ -1005,15 +976,13 @@ async fn connect_cluster(
     conn_id: u64,
 ) -> tokio::sync::mpsc::UnboundedReceiver<WsOutbound> {
     // Insert a UUID for the cluster
-    cluster_uuid::ActiveModel {
-        cluster: Set(cluster_name.to_string()),
-        uuid: Set(format!("ping-uuid-{conn_id}")),
-        timestamp: Set(chrono::Utc::now().naive_utc()),
-        ..Default::default()
-    }
-    .insert(db)
-    .await
-    .unwrap();
+    insert_cluster_uuid(
+        db,
+        cluster_name,
+        &format!("ping-uuid-{conn_id}"),
+        chrono::Utc::now().naive_utc(),
+    )
+    .await;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr
