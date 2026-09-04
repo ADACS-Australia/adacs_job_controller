@@ -694,11 +694,14 @@ impl Cluster {
                 "Cluster[{}]: FILE_CHUNK send failed - HTTP client disconnected",
                 self.name()
             );
-            state.error.store(true, Ordering::Release);
-            *state.error_details.lock().await =
-                "Download aborted: HTTP client disconnected".to_string();
-            state.data_ready.store(true, Ordering::Release);
-            state.data_notify.notify_one();
+            Self::record_transfer_error(
+                &state.error_details,
+                &state.error,
+                &state.data_ready,
+                &state.data_notify,
+                "Download aborted: HTTP client disconnected".to_string(),
+            )
+            .await;
             return;
         }
 
