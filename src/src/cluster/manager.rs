@@ -857,6 +857,13 @@ impl ClusterManagerTrait for ClusterManager {
             .filter(cluster_uuid::Column::Uuid.eq(token))
             .one(&self.db)
             .await
+            .inspect_err(|e| {
+                tracing::error!(
+                    "Failed to look up cluster UUID token for connection {}: {}",
+                    conn_id,
+                    e
+                );
+            })
             .ok()
             .flatten();
 
