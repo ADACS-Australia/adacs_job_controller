@@ -10,6 +10,7 @@ use common::make_db;
 
 use std::sync::{Arc, Mutex};
 
+use adacs_job_controller::cluster::traits::MockClusterTrait;
 use adacs_job_controller::db::cluster_db::maybe_handle_cluster_db_message;
 use adacs_job_controller::db::models::{BundleJob, ClusterJob, ClusterJobStatus};
 use adacs_job_controller::protocol::constants::*;
@@ -66,6 +67,28 @@ fn first_response(sent: &Arc<Mutex<Vec<Message>>>) -> (u32, Message) {
     let captured = sent.lock().unwrap();
     assert_eq!(captured.len(), 1);
     parse_response(captured[0].clone())
+}
+
+/// Dispatch a "get by id" message for a non-existent id and assert the response
+/// echoes the request id and returns count=0.
+async fn assert_get_by_id_not_found(
+    msg_id: u32,
+    req_id: u32,
+    mock: &MockClusterTrait,
+    sent: &Arc<Mutex<Vec<Message>>>,
+    db: &DatabaseConnection,
+) {
+    let mut msg = dispatch_message(msg_id, |m| {
+        m.push_uint(req_id);
+        m.push_ulong(99999);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, mock, db).await;
+    assert!(handled);
+
+    let (resp_req_id, mut body) = first_response(sent);
+    assert_eq!(resp_req_id, req_id);
+    assert_eq!(body.pop_uint(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -305,19 +328,8 @@ async fn test_handle_job_get_by_id_found() {
 #[tokio::test]
 async fn test_handle_job_get_by_id_not_found() {
     let db = make_cluster_db().await;
-
     let (mock, sent) = mock_cluster_capturing("ozstar");
-    let mut msg = dispatch_message(DB_JOB_GET_BY_ID, |m| {
-        m.push_uint(302);
-        m.push_ulong(99999);
-    });
-
-    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
-    assert!(handled);
-
-    let (req_id, mut body) = first_response(&sent);
-    assert_eq!(req_id, 302);
-    assert_eq!(body.pop_uint(), 0);
+    assert_get_by_id_not_found(DB_JOB_GET_BY_ID, 302, &mock, &sent, &db).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -1166,19 +1178,8 @@ async fn test_handle_bundle_get_by_id_found() {
 #[tokio::test]
 async fn test_handle_bundle_get_by_id_not_found() {
     let db = make_cluster_db().await;
-
     let (mock, sent) = mock_cluster_capturing("ozstar");
-    let mut msg = dispatch_message(DB_BUNDLE_GET_JOB_BY_ID, |m| {
-        m.push_uint(1201);
-        m.push_ulong(99999);
-    });
-
-    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
-    assert!(handled);
-
-    let (req_id, mut body) = first_response(&sent);
-    assert_eq!(req_id, 1201);
-    assert_eq!(body.pop_uint(), 0);
+    assert_get_by_id_not_found(DB_BUNDLE_GET_JOB_BY_ID, 1201, &mock, &sent, &db).await;
 }
 
 // ---------------------------------------------------------------------------
