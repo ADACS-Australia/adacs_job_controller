@@ -988,8 +988,16 @@ async fn test_handle_bundle_create_or_update_new() {
 /// # Assert
 /// The existing row is updated to `content="new_content`"; no new row is created; the
 /// `DB_RESPONSE` contains `db_request_id=1101` and the existing row id.
-#[tokio::test]
-async fn test_handle_bundle_create_or_update_existing() {
+/// Shared assertion for the update path of `DB_BUNDLE_CREATE_OR_UPDATE_JOB`: an
+/// existing row whose hash matches is updated in place and its id is returned.
+///
+/// `carried_bundle_id` is the id carried by the incoming `BundleJob` (`Some(0)` when the
+/// row is located by hash, `None` to use the existing row's id when located by id);
+/// `db_request_id` is echoed back in the `DB_RESPONSE`.
+async fn assert_bundle_create_or_update_updates(
+    carried_bundle_id: Option<i64>,
+    db_request_id: u32,
+) {
     let db = make_cluster_db().await;
 
     let inserted = bundle_job::ActiveModel {
@@ -1004,13 +1012,13 @@ async fn test_handle_bundle_create_or_update_existing() {
     let existing_id = inserted.id;
 
     let bundle = BundleJob {
-        id: 0,
+        id: carried_bundle_id.unwrap_or(existing_id),
         content: "new_content".to_string(),
     };
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
-        m.push_uint(1101);
+        m.push_uint(db_request_id);
         bundle.to_message(m);
         m.push_string("samehash");
     });
@@ -1023,16 +1031,34 @@ async fn test_handle_bundle_create_or_update_existing() {
         .await
         .unwrap()
         .unwrap();
-    let db_content = model.content.clone();
-    assert_eq!(db_content, "new_content");
+    assert_eq!(model.content, "new_content");
+    assert_eq!(model.bundle_hash, "samehash");
 
     // No new row inserted
     let count = bundle_job::Entity::find().count(&db).await.unwrap();
     assert_eq!(count, 1);
 
     let (req_id, mut body) = first_response(&sent);
-    assert_eq!(req_id, 1101);
+    assert_eq!(req_id, db_request_id);
     assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
+}
+
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` updates an existing bundle row when the hash matches.
+///
+/// # Setup
+/// In-memory DB with one pre-inserted bundle row (content="old", `bundle_hash="samehash`");
+/// updated `BundleJob` carries `content="new_content`".
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with `db_request_id=1101`, updated content,
+/// and hash="samehash".
+///
+/// # Assert
+/// The existing row is updated to `content="new_content`"; no new row is created; the
+/// `DB_RESPONSE` contains `db_request_id=1101` and the existing row id.
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_existing() {
+    assert_bundle_create_or_update_updates(Some(0), 1101).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -1055,49 +1081,7 @@ async fn test_handle_bundle_create_or_update_existing() {
 /// the `DB_RESPONSE` contains `db_request_id=1102` and the existing row id.
 #[tokio::test]
 async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
-    let db = make_cluster_db().await;
-
-    let inserted = bundle_job::ActiveModel {
-        content: Set("old".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle_hash: Set("samehash".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
-    let existing_id = inserted.id;
-
-    let bundle = BundleJob {
-        id: existing_id,
-        content: "new_content".to_string(),
-    };
-
-    let (mock, sent) = mock_cluster_capturing("ozstar");
-    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
-        m.push_uint(1102);
-        bundle.to_message(m);
-        m.push_string("samehash");
-    });
-
-    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
-    assert!(handled);
-
-    let model = bundle_job::Entity::find_by_id(existing_id)
-        .one(&db)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(model.content, "new_content");
-    assert_eq!(model.bundle_hash, "samehash");
-
-    // No new row inserted
-    let count = bundle_job::Entity::find().count(&db).await.unwrap();
-    assert_eq!(count, 1);
-
-    let (req_id, mut body) = first_response(&sent);
-    assert_eq!(req_id, 1102);
-    assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
+    assert_bundle_create_or_update_updates(None, 1102).await;
 }
 
 // ---------------------------------------------------------------------------
