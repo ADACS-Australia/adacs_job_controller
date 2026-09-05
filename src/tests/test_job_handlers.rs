@@ -242,29 +242,14 @@ async fn test_create_job_cluster_not_in_secret_returns_400() {
     assert!(String::from_utf8_lossy(&body).contains("does not have access"));
 }
 
-/// Tests that `create_job` rejects parameters longer than `MAX_PARAMETERS_LEN` (100,000).
-///
-/// # Setup
-/// Wires a manager that returns no clusters (never reached — length validation runs first).
-///
-/// # Act
-/// Sends POST /job/apiv1/job/ with a parameters string of 100,001 characters.
-///
-/// # Assert
-/// Verifies 400 Bad Request with body containing "parameters too long".
-#[tokio::test]
-async fn test_create_job_parameters_too_long_returns_400() {
+/// Sends POST /job/apiv1/job/ with `body` and asserts a 400 response whose body
+/// contains `expected_error`. Used by the `create_job` field-length tests.
+async fn assert_create_job_rejected(body: serde_json::Value, expected_error: &str) {
     let db = setup_test_db().await;
     let manager = mock_cluster_manager_no_clusters();
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
-    let body = serde_json::json!({
-        "cluster": "ozstar",
-        "parameters": "a".repeat(100_001),
-        "bundle": "b"
-    });
 
     let resp = app
         .oneshot(
@@ -283,7 +268,27 @@ async fn test_create_job_parameters_too_long_returns_400() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .unwrap();
-    assert!(String::from_utf8_lossy(&body).contains("parameters too long"));
+    assert!(String::from_utf8_lossy(&body).contains(expected_error));
+}
+
+/// Tests that `create_job` rejects parameters longer than `MAX_PARAMETERS_LEN` (100,000).
+///
+/// # Setup
+/// Wires a manager that returns no clusters (never reached — length validation runs first).
+///
+/// # Act
+/// Sends POST /job/apiv1/job/ with a parameters string of 100,001 characters.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "parameters too long".
+#[tokio::test]
+async fn test_create_job_parameters_too_long_returns_400() {
+    let body = serde_json::json!({
+        "cluster": "ozstar",
+        "parameters": "a".repeat(100_001),
+        "bundle": "b"
+    });
+    assert_create_job_rejected(body, "parameters too long").await;
 }
 
 /// Tests that `create_job` rejects a bundle longer than `MAX_BUNDLE_LEN` (10,000).
@@ -298,36 +303,12 @@ async fn test_create_job_parameters_too_long_returns_400() {
 /// Verifies 400 Bad Request with body containing "bundle too long".
 #[tokio::test]
 async fn test_create_job_bundle_too_long_returns_400() {
-    let db = setup_test_db().await;
-    let manager = mock_cluster_manager_no_clusters();
-
-    let app = create_router(make_test_state(db, manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
     let body = serde_json::json!({
         "cluster": "ozstar",
         "parameters": "{}",
         "bundle": "b".repeat(10_001)
     });
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    assert!(String::from_utf8_lossy(&body).contains("bundle too long"));
+    assert_create_job_rejected(body, "bundle too long").await;
 }
 
 /// Tests that creating a job whose auto-assigned ID exceeds `u32::MAX` returns 400
