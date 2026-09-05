@@ -28,8 +28,8 @@ use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_file_download, insert_job_history,
     insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
     manager_with_online_cluster_and_create_file_download, manager_with_online_cluster_no_messages,
-    offline_cluster, online_cluster_no_messages, setup_test_db, test_cluster_config,
-    test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
+    offline_cluster, online_cluster, online_cluster_no_messages, setup_test_db,
+    test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
@@ -40,18 +40,35 @@ use std::sync::atomic::Ordering;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Build an app whose cluster manager returns `None` for every cluster lookup
-/// (no cluster resolution), along with the multi-secret set for token encoding.
-async fn no_cluster_app() -> (
-    axum::Router,
-    Vec<adacs_job_controller::config::access_secrets::AccessSecret>,
-) {
+/// Build the app, db, and token for the no-jobId file-download tests.
+///
+/// Uses the multi-secret config and wires a `MockClusterManagerTrait` whose
+/// `get_cluster_by_name` returns `Some(online_cluster("ozstar"))` when
+/// `cluster_online` is true, otherwise `None`. Encodes a JWT for the secret at
+/// `secret_idx`.
+async fn no_jobid_download_app(
+    cluster_online: bool,
+    secret_idx: usize,
+) -> (axum::Router, sea_orm::DatabaseConnection, String) {
     let secrets = test_jwt_secrets_multi();
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(|_| None);
-    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
-    (app, secrets)
+    if cluster_online {
+        let cluster = Arc::new(online_cluster("ozstar"));
+        let c = Arc::clone(&cluster);
+        manager
+            .expect_get_cluster_by_name()
+            .returning(move |_| Some(c.clone()));
+    } else {
+        manager.expect_get_cluster_by_name().returning(|_| None);
+    }
+    let app = create_router(make_test_state_with_secrets(
+        db.clone(),
+        manager,
+        secrets.clone(),
+    ));
+    let token = encode_jwt_for_secret(&secrets[secret_idx], &serde_json::json!({"userId": 10}));
+    (app, db, token)
 }
 
 /// Build a mock manager for download tests that is not shutting down.
@@ -1873,17 +1890,7 @@ async fn test_create_download_app4_cannot_access_app1_job() {
 /// cluster, bundle, and job=0 (no jobId resolved).
 #[tokio::test]
 async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
-    let secrets = test_jwt_secrets_multi();
-    let db = setup_test_db().await;
-
-    let manager = manager_with_online_cluster_no_messages();
-
-    let app = create_router(make_test_state_with_secrets(
-        db.clone(),
-        manager,
-        secrets.clone(),
-    ));
-    let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
+    let (app, db, token) = no_jobid_download_app(true, 0).await;
 
     // No jobId key at all
     let resp = app
@@ -1943,15 +1950,7 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
 /// cluster, bundle, and job=0 (jobId=0 treated as no-jobId).
 #[tokio::test]
 async fn test_create_download_no_jobid_with_zero_jobid_success() {
-    let secrets = test_jwt_secrets_multi();
-    let db = setup_test_db().await;
-    let manager = manager_with_online_cluster_no_messages();
-    let app = create_router(make_test_state_with_secrets(
-        db.clone(),
-        manager,
-        secrets.clone(),
-    ));
-    let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
+    let (app, db, token) = no_jobid_download_app(true, 0).await;
     // jobId key with value 0
     let resp = app
         .oneshot(
@@ -2010,8 +2009,7 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_create_download_no_jobid_missing_cluster_returns_400() {
-    let (app, secrets) = no_cluster_app().await;
-    let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
+    let (app, _db, token) = no_jobid_download_app(false, 0).await;
     // Only bundle, no cluster
     let resp = app
         .oneshot(
@@ -2047,8 +2045,7 @@ async fn test_create_download_no_jobid_missing_cluster_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_create_download_no_jobid_missing_bundle_returns_400() {
-    let (app, secrets) = no_cluster_app().await;
-    let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
+    let (app, _db, token) = no_jobid_download_app(false, 0).await;
     // Only cluster, no bundle
     let resp = app
         .oneshot(
@@ -2084,13 +2081,7 @@ async fn test_create_download_no_jobid_missing_bundle_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
-    let secrets = test_jwt_secrets_multi();
-    let db = setup_test_db().await;
-
-    let manager = manager_with_online_cluster_no_messages();
-
-    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
-    let token = encode_jwt_for_secret(&secrets[3], &serde_json::json!({"userId": 10}));
+    let (app, _db, token) = no_jobid_download_app(true, 3).await;
 
     let resp = app
         .oneshot(
@@ -2128,9 +2119,7 @@ async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
-    let (app, secrets) = no_cluster_app().await;
-    // app4 has no cluster access so it will fail on cluster check first
-    let token = encode_jwt_for_secret(&secrets[3], &serde_json::json!({"userId": 10}));
+    let (app, _db, token) = no_jobid_download_app(false, 3).await;
 
     let resp = app
         .oneshot(
