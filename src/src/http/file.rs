@@ -428,6 +428,11 @@ pub async fn download_file(
     let ready = wait_until_data_ready(&fd_state.data_ready, &fd_state.data_notify, timeout).await;
 
     if ready.is_err() {
+        tracing::warn!(
+            "HTTP: Download timed out waiting for cluster '{}' to respond (uuid={})",
+            s_cluster,
+            uuid
+        );
         fd_state.error.store(true, Ordering::Release);
         *fd_state.error_details.lock().await =
             "Remote cluster took too long to respond.".to_string();
@@ -722,6 +727,11 @@ pub async fn upload_file(
     let ready = wait_until_data_ready(&fu_state.data_ready, &fu_state.data_notify, timeout).await;
 
     if ready.is_err() {
+        tracing::warn!(
+            "HTTP: Upload timed out waiting for cluster '{}' to respond (uuid={})",
+            s_cluster,
+            uuid
+        );
         fu_state.error.store(true, Ordering::Release);
         *fu_state.error_details.lock().await =
             "Remote cluster took too long to respond.".to_string();
@@ -1001,6 +1011,11 @@ async fn request_file_list(
     let wait_result = FileListState::wait_until_data_ready(&fl_state, timeout).await;
 
     if wait_result.is_err() {
+        tracing::warn!(
+            "HTTP: File list request timed out waiting for cluster to respond (bundle='{}', uuid={})",
+            bundle,
+            uuid
+        );
         let mut locked = fl_state.lock().await;
         locked.error = true;
         locked.error_details = "Remote cluster took too long to respond.".to_string();
