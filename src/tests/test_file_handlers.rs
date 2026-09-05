@@ -28,8 +28,8 @@ use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_file_download, insert_job_history,
     insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
     manager_with_online_cluster_and_create_file_download, manager_with_online_cluster_no_messages,
-    offline_cluster, online_cluster_no_messages, setup_test_db, test_cluster_config,
-    test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
+    mark_job_complete, offline_cluster, online_cluster_no_messages, setup_test_db,
+    test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
@@ -791,14 +791,7 @@ async fn test_list_files_cache_hit_returns_cached_files() {
 
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     // Mark as complete
-    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
-    insert_job_history(
-        &db,
-        job_id,
-        JobStatus::Completed as i32,
-        JOB_COMPLETION_SOURCE,
-    )
-    .await;
+    mark_job_complete(&db, job_id).await;
 
     // Pre-populate cache
     for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
@@ -949,14 +942,7 @@ async fn test_list_files_completed_job_populates_cache() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     // Mark as complete
-    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
-    insert_job_history(
-        &db,
-        job_id,
-        JobStatus::Completed as i32,
-        JOB_COMPLETION_SOURCE,
-    )
-    .await;
+    mark_job_complete(&db, job_id).await;
 
     let file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
         Arc::new(dashmap::DashMap::new());
@@ -2385,14 +2371,7 @@ async fn test_list_files_works_without_content_type_header() {
     let db = setup_test_db().await;
 
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
-    insert_job_history(
-        &db,
-        job_id,
-        JobStatus::Completed as i32,
-        JOB_COMPLETION_SOURCE,
-    )
-    .await;
+    mark_job_complete(&db, job_id).await;
 
     for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
         file_list_cache::ActiveModel {
