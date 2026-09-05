@@ -88,22 +88,22 @@ pub fn parse_csv_u64(s: &str) -> Vec<u64> {
 /// Parse a CSV-encoded job steps string into (what, state) pairs.
 /// Format: "what1,state1,what2,state2,..."
 /// Returns a Vec to preserve duplicate `what` values (e.g. same source, different states).
+///
+/// A malformed filter — an empty token, a non-numeric state, or a dangling
+/// `what` token — yields an empty result rather than a partial (what, state)
+/// list, so the caller never silently widens the result set.
 #[must_use]
 pub fn parse_job_steps(s: &str) -> Vec<(String, u32)> {
     let parts: Vec<&str> = s.split(',').map(str::trim).collect();
-    let mut result = Vec::new();
-    let mut i = 0;
-    while i + 1 < parts.len() {
-        if parts[i].is_empty() {
-            i += 1;
-            continue;
-        }
-        if let Ok(state) = parts[i + 1].parse::<u32>() {
-            result.push((parts[i].to_string(), state));
-            i += 2;
-        } else {
-            i += 1;
-        }
+    if parts.is_empty() || parts.iter().any(|p| p.is_empty()) || !parts.len().is_multiple_of(2) {
+        return Vec::new();
+    }
+    let mut result = Vec::with_capacity(parts.len() / 2);
+    for pair in parts.chunks_exact(2) {
+        let Ok(state) = pair[1].parse::<u32>() else {
+            return Vec::new();
+        };
+        result.push((pair[0].to_string(), state));
     }
     result
 }
@@ -284,22 +284,39 @@ mod tests {
         assert!(steps.iter().any(|(w, s)| w == "system" && *s == 9));
     }
 
-    /// Verifies that a trailing unpaired `what` token is ignored while the preceding valid pair
-    /// is returned.
+    /// Verifies that a trailing unpaired `what` token (dangling token) yields an
+    /// empty result rather than silently dropping the dangling token and applying
+    /// a partial filter that would widen the result set.
     #[test]
     fn test_parse_job_steps_odd() {
         let steps = parse_job_steps("jid0,500,jid1");
-        assert_eq!(steps.len(), 1);
-        assert_eq!(steps[0], ("jid0".to_string(), 500));
+        assert!(
+            steps.is_empty(),
+            "dangling token must yield an empty result"
+        );
     }
 
-    /// Verifies that a malformed state token does not shift the fixed 2-step alignment,
-    /// so a subsequent valid (what, state) pair is still parsed.
+    /// Verifies that a malformed state token yields an empty result rather than
+    /// applying only the valid remainder (e.g. "a,b,500" must not become
+    /// [("b", 500)]), so a partial filter can never widen the result set.
     #[test]
-    fn test_parse_job_steps_malformed_state_preserves_subsequent_pair() {
+    fn test_parse_job_steps_malformed_state_yields_empty() {
         let steps = parse_job_steps("a,b,500");
-        assert_eq!(steps.len(), 1);
-        assert_eq!(steps[0], ("b".to_string(), 500));
+        assert!(
+            steps.is_empty(),
+            "non-numeric state must yield an empty result"
+        );
+    }
+
+    /// Regression test: any malformed (what, state) pair — non-numeric state,
+    /// dangling token, or empty `what` — must yield an empty result, consistent
+    /// with the jobIds partial-malformed behavior.
+    #[test]
+    fn test_parse_job_steps_any_malformed_pair_yields_empty() {
+        assert!(parse_job_steps("a,b,500").is_empty());
+        assert!(parse_job_steps("jid0,500,jid1").is_empty());
+        assert!(parse_job_steps("a,,500").is_empty());
+        assert!(parse_job_steps(",500").is_empty());
     }
 
     /// Verifies that an empty input string yields an empty result.
