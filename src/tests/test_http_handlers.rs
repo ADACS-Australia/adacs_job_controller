@@ -605,6 +605,34 @@ async fn test_cluster_get_cluster_details() {
 // API Path Regression Tests
 // ===========================================================================
 
+/// Builds a no-clusters router and asserts the given endpoint is NOT 404 for each
+/// HTTP method. Used to guard against accidental API path changes (C++ compatibility).
+async fn assert_path_not_found(methods: &[&str], uri: &str) {
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
+
+    for method in methods {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(*method)
+                    .uri(uri)
+                    .header("content-type", "application/json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(
+            resp.status(),
+            StatusCode::NOT_FOUND,
+            "endpoint {uri} must exist for {method}"
+        );
+    }
+}
+
 /// Regression test: Verifies File API uses `/job/apiv1/file/` path (not the legacy `/file/apiv1/file/` shape).
 ///
 /// This test ensures compatibility with the C++ original API path structure.
@@ -617,29 +645,7 @@ async fn test_cluster_get_cluster_details() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_file_api_path_regression() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-
-    for method in ["POST", "GET", "PATCH"] {
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method(method)
-                    .uri("/job/apiv1/file/")
-                    .header("content-type", "application/json")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_ne!(
-            resp.status(),
-            StatusCode::NOT_FOUND,
-            "File API endpoint /job/apiv1/file/ must exist for {method} (C++ compatibility)"
-        );
-    }
+    assert_path_not_found(&["POST", "GET", "PATCH"], "/job/apiv1/file/").await;
 }
 
 /// Regression test: Verifies File Upload API uses `/job/apiv1/file/upload/` path.
@@ -654,25 +660,7 @@ async fn test_file_api_path_regression() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_file_upload_api_path_regression() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri("/job/apiv1/file/upload/")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_ne!(
-        resp.status(),
-        StatusCode::NOT_FOUND,
-        "File Upload API endpoint /job/apiv1/file/upload/ must exist (C++ compatibility)"
-    );
+    assert_path_not_found(&["PUT"], "/job/apiv1/file/upload/").await;
 }
 
 /// Regression test: Verifies Job API uses `/job/apiv1/job/` path.
@@ -686,27 +674,5 @@ async fn test_file_upload_api_path_regression() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_job_api_path_regression() {
-    let manager = common::mock_cluster_manager_no_clusters();
-    let app = test_router_with_manager(manager, test_jwt_secrets());
-
-    for method in ["GET", "POST", "PATCH", "DELETE"] {
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method(method)
-                    .uri("/job/apiv1/job/")
-                    .header("content-type", "application/json")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_ne!(
-            resp.status(),
-            StatusCode::NOT_FOUND,
-            "Job API endpoint /job/apiv1/job/ must exist for {method}"
-        );
-    }
+    assert_path_not_found(&["GET", "POST", "PATCH", "DELETE"], "/job/apiv1/job/").await;
 }
