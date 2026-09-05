@@ -2,8 +2,20 @@ mod common;
 
 use adacs_job_controller::db::migration::migrator::Migrator;
 use common::make_db;
+use sea_orm::DatabaseConnection;
 use sea_orm::DbBackend;
 use sea_orm_migration::prelude::*;
+
+async fn count_jobserver_tables(db: &DatabaseConnection, predicate: &str) -> i64 {
+    let stmt = sea_orm::Statement::from_string(
+        DbBackend::Sqlite,
+        format!("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND {predicate}"),
+    );
+    let result = db.query_one(stmt).await.expect("Query should succeed");
+    result
+        .and_then(|r| r.try_get::<i64>("", "COUNT(*)").ok())
+        .unwrap_or(0)
+}
 
 #[tokio::test]
 async fn test_all_migrations_up() {
@@ -25,16 +37,7 @@ async fn test_all_migrations_up() {
     ];
 
     for table_name in &expected_tables {
-        let stmt = sea_orm::Statement::from_string(
-            DbBackend::Sqlite,
-            format!(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{table_name}'"
-            ),
-        );
-        let result = db.query_one(stmt).await.expect("Query should succeed");
-        let count: i64 = result
-            .and_then(|r| r.try_get::<i64>("", "COUNT(*)").ok())
-            .unwrap_or(0);
+        let count = count_jobserver_tables(&db, &format!("name='{table_name}'")).await;
         assert_eq!(
             count, 1,
             "Table '{table_name}' should exist exactly once after migration",
@@ -65,15 +68,7 @@ async fn test_migrations_down() {
         .await
         .expect("Rollback should succeed");
 
-    let stmt = sea_orm::Statement::from_string(
-        DbBackend::Sqlite,
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'jobserver_%'"
-            .to_string(),
-    );
-    let result = db.query_one(stmt).await.expect("Query should succeed");
-    let count: i64 = result
-        .and_then(|r| r.try_get::<i64>("", "COUNT(*)").ok())
-        .unwrap_or(0);
+    let count = count_jobserver_tables(&db, "name LIKE 'jobserver_%'").await;
     assert_eq!(
         count, 0,
         "No jobserver tables should remain after full rollback"
