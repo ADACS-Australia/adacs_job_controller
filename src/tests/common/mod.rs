@@ -460,6 +460,14 @@ pub async fn insert_job_history_at(
     .expect("insert job history failed");
 }
 
+/// Mark a job as complete by inserting the standard `Pending` then `Completed`
+/// history records (the same setup used by file-listing tests).
+pub async fn mark_job_complete(db: &sea_orm::DatabaseConnection, job_id: i64) {
+    use adacs_job_controller::protocol::types::JobStatus;
+    insert_job_history(db, job_id, JobStatus::Pending as i32, "system").await;
+    insert_job_history(db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
+}
+
 // ---------------------------------------------------------------------------
 // Multi-secret JWT helpers for cross-app access tests
 // ---------------------------------------------------------------------------
