@@ -198,6 +198,34 @@ async fn send_save_response(cluster: &dyn ClusterTrait, db_request_id: u32, save
     cluster.send_message(response).await;
 }
 
+/// Shared implementation for single-row primary-key lookups used by the
+/// get-by-id handlers: pops the request and row IDs, runs `find_by_id`,
+/// converts the model, and sends a single-row `DB_RESPONSE`.
+async fn handle_get_by_id_impl<E, T>(
+    message: &mut Message,
+    cluster: &dyn ClusterTrait,
+    db: &sea_orm::DatabaseConnection,
+    find_by_id: impl FnOnce(i64) -> sea_orm::Select<E>,
+    convert: impl FnOnce(E::Model) -> T,
+    to_message: impl Fn(&T, &mut Message),
+) where
+    E: sea_orm::EntityTrait,
+{
+    let db_request_id = message.pop_uint();
+    let id = message.pop_ulong().cast_signed();
+
+    let row: Option<T> = find_by_id(id)
+        .one(db)
+        .await
+        .inspect_err(|e| {
+            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+        })
+        .unwrap_or(None)
+        .map(convert);
+
+    send_single_row_response(cluster, db_request_id, row, to_message).await;
+}
+
 // ---- DB_JOB_* handlers ----
 
 /// Looks up cluster jobs by external job ID and sends a `DB_RESPONSE` with matching rows.
@@ -235,19 +263,15 @@ async fn handle_job_get_by_id(
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
-    let db_request_id = message.pop_uint();
-    let id = message.pop_ulong().cast_signed();
-
-    let row: Option<ClusterJob> = cluster_job::Entity::find_by_id(id)
-        .one(db)
-        .await
-        .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
-        })
-        .unwrap_or(None)
-        .map(ClusterJob::from);
-
-    send_single_row_response(cluster, db_request_id, row, |r, msg| r.to_message(msg)).await;
+    handle_get_by_id_impl(
+        message,
+        cluster,
+        db,
+        cluster_job::Entity::find_by_id,
+        ClusterJob::from,
+        |r, msg| r.to_message(msg),
+    )
+    .await;
 }
 
 /// Returns all running jobs for this cluster and sends them in a `DB_RESPONSE`.
@@ -614,19 +638,15 @@ async fn handle_bundle_get_by_id(
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
-    let db_request_id = message.pop_uint();
-    let id = message.pop_ulong().cast_signed();
-
-    let row: Option<BundleJob> = bundle_job::Entity::find_by_id(id)
-        .one(db)
-        .await
-        .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
-        })
-        .unwrap_or(None)
-        .map(BundleJob::from);
-
-    send_single_row_response(cluster, db_request_id, row, |r, msg| r.to_message(msg)).await;
+    handle_get_by_id_impl(
+        message,
+        cluster,
+        db,
+        bundle_job::Entity::find_by_id,
+        BundleJob::from,
+        |r, msg| r.to_message(msg),
+    )
+    .await;
 }
 
 /// Deletes a bundle job by ID and sends an empty `DB_RESPONSE`.
