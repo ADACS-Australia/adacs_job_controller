@@ -65,63 +65,41 @@ fn manager_rejecting_connections() -> MockClusterManagerTrait {
     m
 }
 
-// ---------------------------------------------------------------------------
-// test_ws_invalid_token_disconnects
-// ---------------------------------------------------------------------------
-
-/// Verify that a connection with an invalid token is rejected and closed.
-///
-/// # Setup
-/// Start a test server configured with a cluster manager that rejects all connections.
-///
-/// # Act
-/// Connect a WebSocket client with `Authorization: Bearer bad_token` header.
-///
-/// # Assert
-/// The server closes the connection.
-#[tokio::test]
-async fn test_ws_invalid_token_disconnects() {
+/// Start a rejecting-manager server, connect a client (optionally with a Bearer
+/// token), and assert that the server closes the connection.
+async fn assert_connection_closed(auth: Option<&str>) {
     let db = setup_test_db().await;
     let state = make_test_state(db, manager_rejecting_connections());
     let server = start_test_server(state).await;
     let port = server.port;
 
-    // Connect with an invalid Bearer token
-    let (_, mut stream) = connect_ws_auth(port, "bad_token").await;
+    let (_, mut stream) = match auth {
+        Some(token) => connect_ws_auth(port, token).await,
+        None => connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await,
+    };
 
     let closed = connection_closes(&mut stream, std::time::Duration::from_millis(500)).await;
-    assert!(closed, "Server should close connection for invalid token");
+    assert!(closed, "Server should close the connection");
+}
+
+// ---------------------------------------------------------------------------
+// test_ws_invalid_token_disconnects
+// ---------------------------------------------------------------------------
+
+/// Verify that a connection with an invalid token is rejected and closed.
+#[tokio::test]
+async fn test_ws_invalid_token_disconnects() {
+    assert_connection_closed(Some("bad_token")).await;
 }
 
 // ---------------------------------------------------------------------------
 // test_ws_no_token_disconnects
 // ---------------------------------------------------------------------------
 
-/// Verify that a connection without any token query parameter is rejected and closed.
-///
-/// # Setup
-/// Start a test server configured with a cluster manager that rejects all connections.
-///
-/// # Act
-/// Connect a WebSocket client without any token query parameter.
-///
-/// # Assert
-/// The server closes the connection.
+/// Verify that a connection without any token is rejected and closed.
 #[tokio::test]
 async fn test_ws_no_token_disconnects() {
-    let db = setup_test_db().await;
-    let state = make_test_state(db, manager_rejecting_connections());
-    let server = start_test_server(state).await;
-    let port = server.port;
-
-    // Connect without any token query param
-    let (_, mut stream) = connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await;
-
-    let closed = connection_closes(&mut stream, std::time::Duration::from_millis(500)).await;
-    assert!(
-        closed,
-        "Server should close connection when no token provided"
-    );
+    assert_connection_closed(None).await;
 }
 
 // ---------------------------------------------------------------------------
