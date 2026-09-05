@@ -356,19 +356,29 @@ async fn handle_job_save(
 
 // ---- DB_JOBSTATUS_* handlers ----
 
-/// Looks up cluster job status rows by job ID and status type, then sends a `DB_RESPONSE` with matching rows.
-async fn handle_jobstatus_get_by_job_id_and_what(
+/// Looks up cluster job status rows by job ID, optionally filtered by status type,
+/// then sends a `DB_RESPONSE` with matching rows.
+async fn handle_jobstatus_get_by_job_id_impl(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
+    has_what: bool,
 ) {
     let db_request_id = message.pop_uint();
     let job_id = message.pop_ulong().cast_signed();
-    let what = message.pop_string();
+    let what = if has_what {
+        Some(message.pop_string())
+    } else {
+        None
+    };
 
-    let rows: Vec<ClusterJobStatus> = cluster_job_status::Entity::find()
-        .filter(cluster_job_status::Column::JobId.eq(job_id))
-        .filter(cluster_job_status::Column::What.eq(&what))
+    let mut query =
+        cluster_job_status::Entity::find().filter(cluster_job_status::Column::JobId.eq(job_id));
+    if let Some(what) = what {
+        query = query.filter(cluster_job_status::Column::What.eq(what));
+    }
+
+    let rows: Vec<ClusterJobStatus> = query
         .all(db)
         .await
         .inspect_err(|e| {
@@ -385,31 +395,22 @@ async fn handle_jobstatus_get_by_job_id_and_what(
     .await;
 }
 
+/// Looks up cluster job status rows by job ID and status type, then sends a `DB_RESPONSE` with matching rows.
+async fn handle_jobstatus_get_by_job_id_and_what(
+    message: &mut Message,
+    cluster: &dyn ClusterTrait,
+    db: &sea_orm::DatabaseConnection,
+) {
+    handle_jobstatus_get_by_job_id_impl(message, cluster, db, true).await;
+}
+
 /// Looks up cluster job status rows by job ID and sends a `DB_RESPONSE` with matching rows.
 async fn handle_jobstatus_get_by_job_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
-    let db_request_id = message.pop_uint();
-    let job_id = message.pop_ulong().cast_signed();
-
-    let rows: Vec<ClusterJobStatus> = cluster_job_status::Entity::find()
-        .filter(cluster_job_status::Column::JobId.eq(job_id))
-        .all(db)
-        .await
-        .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .map(ClusterJobStatus::from)
-        .collect();
-
-    send_rows_response(cluster, db_request_id, &rows, |row, msg| {
-        row.to_message(msg)
-    })
-    .await;
+    handle_jobstatus_get_by_job_id_impl(message, cluster, db, false).await;
 }
 
 /// Deletes cluster job status rows by primary key list and sends an empty DB response.
