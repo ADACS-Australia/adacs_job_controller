@@ -150,7 +150,7 @@ async fn assert_bundle_create_or_update_inserts(
     (db, model, returned_id)
 }
 
-/// Insert a `cluster_job_status` row and return the inserted model (for its id).
+/// Insert a `cluster_job_status` row and return the created model.
 async fn insert_cluster_job_status(
     db: &DatabaseConnection,
     job_id: i64,
@@ -736,8 +736,7 @@ async fn test_handle_jobstatus_save_insert() {
 async fn test_handle_jobstatus_save_update() {
     let db = make_cluster_db().await;
 
-    let inserted = insert_cluster_job_status(&db, 10, "old_what", 1).await;
-    let existing_id = inserted.id;
+    let existing_id = insert_cluster_job_status(&db, 10, "old_what", 1).await.id;
 
     let status = ClusterJobStatus {
         id: existing_id,
