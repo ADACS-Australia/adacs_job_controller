@@ -28,6 +28,10 @@ use crate::utils::uuid::generate_uuid;
 
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
 
+/// Error returned when neither `jobId` nor explicit `cluster`/`bundle` is provided.
+const MISSING_CLUSTER_BUNDLE_ERR: &str =
+    "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'";
+
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
 /// # Errors
@@ -845,13 +849,11 @@ pub async fn list_files(
     } else {
         let cluster = body.cluster.ok_or((
             StatusCode::BAD_REQUEST,
-            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
-                .to_string(),
+            MISSING_CLUSTER_BUNDLE_ERR.to_string(),
         ))?;
         let bundle = body.bundle.ok_or((
             StatusCode::BAD_REQUEST,
-            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
-                .to_string(),
+            MISSING_CLUSTER_BUNDLE_ERR.to_string(),
         ))?;
 
         if !auth.secret.clusters.contains(&cluster) {
