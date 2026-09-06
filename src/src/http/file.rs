@@ -28,6 +28,9 @@ use crate::utils::uuid::generate_uuid;
 
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
 
+/// Error text used when a remote cluster fails to respond within the client timeout.
+const REMOTE_CLUSTER_TIMEOUT_ERROR: &str = "Remote cluster took too long to respond.";
+
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
 /// # Errors
@@ -433,8 +436,7 @@ pub async fn download_file(
 
     if ready.is_err() {
         fd_state.error.store(true, Ordering::Release);
-        *fd_state.error_details.lock().await =
-            "Remote cluster took too long to respond.".to_string();
+        *fd_state.error_details.lock().await = REMOTE_CLUSTER_TIMEOUT_ERROR.to_string();
     }
 
     if fd_state.error.load(Ordering::Acquire) {
@@ -731,8 +733,7 @@ pub async fn upload_file(
 
     if ready.is_err() {
         fu_state.error.store(true, Ordering::Release);
-        *fu_state.error_details.lock().await =
-            "Remote cluster took too long to respond.".to_string();
+        *fu_state.error_details.lock().await = REMOTE_CLUSTER_TIMEOUT_ERROR.to_string();
     }
 
     check_upload_error(&fu_state).await?;
@@ -1011,7 +1012,7 @@ async fn request_file_list(
     if wait_result.is_err() {
         let mut locked = fl_state.lock().await;
         locked.error = true;
-        locked.error_details = "Remote cluster took too long to respond.".to_string();
+        locked.error_details = REMOTE_CLUSTER_TIMEOUT_ERROR.to_string();
     }
 
     let locked = fl_state.lock().await;
