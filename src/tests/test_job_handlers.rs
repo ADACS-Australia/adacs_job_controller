@@ -958,117 +958,48 @@ async fn test_delete_job_error_sends_delete_ws_message() {
 }
 
 // Invalid states for delete
-async fn assert_delete_rejected_for_state(state: JobStatus) {
+/// Sets up a job in the given status and asserts that deleting it returns 400 Bad Request.
+async fn assert_delete_returns_bad_request_for_status(status: JobStatus) {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
-    insert_job_history(&db, job_id, state as i32, "system").await;
+    insert_job_history(&db, job_id, status as i32, "system").await;
     let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
-/// Tests that deleting a Submitting job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Submitting history entry.
-///
-/// # Act
-/// Sends DELETE /job/apiv1/job/ with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_submitting_returns_400() {
-    assert_delete_rejected_for_state(JobStatus::Submitting).await;
+    assert_delete_returns_bad_request_for_status(JobStatus::Submitting).await;
 }
 
-/// Tests that deleting a Submitted job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Submitted history entry.
-///
-/// # Act
-/// Sends DELETE /job/apiv1/job/ with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_submitted_returns_400() {
-    assert_delete_rejected_for_state(JobStatus::Submitted).await;
+    assert_delete_returns_bad_request_for_status(JobStatus::Submitted).await;
 }
 
-/// Tests that deleting a Queued job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Queued history entry.
-///
-/// # Act
-/// Sends DELETE /job/apiv1/job/ with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_queued_returns_400() {
-    assert_delete_rejected_for_state(JobStatus::Queued).await;
+    assert_delete_returns_bad_request_for_status(JobStatus::Queued).await;
 }
 
-/// Tests that deleting a Running job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Running history entry.
-///
-/// # Act
-/// Sends DELETE /job/apiv1/job/ with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_running_returns_400() {
-    assert_delete_rejected_for_state(JobStatus::Running).await;
+    assert_delete_returns_bad_request_for_status(JobStatus::Running).await;
 }
 
-/// Tests that deleting a Cancelling job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Cancelling history entry.
-///
-/// # Act
-/// Sends DELETE /job/apiv1/job/ with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_cancelling_returns_400() {
-    assert_delete_rejected_for_state(JobStatus::Cancelling).await;
+    assert_delete_returns_bad_request_for_status(JobStatus::Cancelling).await;
 }
 
-/// Tests that deleting a job already in Deleting state returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Deleting history entry.
-///
-/// # Act
-/// Sends DELETE /job/apiv1/job/ with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_deleting_returns_400() {
-    assert_delete_rejected_for_state(JobStatus::Deleting).await;
+    assert_delete_returns_bad_request_for_status(JobStatus::Deleting).await;
 }
 
-/// Tests that deleting an already Deleted job returns 400 Bad Request.
-///
-/// # Setup
-/// Inserts a job with a Deleted history entry.
-///
-/// # Act
-/// Sends DELETE /job/apiv1/job/ with the job ID.
-///
-/// # Assert
-/// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_delete_job_already_deleted_returns_400() {
-    assert_delete_rejected_for_state(JobStatus::Deleted).await;
+    assert_delete_returns_bad_request_for_status(JobStatus::Deleted).await;
 }
 
 /// Tests that deleting a job whose ID exceeds `u32::MAX` returns 400 instead of
