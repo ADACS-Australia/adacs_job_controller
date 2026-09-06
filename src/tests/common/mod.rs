@@ -103,6 +103,33 @@ pub fn mock_cluster_capturing(name: &str) -> (MockClusterTrait, Arc<Mutex<Vec<Me
     (mock, sent)
 }
 
+/// Build a mock cluster that captures all `send_message` calls, with the given
+/// online status and the standard role/cluster-details wiring (mirrors
+/// [`online_cluster`]).
+pub fn mock_cluster_capturing_with_online(
+    name: &str,
+    online: bool,
+) -> (MockClusterTrait, Arc<Mutex<Vec<Message>>>) {
+    let sent = Arc::new(Mutex::new(Vec::<Message>::new()));
+    let sent_clone = Arc::clone(&sent);
+
+    let mut mock = MockClusterTrait::new();
+    let n = name.to_string();
+    let details_name = n.clone();
+    mock.expect_name().returning(move || n.clone());
+    mock.expect_is_online().returning(move || online);
+    mock.expect_role().returning(|| ClusterRole::Master);
+    mock.expect_role_string().returning(|| "master".to_string());
+    mock.expect_cluster_details()
+        .returning(move || test_cluster_config(&details_name));
+    mock.expect_send_message().returning(move |msg| {
+        sent_clone.lock().unwrap().push(msg);
+        Box::pin(async {})
+    });
+
+    (mock, sent)
+}
+
 /// Build a mock offline cluster.
 pub fn offline_cluster() -> MockClusterTrait {
     let mut c = MockClusterTrait::new();

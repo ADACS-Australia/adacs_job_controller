@@ -13,44 +13,21 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
+use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
 use adacs_job_controller::db::entities::{job, job_history};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
-use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
+use adacs_job_controller::protocol::types::JobStatus;
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_job_history_at,
     insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
-    mock_cluster_manager_no_clusters, setup_test_db, test_cluster_config, test_jwt_secrets_multi,
+    mock_cluster_capturing_with_online, mock_cluster_manager_no_clusters, setup_test_db,
+    test_jwt_secrets_multi,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-
-// ---------------------------------------------------------------------------
-// Helper: build a mock cluster that captures sent messages
-// ---------------------------------------------------------------------------
-
-fn cluster_capturing_messages(
-    name: &str,
-    sent: Arc<Mutex<Vec<Message>>>,
-    online: bool,
-) -> MockClusterTrait {
-    let mut c = MockClusterTrait::new();
-    let n = name.to_string();
-    c.expect_name().returning(move || n.clone());
-    c.expect_is_online().returning(move || online);
-    c.expect_role().returning(|| ClusterRole::Master);
-    c.expect_role_string().returning(|| "master".to_string());
-    c.expect_cluster_details()
-        .returning(|| test_cluster_config("ozstar"));
-    c.expect_send_message().returning(move |msg| {
-        sent.lock().unwrap().push(msg);
-        Box::pin(async {})
-    });
-    c
-}
 
 // ---------------------------------------------------------------------------
 // create_job tests
@@ -414,12 +391,8 @@ async fn assert_cancel_rejected_for_state(state: JobStatus) {
 }
 
 fn manager_with_cluster(online: bool) -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
-    let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(cluster_capturing_messages(
-        "ozstar",
-        Arc::clone(&sent),
-        online,
-    ));
+    let (cluster, sent) = mock_cluster_capturing_with_online("ozstar", online);
+    let cluster = Arc::new(cluster);
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
     manager
@@ -1868,12 +1841,8 @@ async fn test_get_jobs_start_time_gt_only_uses_system_source_entries() {
 #[tokio::test]
 async fn test_create_job_works_without_content_type_header() {
     let db = setup_test_db().await;
-    let sent = Arc::new(Mutex::new(vec![]));
-    let cluster = Arc::new(cluster_capturing_messages(
-        "ozstar",
-        Arc::clone(&sent),
-        true,
-    ));
+    let (cluster, _sent) = mock_cluster_capturing_with_online("ozstar", true);
+    let cluster = Arc::new(cluster);
 
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
