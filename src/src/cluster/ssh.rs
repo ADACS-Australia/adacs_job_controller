@@ -160,9 +160,12 @@ async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError
     );
 
     tracing::debug!("SSH[{}]: Disconnecting session", config.name);
-    let _ = session
+    if let Err(e) = session
         .disconnect(Disconnect::ByApplication, "", "en")
-        .await;
+        .await
+    {
+        tracing::warn!("SSH[{}]: Failed to disconnect session: {e}", config.name);
+    }
 
     if exit_code != 0 {
         tracing::warn!(
