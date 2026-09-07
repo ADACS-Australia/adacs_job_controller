@@ -45,6 +45,23 @@ async fn make_cluster_db() -> DatabaseConnection {
     db
 }
 
+/// Insert a `bundle_job` row with the given content and hash on the "ozstar" cluster.
+async fn insert_bundle_job(
+    db: &DatabaseConnection,
+    content: &str,
+    bundle_hash: &str,
+) -> bundle_job::Model {
+    bundle_job::ActiveModel {
+        content: Set(content.to_string()),
+        cluster: Set("ozstar".to_string()),
+        bundle_hash: Set(bundle_hash.to_string()),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap()
+}
+
 /// Build a ready-to-dispatch `Message` by creating it, pushing payload, then round-tripping
 /// through `into_data()` / `from_bytes()` so `id()` / `source()` are properly cached.
 fn dispatch_message(id: u32, push: impl FnOnce(&mut Message)) -> Message {
@@ -992,15 +1009,7 @@ async fn test_handle_bundle_create_or_update_new() {
 async fn test_handle_bundle_create_or_update_existing() {
     let db = make_cluster_db().await;
 
-    let inserted = bundle_job::ActiveModel {
-        content: Set("old".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle_hash: Set("samehash".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted = insert_bundle_job(&db, "old", "samehash").await;
     let existing_id = inserted.id;
 
     let bundle = BundleJob {
@@ -1057,15 +1066,7 @@ async fn test_handle_bundle_create_or_update_existing() {
 async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
     let db = make_cluster_db().await;
 
-    let inserted = bundle_job::ActiveModel {
-        content: Set("old".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle_hash: Set("samehash".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted = insert_bundle_job(&db, "old", "samehash").await;
     let existing_id = inserted.id;
 
     let bundle = BundleJob {
@@ -1120,15 +1121,7 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
 async fn test_handle_bundle_get_by_id_found() {
     let db = make_cluster_db().await;
 
-    let inserted = bundle_job::ActiveModel {
-        content: Set("bundle_content".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle_hash: Set("xyz".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted = insert_bundle_job(&db, "bundle_content", "xyz").await;
     let bundle_id = inserted.id;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -1199,15 +1192,7 @@ async fn test_handle_bundle_get_by_id_not_found() {
 async fn test_handle_bundle_delete() {
     let db = make_cluster_db().await;
 
-    let inserted = bundle_job::ActiveModel {
-        content: Set("c".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle_hash: Set("h".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted = insert_bundle_job(&db, "c", "h").await;
     let bundle_id = inserted.id;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -1505,15 +1490,7 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
     let db = make_cluster_db().await;
 
     // Create an initial bundle with hash "original_hash"
-    let inserted = bundle_job::ActiveModel {
-        content: Set("original content".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle_hash: Set("original_hash".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted = insert_bundle_job(&db, "original content", "original_hash").await;
     let original_id = inserted.id;
 
     // Try to update using the bundle ID but with a different hash
@@ -1639,15 +1616,7 @@ async fn test_handle_bundle_delete_nonexistent_is_noop() {
     let db = make_cluster_db().await;
 
     // Insert a bundle to ensure table is not empty
-    bundle_job::ActiveModel {
-        content: Set("keep me".to_string()),
-        cluster: Set("ozstar".to_string()),
-        bundle_hash: Set("keep_hash".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_bundle_job(&db, "keep me", "keep_hash").await;
 
     // Try to delete a non-existent ID
     let (mock, sent) = mock_cluster_capturing("ozstar");
