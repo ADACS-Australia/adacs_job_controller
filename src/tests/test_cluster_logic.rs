@@ -409,18 +409,7 @@ async fn test_check_cancelling_jobs_ignores_recent() {
     cluster.check_cancelling_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let cancel_msgs: Vec<_> = {
-        let mut msgs = Vec::new();
-        while let Ok(outbound) = rx.try_recv() {
-            let WsOutbound::Binary(data) = outbound else {
-                continue;
-            };
-            msgs.push(data);
-        }
-        msgs.into_iter()
-            .filter(|d| Message::from_bytes(d.clone()).id() == CANCEL_JOB)
-            .collect()
-    };
+    let cancel_msgs = drain_messages_with_id(&mut rx, CANCEL_JOB);
 
     assert!(cancel_msgs.is_empty(), "Recent cancel should NOT be resent");
     cluster.stop();
@@ -517,18 +506,7 @@ async fn test_check_deleting_jobs_ignores_recent() {
     cluster.check_deleting_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let delete_msgs: Vec<_> = {
-        let mut msgs = Vec::new();
-        while let Ok(outbound) = rx.try_recv() {
-            let WsOutbound::Binary(data) = outbound else {
-                continue;
-            };
-            msgs.push(data);
-        }
-        msgs.into_iter()
-            .filter(|d| Message::from_bytes(d.clone()).id() == DELETE_JOB)
-            .collect()
-    };
+    let delete_msgs = drain_messages_with_id(&mut rx, DELETE_JOB);
 
     assert!(delete_msgs.is_empty(), "Recent delete should NOT be resent");
     cluster.stop();
@@ -563,18 +541,7 @@ async fn test_check_unsubmitted_jobs_only_for_own_cluster() {
     cluster.check_unsubmitted_jobs().await;
     cluster.wait_for_queue_drain(true).await;
 
-    let submit_msgs: Vec<_> = {
-        let mut msgs = Vec::new();
-        while let Ok(outbound) = rx.try_recv() {
-            let WsOutbound::Binary(data) = outbound else {
-                continue;
-            };
-            msgs.push(data);
-        }
-        msgs.into_iter()
-            .filter(|d| Message::from_bytes(d.clone()).id() == SUBMIT_JOB)
-            .collect()
-    };
+    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
 
     assert!(
         submit_msgs.is_empty(),
