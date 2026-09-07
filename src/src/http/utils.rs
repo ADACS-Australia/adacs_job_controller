@@ -131,6 +131,11 @@ fn weak_canonical(path: &str) -> String {
         match component {
             Component::ParentDir => {
                 result.pop();
+                // Popping past the root of an absolute path would drop the
+                // leading slash; restore it so the result stays absolute.
+                if p.is_absolute() && result.as_os_str().is_empty() {
+                    result.push("/");
+                }
             }
             Component::CurDir => {}
             other => result.push(other),
@@ -338,6 +343,8 @@ mod tests {
         assert_eq!(weak_canonical("/a/b/c"), "/a/b/c");
         assert_eq!(weak_canonical(""), "");
         assert_eq!(weak_canonical("/"), "/");
+        assert_eq!(weak_canonical("/a/../../b"), "/b");
+        assert_eq!(weak_canonical("/a/../.."), "/");
     }
 
     fn make_files() -> Vec<FileInfo> {
