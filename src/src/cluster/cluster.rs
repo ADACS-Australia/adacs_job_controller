@@ -905,6 +905,9 @@ impl Cluster {
             .limit(500)
             .all(db)
             .await
+            .inspect_err(|e| {
+                tracing::error!("Cluster[{}]: query failed: {}", self.name(), e);
+            })
             .unwrap_or_default();
 
         if jobs.is_empty() {
@@ -923,6 +926,9 @@ impl Cluster {
             .order_by_desc(job_history::Column::Id)
             .all(db)
             .await
+            .inspect_err(|e| {
+                tracing::error!("Cluster[{}]: query failed: {}", self.name(), e);
+            })
             .unwrap_or_default();
 
         let mut latest_per_job: HashMap<i64, &job_history::Model> = HashMap::new();
