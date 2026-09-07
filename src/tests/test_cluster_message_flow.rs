@@ -54,6 +54,46 @@ fn make_file_upload_cluster(uuid: &str) -> (Arc<FileUploadState>, Arc<Cluster>) 
     (upload_state, cluster)
 }
 
+/// Build a `FILE_DETAILS` message with the given file size.
+fn make_file_details_message(file_size: u64) -> Message {
+    let mut msg = Message::new(FILE_DETAILS, Priority::Medium, "test");
+    msg.push_ulong(file_size);
+    Message::from_bytes(msg.into_data())
+}
+
+/// Build a `FILE_CHUNK` message with the given data.
+fn make_file_chunk_message(data: &[u8]) -> Message {
+    let mut msg = Message::new(FILE_CHUNK, Priority::Medium, "test");
+    msg.push_bytes(data);
+    Message::from_bytes(msg.into_data())
+}
+
+/// Build a `FILE_ERROR` message with the given detail string.
+fn make_file_error_message(detail: &str) -> Message {
+    let mut msg = Message::new(FILE_ERROR, Priority::Medium, "test");
+    msg.push_string(detail);
+    Message::from_bytes(msg.into_data())
+}
+
+/// Build a `FILE_UPLOAD_ERROR` message with the given detail string.
+fn make_file_upload_error_message(detail: &str) -> Message {
+    let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Medium, "test");
+    msg.push_string(detail);
+    Message::from_bytes(msg.into_data())
+}
+
+/// Build a `FILE_UPLOAD_COMPLETE` message.
+fn make_file_upload_complete_message() -> Message {
+    let msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Medium, "test");
+    Message::from_bytes(msg.into_data())
+}
+
+/// Build a `SERVER_READY` message.
+fn make_server_ready_message() -> Message {
+    let msg = Message::new(SERVER_READY, Priority::Medium, "test");
+    Message::from_bytes(msg.into_data())
+}
+
 // ---------------------------------------------------------------------------
 // Priority queue ordering
 // ---------------------------------------------------------------------------
@@ -189,9 +229,7 @@ async fn test_file_download_chunk_flow() {
     let (download_state, cluster) = make_file_download_cluster("dl-uuid-1");
 
     // Simulate receiving FILE_DETAILS -- must go through from_bytes to parse header
-    let mut details_msg = Message::new(FILE_DETAILS, Priority::Medium, "test");
-    details_msg.push_ulong(1024); // file size
-    let details_msg = Message::from_bytes(details_msg.into_data());
+    let details_msg = make_file_details_message(1024);
     cluster.handle_message(details_msg).await;
 
     assert!(download_state.received_data.load(Ordering::Relaxed));
@@ -199,9 +237,7 @@ async fn test_file_download_chunk_flow() {
     assert!(download_state.data_ready.load(Ordering::Relaxed));
 
     // Simulate receiving FILE_CHUNK -- must go through from_bytes to parse header
-    let mut chunk_msg = Message::new(FILE_CHUNK, Priority::Medium, "test");
-    chunk_msg.push_bytes(&[0xDE, 0xAD, 0xBE, 0xEF]);
-    let chunk_msg = Message::from_bytes(chunk_msg.into_data());
+    let chunk_msg = make_file_chunk_message(&[0xDE, 0xAD, 0xBE, 0xEF]);
     cluster.handle_message(chunk_msg).await;
 
     assert_eq!(download_state.received_bytes.load(Ordering::Relaxed), 4);
@@ -226,9 +262,7 @@ async fn test_file_download_chunk_flow() {
 async fn test_file_download_error_flow() {
     let (download_state, cluster) = make_file_download_cluster("dl-uuid-err");
 
-    let mut err_msg = Message::new(FILE_ERROR, Priority::Medium, "test");
-    err_msg.push_string("Permission denied");
-    let err_msg = Message::from_bytes(err_msg.into_data());
+    let err_msg = make_file_error_message("Permission denied");
     cluster.handle_message(err_msg).await;
 
     assert!(download_state.error.load(Ordering::Relaxed));
@@ -257,19 +291,13 @@ async fn test_download_messages_on_master_cluster_are_noop() {
 
     let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
-    let mut details_msg = Message::new(FILE_DETAILS, Priority::Medium, "test");
-    details_msg.push_ulong(1024);
-    let details_msg = Message::from_bytes(details_msg.into_data());
+    let details_msg = make_file_details_message(1024);
     cluster.handle_message(details_msg).await;
 
-    let mut chunk_msg = Message::new(FILE_CHUNK, Priority::Medium, "test");
-    chunk_msg.push_bytes(&[0xDE, 0xAD, 0xBE, 0xEF]);
-    let chunk_msg = Message::from_bytes(chunk_msg.into_data());
+    let chunk_msg = make_file_chunk_message(&[0xDE, 0xAD, 0xBE, 0xEF]);
     cluster.handle_message(chunk_msg).await;
 
-    let mut err_msg = Message::new(FILE_ERROR, Priority::Medium, "test");
-    err_msg.push_string("Permission denied");
-    let err_msg = Message::from_bytes(err_msg.into_data());
+    let err_msg = make_file_error_message("Permission denied");
     cluster.handle_message(err_msg).await;
 
     assert_eq!(cluster.role(), ClusterRole::Master);
@@ -294,8 +322,7 @@ async fn test_file_upload_server_ready_flow() {
     let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-1");
 
     // SERVER_READY signals the upload cluster is ready -- must go through from_bytes
-    let ready_msg = Message::new(SERVER_READY, Priority::Medium, "test");
-    let ready_msg = Message::from_bytes(ready_msg.into_data());
+    let ready_msg = make_server_ready_message();
     cluster.handle_message(ready_msg).await;
 
     assert!(upload_state.data_ready.load(Ordering::Relaxed));
@@ -315,9 +342,7 @@ async fn test_file_upload_server_ready_flow() {
 async fn test_file_upload_error_flow() {
     let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-err");
 
-    let mut err_msg = Message::new(FILE_UPLOAD_ERROR, Priority::Medium, "test");
-    err_msg.push_string("Disk full");
-    let err_msg = Message::from_bytes(err_msg.into_data());
+    let err_msg = make_file_upload_error_message("Disk full");
     cluster.handle_message(err_msg).await;
 
     assert!(upload_state.error.load(Ordering::Relaxed));
@@ -339,8 +364,7 @@ async fn test_file_upload_error_flow() {
 async fn test_file_upload_complete_flow() {
     let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-done");
 
-    let complete_msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Medium, "test");
-    let complete_msg = Message::from_bytes(complete_msg.into_data());
+    let complete_msg = make_file_upload_complete_message();
     cluster.handle_message(complete_msg).await;
 
     assert!(upload_state.complete.load(Ordering::Relaxed));
@@ -365,12 +389,10 @@ async fn test_upload_messages_on_master_cluster_are_noop() {
 
     let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
 
-    let ready_msg = Message::new(SERVER_READY, Priority::Medium, "test");
-    let ready_msg = Message::from_bytes(ready_msg.into_data());
+    let ready_msg = make_server_ready_message();
     cluster.handle_message(ready_msg).await;
 
-    let complete_msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Medium, "test");
-    let complete_msg = Message::from_bytes(complete_msg.into_data());
+    let complete_msg = make_file_upload_complete_message();
     cluster.handle_message(complete_msg).await;
 
     assert_eq!(cluster.role(), ClusterRole::Master);
