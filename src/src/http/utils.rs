@@ -15,6 +15,12 @@ const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 /// Error message returned when a requested cluster name does not exist.
 pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
 
+/// Builds the error message returned when an application lacks access to a cluster.
+#[must_use]
+pub fn app_no_cluster_access_msg(app: &str, cluster: &str) -> String {
+    format!("Application {app} does not have access to cluster {cluster}")
+}
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
