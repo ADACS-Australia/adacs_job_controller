@@ -15,6 +15,9 @@ const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 /// Error message returned when a requested cluster name does not exist.
 pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
 
+/// Trace message logged when a cluster and bundle are resolved from an HTTP handler.
+pub const RESOLVED_CLUSTER_BUNDLE_MSG: &str = "HTTP: Resolved cluster='{}', bundle='{}'";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME

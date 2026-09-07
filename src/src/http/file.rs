@@ -16,7 +16,8 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, failed_to_read_body_msg, filter_files, job_id_to_u32,
+    INVALID_CLUSTER_MSG, RESOLVED_CLUSTER_BUNDLE_MSG, failed_to_read_body_msg, filter_files,
+    job_id_to_u32,
 };
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
@@ -168,11 +169,7 @@ pub async fn create_file_download(
         body.bundle.as_deref(),
     )
     .await?;
-    tracing::debug!(
-        "HTTP: Resolved cluster='{}', bundle='{}'",
-        s_cluster,
-        s_bundle
-    );
+    tracing::debug!(RESOLVED_CLUSTER_BUNDLE_MSG, s_cluster, s_bundle);
 
     let user_id = auth
         .payload
@@ -696,11 +693,7 @@ pub async fn upload_file(
         params.bundle.as_deref(),
     )
     .await?;
-    tracing::debug!(
-        "HTTP: Resolved cluster='{}', bundle='{}'",
-        s_cluster,
-        s_bundle
-    );
+    tracing::debug!(RESOLVED_CLUSTER_BUNDLE_MSG, s_cluster, s_bundle);
 
     let cluster = get_online_cluster(&state, &s_cluster)?;
 
