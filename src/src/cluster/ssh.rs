@@ -9,6 +9,12 @@ use russh::{ChannelMsg, Disconnect};
 
 use crate::config::clusters::ClusterConfig;
 
+/// SSH config options used for Kerberos-authenticated connections.
+const GSSAPI_AUTH_OPTION: &str = "GSSAPIAuthentication=yes";
+const GSSAPI_KEYEXCHANGE_OPTION: &str = "GSSAPIKeyExchange=yes";
+const STRICT_HOST_KEY_CHECKING_OPTION: &str = "StrictHostKeyChecking=no";
+const GSSAPI_DELEGATE_CREDENTIALS_OPTION: &str = "GSSAPIDelegateCredentials=no";
+
 /// Errors from SSH or Kerberos remote-client connections to cluster hosts.
 #[derive(Debug, thiserror::Error)]
 pub enum SshError {
@@ -312,13 +318,13 @@ fn build_kerberos_ssh_command(
     let mut cmd = tokio::process::Command::new("ssh");
     cmd.args([
         "-o",
-        "GSSAPIAuthentication=yes",
+        GSSAPI_AUTH_OPTION,
         "-o",
-        "GSSAPIKeyExchange=yes",
+        GSSAPI_KEYEXCHANGE_OPTION,
         "-o",
-        "StrictHostKeyChecking=no",
+        STRICT_HOST_KEY_CHECKING_OPTION,
         "-o",
-        "GSSAPIDelegateCredentials=no",
+        GSSAPI_DELEGATE_CREDENTIALS_OPTION,
         "-l",
         principal,
         host,
@@ -656,13 +662,13 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
 
         for expected in [
             "-o",
-            "GSSAPIAuthentication=yes",
+            GSSAPI_AUTH_OPTION,
             "-o",
-            "GSSAPIKeyExchange=yes",
+            GSSAPI_KEYEXCHANGE_OPTION,
             "-o",
-            "StrictHostKeyChecking=no",
+            STRICT_HOST_KEY_CHECKING_OPTION,
             "-o",
-            "GSSAPIDelegateCredentials=no",
+            GSSAPI_DELEGATE_CREDENTIALS_OPTION,
             "-l",
             "alice",
             "cluster.example.com",
