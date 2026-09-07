@@ -83,6 +83,15 @@ async fn drain_channel(
     msgs
 }
 
+/// Stop the cluster and drain any remaining outgoing WS messages.
+async fn stop_and_drain(
+    cluster: &Arc<Cluster>,
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
+) {
+    cluster.stop();
+    drain_channel(cluster, rx).await;
+}
+
 /// Count `PAUSE_FILE_CHUNK_STREAM` messages sent on the WS channel.
 async fn pause_message_count(
     cluster: &Arc<Cluster>,
@@ -138,8 +147,7 @@ async fn test_file_chunk_received_correctly() {
         .unwrap();
     assert_eq!(received_chunk, chunk_data);
 
-    cluster.stop();
-    drain_channel(&cluster, &mut rx).await;
+    stop_and_drain(&cluster, &mut rx).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,8 +175,7 @@ async fn test_file_details_sets_file_size() {
     assert!(download_state.data_ready.load(Ordering::Acquire));
     assert_eq!(download_state.file_size.load(Ordering::Relaxed), 1_234_567);
 
-    cluster.stop();
-    drain_channel(&cluster, &mut rx).await;
+    stop_and_drain(&cluster, &mut rx).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,8 +204,7 @@ async fn test_file_error_sets_error_state() {
     let details = download_state.error_details.lock().await;
     assert_eq!(*details, "permission denied");
 
-    cluster.stop();
-    drain_channel(&cluster, &mut rx).await;
+    stop_and_drain(&cluster, &mut rx).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +416,5 @@ async fn test_file_chunk_notifies_data_ready() {
         "Notification should have been delivered"
     );
 
-    cluster.stop();
-    drain_channel(&cluster, &mut rx).await;
+    stop_and_drain(&cluster, &mut rx).await;
 }
