@@ -43,6 +43,17 @@ async fn start_server(manager: MockClusterManagerTrait) -> common::TestServer {
     start_test_server(state).await
 }
 
+/// Start a test server backed by a forwarding cluster manager that accepts
+/// connections matching `valid_token` (or any token when `None`).
+/// Returns the server guard and the manager's `remove_connection` counter.
+async fn start_server_with_forwarding_cluster(
+    valid_token: Option<&str>,
+) -> (common::TestServer, Arc<std::sync::atomic::AtomicUsize>) {
+    let (manager, removed_count) = common::manager_with_forwarding_cluster("ozstar", valid_token);
+    let server = start_server(manager).await;
+    (server, removed_count)
+}
+
 /// Poll `cond` every 5ms until `timeout` elapses.
 /// Returns `true` as soon as `cond()` returns `true`, otherwise `false`.
 async fn wait_until<F>(timeout: std::time::Duration, cond: F) -> bool
@@ -161,8 +172,7 @@ async fn test_ws_no_token_disconnects() {
 /// The first binary message received has id `SERVER_READY` and source `SYSTEM_SOURCE`.
 #[tokio::test]
 async fn test_ws_valid_token_receives_server_ready() {
-    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", None);
-    let server = start_server(manager).await;
+    let (server, _) = start_server_with_forwarding_cluster(None).await;
     let port = server.port;
 
     // Connect with Authorization: Bearer header
@@ -201,8 +211,7 @@ async fn test_ws_valid_token_receives_server_ready() {
 async fn test_ws_valid_token_handles_disconnect_gracefully() {
     use std::sync::atomic::Ordering;
 
-    let (manager, removed_count) = common::manager_with_forwarding_cluster("ozstar", None);
-    let server = start_server(manager).await;
+    let (server, removed_count) = start_server_with_forwarding_cluster(None).await;
     let port = server.port;
 
     // Connect with Authorization: Bearer header
@@ -366,8 +375,7 @@ async fn test_ws_pong_handled() {
 /// Connection succeeds and receives `SERVER_READY`.
 #[tokio::test]
 async fn test_ws_lowercase_bearer_scheme_accepted() {
-    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", None);
-    let server = start_server(manager).await;
+    let (server, _) = start_server_with_forwarding_cluster(None).await;
     let port = server.port;
 
     // Connect with lowercase "bearer " scheme prefix
@@ -447,8 +455,7 @@ async fn test_ws_missing_authorization_header() {
 /// Connection is rejected because the malformed header yields no valid token.
 #[tokio::test]
 async fn test_ws_malformed_authorization_header() {
-    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", Some("valid"));
-    let server = start_server(manager).await;
+    let (server, _) = start_server_with_forwarding_cluster(Some("valid")).await;
     let port = server.port;
 
     // Connect with malformed Authorization header (no "Bearer " prefix)
@@ -491,8 +498,7 @@ async fn test_ws_malformed_authorization_header() {
 /// Connection is rejected (breaking change verified).
 #[tokio::test]
 async fn test_ws_query_param_rejected() {
-    let (manager, _) = common::manager_with_forwarding_cluster("ozstar", Some("valid"));
-    let server = start_server(manager).await;
+    let (server, _) = start_server_with_forwarding_cluster(Some("valid")).await;
     let port = server.port;
 
     // Connect with old query parameter method (should be rejected)
