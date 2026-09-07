@@ -24,6 +24,8 @@ use crate::protocol::message::Message;
 use crate::protocol::types::{FileInfo, FileListState, Priority};
 use crate::utils::uuid::generate_uuid;
 
+const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
+
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
 /// # Errors
@@ -363,7 +365,7 @@ pub async fn download_file(
         );
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            "Remote Cluster Offline".to_string(),
+            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
         ));
     }
 
@@ -446,7 +448,7 @@ pub async fn download_file(
         );
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            "Remote Cluster Offline".to_string(),
+            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
         ));
     }
 
@@ -962,7 +964,7 @@ fn get_online_cluster(
         tracing::warn!("HTTP: Cluster '{}' is offline", cluster_name);
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            "Remote Cluster Offline".to_string(),
+            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
         ));
     }
     tracing::debug!("HTTP: Cluster '{}' is online", cluster_name);
