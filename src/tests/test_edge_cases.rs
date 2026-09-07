@@ -1312,33 +1312,7 @@ async fn test_download_force_download_false_sets_inline_disposition() {
 
     let fd_state = simulate_completed_download();
 
-    let fd_for_mgr = Arc::clone(&fd_state);
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_file_download_admission()
-        .returning(|_| None);
-
-    manager
-        .expect_get_file_download_cleanup_trigger()
-        .returning(|_| None);
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(async move { c as Arc<dyn ClusterTrait> })
-        });
-    manager
-        .expect_get_file_download()
-        .returning(move |_| Some(Arc::clone(&fd_for_mgr)));
+    let manager = download_manager(Arc::clone(&fd_state));
 
     let app = create_router(make_test_state(db, manager));
 
