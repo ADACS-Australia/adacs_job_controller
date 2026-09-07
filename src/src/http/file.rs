@@ -16,7 +16,7 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, failed_to_read_body_msg, filter_files, job_id_to_u32,
+    FETCHING_CLUSTER_MSG, INVALID_CLUSTER_MSG, failed_to_read_body_msg, filter_files, job_id_to_u32,
 };
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
@@ -953,7 +953,7 @@ fn get_online_cluster(
     state: &AppState,
     cluster_name: &str,
 ) -> Result<Arc<dyn crate::cluster::traits::ClusterTrait>, (StatusCode, String)> {
-    tracing::trace!("HTTP: Fetching cluster '{}'", cluster_name);
+    tracing::trace!(FETCHING_CLUSTER_MSG, cluster_name);
     let cluster = state
         .cluster_manager
         .get_cluster_by_name(cluster_name)

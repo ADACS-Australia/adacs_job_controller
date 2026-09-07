@@ -15,6 +15,9 @@ const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 /// Error message returned when a requested cluster name does not exist.
 pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
 
+/// Trace message logged when fetching a cluster by name from an HTTP handler.
+pub const FETCHING_CLUSTER_MSG: &str = "HTTP: Fetching cluster '{}'";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
