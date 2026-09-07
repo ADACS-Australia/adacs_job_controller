@@ -15,7 +15,9 @@ use crate::cluster::file_upload::FileUploadState;
 use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
-use crate::http::utils::{INVALID_CLUSTER_MSG, filter_files, job_id_to_u32};
+use crate::http::utils::{
+    INVALID_CLUSTER_MSG, failed_to_read_body_msg, filter_files, job_id_to_u32,
+};
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
     RESUME_FILE_CHUNK_STREAM, UPLOAD_FILE,
@@ -743,7 +745,7 @@ pub async fn upload_file(
         (content_length as usize).saturating_add(1),
     )
     .await
-    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}")))?;
+    .map_err(failed_to_read_body_msg)?;
 
     if body_bytes.len() as u64 != content_length {
         tracing::warn!(
