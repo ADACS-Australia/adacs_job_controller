@@ -12,6 +12,9 @@ use serde::de::DeserializeOwned;
 /// rejected with HTTP 413 instead of being buffered in full.
 const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 
+/// Error message returned when a requested cluster name does not exist.
+pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
