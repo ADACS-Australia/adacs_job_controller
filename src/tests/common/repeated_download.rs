@@ -88,6 +88,21 @@ pub async fn insert_regression_file_download(db: &DatabaseConnection, file_id: &
     .expect("insert regression file_download failed");
 }
 
+/// Build a full axum app (HTTP + WS) from a real manager and file-list map.
+pub fn build_test_app(
+    db: DatabaseConnection,
+    manager: Arc<ClusterManager>,
+    file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
+    client_timeout_seconds: Option<u64>,
+) -> Router {
+    build_app(build_state(
+        db,
+        manager,
+        file_list_map,
+        client_timeout_seconds,
+    ))
+}
+
 /// Build the full axum app (HTTP + WS) backed by the supplied `AppState`.
 pub fn build_app(state: AppState) -> Router {
     let mut app = create_router(state.clone());
