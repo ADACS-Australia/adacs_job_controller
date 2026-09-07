@@ -16,7 +16,7 @@ use sea_orm::{
 use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
-use crate::http::utils::{INVALID_CLUSTER_MSG, job_id_to_u32, parse_csv_u64, parse_job_steps};
+use crate::http::utils::{INVALID_CLUSTER_MSG, db_error, job_id_to_u32, parse_csv_u64, parse_job_steps};
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
 };
@@ -190,7 +190,7 @@ pub async fn create_job(
         .await
         .map_err(|e| {
             tracing::error!("HTTP: Database transaction failed: {}", e);
-            (StatusCode::BAD_REQUEST, format!("DB error: {e}"))
+            db_error(e)
         })?;
     tracing::debug!("HTTP: Job {} created successfully", job_id);
 
@@ -406,10 +406,7 @@ pub async fn get_jobs(
         }
     }
 
-    let filtered_jobs = job_query
-        .all(&state.db)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
+    let filtered_jobs = job_query.all(&state.db).await.map_err(db_error)?;
 
     if filtered_jobs.is_empty() {
         return Ok(Json(serde_json::json!([])));
@@ -427,7 +424,7 @@ pub async fn get_jobs(
         .order_by_desc(job_history::Column::Id)
         .all(&state.db)
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
+        .map_err(db_error)?;
 
     let mut histories_by_job: HashMap<i64, Vec<&job_history::Model>> = HashMap::new();
     for h in &histories {
@@ -501,7 +498,7 @@ async fn record_job_transition(
     }
     .insert(&state.db)
     .await
-    .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
+    .map_err(db_error)?;
 
     if !pending && cluster_obj.is_online() {
         let source = format!("{}_{}", job_id, job.cluster);
@@ -669,7 +666,7 @@ async fn get_latest_job_history(
         .order_by_desc(job_history::Column::Id)
         .one(&state.db)
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
+        .map_err(db_error)?
         .ok_or((StatusCode::BAD_REQUEST, "No history for job".to_string()))
 }
 
@@ -691,7 +688,7 @@ pub async fn get_job_with_access_check(
         .filter(job::Column::Application.is_in(get_applications(&auth.secret)))
         .one(&state.db)
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
+        .map_err(db_error)?
         .ok_or((
             StatusCode::BAD_REQUEST,
             "Job did not exist with the specified jobId".to_string(),
