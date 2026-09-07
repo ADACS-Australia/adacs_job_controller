@@ -83,6 +83,38 @@ async fn insert_cluster_job(db: &DatabaseConnection) -> i64 {
     .id
 }
 
+/// Insert a `cluster_job` row with the given field values and return the inserted model.
+/// `deleting` and `deleted` are always `false` for these test fixtures.
+#[allow(clippy::too_many_arguments)]
+async fn insert_cluster_job_row(
+    db: &DatabaseConnection,
+    job_id: i64,
+    scheduler_id: i64,
+    submitting: bool,
+    submitting_count: i32,
+    bundle_hash: &str,
+    working_directory: &str,
+    running: bool,
+    cluster: &str,
+) -> cluster_job::Model {
+    cluster_job::ActiveModel {
+        job_id: Set(job_id),
+        scheduler_id: Set(scheduler_id),
+        submitting: Set(submitting),
+        submitting_count: Set(submitting_count),
+        bundle_hash: Set(bundle_hash.to_string()),
+        working_directory: Set(working_directory.to_string()),
+        running: Set(running),
+        deleting: Set(false),
+        deleted: Set(false),
+        cluster: Set(cluster.to_string()),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap()
+}
+
 /// Build a ready-to-dispatch `Message` by creating it, pushing payload, then round-tripping
 /// through `into_data()` / `from_bytes()` so `id()` / `source()` are properly cached.
 fn dispatch_message(id: u32, push: impl FnOnce(&mut Message)) -> Message {
@@ -265,22 +297,8 @@ async fn test_handle_job_save_update() {
     let db = make_cluster_db().await;
 
     // Pre-insert a row
-    let inserted = cluster_job::ActiveModel {
-        job_id: Set(10),
-        scheduler_id: Set(0),
-        submitting: Set(false),
-        submitting_count: Set(0),
-        bundle_hash: Set("oldhash".to_string()),
-        working_directory: Set("/old".to_string()),
-        running: Set(false),
-        deleting: Set(false),
-        deleted: Set(false),
-        cluster: Set("ozstar".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted =
+        insert_cluster_job_row(&db, 10, 0, false, 0, "oldhash", "/old", false, "ozstar").await;
     let existing_id = inserted.id;
 
     let updated_job = ClusterJob {
@@ -344,22 +362,8 @@ async fn test_handle_job_save_update() {
 async fn test_handle_job_get_by_id_found() {
     let db = make_cluster_db().await;
 
-    let inserted = cluster_job::ActiveModel {
-        job_id: Set(55),
-        scheduler_id: Set(7),
-        submitting: Set(true),
-        submitting_count: Set(3),
-        bundle_hash: Set("myhash".to_string()),
-        working_directory: Set("/mydir".to_string()),
-        running: Set(true),
-        deleting: Set(false),
-        deleted: Set(false),
-        cluster: Set("ozstar".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted =
+        insert_cluster_job_row(&db, 55, 7, true, 3, "myhash", "/mydir", true, "ozstar").await;
     let row_id = inserted.id;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -438,22 +442,7 @@ async fn test_handle_job_get_by_id_not_found() {
 async fn test_handle_job_get_by_job_id_found() {
     let db = make_cluster_db().await;
 
-    cluster_job::ActiveModel {
-        job_id: Set(77),
-        scheduler_id: Set(0),
-        submitting: Set(false),
-        submitting_count: Set(0),
-        bundle_hash: Set("h1".to_string()),
-        working_directory: Set("/d1".to_string()),
-        running: Set(false),
-        deleting: Set(false),
-        deleted: Set(false),
-        cluster: Set("ozstar".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    insert_cluster_job_row(&db, 77, 0, false, 0, "h1", "/d1", false, "ozstar").await;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
     let mut msg = dispatch_message(DB_JOB_GET_BY_JOB_ID, |m| {
@@ -495,22 +484,8 @@ async fn test_handle_job_get_by_job_id_cluster_scoping() {
 
     let mut ozstar_id = 0;
     for cluster in ["ozstar", "nci"] {
-        let inserted = cluster_job::ActiveModel {
-            job_id: Set(77),
-            scheduler_id: Set(0),
-            submitting: Set(false),
-            submitting_count: Set(0),
-            bundle_hash: Set("h1".to_string()),
-            working_directory: Set("/d1".to_string()),
-            running: Set(false),
-            deleting: Set(false),
-            deleted: Set(false),
-            cluster: Set(cluster.to_string()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let inserted =
+            insert_cluster_job_row(&db, 77, 0, false, 0, "h1", "/d1", false, cluster).await;
         if cluster == "ozstar" {
             ozstar_id = inserted.id;
         }
@@ -560,22 +535,7 @@ async fn test_handle_job_get_running_jobs() {
         (2i64, false, "ozstar"),
         (3i64, true, "nci"),
     ] {
-        cluster_job::ActiveModel {
-            job_id: Set(job_id),
-            scheduler_id: Set(0),
-            submitting: Set(false),
-            submitting_count: Set(0),
-            bundle_hash: Set(String::new()),
-            working_directory: Set(String::new()),
-            running: Set(running),
-            deleting: Set(false),
-            deleted: Set(false),
-            cluster: Set(cluster.to_string()),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        insert_cluster_job_row(&db, job_id, 0, false, 0, "", "", running, cluster).await;
     }
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
@@ -613,22 +573,7 @@ async fn test_handle_job_get_running_jobs() {
 async fn test_handle_job_delete() {
     let db = make_cluster_db().await;
 
-    let inserted = cluster_job::ActiveModel {
-        job_id: Set(88),
-        scheduler_id: Set(0),
-        submitting: Set(false),
-        submitting_count: Set(0),
-        bundle_hash: Set(String::new()),
-        working_directory: Set(String::new()),
-        running: Set(false),
-        deleting: Set(false),
-        deleted: Set(false),
-        cluster: Set("ozstar".to_string()),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .unwrap();
+    let inserted = insert_cluster_job_row(&db, 88, 0, false, 0, "", "", false, "ozstar").await;
     let row_id = inserted.id;
 
     let (mock, sent) = mock_cluster_capturing("ozstar");
