@@ -515,9 +515,7 @@ pub async fn download_file(
                         chunk.truncate(remaining);
                         sent += chunk.len() as u64;
                         fd_state_stream.sent_bytes.store(sent, Ordering::Release);
-                        if let Some(trigger) = stream_trigger.as_ref() {
-                            let _ = trigger.trigger(DownloadShutdownReason::Complete);
-                        }
+                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
                         yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
                         break;
                     }
@@ -544,28 +542,22 @@ pub async fn download_file(
                         fd_cluster.send_message(resume_msg).await;
                     }
 
-                    if sent == file_size
-                        && let Some(trigger) = stream_trigger.as_ref()
-                    {
-                        let _ = trigger.trigger(DownloadShutdownReason::Complete);
+                    if sent == file_size {
+                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
                     }
 
                     yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
                 }
                 Ok(None) => {
                     if sent == file_size {
-                        if let Some(trigger) = stream_trigger.as_ref() {
-                            let _ = trigger.trigger(DownloadShutdownReason::Complete);
-                        }
-                    } else if let Some(trigger) = stream_trigger.as_ref() {
-                        let _ = trigger.trigger(DownloadShutdownReason::ChunkTimeout);
+                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
+                    } else {
+                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
                     }
                     break;
                 }
                 Err(_) => {
-                    if let Some(trigger) = stream_trigger.as_ref() {
-                        let _ = trigger.trigger(DownloadShutdownReason::ChunkTimeout);
-                    }
+                    fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
                     yield Err(std::io::Error::new(
                         std::io::ErrorKind::TimedOut,
                         "Remote cluster took too long to respond",
@@ -613,6 +605,18 @@ pub async fn download_file(
 fn fire_guard(guard: &mut Option<PreResponseGuard>, reason: DownloadShutdownReason) {
     if let Some(guard) = guard.take() {
         let _ = guard.trigger(reason);
+    }
+}
+
+/// Fire the stream's cleanup trigger for a terminal reason, if one is still
+/// armed. All clones share the same session transition, so the first
+/// notification wins and later calls are idempotent no-ops.
+fn fire_stream_trigger(
+    stream_trigger: &Option<DownloadCleanupTrigger>,
+    reason: DownloadShutdownReason,
+) {
+    if let Some(trigger) = stream_trigger.as_ref() {
+        let _ = trigger.trigger(reason);
     }
 }
 
