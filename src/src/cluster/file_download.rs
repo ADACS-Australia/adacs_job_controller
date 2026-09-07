@@ -228,7 +228,13 @@ impl DownloadSession {
 
         // The endpoint is registered when the session is created. Sending is
         // synchronous and non-blocking; worker ownership stays outside session.
-        let _ = self.cleanup_sender.send(request);
+        if let Err(e) = self.cleanup_sender.send(request) {
+            tracing::warn!(
+                "DownloadSession: cleanup request for download {} was dropped: {}",
+                self.download_id,
+                e
+            );
+        }
         true
     }
 }
