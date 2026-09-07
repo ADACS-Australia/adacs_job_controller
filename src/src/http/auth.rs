@@ -7,6 +7,9 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 
 use crate::config::access_secrets::AccessSecret;
 
+/// Error message returned when a request is not authorized.
+const NOT_AUTHORIZED_MSG: &str = "Not authorized";
+
 /// Result of a successful JWT authorization check.
 #[derive(Debug, Clone)]
 pub struct AuthResult {
@@ -40,7 +43,7 @@ where
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| {
                 tracing::debug!("AUTH: No authorization header present");
-                (StatusCode::FORBIDDEN, "Not authorized".to_string())
+                (StatusCode::FORBIDDEN, NOT_AUTHORIZED_MSG.to_string())
             })?;
         tracing::trace!(
             "AUTH: Authorization header found (length: {})",
@@ -84,7 +87,7 @@ where
         }
 
         tracing::warn!("AUTH: JWT validation failed - no matching secret found");
-        Err((StatusCode::FORBIDDEN, "Not authorized".to_string()))
+        Err((StatusCode::FORBIDDEN, NOT_AUTHORIZED_MSG.to_string()))
     }
 }
 
