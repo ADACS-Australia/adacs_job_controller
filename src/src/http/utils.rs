@@ -58,6 +58,11 @@ where
     }
 }
 
+/// Build the error response used when a request body cannot be read.
+pub fn failed_to_read_body_msg(e: impl std::fmt::Display) -> (StatusCode, String) {
+    (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}"))
+}
+
 /// Read a request body into memory, rejecting bodies larger than `limit` bytes
 /// with HTTP 413 instead of buffering them in full.
 async fn read_body_limited(
@@ -67,8 +72,7 @@ async fn read_body_limited(
     let mut stream = body.into_data_stream();
     let mut bytes = Vec::new();
     while let Some(chunk) = stream.next().await {
-        let chunk =
-            chunk.map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read body: {e}")))?;
+        let chunk = chunk.map_err(failed_to_read_body_msg)?;
         if bytes.len() + chunk.len() > limit {
             return Err((
                 StatusCode::PAYLOAD_TOO_LARGE,
