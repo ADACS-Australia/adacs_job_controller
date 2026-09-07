@@ -1128,30 +1128,7 @@ async fn test_get_jobs_returns_all_application_jobs() {
     let other_job = insert_test_job(&db, "ozstar", "b3", "other_app").await;
     insert_job_history(&db, other_job, JobStatus::Running as i32, "system").await;
 
-    let manager = mock_cluster_manager_no_clusters();
-
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/job/apiv1/job/")
-                .header("authorization", &token)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let body = get_jobs_with_query(db, "").await;
 
     let jobs = body.as_array().unwrap();
     assert_eq!(jobs.len(), 2, "should return exactly 2 jobs for testapp");
@@ -1180,30 +1157,7 @@ async fn test_get_jobs_with_job_ids_filter() {
     let job2 = insert_test_job(&db, "ozstar", "b2", "testapp").await;
     insert_job_history(&db, job2, JobStatus::Running as i32, "system").await;
 
-    let manager = mock_cluster_manager_no_clusters();
-
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri(format!("/job/apiv1/job/?jobIds={job1}"))
-                .header("authorization", &token)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let body = get_jobs_with_query(db, &format!("?jobIds={job1}")).await;
 
     let jobs = body.as_array().unwrap();
     assert_eq!(jobs.len(), 1);
@@ -1260,29 +1214,7 @@ async fn test_get_jobs_history_in_response() {
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
     insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
 
-    let manager = mock_cluster_manager_no_clusters();
-
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/job/apiv1/job/")
-                .header("authorization", &token)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let body = get_jobs_with_query(db, "").await;
 
     let jobs = body.as_array().unwrap();
     assert_eq!(jobs.len(), 1);
