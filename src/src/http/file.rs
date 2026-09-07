@@ -15,7 +15,7 @@ use crate::cluster::file_upload::FileUploadState;
 use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
-use crate::http::utils::{filter_files, job_id_to_u32};
+use crate::http::utils::{INVALID_CLUSTER_MSG, filter_files, job_id_to_u32};
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
     RESUME_FILE_CHUNK_STREAM, UPLOAD_FILE,
@@ -957,7 +957,7 @@ fn get_online_cluster(
         .get_cluster_by_name(cluster_name)
         .ok_or_else(|| {
             tracing::warn!("HTTP: Cluster '{}' not found", cluster_name);
-            (StatusCode::BAD_REQUEST, "Invalid cluster".to_string())
+            (StatusCode::BAD_REQUEST, INVALID_CLUSTER_MSG.to_string())
         })?;
 
     if !cluster.is_online() {

@@ -16,7 +16,7 @@ use sea_orm::{
 use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
-use crate::http::utils::{job_id_to_u32, parse_csv_u64, parse_job_steps};
+use crate::http::utils::{INVALID_CLUSTER_MSG, job_id_to_u32, parse_csv_u64, parse_job_steps};
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
 };
@@ -134,7 +134,7 @@ pub async fn create_job(
     let cluster = state
         .cluster_manager
         .get_cluster_by_name(&body.cluster)
-        .ok_or((StatusCode::BAD_REQUEST, "Invalid cluster".to_string()))?;
+        .ok_or((StatusCode::BAD_REQUEST, INVALID_CLUSTER_MSG.to_string()))?;
     tracing::debug!(
         "HTTP: Cluster '{}' found, online status: {}",
         body.cluster,
