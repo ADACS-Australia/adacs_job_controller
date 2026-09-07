@@ -141,12 +141,15 @@ impl DownloadSession {
         &self.transfer
     }
 
-    #[must_use]
-    pub fn state(&self) -> DownloadSessionState {
+    fn lock_lifecycle(&self) -> std::sync::MutexGuard<'_, DownloadLifecycle> {
         self.lifecycle
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .state
+    }
+
+    #[must_use]
+    pub fn state(&self) -> DownloadSessionState {
+        self.lock_lifecycle().state
     }
 
     /// Bind this download session to the accepted WebSocket connection.
@@ -157,10 +160,7 @@ impl DownloadSession {
     /// has already been bound to a connection, or when shutdown has already won
     /// the lifecycle race.
     pub fn bind_connection(&self, connection_id: ConnectionId) -> Result<(), DownloadBindError> {
-        let mut lifecycle = self
-            .lifecycle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut lifecycle = self.lock_lifecycle();
         match lifecycle.state {
             DownloadSessionState::Pending => {
                 lifecycle.state = DownloadSessionState::Connected(connection_id);
@@ -175,10 +175,7 @@ impl DownloadSession {
     /// Connected sessions only close after their immutable accepted handler
     /// completes. Pending sessions have no handler and may complete locally.
     pub fn complete(&self, connection_id: Option<ConnectionId>) -> bool {
-        let mut lifecycle = self
-            .lifecycle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut lifecycle = self.lock_lifecycle();
         match lifecycle.state {
             DownloadSessionState::Closing {
                 connection_id: expected,
@@ -203,10 +200,7 @@ impl DownloadSession {
 
     fn trigger(&self, reason: DownloadShutdownReason) -> bool {
         let request = {
-            let mut lifecycle = self
-                .lifecycle
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut lifecycle = self.lock_lifecycle();
             let connection_id = match lifecycle.state {
                 DownloadSessionState::Pending => None,
                 DownloadSessionState::Connected(connection_id) => Some(connection_id),
