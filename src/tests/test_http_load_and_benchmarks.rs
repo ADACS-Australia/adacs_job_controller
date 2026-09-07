@@ -27,6 +27,58 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 // HTTP Load Tests - Match C++ test_http_worker_pool_exhaustion
 // ---------------------------------------------------------------------------
 
+/// Spawns `num_requests` concurrent job-creation requests and returns each
+/// request's status and elapsed duration.
+async fn run_concurrent_job_creation(
+    app: axum::Router,
+    token: String,
+    num_requests: usize,
+    bundle_prefix: &str,
+) -> Vec<(axum::http::StatusCode, Duration)> {
+    let bundle_prefix = bundle_prefix.to_string();
+    let mut handles = Vec::new();
+
+    for i in 0..num_requests {
+        let app_clone = app.clone();
+        let token_clone = token.clone();
+        let bundle_prefix = bundle_prefix.clone();
+
+        let handle = tokio::spawn(async move {
+            let job_data = json!({
+                "cluster": "ozstar",
+                "bundle": format!("{bundle_prefix}_{}", i),
+                "application": "testapp",
+                "parameters": "{}"
+            });
+
+            let start = Instant::now();
+            let resp = app_clone
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/job/apiv1/job/")
+                        .header("content-type", "application/json")
+                        .header("authorization", &token_clone)
+                        .body(Body::from(job_data.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let elapsed = start.elapsed();
+
+            (resp.status(), elapsed)
+        });
+
+        handles.push(handle);
+    }
+
+    join_all(handles)
+        .await
+        .into_iter()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
 /// Tests server behavior under moderate concurrent load.
 ///
 /// Matches C++: `test_http_worker_pool_exhaustion` (simplified version)
@@ -49,62 +101,20 @@ async fn test_http_concurrent_job_creation_moderate_load() {
 
     // Send 100 concurrent requests
     let num_requests = 100;
-    let mut handles = Vec::new();
-
-    for i in 0..num_requests {
-        let app_clone = app.clone();
-        let token_clone = token.clone();
-
-        let handle = tokio::spawn(async move {
-            let job_data = json!({
-                "cluster": "ozstar",
-                "bundle": format!("bundle_{}", i),
-                "application": "testapp",
-                "parameters": "{}"
-            });
-
-            let resp = app_clone
-                .oneshot(
-                    Request::builder()
-                        .method("POST")
-                        .uri("/job/apiv1/job/")
-                        .header("content-type", "application/json")
-                        .header("authorization", &token_clone)
-                        .body(Body::from(job_data.to_string()))
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-
-            resp.status()
-        });
-
-        handles.push(handle);
-    }
-
-    // Wait for all requests to complete
-    let results = join_all(handles).await;
+    let results = run_concurrent_job_creation(app, token, num_requests, "bundle").await;
 
     // Count successes and failures
     let mut success_count = 0;
     let mut client_error_count = 0;
     let mut server_error_count = 0;
 
-    for result in results {
-        match result {
-            Ok(status) => {
-                if status.is_success() {
-                    success_count += 1;
-                } else if status.is_client_error() {
-                    client_error_count += 1;
-                } else if status.is_server_error() {
-                    server_error_count += 1;
-                }
-            }
-            Err(_) => {
-                // Task panicked or was cancelled
-                server_error_count += 1;
-            }
+    for (status, _) in results {
+        if status.is_success() {
+            success_count += 1;
+        } else if status.is_client_error() {
+            client_error_count += 1;
+        } else if status.is_server_error() {
+            server_error_count += 1;
         }
     }
 
@@ -148,42 +158,7 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     let num_requests = 200;
     let start_time = Instant::now();
 
-    let mut handles = Vec::new();
-    for i in 0..num_requests {
-        let app_clone = app.clone();
-        let token_clone = token.clone();
-
-        let handle = tokio::spawn(async move {
-            let job_data = json!({
-                "cluster": "ozstar",
-                "bundle": format!("bundle_{}", i),
-                "application": "testapp",
-                "parameters": "{}"
-            });
-
-            let start = Instant::now();
-            let resp = app_clone
-                .oneshot(
-                    Request::builder()
-                        .method("POST")
-                        .uri("/job/apiv1/job/")
-                        .header("content-type", "application/json")
-                        .header("authorization", &token_clone)
-                        .body(Body::from(job_data.to_string()))
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            let elapsed = start.elapsed();
-
-            (resp.status(), elapsed)
-        });
-
-        handles.push(handle);
-    }
-
-    // Wait for all requests to complete
-    let results = join_all(handles).await;
+    let results = run_concurrent_job_creation(app, token, num_requests, "bundle").await;
     let total_elapsed = start_time.elapsed();
 
     // Analyze results
@@ -191,7 +166,7 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     let mut total_response_time = Duration::ZERO;
     let mut max_response_time = Duration::ZERO;
 
-    for (status, response_time) in results.into_iter().flatten() {
+    for (status, response_time) in results {
         if status.is_success() {
             success_count += 1;
         }
@@ -201,7 +176,7 @@ async fn test_http_concurrent_job_creation_heavy_load() {
         }
     }
 
-    let avg_response_time = total_response_time / num_requests;
+    let avg_response_time = total_response_time / num_requests as u32;
 
     // Performance assertions
     assert!(
@@ -215,7 +190,7 @@ async fn test_http_concurrent_job_creation_heavy_load() {
     );
 
     // Success rate should be reasonable (> 50%)
-    let success_rate = f64::from(success_count) / f64::from(num_requests);
+    let success_rate = f64::from(success_count) / num_requests as f64;
     assert!(
         success_rate > 0.5,
         "Success rate should be > 50%, got {:.2}%",
