@@ -38,6 +38,20 @@ use std::sync::atomic::Ordering;
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Build an app whose cluster manager returns `None` for every cluster lookup
+/// (no cluster resolution), along with the multi-secret set for token encoding.
+async fn no_cluster_app() -> (
+    axum::Router,
+    Vec<adacs_job_controller::config::access_secrets::AccessSecret>,
+) {
+    let secrets = test_jwt_secrets_multi();
+    let db = setup_test_db().await;
+    let mut manager = MockClusterManagerTrait::new();
+    manager.expect_get_cluster_by_name().returning(|_| None);
+    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
+    (app, secrets)
+}
+
 // ---------------------------------------------------------------------------
 // POST /job/apiv1/file/ — create file download records
 // ---------------------------------------------------------------------------
@@ -2067,11 +2081,7 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_create_download_no_jobid_missing_cluster_returns_400() {
-    let secrets = test_jwt_secrets_multi();
-    let db = setup_test_db().await;
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(|_| None);
-    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
+    let (app, secrets) = no_cluster_app().await;
     let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
     // Only bundle, no cluster
     let resp = app
@@ -2108,11 +2118,7 @@ async fn test_create_download_no_jobid_missing_cluster_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_create_download_no_jobid_missing_bundle_returns_400() {
-    let secrets = test_jwt_secrets_multi();
-    let db = setup_test_db().await;
-    let mut manager = MockClusterManagerTrait::new();
-    manager.expect_get_cluster_by_name().returning(|_| None);
-    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
+    let (app, secrets) = no_cluster_app().await;
     let token = encode_jwt_for_secret(&secrets[0], &serde_json::json!({"userId": 10}));
     // Only cluster, no bundle
     let resp = app
@@ -2198,13 +2204,7 @@ async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
 /// Verifies 400 Bad Request.
 #[tokio::test]
 async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
-    let secrets = test_jwt_secrets_multi();
-    let db = setup_test_db().await;
-    let mut manager = MockClusterManagerTrait::new();
-    // Unknown cluster → get_cluster_by_name returns None
-    manager.expect_get_cluster_by_name().returning(|_| None);
-
-    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
+    let (app, secrets) = no_cluster_app().await;
     // app4 has no cluster access so it will fail on cluster check first
     let token = encode_jwt_for_secret(&secrets[3], &serde_json::json!({"userId": 10}));
 
