@@ -25,9 +25,9 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_file_download, insert_job_history,
     insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
-    manager_with_online_cluster_no_messages, offline_cluster, online_cluster,
-    online_cluster_no_messages, setup_test_db, test_cluster_config, test_jwt_secrets,
-    test_jwt_secrets_multi, upload_cluster,
+    manager_with_online_cluster_and_create_file_download, manager_with_online_cluster_no_messages,
+    offline_cluster, online_cluster, online_cluster_no_messages, setup_test_db,
+    test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
@@ -431,8 +431,7 @@ async fn test_download_file_streams_chunks() {
     }
 
     // Set up mock manager that creates a fresh FileDownloadState for each download
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
+    let mut manager = manager_with_online_cluster_and_create_file_download();
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
@@ -443,22 +442,6 @@ async fn test_download_file_streams_chunks() {
     manager
         .expect_get_file_download_cleanup_trigger()
         .returning(|_| None);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .times(5)
-        .returning(move |_| Some(c.clone()));
-
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .times(5)
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(
-                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
-            )
-        });
 
     // For each get_file_download call, create a fresh FileDownloadState and spawn a task to push data
     let expected_data_for_mock = expected_data.clone();
@@ -578,8 +561,7 @@ async fn test_download_file_error_from_cluster_returns_400() {
     });
 
     let fd_for_manager = Arc::clone(&fd_state);
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
+    let mut manager = manager_with_online_cluster_and_create_file_download();
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
@@ -590,19 +572,6 @@ async fn test_download_file_error_from_cluster_returns_400() {
     manager
         .expect_get_file_download_cleanup_trigger()
         .returning(|_| None);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(
-                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
-            )
-        });
     manager
         .expect_get_file_download()
         .returning(move |_| Some(Arc::clone(&fd_for_manager)));
@@ -662,24 +631,10 @@ async fn test_download_file_job_id_exceeding_u32_returns_400() {
     .await
     .unwrap();
 
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
+    let mut manager = manager_with_online_cluster_and_create_file_download();
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(
-                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
-            )
-        });
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let session = DownloadSession::new(uuid.clone(), Arc::new(FileDownloadState::new()), tx);
     let trigger = session.cleanup_trigger();
@@ -730,24 +685,10 @@ async fn test_download_file_session_not_found_returns_400() {
     let uuid = "missing-session-uuid".to_string();
     insert_file_download(&db, &uuid, "").await;
 
-    let cluster = Arc::new(online_cluster_no_messages());
-    let mut manager = MockClusterManagerTrait::new();
+    let mut manager = manager_with_online_cluster_and_create_file_download();
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    let c = Arc::clone(&cluster);
-    manager
-        .expect_get_cluster_by_name()
-        .returning(move |_| Some(c.clone()));
-    let c2 = Arc::new(online_cluster_no_messages());
-    manager
-        .expect_create_file_download()
-        .returning(move |_, _| {
-            let c = Arc::clone(&c2);
-            Box::pin(
-                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
-            )
-        });
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let session = DownloadSession::new(uuid.clone(), Arc::new(FileDownloadState::new()), tx);
     let trigger = session.cleanup_trigger();

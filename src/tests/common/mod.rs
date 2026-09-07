@@ -256,6 +256,27 @@ pub fn manager_with_online_cluster_no_messages() -> MockClusterManagerTrait {
     manager
 }
 
+/// Build a mock `ClusterManagerTrait` wired to an online cluster for
+/// `get_cluster_by_name` plus a second online cluster for `create_file_download`.
+pub fn manager_with_online_cluster_and_create_file_download() -> MockClusterManagerTrait {
+    let cluster = Arc::new(online_cluster_no_messages());
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    let c2 = Arc::new(online_cluster_no_messages());
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&c2);
+            Box::pin(
+                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
+            )
+        });
+    manager
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket test helpers
 // ---------------------------------------------------------------------------
