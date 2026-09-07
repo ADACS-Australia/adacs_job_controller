@@ -27,6 +27,7 @@ use crate::protocol::types::{FileInfo, FileListState, Priority};
 use crate::utils::uuid::generate_uuid;
 
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
+const BAD_REQUEST_MSG: &str = "Bad request";
 
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
@@ -1069,20 +1070,20 @@ async fn resolve_cluster_bundle(
     } else {
         let cluster = cluster_param
             .filter(|s| !s.is_empty())
-            .ok_or((StatusCode::BAD_REQUEST, "Bad request".to_string()))?;
+            .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
         let bundle = bundle_param
             .filter(|s| !s.is_empty())
-            .ok_or((StatusCode::BAD_REQUEST, "Bad request".to_string()))?;
+            .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
 
         if !auth.secret.clusters.iter().any(|c| c == cluster) {
-            return Err((StatusCode::BAD_REQUEST, "Bad request".to_string()));
+            return Err((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()));
         }
 
         // Verify the cluster actually exists
         state
             .cluster_manager
             .get_cluster_by_name(cluster)
-            .ok_or((StatusCode::BAD_REQUEST, "Bad request".to_string()))?;
+            .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
 
         Ok((cluster.to_string(), bundle.to_string()))
     }
