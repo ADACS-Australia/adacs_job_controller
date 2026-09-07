@@ -15,6 +15,10 @@ const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 /// Error message returned when a requested cluster name does not exist.
 pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
 
+/// Error message returned when a job ID exceeds the maximum value supported by
+/// the `u32` wire format. Shared across HTTP handlers.
+pub const JOB_ID_EXCEEDS_MAX_MSG: &str = "Job ID {job_id} exceeds maximum supported value";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
@@ -125,7 +129,7 @@ pub fn job_id_to_u32(job_id: u64) -> Result<u32, (StatusCode, String)> {
     u32::try_from(job_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
-            format!("Job ID {job_id} exceeds maximum supported value"),
+            JOB_ID_EXCEEDS_MAX_MSG.replace("{job_id}", &job_id.to_string()),
         )
     })
 }
