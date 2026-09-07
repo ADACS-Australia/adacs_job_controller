@@ -213,16 +213,21 @@ pub async fn create_job(
         tracing::trace!("HTTP: Submit job message queued");
 
         tracing::trace!("HTTP: Updating job history to Submitting");
-        let _ = job_history::ActiveModel {
+        let record = job_history::ActiveModel {
             job_id: Set(job_id),
             timestamp: Set(chrono::Utc::now().naive_utc()),
             what: Set(SYSTEM_SOURCE.to_string()),
             state: Set(JobStatus::Submitting as i32),
             details: Set("Job submitting".to_string()),
             ..Default::default()
+        };
+        if let Err(e) = record.insert(&state.db).await {
+            tracing::warn!(
+                "HTTP: Failed to insert job history 'Submitting' record for job {}: {}",
+                job_id,
+                e
+            );
         }
-        .insert(&state.db)
-        .await;
     } else {
         tracing::warn!(
             "HTTP: Cluster '{}' is offline - job {} will be submitted when cluster reconnects",
