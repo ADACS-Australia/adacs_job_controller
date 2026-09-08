@@ -10,6 +10,9 @@ use crate::config::access_secrets::AccessSecret;
 /// Error message returned when a request is not authorized.
 const NOT_AUTHORIZED_MSG: &str = "Not authorized";
 
+/// RFC 6750 bearer auth scheme prefix (case-insensitive per spec).
+pub const BEARER_PREFIX: &str = "Bearer ";
+
 /// Result of a successful JWT authorization check.
 #[derive(Debug, Clone)]
 pub struct AuthResult {
@@ -52,8 +55,10 @@ where
 
         // Accept both "Bearer <jwt>" and bare "<jwt>" for backwards compatibility.
         // Per RFC 6750 the auth scheme is case-insensitive, so accept any casing.
-        let jwt_str = match auth_header.get(..7) {
-            Some(prefix) if prefix.eq_ignore_ascii_case("Bearer ") => &auth_header[7..],
+        let jwt_str = match auth_header.get(..BEARER_PREFIX.len()) {
+            Some(prefix) if prefix.eq_ignore_ascii_case(BEARER_PREFIX) => {
+                &auth_header[BEARER_PREFIX.len()..]
+            }
             _ => auth_header,
         };
         tracing::trace!("AUTH: JWT token extracted (length: {})", jwt_str.len());
@@ -214,7 +219,7 @@ mod tests {
     async fn test_auth_valid_bearer_prefix() {
         let secrets = make_test_secrets();
         let token = encode_jwt(&serde_json::json!({"userId": 7}), &secrets[0].secret);
-        assert_valid_auth(secrets, format!("Bearer {token}"), "app1", 7).await;
+        assert_valid_auth(secrets, format!("{BEARER_PREFIX}{token}"), "app1", 7).await;
     }
 
     #[tokio::test]
