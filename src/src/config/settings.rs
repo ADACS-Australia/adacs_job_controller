@@ -48,6 +48,8 @@ pub static FILE_DOWNLOAD_EXPIRY_TIME: LazyLock<u64> =
 pub const CLUSTER_CONFIG_FILE_ENV_VARIABLE: &str = "CLUSTER_CONFIG_FILE";
 /// Environment variable for the JWT access-secrets JSON file path.
 pub const ACCESS_SECRET_CONFIG_FILE_ENV_VARIABLE: &str = "ACCESS_SECRET_CONFIG_FILE";
+/// Environment variable for the LTK WebSocket handshake timeout in milliseconds.
+pub const LTK_CONNECTION_TIMEOUT_MS_ENV: &str = "LTK_CONNECTION_TIMEOUT_MS";
 
 // LTK security settings
 /// Milliseconds to wait for an LTK WebSocket handshake before timing out (`LTK_CONNECTION_TIMEOUT_MS`).
@@ -61,14 +63,14 @@ pub const ACCESS_SECRET_CONFIG_FILE_ENV_VARIABLE: &str = "ACCESS_SECRET_CONFIG_F
 pub fn ltk_connection_timeout_ms() -> u32 {
     #[cfg(any(test, feature = "test-support"))]
     {
-        std::env::var("LTK_CONNECTION_TIMEOUT_MS")
+        std::env::var(LTK_CONNECTION_TIMEOUT_MS_ENV)
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0)
     }
     #[cfg(not(any(test, feature = "test-support")))]
     {
-        std::env::var("LTK_CONNECTION_TIMEOUT_MS")
+        std::env::var(LTK_CONNECTION_TIMEOUT_MS_ENV)
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(1000)
@@ -202,19 +204,19 @@ mod tests {
 
     #[test]
     fn test_ltk_connection_timeout_ms() {
-        unsafe { std::env::remove_var("LTK_CONNECTION_TIMEOUT_MS") };
+        unsafe { std::env::remove_var(LTK_CONNECTION_TIMEOUT_MS_ENV) };
         assert_eq!(ltk_connection_timeout_ms(), 0, "test default is no delay");
 
-        unsafe { std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "250") };
+        unsafe { std::env::set_var(LTK_CONNECTION_TIMEOUT_MS_ENV, "250") };
         assert_eq!(ltk_connection_timeout_ms(), 250, "valid override respected");
 
-        unsafe { std::env::set_var("LTK_CONNECTION_TIMEOUT_MS", "not-a-number") };
+        unsafe { std::env::set_var(LTK_CONNECTION_TIMEOUT_MS_ENV, "not-a-number") };
         assert_eq!(
             ltk_connection_timeout_ms(),
             0,
             "invalid value falls back to default"
         );
 
-        unsafe { std::env::remove_var("LTK_CONNECTION_TIMEOUT_MS") };
+        unsafe { std::env::remove_var(LTK_CONNECTION_TIMEOUT_MS_ENV) };
     }
 }
