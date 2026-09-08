@@ -277,7 +277,7 @@ mod tests {
     async fn drain_application_shutdown_is_globally_bounded() {
         let db = sea_orm::Database::connect("sqlite::memory:")
             .await
-            .expect("sqlite in-memory connection failed");
+            .expect(crate::test_support::SQLITE_IN_MEMORY_CONNECTION_FAILED);
         crate::db::schema::create_test_schema(&db).await;
 
         let file_list_map = Arc::new(DashMap::new());

@@ -4,6 +4,8 @@ mod config;
 mod db;
 mod http;
 mod protocol;
+#[cfg(test)]
+mod test_support;
 mod utils;
 mod websocket;
 

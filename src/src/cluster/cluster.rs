@@ -2252,7 +2252,7 @@ mod tests {
     async fn test_file_list_response_huge_count_short_payload() {
         let db = sea_orm::Database::connect("sqlite::memory:")
             .await
-            .expect("sqlite in-memory connection failed");
+            .expect(crate::test_support::SQLITE_IN_MEMORY_CONNECTION_FAILED);
         let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
             Arc::new(DashMap::new());
         let app_context = Arc::new(AppContext {
