@@ -16,7 +16,9 @@ use sea_orm::{
 use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
-use crate::http::utils::{INVALID_CLUSTER_MSG, db_error, job_id_to_u32, parse_csv_u64, parse_job_steps};
+use crate::http::utils::{
+    INVALID_CLUSTER_MSG, db_error, job_id_to_u32, parse_csv_u64, parse_job_steps,
+};
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
 };
