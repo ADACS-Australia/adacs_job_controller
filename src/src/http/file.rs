@@ -27,6 +27,8 @@ use crate::protocol::types::{FileInfo, FileListState, Priority};
 use crate::utils::uuid::generate_uuid;
 
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
+const MISSING_CLUSTER_BUNDLE_MSG: &str =
+    "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'";
 
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
@@ -845,13 +847,11 @@ pub async fn list_files(
     } else {
         let cluster = body.cluster.ok_or((
             StatusCode::BAD_REQUEST,
-            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
-                .to_string(),
+            MISSING_CLUSTER_BUNDLE_MSG.to_string(),
         ))?;
         let bundle = body.bundle.ok_or((
             StatusCode::BAD_REQUEST,
-            "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'"
-                .to_string(),
+            MISSING_CLUSTER_BUNDLE_MSG.to_string(),
         ))?;
 
         if !auth.secret.clusters.contains(&cluster) {
