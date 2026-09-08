@@ -25,11 +25,15 @@ pub struct AccessSecret {
 /// - The file cannot be read
 /// - The JSON is invalid
 pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
+<<<<<<< HEAD
     tracing::debug!("Loading access secrets from: {}", path.display());
     let content = std::fs::read_to_string(path)?;
     tracing::trace!("Access secrets file read ({} bytes)", content.len());
     let secrets: Vec<AccessSecret> = serde_json::from_str(&content)?;
     tracing::info!("{}", crate::config::loaded_access_secrets(secrets.len()));
+=======
+    let secrets: Vec<AccessSecret> = super::load_json_file(path, "access secrets")?;
+>>>>>>> 0c1836a (chore(gardener): Extract shared JSON file-loading boilerplate into generic load_json_file helper in config/mod.rs)
     for (i, secret) in secrets.iter().enumerate() {
         tracing::trace!(
             "Secret #{}: name='{}', clusters={:?}, applications={:?}",
