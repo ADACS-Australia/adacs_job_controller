@@ -784,21 +784,35 @@ impl Cluster {
         let Some(state) = self.download_state("FILE_ERROR") else {
             return;
         };
-
-        let details = message.pop_string();
-        tracing::warn!(
-            "Cluster[{}]: FILE_ERROR received - {}",
-            self.name(),
-            details
-        );
-        Self::record_transfer_error(
+        self.handle_transfer_error(
+            message,
+            "FILE_ERROR",
             &state.error_details,
             &state.error,
             &state.data_ready,
             &state.data_notify,
-            details,
         )
         .await;
+    }
+
+    /// Pops the transfer error string, logs it, and records it on the given state fields.
+    async fn handle_transfer_error(
+        &self,
+        message: &mut Message,
+        message_name: &str,
+        error_details: &tokio::sync::Mutex<String>,
+        error: &AtomicBool,
+        data_ready: &AtomicBool,
+        data_notify: &Notify,
+    ) {
+        let details = message.pop_string();
+        tracing::warn!(
+            "Cluster[{}]: {} received - {}",
+            self.name(),
+            message_name,
+            details
+        );
+        Self::record_transfer_error(error_details, error, data_ready, data_notify, details).await;
     }
 
     // ---- FileUpload message handling ----
@@ -830,18 +844,13 @@ impl Cluster {
         let Some(state) = self.upload_state("FILE_UPLOAD_ERROR") else {
             return;
         };
-        let details = message.pop_string();
-        tracing::warn!(
-            "Cluster[{}]: FILE_UPLOAD_ERROR received - {}",
-            self.name(),
-            details
-        );
-        Self::record_transfer_error(
+        self.handle_transfer_error(
+            message,
+            "FILE_UPLOAD_ERROR",
             &state.error_details,
             &state.error,
             &state.data_ready,
             &state.data_notify,
-            details,
         )
         .await;
     }
