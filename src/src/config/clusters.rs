@@ -45,7 +45,7 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
     let content = std::fs::read_to_string(path)?;
     tracing::trace!("Cluster config file read ({} bytes)", content.len());
     let configs: Vec<ClusterConfig> = serde_json::from_str(&content)?;
-    tracing::info!("Loaded {} cluster configurations", configs.len());
+    tracing::info!("{}", crate::config::loaded_cluster_configs(configs.len()));
     for (i, config) in configs.iter().enumerate() {
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
