@@ -4,6 +4,7 @@ mod config;
 mod db;
 mod http;
 mod protocol;
+mod test_support;
 mod utils;
 mod websocket;
 

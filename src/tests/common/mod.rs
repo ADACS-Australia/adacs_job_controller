@@ -321,14 +321,14 @@ pub fn make_app_context(db: sea_orm::DatabaseConnection) -> Arc<AppContext> {
 
 /// Create a fresh in-memory `SQLite` database connection (no schema).
 pub async fn make_db() -> sea_orm::DatabaseConnection {
-    sea_orm::Database::connect("sqlite::memory:")
+    sea_orm::Database::connect(adacs_job_controller::test_support::SQLITE_MEMORY)
         .await
         .expect("sqlite in-memory connect failed")
 }
 
 /// Create a fresh in-memory `SQLite` database with all HTTP handler tables.
 pub async fn setup_test_db() -> sea_orm::DatabaseConnection {
-    let db = sea_orm::Database::connect("sqlite::memory:")
+    let db = sea_orm::Database::connect(adacs_job_controller::test_support::SQLITE_MEMORY)
         .await
         .expect("sqlite in-memory connect failed");
     adacs_job_controller::db::schema::create_test_schema(&db).await;

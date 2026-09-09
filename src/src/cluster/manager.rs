@@ -1154,7 +1154,7 @@ mod tests {
     }
 
     async fn make_db() -> sea_orm::DatabaseConnection {
-        let db = Database::connect("sqlite::memory:")
+        let db = Database::connect(crate::test_support::SQLITE_MEMORY)
             .await
             .expect("sqlite in-memory connection failed");
         let builder = DbBackend::Sqlite;

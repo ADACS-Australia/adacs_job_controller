@@ -457,7 +457,8 @@ async fn test_download_timeout_when_cluster_never_responds() {
     // past CLIENT_TIMEOUT_SECONDS (also 30 s), causing a spurious pool error.
     // A 1-hour acquire timeout ensures the pool never times out before we do.
     let db = {
-        let mut opts = sea_orm::ConnectOptions::new("sqlite::memory:");
+        let mut opts =
+            sea_orm::ConnectOptions::new(adacs_job_controller::test_support::SQLITE_MEMORY);
         opts.acquire_timeout(std::time::Duration::from_hours(1));
         opts.max_lifetime(std::time::Duration::from_hours(1));
         opts.idle_timeout(std::time::Duration::from_hours(1));

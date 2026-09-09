@@ -31,8 +31,10 @@ fn test_router_with_manager(
     secrets: Vec<AccessSecret>,
 ) -> Router {
     // Use SQLite in-memory for tests — no real DB needed for auth-only tests
-    let db = futures::executor::block_on(sea_orm::Database::connect("sqlite::memory:"))
-        .expect("sqlite in-memory connect failed");
+    let db = futures::executor::block_on(sea_orm::Database::connect(
+        adacs_job_controller::test_support::SQLITE_MEMORY,
+    ))
+    .expect("sqlite in-memory connect failed");
 
     create_router(common::make_test_state_with_secrets(db, manager, secrets))
 }

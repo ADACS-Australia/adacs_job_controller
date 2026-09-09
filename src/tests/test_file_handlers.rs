@@ -2597,7 +2597,7 @@ mod download_session_cleanup {
         Arc<ClusterManager>,
         Arc<dyn ClusterTrait>,
     ) {
-        let db = Database::connect("sqlite::memory:")
+        let db = Database::connect(adacs_job_controller::test_support::SQLITE_MEMORY)
             .await
             .expect("sqlite in-memory connection failed");
         adacs_job_controller::db::schema::create_test_schema(&db).await;
