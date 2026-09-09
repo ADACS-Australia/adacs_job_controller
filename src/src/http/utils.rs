@@ -15,6 +15,9 @@ const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 /// Error message returned when a requested cluster name does not exist.
 pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
 
+/// HTTP `Content-Type` request header name.
+pub const CONTENT_TYPE_HEADER: &str = "content-type";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
@@ -37,7 +40,7 @@ where
         // Check Content-Type header and log warning if missing
         let content_type = req
             .headers()
-            .get("content-type")
+            .get(CONTENT_TYPE_HEADER)
             .and_then(|v| v.to_str().ok());
 
         if content_type.is_none() {

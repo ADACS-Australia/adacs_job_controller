@@ -52,6 +52,7 @@ use adacs_job_controller::cluster::traits::{
 use adacs_job_controller::config::settings::FILE_CHUNK_SIZE;
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
 use adacs_job_controller::http::server::create_router;
+use adacs_job_controller::http::utils::CONTENT_TYPE_HEADER;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState, Priority};
@@ -2537,7 +2538,7 @@ async fn test_job_finished_update_populates_cache() {
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .body(Body::from(
                     serde_json::json!({
                         "jobId": job_id,

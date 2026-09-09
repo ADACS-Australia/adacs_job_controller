@@ -18,6 +18,7 @@ use tokio::sync::Semaphore;
 use tower::ServiceExt;
 
 use adacs_job_controller::db::entities::job;
+use adacs_job_controller::http::utils::CONTENT_TYPE_HEADER;
 
 use common::{insert_test_job, make_app_with_online_cluster, setup_test_db};
 
@@ -57,7 +58,7 @@ async fn run_concurrent_job_creation(
                     Request::builder()
                         .method("POST")
                         .uri("/job/apiv1/job/")
-                        .header("content-type", "application/json")
+                        .header(CONTENT_TYPE_HEADER, "application/json")
                         .header("authorization", &token_clone)
                         .body(Body::from(job_data.to_string()))
                         .unwrap(),
@@ -223,7 +224,7 @@ async fn post_create_job(
         Request::builder()
             .method("POST")
             .uri("/job/apiv1/job/")
-            .header("content-type", "application/json")
+            .header(CONTENT_TYPE_HEADER, "application/json")
             .header("authorization", &token)
             .body(Body::from(job_data.to_string()))
             .unwrap(),

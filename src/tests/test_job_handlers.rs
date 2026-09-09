@@ -16,6 +16,7 @@ use tower::ServiceExt;
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::db::entities::{job, job_history};
 use adacs_job_controller::http::server::create_router;
+use adacs_job_controller::http::utils::CONTENT_TYPE_HEADER;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
@@ -80,7 +81,7 @@ async fn test_create_job_cluster_online_inserts_and_submits() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"cluster":"ozstar","parameters":"{}","bundle":"mybundle"}"#,
@@ -154,7 +155,7 @@ async fn test_create_job_cluster_offline_only_pending_no_ws_message() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"cluster":"ozstar","parameters":"{}","bundle":"b"}"#,
@@ -208,7 +209,7 @@ async fn test_create_job_cluster_not_in_secret_returns_400() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"cluster":"unknown_cluster","parameters":"{}","bundle":"b"}"#,
@@ -254,7 +255,7 @@ async fn test_create_job_parameters_too_long_returns_400() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(body.to_string()))
                 .unwrap(),
@@ -298,7 +299,7 @@ async fn test_create_job_bundle_too_long_returns_400() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(body.to_string()))
                 .unwrap(),
@@ -341,7 +342,7 @@ async fn test_create_job_job_id_exceeding_u32_returns_400() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"cluster":"ozstar","parameters":"{}","bundle":"mybundle"}"#,
@@ -382,7 +383,7 @@ async fn run_job_request(
             Request::builder()
                 .method(method)
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(body))
                 .unwrap(),
@@ -729,7 +730,7 @@ async fn test_cancel_job_wrong_cluster_access_returns_400() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({ "jobId": job_id }).to_string(),
@@ -775,7 +776,7 @@ async fn test_cancel_delete_app3_cannot_access_app1_job_on_shared_cluster() {
                 Request::builder()
                     .method(method)
                     .uri("/job/apiv1/job/")
-                    .header("content-type", "application/json")
+                    .header(CONTENT_TYPE_HEADER, "application/json")
                     .header("authorization", &token)
                     .body(Body::from(
                         serde_json::json!({ "jobId": job_id }).to_string(),

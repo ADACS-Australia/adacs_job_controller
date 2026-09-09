@@ -14,6 +14,7 @@ use tower::ServiceExt;
 use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::db::entities::job;
 use adacs_job_controller::http::server::create_router;
+use adacs_job_controller::http::utils::CONTENT_TYPE_HEADER;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::Priority;
@@ -112,7 +113,7 @@ async fn test_http_concurrent_requests_stress() {
                         Request::builder()
                             .method("POST")
                             .uri("/job/apiv1/job/")
-                            .header("content-type", "application/json")
+                            .header(CONTENT_TYPE_HEADER, "application/json")
                             .header("authorization", &token_clone)
                             .body(Body::from(format!(
                                 r#"{{"cluster":"ozstar","parameters":"{{}}","bundle":"bundle{i}"}}"#
@@ -235,7 +236,7 @@ async fn test_job_creation_atomicity() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header(CONTENT_TYPE_HEADER, "application/json")
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"cluster":"ozstar","parameters":"{}","bundle":"test"}"#,

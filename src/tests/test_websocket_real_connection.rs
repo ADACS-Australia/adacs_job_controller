@@ -24,6 +24,7 @@ use adacs_job_controller::cluster::traits::{
 };
 use adacs_job_controller::db::entities::{file_download, job};
 use adacs_job_controller::http::server::create_router;
+use adacs_job_controller::http::utils::CONTENT_TYPE_HEADER;
 use adacs_job_controller::protocol::constants::{SERVER_READY, SYSTEM_SOURCE};
 use adacs_job_controller::protocol::message::Message;
 
@@ -506,7 +507,7 @@ async fn test_multiple_clusters_concurrent_job_submission() {
                 Request::builder()
                     .method("POST")
                     .uri("/job/apiv1/job/")
-                    .header("content-type", "application/json")
+                    .header(CONTENT_TYPE_HEADER, "application/json")
                     .header("authorization", &token)
                     .body(Body::from(job_data.to_string()))
                     .unwrap(),
