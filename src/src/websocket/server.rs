@@ -13,7 +13,7 @@ use tokio::sync::Notify;
 use crate::app::AppState;
 use crate::cluster::file_download::{DownloadSession, DownloadSessionState};
 use crate::cluster::traits::ConnectionId;
-use crate::protocol::constants::{SERVER_READY, SYSTEM_SOURCE};
+use crate::protocol::constants::{SERVER_READY, SYSTEM_SOURCE, UNKNOWN};
 use crate::protocol::message::Message;
 use crate::protocol::types::Priority;
 
@@ -51,7 +51,7 @@ pub async fn ws_handler(
     let client_ip = request
         .extensions()
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-        .map_or_else(|| "unknown".to_string(), |ci| ci.0.to_string());
+        .map_or_else(|| UNKNOWN.to_string(), |ci| ci.0.to_string());
 
     tracing::debug!("WS: Received upgrade request from {}", client_ip);
     tracing::trace!("WS: Token extracted (length: {})", token.len());

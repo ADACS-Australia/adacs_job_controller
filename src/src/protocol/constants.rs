@@ -93,3 +93,7 @@ pub const DB_BUNDLE_GET_JOB_BY_ID: u32 = 8001;
 
 /// Message ID for deleting a job bundle.
 pub const DB_BUNDLE_DELETE_JOB: u32 = 8002;
+
+/// Fallback label used when a connection's cluster name or client IP
+/// cannot be resolved.
+pub const UNKNOWN: &str = "unknown";
