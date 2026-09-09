@@ -60,6 +60,10 @@ async fn insert_job(
     .unwrap();
 }
 
+async fn insert_standard_job(db: &DatabaseConnection, id: i64) {
+    insert_job(db, id, "ozstar", "b", "app", "{}").await;
+}
+
 /// Create an online `Cluster` for `"ozstar"` with a live WS sender and a
 /// started scheduler, returning the cluster and the outbound receiver.
 async fn make_online_cluster(
@@ -342,7 +346,7 @@ async fn test_check_unsubmitted_jobs_ignores_recent_terminal_state() {
 async fn test_check_unsubmitted_jobs_skips_offline_cluster() {
     let db = setup_test_db().await;
 
-    insert_job(&db, 3, "ozstar", "b", "app", "{}").await;
+    insert_standard_job(&db, 3).await;
     insert_job_history_at(&db, 3, 10, "sub", old_timestamp()).await;
 
     let cluster = make_offline_cluster(&db);
@@ -372,7 +376,7 @@ async fn test_check_unsubmitted_jobs_skips_offline_cluster() {
 async fn test_check_cancelling_jobs_resends_old_cancelling() {
     let db = setup_test_db().await;
 
-    insert_job(&db, 10, "ozstar", "b", "app", "{}").await;
+    insert_standard_job(&db, 10).await;
     insert_job_history_at(&db, 10, 60, "cancel", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
@@ -401,7 +405,7 @@ async fn test_check_cancelling_jobs_resends_old_cancelling() {
 async fn test_check_cancelling_jobs_ignores_recent() {
     let db = setup_test_db().await;
 
-    insert_job(&db, 11, "ozstar", "b", "app", "{}").await;
+    insert_standard_job(&db, 11).await;
     insert_job_history_at(&db, 11, 60, "cancel", now_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
@@ -431,7 +435,7 @@ async fn test_check_cancelling_jobs_ignores_recent() {
 async fn test_check_cancelling_jobs_resends_with_pending_history() {
     let db = setup_test_db().await;
 
-    insert_job(&db, 12, "ozstar", "b", "app", "{}").await;
+    insert_standard_job(&db, 12).await;
     insert_job_history_at(&db, 12, 10, "created", old_timestamp()).await;
     insert_job_history_at(&db, 12, 60, "cancel", old_timestamp()).await;
 
@@ -469,7 +473,7 @@ async fn test_check_cancelling_jobs_resends_with_pending_history() {
 async fn test_check_deleting_jobs_resends_old_deleting() {
     let db = setup_test_db().await;
 
-    insert_job(&db, 20, "ozstar", "b", "app", "{}").await;
+    insert_standard_job(&db, 20).await;
     insert_job_history_at(&db, 20, 80, "delete", old_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
@@ -498,7 +502,7 @@ async fn test_check_deleting_jobs_resends_old_deleting() {
 async fn test_check_deleting_jobs_ignores_recent() {
     let db = setup_test_db().await;
 
-    insert_job(&db, 21, "ozstar", "b", "app", "{}").await;
+    insert_standard_job(&db, 21).await;
     insert_job_history_at(&db, 21, 80, "delete", now_timestamp()).await;
 
     let (cluster, mut rx) = make_online_cluster(&db).await;
@@ -583,7 +587,7 @@ async fn assert_noop_for_states(
     for &state_val in states {
         let db = setup_test_db().await;
 
-        insert_job(&db, job_id, "ozstar", "b", "app", "{}").await;
+        insert_standard_job(&db, job_id).await;
         insert_job_history_at(&db, job_id, state_val, "test", old_timestamp()).await;
 
         let (cluster, mut rx) = make_online_cluster(&db).await;
