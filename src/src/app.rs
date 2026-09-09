@@ -283,7 +283,7 @@ mod tests {
     /// cluster or handle count.
     #[tokio::test]
     async fn drain_application_shutdown_is_globally_bounded() {
-        let db = sea_orm::Database::connect("sqlite::memory:")
+        let db = sea_orm::Database::connect(crate::test_support::SQLITE_MEMORY)
             .await
             .expect(crate::test_support::SQLITE_IN_MEMORY_CONNECTION_FAILED);
         crate::db::schema::create_test_schema(&db).await;

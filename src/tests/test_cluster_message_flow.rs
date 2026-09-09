@@ -642,8 +642,10 @@ async fn test_cluster_constructor() {
 /// - `AppContext` is stored (verified via file operations later)
 #[tokio::test]
 async fn test_cluster_constructor_with_app_context() {
-    let db = futures::executor::block_on(sea_orm::Database::connect("sqlite::memory:"))
-        .expect("sqlite in-memory connect failed");
+    let db = futures::executor::block_on(sea_orm::Database::connect(
+        adacs_job_controller::test_support::SQLITE_MEMORY,
+    ))
+    .expect("sqlite in-memory connect failed");
     let file_list_map = Arc::new(DashMap::new());
     let app_context = Arc::new(AppContext { db, file_list_map });
 
@@ -1104,8 +1106,10 @@ fn make_app_context_with_file_list_map() -> (
     Arc<AppContext>,
     Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
 ) {
-    let db = futures::executor::block_on(sea_orm::Database::connect("sqlite::memory:"))
-        .expect("sqlite connect failed");
+    let db = futures::executor::block_on(sea_orm::Database::connect(
+        adacs_job_controller::test_support::SQLITE_MEMORY,
+    ))
+    .expect("sqlite connect failed");
     let file_list_map = Arc::new(DashMap::new());
     let ctx = Arc::new(AppContext {
         db,
