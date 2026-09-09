@@ -1239,6 +1239,15 @@ mod tests {
         }
     }
 
+    /// Queues `count` test messages of `size` bytes each with `Medium` priority.
+    async fn queue_test_messages(cluster: &Cluster, count: usize, size: usize) {
+        for _ in 0..count {
+            cluster
+                .queue_message("test".into(), vec![0u8; size], Priority::Medium)
+                .await;
+        }
+    }
+
     /// Verifies basic `Cluster::new` construction sets the expected name, offline status, and role.
     #[test]
     fn test_cluster_creation() {
@@ -1972,9 +1981,7 @@ mod tests {
         cluster.stop();
 
         // Queue 1KB (well below 50MB threshold)
-        cluster
-            .queue_message("test".into(), vec![0u8; 1024], Priority::Medium)
-            .await;
+        queue_test_messages(&cluster, 1, 1024).await;
 
         // waitForEmpty=false should return true (below MAX)
         assert!(cluster.wait_for_queue_drain(false).await);
@@ -1989,9 +1996,7 @@ mod tests {
         cluster.stop();
 
         // Queue 1KB
-        cluster
-            .queue_message("test".into(), vec![0u8; 1024], Priority::Medium)
-            .await;
+        queue_test_messages(&cluster, 1, 1024).await;
 
         // waitForEmpty=true should timeout (cluster stopped, can't drain)
         assert!(!cluster.wait_for_queue_drain(true).await);
@@ -2007,11 +2012,7 @@ mod tests {
         let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
         let msg_size = 1024 * 100; // 100KB per message
         let num_msgs = max_buf / msg_size;
-        for _ in 0..num_msgs {
-            cluster
-                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
-                .await;
-        }
+        queue_test_messages(&cluster, num_msgs, msg_size).await;
 
         // At exactly threshold, should still return true (using <=)
         assert!(cluster.wait_for_queue_drain(false).await);
@@ -2029,11 +2030,7 @@ mod tests {
         let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
         let msg_size = 1024 * 100;
         let num_msgs = (max_buf / msg_size) + 10;
-        for _ in 0..num_msgs {
-            cluster
-                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
-                .await;
-        }
+        queue_test_messages(&cluster, num_msgs, msg_size).await;
 
         // Queue is above threshold, cluster stopped -> should timeout
         assert!(!cluster.wait_for_queue_drain(false).await);
@@ -2049,11 +2046,7 @@ mod tests {
         let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
         let msg_size = 1024 * 10; // 10KB per message
         let num_msgs = (max_buf / msg_size) + 5;
-        for _ in 0..num_msgs {
-            cluster
-                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
-                .await;
-        }
+        queue_test_messages(&cluster, num_msgs, msg_size).await;
 
         // Connect and start scheduler to drain
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -2081,11 +2074,7 @@ mod tests {
         let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
         let msg_size = 1024 * 100;
         let num_msgs = (max_buf / msg_size) + 20;
-        for _ in 0..num_msgs {
-            cluster
-                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
-                .await;
-        }
+        queue_test_messages(&cluster, num_msgs, msg_size).await;
 
         // No draining -> timeout
         assert!(!cluster.wait_for_queue_drain(false).await);
@@ -2100,11 +2089,7 @@ mod tests {
         cluster.stop();
 
         // Queue messages but don't start scheduler
-        for _ in 0..10 {
-            cluster
-                .queue_message("test".into(), vec![0u8; 1024], Priority::Medium)
-                .await;
-        }
+        queue_test_messages(&cluster, 10, 1024).await;
 
         // waitForEmpty=true should timeout
         assert!(!cluster.wait_for_queue_drain(true).await);
