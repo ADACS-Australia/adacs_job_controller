@@ -16,7 +16,7 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, failed_to_read_body_msg, filter_files, job_id_to_u32,
+    INVALID_CLUSTER_MSG, failed_to_read_body_msg, filter_files, get_user_id, job_id_to_u32,
 };
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
@@ -174,11 +174,7 @@ pub async fn create_file_download(
         s_bundle
     );
 
-    let user_id = auth
-        .payload
-        .get("userId")
-        .and_then(sea_orm::JsonValue::as_i64)
-        .unwrap_or(0);
+    let user_id = get_user_id(&auth);
     tracing::trace!("HTTP: User ID: {}", user_id);
 
     let job_id = body.job_id.unwrap_or(0).cast_signed();

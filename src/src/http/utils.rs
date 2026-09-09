@@ -1,5 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
+use crate::http::auth::AuthResult;
 use crate::protocol::types::FileInfo;
 use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
@@ -14,6 +15,16 @@ const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 
 /// Error message returned when a requested cluster name does not exist.
 pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
+
+/// Extract the authenticated user's ID from the JWT payload, defaulting to `0`
+/// when the claim is absent or not an integer.
+#[must_use]
+pub fn get_user_id(auth: &AuthResult) -> i64 {
+    auth.payload
+        .get("userId")
+        .and_then(sea_orm::JsonValue::as_i64)
+        .unwrap_or(0)
+}
 
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
