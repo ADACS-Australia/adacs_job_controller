@@ -17,8 +17,8 @@ use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, job_id_to_u32, parse_csv_u64,
-    parse_job_steps,
+    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, ensure_cluster_access, job_id_to_u32,
+    parse_csv_u64, parse_job_steps,
 };
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
@@ -125,16 +125,13 @@ pub async fn create_job(
         return Err((StatusCode::BAD_REQUEST, "bundle too long".to_string()));
     }
 
-    if !auth.secret.clusters.contains(&body.cluster) {
+    if let Err(e) = ensure_cluster_access(&auth.secret, &body.cluster) {
         tracing::warn!(
             "HTTP: Job creation rejected - application '{}' lacks access to cluster '{}'",
             auth.secret.name,
             body.cluster
         );
-        return Err((
-            StatusCode::BAD_REQUEST,
-            app_no_cluster_access_msg(&auth.secret.name, &body.cluster),
-        ));
+        return Err(e);
     }
 
     tracing::trace!("HTTP: Fetching cluster '{}'", body.cluster);
@@ -698,12 +695,7 @@ pub async fn get_job_with_access_check(
             "Job did not exist with the specified jobId".to_string(),
         ))?;
 
-    if !auth.secret.clusters.contains(&j.cluster) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            app_no_cluster_access_msg(&auth.secret.name, &j.cluster),
-        ));
-    }
+    ensure_cluster_access(&auth.secret, &j.cluster)?;
 
     Ok(j)
 }
