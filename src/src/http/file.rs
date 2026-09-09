@@ -27,6 +27,7 @@ use crate::protocol::types::{FileInfo, FileListState, Priority};
 use crate::utils::uuid::generate_uuid;
 
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
+const FILES_KEY: &str = "files";
 
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
@@ -902,7 +903,7 @@ pub async fn list_files(
                 .collect();
 
             let filtered = filter_files(&files, &body.path, body.recursive);
-            return Ok(Json(serde_json::json!({ "files": filtered })));
+            return Ok(Json(serde_json::json!({ FILES_KEY: filtered })));
         }
     }
 
@@ -932,7 +933,7 @@ pub async fn list_files(
         });
     }
 
-    Ok(Json(serde_json::json!({ "files": filtered })))
+    Ok(Json(serde_json::json!({ FILES_KEY: filtered })))
 }
 
 /// Replace the cached file list for a job with the given entries.
