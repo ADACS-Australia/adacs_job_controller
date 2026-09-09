@@ -15,6 +15,9 @@ const MAX_JSON_BODY_BYTES: usize = 10 * 1024 * 1024;
 /// Error message returned when a requested cluster name does not exist.
 pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
 
+/// JWT claim key holding the submitting user's id.
+pub const USER_ID_CLAIM: &str = "userId";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
