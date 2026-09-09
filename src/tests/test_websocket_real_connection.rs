@@ -28,8 +28,8 @@ use adacs_job_controller::protocol::constants::{SERVER_READY, SYSTEM_SOURCE};
 use adacs_job_controller::protocol::message::Message;
 
 use common::{
-    connection_closes, encode_test_jwt, forwarding_cluster, insert_test_job, make_test_state,
-    online_cluster, recv_binary_with_timeout, setup_test_db, test_cluster_config,
+    connection_closes, encode_test_jwt, forwarding_cluster, insert_standard_test_job,
+    make_test_state, online_cluster, recv_binary_with_timeout, setup_test_db, test_cluster_config,
 };
 
 use sea_orm::{
@@ -146,7 +146,7 @@ async fn test_real_websocket_connection_and_auth() {
     use std::sync::Mutex as StdMutex;
 
     let db = setup_test_db().await;
-    let _job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let _job_id = insert_standard_test_job(&db).await;
 
     // Create cluster that forwards messages through WebSocket
     let tx_slot: Arc<StdMutex<Option<WsConnectionSender>>> = Arc::new(StdMutex::new(None));
@@ -369,7 +369,7 @@ async fn test_websocket_connection_rejected_invalid_token() {
 #[tokio::test]
 async fn test_file_download_record_persistence() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     // Create file download record
     let uuid = "test-download-uuid-12345".to_string();

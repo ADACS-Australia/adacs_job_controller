@@ -57,7 +57,7 @@ use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState, Priority};
 
 use common::{
-    connect_ws, encode_test_jwt, insert_file_download, insert_test_job, make_test_state,
+    connect_ws, encode_test_jwt, insert_file_download, insert_standard_test_job, make_test_state,
     online_cluster_no_messages, recv_binary, setup_test_db, test_cluster_config, upload_cluster,
     ws_router,
 };
@@ -157,7 +157,7 @@ fn download_manager(fd: Arc<FileDownloadState>) -> MockClusterManagerTrait {
 #[tokio::test]
 async fn test_upload_zero_byte_file_succeeds() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let fu_state = Arc::new(FileUploadState::new());
     let fu_sim = Arc::clone(&fu_state);
@@ -270,7 +270,7 @@ async fn test_upload_zero_byte_file_succeeds() {
 #[tokio::test]
 async fn test_upload_truncated_body_returns_error() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let fu_state = Arc::new(FileUploadState::new());
     let fu_sim = Arc::clone(&fu_state);
@@ -527,7 +527,7 @@ async fn test_download_timeout_when_cluster_never_responds() {
 #[tokio::test]
 async fn test_upload_cluster_error_mid_transfer_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let fu_state = Arc::new(FileUploadState::new());
     let fu_sim = Arc::clone(&fu_state);
@@ -602,7 +602,7 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
 #[tokio::test]
 async fn test_upload_queue_drain_timeout_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let fu_state = Arc::new(FileUploadState::new());
     let fu_sim = Arc::clone(&fu_state);
@@ -873,7 +873,7 @@ async fn test_rapid_ws_connect_disconnect_stress() {
 #[tokio::test]
 async fn test_upload_missing_content_length_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let mut manager = MockClusterManagerTrait::new();
     manager
@@ -934,7 +934,7 @@ async fn test_upload_missing_content_length_returns_400() {
 #[tokio::test]
 async fn test_upload_oversized_content_length_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let fu_state = Arc::new(FileUploadState::new());
     let fu_sim = Arc::clone(&fu_state);
@@ -1553,7 +1553,7 @@ async fn test_download_sanitizes_unsafe_filename_in_disposition() {
 #[tokio::test]
 async fn test_upload_large_body_is_chunked() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let fu_state = Arc::new(FileUploadState::new());
     let fu_sim = Arc::clone(&fu_state);
@@ -2097,7 +2097,7 @@ async fn test_file_transfer_no_details_returns_503() {
 #[tokio::test]
 async fn test_continuous_file_uploads_sequential() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     // Pre-create two independent FileUploadState instances, one per request.
     let fu_state1 = Arc::new(FileUploadState::new());
@@ -2380,7 +2380,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
 #[tokio::test]
 async fn test_job_finished_update_populates_cache() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     // Shared file_list_map — used by both the real Cluster and the HTTP AppState.
     let file_list_map: Arc<DashMap<String, Arc<TokioMutex<FileListState>>>> =
@@ -2605,7 +2605,7 @@ async fn test_job_finished_update_populates_cache() {
 #[tokio::test]
 async fn test_job_finished_update_timeout_keeps_existing_cache() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     // Pre-populate the cache with a valid row for this job.
     file_list_cache::ActiveModel {
@@ -2717,7 +2717,7 @@ fn get_memory_usage_kb() -> u64 {
 #[tokio::test]
 async fn test_large_file_uploads() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     // Generate random file data between 1MB and 5MB
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);

@@ -400,6 +400,12 @@ pub async fn insert_test_job(
     .id
 }
 
+/// Insert a standard test job (cluster=ozstar, bundle=b, application=testapp).
+/// Returns the inserted job id.
+pub async fn insert_standard_test_job(db: &sea_orm::DatabaseConnection) -> i64 {
+    insert_test_job(db, "ozstar", "b", "testapp").await
+}
+
 /// Insert a job with an explicit ID (used to exercise the `u32::MAX` conversion guard).
 pub async fn insert_test_job_with_id(
     db: &sea_orm::DatabaseConnection,

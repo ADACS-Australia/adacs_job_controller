@@ -24,10 +24,10 @@ use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_file_download, insert_job_history,
-    insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
-    manager_with_online_cluster_and_create_file_download, manager_with_online_cluster_no_messages,
-    offline_cluster, online_cluster_no_messages, setup_test_db, test_cluster_config,
-    test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
+    insert_standard_test_job, insert_test_job, insert_test_job_with_id, make_test_state,
+    make_test_state_with_secrets, manager_with_online_cluster_and_create_file_download,
+    manager_with_online_cluster_no_messages, offline_cluster, online_cluster_no_messages,
+    setup_test_db, test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
@@ -105,7 +105,7 @@ fn file_list_cluster(
 #[tokio::test]
 async fn test_create_file_download_single_path_returns_file_id() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let manager = manager_with_online_cluster_no_messages();
 
@@ -169,7 +169,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
 #[tokio::test]
 async fn test_create_file_download_multiple_paths_returns_file_ids() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     let manager = manager_with_online_cluster_no_messages();
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -221,7 +221,7 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
 #[tokio::test]
 async fn test_create_file_download_no_path_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     let mut manager = MockClusterManagerTrait::new();
     manager
         .expect_get_cluster_by_name()
@@ -264,7 +264,7 @@ async fn test_create_file_download_no_path_returns_400() {
 #[tokio::test]
 async fn test_create_file_download_rejects_empty_paths() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let cluster = Arc::new(online_cluster_no_messages());
     let mut manager = MockClusterManagerTrait::new();
@@ -790,7 +790,7 @@ async fn test_download_file_session_not_found_returns_400() {
 async fn test_list_files_cache_hit_returns_cached_files() {
     let db = setup_test_db().await;
 
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     // Mark as complete
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
     insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
@@ -863,7 +863,7 @@ async fn test_list_files_cache_hit_returns_cached_files() {
 #[tokio::test]
 async fn test_list_files_ws_response_populates_result() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     // Job is NOT complete — no caching path
     insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
 
@@ -942,7 +942,7 @@ async fn test_list_files_ws_response_populates_result() {
 #[tokio::test]
 async fn test_list_files_completed_job_populates_cache() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     // Mark as complete
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
     insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
@@ -1053,7 +1053,7 @@ async fn test_list_files_completed_job_populates_cache() {
 #[tokio::test]
 async fn test_spawn_background_cache_replaces_stale_rows() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     // Pre-seed stale cache rows for the job
     for (name, is_dir) in [("/stale/old.txt", false), ("/stale/", true)] {
@@ -1123,7 +1123,7 @@ async fn test_spawn_background_cache_replaces_stale_rows() {
 #[tokio::test]
 async fn test_spawn_background_cache_timeout_preserves_cache() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     // Pre-seed valid cache rows for the job
     for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
@@ -1238,7 +1238,7 @@ async fn test_spawn_background_cache_offline_cluster_returns_error() {
 #[tokio::test]
 async fn test_list_files_cluster_offline_returns_503() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
@@ -1436,7 +1436,7 @@ async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
 #[tokio::test]
 async fn test_upload_file_no_target_path_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let mut manager = MockClusterManagerTrait::new();
     manager
@@ -1551,7 +1551,7 @@ async fn test_upload_file_job_id_exceeding_u32_returns_400() {
 #[tokio::test]
 async fn test_upload_file_cluster_offline_returns_503() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
     let c = Arc::clone(&cluster);
@@ -1594,7 +1594,7 @@ async fn test_upload_file_cluster_offline_returns_503() {
 #[tokio::test]
 async fn test_upload_file_success_full_flow() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     let fu_state = Arc::new(FileUploadState::new());
     let fu_sim = Arc::clone(&fu_state);
     tokio::spawn(async move {
@@ -1707,7 +1707,7 @@ async fn test_upload_file_success_full_flow() {
 #[tokio::test]
 async fn test_upload_file_server_error_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     let fu_state = Arc::new(FileUploadState::new());
     let fu_sim = Arc::clone(&fu_state);
     tokio::spawn(async move {
@@ -2161,7 +2161,7 @@ async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
 #[tokio::test]
 async fn test_create_download_empty_path_list_returns_empty_file_ids() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let manager = manager_with_online_cluster_no_messages();
 
@@ -2319,7 +2319,7 @@ async fn test_list_files_app4_cannot_access_app1_job() {
 #[tokio::test]
 async fn test_create_file_download_works_without_content_type_header() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let manager = manager_with_online_cluster_no_messages();
 
@@ -2373,7 +2373,7 @@ async fn test_create_file_download_works_without_content_type_header() {
 async fn test_list_files_works_without_content_type_header() {
     let db = setup_test_db().await;
 
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
     insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
 
@@ -2474,7 +2474,7 @@ async fn test_create_file_download_rejects_invalid_json_without_content_type() {
 #[tokio::test]
 async fn test_resolve_cluster_bundle_for_file_list_success() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let state = make_test_state(db, MockClusterManagerTrait::new());
     let result = adacs_job_controller::http::file::resolve_cluster_bundle_for_file_list(
@@ -2502,7 +2502,7 @@ async fn test_resolve_cluster_bundle_for_file_list_success() {
 #[tokio::test]
 async fn test_resolve_cluster_bundle_for_file_list_app_without_access_returns_error() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
 
     let state = make_test_state(db, MockClusterManagerTrait::new());
     let result = adacs_job_controller::http::file::resolve_cluster_bundle_for_file_list(
