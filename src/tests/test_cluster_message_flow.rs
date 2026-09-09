@@ -41,6 +41,11 @@ fn make_file_download_cluster(uuid: &str) -> (Arc<FileDownloadState>, Arc<Cluste
     (download_state, cluster)
 }
 
+/// Create a master `Cluster` for `"test_cluster"` with no connection or state.
+fn make_master_cluster() -> Arc<Cluster> {
+    Cluster::new(common::test_cluster_config("test_cluster"), None)
+}
+
 /// Create a file-upload `Cluster` for `uuid`, returning the `FileUploadState`
 /// and the cluster.
 fn make_file_upload_cluster(uuid: &str) -> (Arc<FileUploadState>, Arc<Cluster>) {
@@ -289,7 +294,7 @@ async fn test_file_download_error_flow() {
 async fn test_download_messages_on_master_cluster_are_noop() {
     use adacs_job_controller::protocol::types::ClusterRole;
 
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
+    let cluster = make_master_cluster();
 
     let details_msg = make_file_details_message(1024);
     cluster.handle_message(details_msg).await;
@@ -387,7 +392,7 @@ async fn test_file_upload_complete_flow() {
 async fn test_upload_messages_on_master_cluster_are_noop() {
     use adacs_job_controller::protocol::types::ClusterRole;
 
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
+    let cluster = make_master_cluster();
 
     let ready_msg = make_server_ready_message();
     cluster.handle_message(ready_msg).await;
@@ -414,7 +419,7 @@ async fn test_upload_messages_on_master_cluster_are_noop() {
 /// The result is `true`.
 #[tokio::test]
 async fn test_wait_for_queue_drain_empty_returns_immediately() {
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
+    let cluster = make_master_cluster();
 
     // Queue is empty, should return true instantly
     let result = cluster.wait_for_queue_drain(true).await;
@@ -478,7 +483,7 @@ async fn test_wait_for_queue_drain_blocks_then_unblocks() {
 /// and `false` again after clearing it.
 #[tokio::test]
 async fn test_cluster_set_connection_and_offline() {
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
+    let cluster = make_master_cluster();
     assert!(!cluster.is_online());
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
@@ -501,7 +506,7 @@ async fn test_cluster_set_connection_and_offline() {
 /// `is_online()` returns `false` after `close`.
 #[tokio::test]
 async fn test_cluster_close_disconnects() {
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
+    let cluster = make_master_cluster();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     cluster.set_connection(Some(tx)).await;
     assert!(cluster.is_online());
@@ -537,7 +542,7 @@ async fn test_cluster_close_disconnects() {
 async fn test_cluster_close_sends_ws_outbound_close() {
     use std::sync::Mutex as StdMutex;
 
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
+    let cluster = make_master_cluster();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
     cluster.set_connection(Some(tx)).await;
     assert!(cluster.is_online());
@@ -1378,7 +1383,7 @@ async fn test_handle_file_list_error_sets_error_state() {
 async fn test_file_list_messages_on_master_cluster_are_noop() {
     use adacs_job_controller::protocol::types::ClusterRole;
 
-    let cluster = Cluster::new(common::test_cluster_config("test_cluster"), None);
+    let cluster = make_master_cluster();
 
     let list_msg = build_file_list_message("no-ctx-uuid", 0, &[]);
     cluster.handle_message(list_msg).await;
