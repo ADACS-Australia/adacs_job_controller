@@ -1,5 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
+use crate::config::access_secrets::AccessSecret;
 use crate::protocol::types::FileInfo;
 use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
@@ -128,6 +129,28 @@ pub fn job_id_to_u32(job_id: u64) -> Result<u32, (StatusCode, String)> {
             format!("Job ID {job_id} exceeds maximum supported value"),
         )
     })
+}
+
+/// Ensure the given secret is permitted to access the named cluster.
+///
+/// # Errors
+///
+/// Returns `400 Bad Request` if `secret` does not have access to `cluster`.
+pub fn ensure_cluster_access(
+    secret: &AccessSecret,
+    cluster: &str,
+) -> Result<(), (StatusCode, String)> {
+    if secret.clusters.iter().any(|c| c == cluster) {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Application {} does not have access to cluster {}",
+                secret.name, cluster
+            ),
+        ))
+    }
 }
 
 /// Canonicalize a file path (resolve ".." and "." without filesystem access).
