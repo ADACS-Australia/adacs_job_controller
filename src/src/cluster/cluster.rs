@@ -676,14 +676,20 @@ impl Cluster {
 
     // ---- FileDownload message handling ----
 
+    /// Warns that a message arrived but no session state is set.
+    fn warn_missing_state(&self, message_name: &str, state_name: &str) {
+        tracing::warn!(
+            "Cluster[{}]: {} received but no {}",
+            self.name(),
+            message_name,
+            state_name
+        );
+    }
+
     /// Returns the active file-download session state, warning if none is set.
     fn download_state(&self, message_name: &str) -> Option<&Arc<FileDownloadState>> {
         let Some(state) = &self.file_download_state else {
-            tracing::warn!(
-                "Cluster[{}]: {} received but no file_download_state",
-                self.name(),
-                message_name
-            );
+            self.warn_missing_state(message_name, "file_download_state");
             return None;
         };
         Some(state)
@@ -806,11 +812,7 @@ impl Cluster {
     /// Returns the active file-upload session state, warning if none is set.
     fn upload_state(&self, message_name: &str) -> Option<&Arc<FileUploadState>> {
         let Some(state) = &self.file_upload_state else {
-            tracing::warn!(
-                "Cluster[{}]: {} received but no file_upload_state",
-                self.name(),
-                message_name
-            );
+            self.warn_missing_state(message_name, "file_upload_state");
             return None;
         };
         Some(state)
