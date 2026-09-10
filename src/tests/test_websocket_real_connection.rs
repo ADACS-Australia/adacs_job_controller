@@ -115,7 +115,8 @@ async fn connect_and_expect_server_ready(
     assert_eq!(
         ready_msg.id(),
         SERVER_READY,
-        "First message should be SERVER_READY"
+        "{}",
+        common::FIRST_MSG_SERVER_READY
     );
     assert_eq!(ready_msg.source(), SYSTEM_SOURCE);
     (sink, stream)
