@@ -55,7 +55,7 @@ async fn assert_post_job_forbidden(auth_header: Option<&str>) {
     let mut builder = Request::builder()
         .method("POST")
         .uri("/job/apiv1/job/")
-        .header("content-type", "application/json");
+        .header("content-type", common::JSON_CONTENT_TYPE);
     if let Some(value) = auth_header {
         builder = builder.header("authorization", value);
     }
@@ -122,7 +122,7 @@ async fn test_create_job_no_cluster_access_returns_bad_request() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"cluster":"unknown","parameters":"p","bundle":"b"}"#,
@@ -164,7 +164,7 @@ async fn test_create_job_cluster_not_found_returns_bad_request() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"cluster":"ozstar","parameters":"p","bundle":"b"}"#,
@@ -205,7 +205,7 @@ async fn test_list_files_no_auth_returns_forbidden() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     r#"{"path":"/project","recursive":true,"cluster":"ozstar","bundle":"test"}"#,
                 ))
@@ -306,7 +306,7 @@ async fn test_list_files_valid_auth_missing_cluster_returns_error() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"path":"/","recursive":false,"cluster":"unknown","bundle":"b"}"#,
@@ -342,7 +342,7 @@ async fn test_routes_exist_for_job_api() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -372,7 +372,7 @@ async fn test_routes_exist_for_file_api() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(r#"{"path":"/","recursive":false}"#))
                 .unwrap(),
         )
@@ -439,7 +439,7 @@ async fn test_http_server_constructor_empty_config() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", "Bearer test")
                 .body(Body::empty())
                 .unwrap(),
@@ -512,7 +512,7 @@ async fn test_http_server_constructor_populated_config() {
                 Request::builder()
                     .method("POST")
                     .uri("/job/apiv1/job/")
-                    .header("content-type", "application/json")
+                    .header("content-type", common::JSON_CONTENT_TYPE)
                     .header("authorization", &token)
                     .body(Body::from(
                         r#"{"cluster":"ozstar","parameters":"p","bundle":"b"}"#,
@@ -622,7 +622,7 @@ async fn test_file_api_path_regression() {
                 Request::builder()
                     .method(method)
                     .uri("/job/apiv1/file/")
-                    .header("content-type", "application/json")
+                    .header("content-type", common::JSON_CONTENT_TYPE)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -689,7 +689,7 @@ async fn test_job_api_path_regression() {
                 Request::builder()
                     .method(method)
                     .uri("/job/apiv1/job/")
-                    .header("content-type", "application/json")
+                    .header("content-type", common::JSON_CONTENT_TYPE)
                     .body(Body::empty())
                     .unwrap(),
             )

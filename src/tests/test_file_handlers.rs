@@ -117,7 +117,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -179,7 +179,7 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -235,7 +235,7 @@ async fn test_create_file_download_no_path_returns_400() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({ "jobId": job_id }).to_string(),
@@ -282,7 +282,7 @@ async fn test_create_file_download_rejects_empty_paths() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({ "jobId": job_id, "path": "" }).to_string(),
@@ -312,7 +312,7 @@ async fn test_create_file_download_rejects_empty_paths() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -822,7 +822,7 @@ async fn test_list_files_cache_hit_returns_cached_files() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -896,7 +896,7 @@ async fn test_list_files_ws_response_populates_result() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -995,7 +995,7 @@ async fn test_list_files_completed_job_populates_cache() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -1255,7 +1255,7 @@ async fn test_list_files_cluster_offline_returns_503() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -1303,7 +1303,7 @@ async fn test_list_files_job_id_exceeding_u32_returns_400() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -1356,7 +1356,7 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({ "path": "", "recursive": false }).to_string(),
@@ -1396,7 +1396,7 @@ async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
             Request::builder()
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     serde_json::json!({
@@ -1786,7 +1786,7 @@ async fn test_create_download_app2_can_access_app1_job() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({"jobId": job_id, "path": "/test/path"}).to_string(),
                 ))
@@ -1833,7 +1833,7 @@ async fn test_create_download_app4_cannot_access_app1_job() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({"jobId": job_id, "path": "/test/path"}).to_string(),
                 ))
@@ -1881,7 +1881,7 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "cluster": "ozstar",
@@ -1948,7 +1948,7 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "jobId": 0,
@@ -2008,7 +2008,7 @@ async fn test_create_download_no_jobid_missing_cluster_returns_400() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "bundle": "test_bundle",
@@ -2045,7 +2045,7 @@ async fn test_create_download_no_jobid_missing_bundle_returns_400() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "cluster": "ozstar",
@@ -2087,7 +2087,7 @@ async fn test_create_download_no_jobid_no_cluster_access_returns_400() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "cluster": "ozstar",
@@ -2127,7 +2127,7 @@ async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "cluster": "not_a_real_cluster",
@@ -2174,7 +2174,7 @@ async fn test_create_download_empty_path_list_returns_empty_file_ids() {
                 .method("POST")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "jobId": job_id,
@@ -2239,7 +2239,7 @@ async fn test_list_files_app2_can_access_app1_job() {
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "jobId": job_id,
@@ -2284,7 +2284,7 @@ async fn test_list_files_app4_cannot_access_app1_job() {
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "jobId": job_id,

@@ -506,7 +506,7 @@ async fn test_multiple_clusters_concurrent_job_submission() {
                 Request::builder()
                     .method("POST")
                     .uri("/job/apiv1/job/")
-                    .header("content-type", "application/json")
+                    .header("content-type", common::JSON_CONTENT_TYPE)
                     .header("authorization", &token)
                     .body(Body::from(job_data.to_string()))
                     .unwrap(),

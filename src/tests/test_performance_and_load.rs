@@ -112,7 +112,7 @@ async fn test_http_concurrent_requests_stress() {
                         Request::builder()
                             .method("POST")
                             .uri("/job/apiv1/job/")
-                            .header("content-type", "application/json")
+                            .header("content-type", common::JSON_CONTENT_TYPE)
                             .header("authorization", &token_clone)
                             .body(Body::from(format!(
                                 r#"{{"cluster":"ozstar","parameters":"{{}}","bundle":"bundle{i}"}}"#
@@ -235,7 +235,7 @@ async fn test_job_creation_atomicity() {
             Request::builder()
                 .method("POST")
                 .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .header("authorization", &token)
                 .body(Body::from(
                     r#"{"cluster":"ozstar","parameters":"{}","bundle":"test"}"#,

@@ -2537,7 +2537,7 @@ async fn test_job_finished_update_populates_cache() {
                 .method("PATCH")
                 .uri("/job/apiv1/file/")
                 .header("authorization", &token)
-                .header("content-type", "application/json")
+                .header("content-type", common::JSON_CONTENT_TYPE)
                 .body(Body::from(
                     serde_json::json!({
                         "jobId": job_id,
