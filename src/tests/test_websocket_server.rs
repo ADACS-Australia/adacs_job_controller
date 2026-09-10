@@ -54,6 +54,11 @@ async fn start_server_with_forwarding_cluster(
     (server, removed_count)
 }
 
+/// Build the WebSocket URL for the test server bound to `port`.
+fn ws_url(port: u16) -> String {
+    format!("ws://127.0.0.1:{port}/job/ws/")
+}
+
 /// Poll `cond` every 5ms until `timeout` elapses.
 /// Returns `true` as soon as `cond()` returns `true`, otherwise `false`.
 async fn wait_until<F>(timeout: std::time::Duration, cond: F) -> bool
@@ -147,7 +152,7 @@ async fn test_ws_no_token_disconnects() {
     let port = server.port;
 
     // Connect without any token query param
-    let (_, mut stream) = connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await;
+    let (_, mut stream) = connect_ws(&ws_url(port)).await;
 
     let closed = connection_closes(&mut stream, std::time::Duration::from_millis(500)).await;
     assert!(
@@ -379,9 +384,7 @@ async fn test_ws_lowercase_bearer_scheme_accepted() {
     let port = server.port;
 
     // Connect with lowercase "bearer " scheme prefix
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
-        .into_client_request()
-        .unwrap();
+    let mut request = ws_url(port).into_client_request().unwrap();
     request
         .headers_mut()
         .insert("Authorization", "bearer valid-token".parse().unwrap());
@@ -428,7 +431,7 @@ async fn test_ws_missing_authorization_header() {
     let port = server.port;
 
     // Connect without Authorization header
-    let (mut _sink, mut stream) = connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/")).await;
+    let (mut _sink, mut stream) = connect_ws(&ws_url(port)).await;
 
     // Should not receive SERVER_READY (connection rejected)
     let msg = recv_binary(&mut stream).await;
@@ -459,9 +462,7 @@ async fn test_ws_malformed_authorization_header() {
     let port = server.port;
 
     // Connect with malformed Authorization header (no "Bearer " prefix)
-    let mut request = format!("ws://127.0.0.1:{port}/job/ws/")
-        .into_client_request()
-        .unwrap();
+    let mut request = ws_url(port).into_client_request().unwrap();
     request
         .headers_mut()
         .insert("Authorization", "invalid-token-format".parse().unwrap());
@@ -502,8 +503,7 @@ async fn test_ws_query_param_rejected() {
     let port = server.port;
 
     // Connect with old query parameter method (should be rejected)
-    let (mut _sink, mut stream) =
-        connect_ws(&format!("ws://127.0.0.1:{port}/job/ws/?token=valid")).await;
+    let (mut _sink, mut stream) = connect_ws(&format!("{}?token=valid", ws_url(port))).await;
 
     // Should not receive SERVER_READY (query params no longer supported)
     let msg = recv_binary(&mut stream).await;
