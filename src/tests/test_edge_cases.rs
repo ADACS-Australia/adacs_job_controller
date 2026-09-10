@@ -52,6 +52,7 @@ use adacs_job_controller::cluster::traits::{
 use adacs_job_controller::config::settings::FILE_CHUNK_SIZE;
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
 use adacs_job_controller::http::server::create_router;
+use adacs_job_controller::http::utils::CONTENT_LENGTH_HEADER;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState, Priority};
@@ -209,7 +210,7 @@ async fn test_upload_zero_byte_file_succeeds() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/empty.txt"
                 ))
                 .header("authorization", &token)
-                .header("content-length", "0")
+                .header(CONTENT_LENGTH_HEADER, "0")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -564,7 +565,7 @@ async fn test_upload_cluster_error_mid_transfer_returns_400() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.bin"
                 ))
                 .header("authorization", &token)
-                .header("content-length", payload.len().to_string())
+                .header(CONTENT_LENGTH_HEADER, payload.len().to_string())
                 .body(Body::from(payload))
                 .unwrap(),
         )
@@ -645,7 +646,7 @@ async fn test_upload_queue_drain_timeout_returns_400() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.bin"
                 ))
                 .header("authorization", &token)
-                .header("content-length", "100")
+                .header(CONTENT_LENGTH_HEADER, "100")
                 .body(Body::from(vec![0u8; 100]))
                 .unwrap(),
         )
@@ -985,7 +986,7 @@ async fn test_upload_oversized_content_length_returns_400() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
                 ))
                 .header("authorization", &token)
-                .header("content-length", u64::MAX.to_string())
+                .header(CONTENT_LENGTH_HEADER, u64::MAX.to_string())
                 .body(Body::from("some data"))
                 .unwrap(),
         )
@@ -1630,7 +1631,7 @@ async fn test_upload_large_body_is_chunked() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/big.bin"
                 ))
                 .header("authorization", &token)
-                .header("content-length", body_size.to_string())
+                .header(CONTENT_LENGTH_HEADER, body_size.to_string())
                 .body(Body::from(payload))
                 .unwrap(),
         )
@@ -1847,7 +1848,7 @@ async fn test_file_transfer_data_timeout_body_truncated() {
     assert_eq!(resp.status(), StatusCode::OK);
     let content_len = resp
         .headers()
-        .get("content-length")
+        .get(CONTENT_LENGTH_HEADER)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(0);
@@ -2175,7 +2176,7 @@ async fn test_continuous_file_uploads_sequential() {
             "http://127.0.0.1:{port}/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/first.bin"
         ))
         .header("authorization", &token)
-        .header("content-length", "10")
+        .header(CONTENT_LENGTH_HEADER, "10")
         .body(vec![0u8; 10])
         .send()
         .await
@@ -2191,7 +2192,7 @@ async fn test_continuous_file_uploads_sequential() {
             "http://127.0.0.1:{port}/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/second.bin"
         ))
         .header("authorization", &token)
-        .header("content-length", "10")
+        .header(CONTENT_LENGTH_HEADER, "10")
         .body(vec![0xFFu8; 10])
         .send()
         .await
@@ -2298,7 +2299,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
                 // No jobId — use cluster+bundle instead
                 .uri("/job/apiv1/file/upload/?cluster=ozstar&bundle=test_bundle&targetPath=/data/cluster_upload.bin")
                 .header("authorization", &token)
-                .header("content-length", "512")
+                .header(CONTENT_LENGTH_HEADER, "512")
                 .body(Body::from(vec![0xABu8; 512]))
                 .unwrap(),
         )
@@ -2813,7 +2814,7 @@ async fn test_large_file_uploads() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/large_upload.bin"
                 ))
                 .header("authorization", &token)
-                .header("content-length", file_size.to_string())
+                .header(CONTENT_LENGTH_HEADER, file_size.to_string())
                 .body(Body::from(file_data.clone()))
                 .unwrap(),
         )

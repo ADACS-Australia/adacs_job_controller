@@ -16,7 +16,8 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, failed_to_read_body_msg, filter_files, job_id_to_u32,
+    CONTENT_LENGTH_HEADER, INVALID_CLUSTER_MSG, failed_to_read_body_msg, filter_files,
+    job_id_to_u32,
 };
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
@@ -590,7 +591,7 @@ pub async fn download_file(
     let response = axum::response::Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/octet-stream")
-        .header("Content-Length", file_size.to_string())
+        .header(CONTENT_LENGTH_HEADER, file_size.to_string())
         .header("Content-Disposition", content_disposition)
         .body(body_for_response)
         .map_err(|e| {
@@ -672,7 +673,7 @@ pub async fn upload_file(
 
     let content_length: u64 = request
         .headers()
-        .get("content-length")
+        .get(CONTENT_LENGTH_HEADER)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| {
