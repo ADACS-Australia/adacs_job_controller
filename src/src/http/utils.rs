@@ -24,6 +24,9 @@ pub fn app_no_cluster_access_msg(app: &str, cluster: &str) -> String {
 /// HTTP `Content-Type` request header name.
 pub const CONTENT_TYPE_HEADER: &str = "content-type";
 
+/// HTTP `Content-Length` request/response header name.
+pub const CONTENT_LENGTH_HEADER: &str = "content-length";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME

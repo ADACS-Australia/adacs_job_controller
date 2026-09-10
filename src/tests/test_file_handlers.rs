@@ -21,7 +21,7 @@ use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockCluster
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
 use adacs_job_controller::http::file::{FILE_ID_KEY, UPLOAD_ID_KEY};
 use adacs_job_controller::http::server::create_router;
-use adacs_job_controller::http::utils::CONTENT_TYPE_HEADER;
+use adacs_job_controller::http::utils::{CONTENT_LENGTH_HEADER, CONTENT_TYPE_HEADER};
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState};
 
@@ -584,7 +584,7 @@ async fn test_download_file_streams_chunks() {
         );
         assert_eq!(
             resp.headers()
-                .get("content-length")
+                .get(CONTENT_LENGTH_HEADER)
                 .and_then(|v| v.to_str().ok()),
             Some(file_size.to_string().as_str()),
             "Content-Length mismatch on download {}",
@@ -1490,7 +1490,7 @@ async fn test_upload_file_no_target_path_returns_400() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b"
                 ))
                 .header("authorization", &token)
-                .header("content-length", "10")
+                .header(CONTENT_LENGTH_HEADER, "10")
                 .body(Body::from("0123456789"))
                 .unwrap(),
         )
@@ -1556,7 +1556,7 @@ async fn test_upload_file_job_id_exceeding_u32_returns_400() {
                     "/job/apiv1/file/upload/?jobId={huge}&targetPath=/dest.txt"
                 ))
                 .header("authorization", &token)
-                .header("content-length", "5")
+                .header(CONTENT_LENGTH_HEADER, "5")
                 .body(Body::from("hello"))
                 .unwrap(),
         )
@@ -1606,7 +1606,7 @@ async fn test_upload_file_cluster_offline_returns_503() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
                 ))
                 .header("authorization", &token)
-                .header("content-length", "5")
+                .header(CONTENT_LENGTH_HEADER, "5")
                 .body(Body::from("hello"))
                 .unwrap(),
         )
@@ -1708,7 +1708,7 @@ async fn test_upload_file_success_full_flow() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest/file.txt"
                 ))
                 .header("authorization", &token)
-                .header("content-length", payload.len().to_string())
+                .header(CONTENT_LENGTH_HEADER, payload.len().to_string())
                 .body(Body::from(payload.as_slice()))
                 .unwrap(),
         )
@@ -1784,7 +1784,7 @@ async fn test_upload_file_server_error_returns_400() {
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
                 ))
                 .header("authorization", &token)
-                .header("content-length", "5")
+                .header(CONTENT_LENGTH_HEADER, "5")
                 .body(Body::from("hello"))
                 .unwrap(),
         )
