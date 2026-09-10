@@ -19,6 +19,7 @@ use adacs_job_controller::cluster::file_download::{DownloadSession, FileDownload
 use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
+use adacs_job_controller::http::file::UPLOAD_ID_KEY;
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState};
 
@@ -1687,7 +1688,7 @@ async fn test_upload_file_success_full_flow() {
     )
     .unwrap();
     assert_eq!(body["status"].as_str().unwrap(), "completed");
-    let upload_id = body["uploadId"]
+    let upload_id = body[UPLOAD_ID_KEY]
         .as_str()
         .expect("uploadId should be present");
     assert!(uuid::Uuid::parse_str(upload_id).is_ok());
