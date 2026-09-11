@@ -1113,6 +1113,8 @@ mod tests {
         ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, QueryFilter, Schema,
     };
 
+    const CLUSTER_B: &str = "cluster_b";
+
     fn test_configs() -> Vec<ClusterConfig> {
         vec![
             ClusterConfig {
@@ -1127,7 +1129,7 @@ mod tests {
                 ltk: None,
             },
             ClusterConfig {
-                name: "cluster_b".to_string(),
+                name: CLUSTER_B.to_string(),
                 host: "host-b.example.com".to_string(),
                 username: "user_b".to_string(),
                 path: "/path/b".to_string(),
@@ -1149,7 +1151,7 @@ mod tests {
         assert_eq!(configs.len(), 2);
         assert_eq!(configs[0].name, "cluster_a");
         assert_eq!(configs[0].connection_type, "ssh");
-        assert_eq!(configs[1].name, "cluster_b");
+        assert_eq!(configs[1].name, CLUSTER_B);
         assert_eq!(configs[1].connection_type, "manual");
     }
 
@@ -1185,7 +1187,7 @@ mod tests {
         manager_arc.start_tasks();
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        while get_uuid_for_cluster(&db, "cluster_b").await.is_none() {
+        while get_uuid_for_cluster(&db, CLUSTER_B).await.is_none() {
             assert!(
                 std::time::Instant::now() < deadline,
                 "start_tasks should trigger immediate reconnect attempt"
@@ -1194,7 +1196,7 @@ mod tests {
         }
 
         assert_eq!(
-            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            manager.reconnect_attempts.get(CLUSTER_B).map(|v| *v),
             Some(1),
             "start_tasks should trigger immediate reconnect attempt"
         );
@@ -1206,30 +1208,30 @@ mod tests {
         let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
 
         manager.reconnect_clusters().await;
-        let first_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        let first_uuid = get_uuid_for_cluster(&db, CLUSTER_B).await.unwrap();
         assert_eq!(
-            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            manager.reconnect_attempts.get(CLUSTER_B).map(|v| *v),
             Some(1)
         );
 
-        let first_attempt_time = *manager.last_reconnect_attempt.get("cluster_b").unwrap();
+        let first_attempt_time = *manager.last_reconnect_attempt.get(CLUSTER_B).unwrap();
         manager.reconnect_clusters().await;
-        let second_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        let second_uuid = get_uuid_for_cluster(&db, CLUSTER_B).await.unwrap();
         assert_eq!(
             second_uuid, first_uuid,
             "backoff should skip immediate retry"
         );
         assert_eq!(
-            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            manager.reconnect_attempts.get(CLUSTER_B).map(|v| *v),
             Some(1)
         );
         assert_eq!(
-            *manager.last_reconnect_attempt.get("cluster_b").unwrap(),
+            *manager.last_reconnect_attempt.get(CLUSTER_B).unwrap(),
             first_attempt_time
         );
 
         manager.last_reconnect_attempt.insert(
-            "cluster_b".to_string(),
+            CLUSTER_B.to_string(),
             std::time::Instant::now()
                 .checked_sub(std::time::Duration::from_secs(
                     *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS,
@@ -1237,18 +1239,18 @@ mod tests {
                 .unwrap(),
         );
         manager.reconnect_clusters().await;
-        let third_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        let third_uuid = get_uuid_for_cluster(&db, CLUSTER_B).await.unwrap();
         assert_ne!(
             third_uuid, second_uuid,
             "retry should proceed after first backoff window"
         );
         assert_eq!(
-            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            manager.reconnect_attempts.get(CLUSTER_B).map(|v| *v),
             Some(2)
         );
 
         manager.last_reconnect_attempt.insert(
-            "cluster_b".to_string(),
+            CLUSTER_B.to_string(),
             std::time::Instant::now()
                 .checked_sub(std::time::Duration::from_secs(
                     *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS,
@@ -1256,18 +1258,18 @@ mod tests {
                 .unwrap(),
         );
         manager.reconnect_clusters().await;
-        let fourth_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        let fourth_uuid = get_uuid_for_cluster(&db, CLUSTER_B).await.unwrap();
         assert_eq!(
             fourth_uuid, third_uuid,
             "second retry should require doubled backoff"
         );
         assert_eq!(
-            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            manager.reconnect_attempts.get(CLUSTER_B).map(|v| *v),
             Some(2)
         );
 
         manager.last_reconnect_attempt.insert(
-            "cluster_b".to_string(),
+            CLUSTER_B.to_string(),
             std::time::Instant::now()
                 .checked_sub(std::time::Duration::from_secs(
                     *CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS * 2,
@@ -1275,13 +1277,13 @@ mod tests {
                 .unwrap(),
         );
         manager.reconnect_clusters().await;
-        let fifth_uuid = get_uuid_for_cluster(&db, "cluster_b").await.unwrap();
+        let fifth_uuid = get_uuid_for_cluster(&db, CLUSTER_B).await.unwrap();
         assert_ne!(
             fifth_uuid, fourth_uuid,
             "retry should proceed after doubled backoff window"
         );
         assert_eq!(
-            manager.reconnect_attempts.get("cluster_b").map(|v| *v),
+            manager.reconnect_attempts.get(CLUSTER_B).map(|v| *v),
             Some(3)
         );
     }
