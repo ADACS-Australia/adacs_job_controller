@@ -2284,4 +2284,105 @@ mod tests {
         assert_eq!(locked.files[1].file_name, "dir_b");
         assert!(locked.data_ready);
     }
+
+    // -----------------------------------------------------------------------
+    // UPDATE_JOB handling
+    // -----------------------------------------------------------------------
+
+    /// Verifies that `handle_update_job` inserts a `job_history` row and, on
+    /// `JOB_COMPLETION_SOURCE`, sends a `FILE_LIST` request and registers a
+    /// `FileListState` in the `file_list_map`.
+    #[tokio::test]
+    async fn test_handle_update_job_inserts_history_and_triggers_file_list() {
+        use crate::db::entities::{job, job_history};
+        use sea_orm::{
+            ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DbBackend,
+            EntityTrait, QueryFilter, Schema,
+        };
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+
+        // Create the tables needed by handle_update_job.
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        for stmt in [
+            builder.build(&schema.create_table_from_entity(job::Entity)),
+            builder.build(&schema.create_table_from_entity(job_history::Entity)),
+        ] {
+            db.execute(stmt).await.expect("create table failed");
+        }
+
+        // Insert a job so the completion path can look it up by id.
+        job::ActiveModel {
+            id: Set(42),
+            user: Set(1),
+            parameters: Set("params".to_string()),
+            cluster: Set("test_cluster".to_string()),
+            bundle: Set("bundle".to_string()),
+            application: Set("testapp".to_string()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert job failed");
+
+        let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+            Arc::new(DashMap::new());
+        let app_context = Arc::new(AppContext {
+            db: db.clone(),
+            file_list_map: Arc::clone(&file_list_map),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        // Give the cluster a live WS sender so the FILE_LIST request can be observed.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        cluster.set_connection(Some(tx)).await;
+        cluster.start_tasks();
+
+        // Build an UPDATE_JOB message with JOB_COMPLETION_SOURCE.
+        let mut msg = Message::new(UPDATE_JOB, Priority::Highest, "test_cluster");
+        msg.push_uint(42);
+        msg.push_string(JOB_COMPLETION_SOURCE);
+        msg.push_uint(JobStatus::Completed as u32);
+        msg.push_string("completed");
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_update_job(&mut msg).await;
+
+        // Verify a job_history row was inserted.
+        let row = job_history::Entity::find()
+            .filter(job_history::Column::JobId.eq(42i64))
+            .one(&db)
+            .await
+            .expect("query failed")
+            .expect("expected a job_history row");
+        assert_eq!(row.job_id, 42);
+        assert_eq!(row.what, JOB_COMPLETION_SOURCE);
+        assert_eq!(row.state, JobStatus::Completed as i32);
+        assert_eq!(row.details, "completed");
+
+        // Verify a FILE_LIST request was sent and a FileListState registered.
+        let mut file_list_sent = false;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !file_list_sent && std::time::Instant::now() < deadline {
+            if let Ok(Some(WsOutbound::Binary(data))) =
+                tokio::time::timeout(std::time::Duration::from_millis(50), rx.recv()).await
+            {
+                let mut decoded = Message::from_bytes(data);
+                if decoded.id() == FILE_LIST {
+                    file_list_sent = true;
+                    let _job_id = decoded.pop_uint();
+                    let uuid = decoded.pop_string();
+                    assert!(
+                        file_list_map.contains_key(&uuid),
+                        "expected a FileListState registered for {uuid}"
+                    );
+                }
+            }
+        }
+        assert!(file_list_sent, "expected a FILE_LIST request to be sent");
+
+        cluster.stop();
+    }
 }
