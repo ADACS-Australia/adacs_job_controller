@@ -137,11 +137,25 @@ fn weak_canonical(path: &str) -> String {
     for component in p.components() {
         match component {
             Component::ParentDir => {
-                result.pop();
-                // Popping past the root of an absolute path would drop the
-                // leading slash; restore it so the result stays absolute.
-                if p.is_absolute() && result.as_os_str().is_empty() {
-                    result.push("/");
+                if p.is_absolute() {
+                    result.pop();
+                    // Popping past the root of an absolute path would drop the
+                    // leading slash; restore it so the result stays absolute.
+                    if result.as_os_str().is_empty() {
+                        result.push("/");
+                    }
+                } else {
+                    // For a relative path, popping past the start (empty or all
+                    // leading `..`) must preserve the `..` rather than drop it.
+                    let past_start = result.as_os_str().is_empty()
+                        || result
+                            .components()
+                            .all(|c| matches!(c, Component::ParentDir));
+                    if past_start {
+                        result.push("..");
+                    } else {
+                        result.pop();
+                    }
                 }
             }
             Component::CurDir => {}
@@ -388,6 +402,17 @@ mod tests {
         assert_eq!(weak_canonical("/"), "/");
         assert_eq!(weak_canonical("/a/../../b"), "/b");
         assert_eq!(weak_canonical("/a/../.."), "/");
+    }
+
+    /// Regression test: a `..` that pops past the start of a relative path is
+    /// preserved rather than silently dropped, so the result still references
+    /// the intended parent directory.
+    #[test]
+    fn test_weak_canonical_relative_leading_parent_dir() {
+        assert_eq!(weak_canonical("../a"), "../a");
+        assert_eq!(weak_canonical("a/../.."), "..");
+        assert_eq!(weak_canonical("../../a"), "../../a");
+        assert_eq!(weak_canonical("a/.."), "");
     }
 
     fn make_files() -> Vec<FileInfo> {
