@@ -2284,4 +2284,12 @@ mod tests {
         assert_eq!(locked.files[1].file_name, "dir_b");
         assert!(locked.data_ready);
     }
+
+    /// Verifies that `handle_message` tolerates an unknown message ID without panicking.
+    #[tokio::test]
+    async fn test_handle_message_unknown_id_no_panic() {
+        let cluster = Cluster::new(test_config(), None);
+        let msg = Message::new(9999, Priority::Medium, "test_source");
+        cluster.handle_message(msg).await;
+    }
 }
