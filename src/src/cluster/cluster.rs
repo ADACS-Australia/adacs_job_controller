@@ -2284,4 +2284,33 @@ mod tests {
         assert_eq!(locked.files[1].file_name, "dir_b");
         assert!(locked.data_ready);
     }
+
+    /// Verifies that a `FILE_LIST` response for an unknown UUID (e.g. after the
+    /// HTTP request timed out and removed the entry) returns gracefully without
+    /// creating state or setting data_ready.
+    #[tokio::test]
+    async fn test_file_list_response_unknown_uuid_returns_gracefully() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+        let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+            Arc::new(DashMap::new());
+        let app_context = Arc::new(AppContext {
+            db,
+            file_list_map: Arc::clone(&file_list_map),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        let mut msg = Message::new(FILE_LIST, Priority::Lowest, "test_cluster");
+        msg.push_string("unknown-uuid");
+        msg.push_uint(1);
+        msg.push_string("file_a.txt");
+        msg.push_bool(false);
+        msg.push_ulong(1024);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_response(&mut msg).await;
+
+        assert!(file_list_map.is_empty());
+    }
 }
