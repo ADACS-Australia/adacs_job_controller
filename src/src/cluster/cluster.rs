@@ -2284,4 +2284,73 @@ mod tests {
         assert_eq!(locked.files[1].file_name, "dir_b");
         assert!(locked.data_ready);
     }
+
+    // -----------------------------------------------------------------------
+    // FILE_CHUNK handling
+    // -----------------------------------------------------------------------
+
+    /// Verifies that `handle_file_chunk` forwards chunk bytes to the HTTP chunk
+    /// receiver, increments `received_bytes`, and sets `data_ready`.
+    #[tokio::test]
+    async fn test_handle_file_chunk_forwards_and_marks_ready() {
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster = Cluster::new_file_download(
+            test_config(),
+            "uuid-chunk".into(),
+            state.clone(),
+            None,
+            lock,
+        );
+
+        let chunk = vec![1u8, 2, 3, 4];
+        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, "test_cluster");
+        msg.push_bytes(&chunk);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_chunk(&mut msg).await;
+
+        let received = state.chunk_receiver.lock().await.recv().await;
+        assert_eq!(received, Some(chunk));
+        assert_eq!(state.received_bytes.load(Ordering::Relaxed), 4);
+        assert!(state.data_ready.load(Ordering::Relaxed));
+        assert!(!state.error.load(Ordering::Relaxed));
+    }
+
+    /// Verifies that `handle_file_chunk` records an error and sets `data_ready`
+    /// when the HTTP receiver has been dropped (client disconnected).
+    #[tokio::test]
+    async fn test_handle_file_chunk_sets_error_when_receiver_dropped() {
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster = Cluster::new_file_download(
+            test_config(),
+            "uuid-chunk".into(),
+            state.clone(),
+            None,
+            lock,
+        );
+
+        {
+            let mut guard = state.chunk_receiver.lock().await;
+            let rx = std::mem::replace(&mut *guard, tokio::sync::mpsc::unbounded_channel().1);
+            drop(guard);
+            drop(rx);
+        }
+
+        let chunk = vec![9u8, 8, 7];
+        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, "test_cluster");
+        msg.push_bytes(&chunk);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_chunk(&mut msg).await;
+
+        assert!(state.error.load(Ordering::Relaxed));
+        assert_eq!(
+            *state.error_details.lock().await,
+            "Download aborted: HTTP client disconnected"
+        );
+        assert!(state.data_ready.load(Ordering::Relaxed));
+        assert_eq!(state.received_bytes.load(Ordering::Relaxed), 3);
+    }
 }
