@@ -555,6 +555,7 @@ mod tests {
     };
 
     const NOT_CLOSED_PANIC: &str = "session should be Closed, got ";
+    const TEST_TOKEN: &str = "abc123";
 
     #[test]
     fn test_generate_connection_id_unique() {
@@ -573,16 +574,22 @@ mod tests {
     #[test]
     fn test_extract_token_from_headers_bearer_prefix_stripped() {
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, "Bearer abc123".parse().unwrap());
-        assert_eq!(extract_token_from_headers(&headers), "abc123");
+        headers.insert(
+            AUTHORIZATION,
+            format!("Bearer {TEST_TOKEN}").parse().unwrap(),
+        );
+        assert_eq!(extract_token_from_headers(&headers), TEST_TOKEN);
     }
 
     #[test]
     fn test_extract_token_from_headers_lowercase_bearer_accepted() {
         // RFC 6750: the auth scheme is case-insensitive.
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, "bearer abc123".parse().unwrap());
-        assert_eq!(extract_token_from_headers(&headers), "abc123");
+        headers.insert(
+            AUTHORIZATION,
+            format!("bearer {TEST_TOKEN}").parse().unwrap(),
+        );
+        assert_eq!(extract_token_from_headers(&headers), TEST_TOKEN);
     }
 
     #[test]
@@ -594,7 +601,10 @@ mod tests {
     #[test]
     fn test_extract_token_from_headers_non_bearer_returns_empty() {
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, "Basic abc123".parse().unwrap());
+        headers.insert(
+            AUTHORIZATION,
+            format!("Basic {TEST_TOKEN}").parse().unwrap(),
+        );
         assert_eq!(extract_token_from_headers(&headers), "");
     }
 
