@@ -3,6 +3,9 @@
 
 pub mod repeated_download;
 
+/// HTTP header name for the `Content-Disposition` response header.
+pub const CONTENT_DISPOSITION_HEADER: &str = "content-disposition";
+
 use std::sync::Mutex as StdMutex;
 use std::sync::{Arc, Mutex};
 
