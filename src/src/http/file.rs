@@ -27,6 +27,7 @@ use crate::protocol::types::{FileInfo, FileListState, Priority};
 use crate::utils::uuid::generate_uuid;
 
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
+const BAD_REQUEST_MSG: &str = "Bad Request";
 
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
@@ -304,7 +305,7 @@ pub async fn download_file(
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     let original_uuid = params.file_id.filter(|s| !s.is_empty()).ok_or_else(|| {
         tracing::debug!("HTTP: File download rejected - missing fileId parameter");
-        (StatusCode::BAD_REQUEST, "Bad Request".to_string())
+        (StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string())
     })?;
 
     tracing::debug!("HTTP: File download request for UUID: {}", original_uuid);
@@ -340,7 +341,7 @@ pub async fn download_file(
                 "HTTP: Download record not found for UUID: {}",
                 original_uuid
             );
-            (StatusCode::BAD_REQUEST, "Bad Request".to_string())
+            (StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string())
         })?;
 
     let s_cluster = dl.cluster;
