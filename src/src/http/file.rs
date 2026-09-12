@@ -28,6 +28,9 @@ use crate::utils::uuid::generate_uuid;
 
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
 
+/// JSON response key for the created file-download record's UUID.
+pub const FILE_ID_KEY: &str = "fileId";
+
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
 /// # Errors
@@ -216,7 +219,7 @@ pub async fn create_file_download(
     if has_paths {
         Ok(Json(serde_json::json!({ "fileIds": uuids })))
     } else {
-        Ok(Json(serde_json::json!({ "fileId": uuids[0] })))
+        Ok(Json(serde_json::json!({ FILE_ID_KEY: uuids[0] })))
     }
 }
 
