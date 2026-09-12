@@ -24,6 +24,7 @@ use crate::protocol::constants::{
 };
 use crate::protocol::message::Message;
 use crate::protocol::types::{ClusterRole, FileInfo, FileListState, JobStatus, Priority};
+use crate::utils::job_source_key;
 use crate::utils::uuid::generate_uuid;
 
 fn warn_role_mismatch(name: &str, role: &ClusterRole, message_name: &str) {
@@ -988,7 +989,7 @@ impl Cluster {
                 let mut msg = Message::new(
                     message_id,
                     Priority::Medium,
-                    &format!("{}_{}", j.id, cluster_name),
+                    &job_source_key(j.id, &cluster_name),
                 );
                 let Ok(job_id_u32) = u32::try_from(j.id) else {
                     tracing::warn!(
