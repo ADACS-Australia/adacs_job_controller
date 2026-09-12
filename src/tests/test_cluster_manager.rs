@@ -30,6 +30,8 @@ static LTK_TIMEOUT_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const
 // Helpers
 // ---------------------------------------------------------------------------
 
+const CLUSTER_1: &str = "cluster1";
+
 async fn setup_cluster_uuid_table(db: &DatabaseConnection) {
     let builder = DbBackend::Sqlite;
     let schema = Schema::new(builder);
@@ -64,7 +66,7 @@ async fn connect_file_download(
     token: &str,
     conn_id: u64,
 ) -> Option<Arc<dyn ClusterTrait>> {
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let _dl_cluster = mgr.create_file_download(&cluster, token).await;
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     mgr.handle_new_connection(conn_id, tx, token).await
@@ -76,7 +78,7 @@ async fn connect_file_upload(
     token: &str,
     conn_id: u64,
 ) -> Option<Arc<dyn ClusterTrait>> {
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let _ul_cluster = mgr.create_file_upload(&cluster, token).await;
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     mgr.handle_new_connection(conn_id, tx, token).await
@@ -85,7 +87,7 @@ async fn connect_file_upload(
 fn three_cluster_configs() -> Vec<ClusterConfig> {
     vec![
         ClusterConfig {
-            name: "cluster1".to_string(),
+            name: CLUSTER_1.to_string(),
             host: "cluster1.com".to_string(),
             username: "user1".to_string(),
             path: "/cluster1/".to_string(),
@@ -334,7 +336,7 @@ async fn test_handle_new_connection_expire_uuids() {
     let expired_ts =
         chrono::Utc::now().naive_utc() - chrono::Duration::try_seconds(expiry).unwrap();
     cluster_uuid::ActiveModel {
-        cluster: Set("cluster1".to_string()),
+        cluster: Set(CLUSTER_1.to_string()),
         uuid: Set("expired_uuid".to_string()),
         timestamp: Set(expired_ts),
         ..Default::default()
@@ -357,7 +359,7 @@ async fn test_handle_new_connection_expire_uuids() {
     let recent_ts =
         chrono::Utc::now().naive_utc() - chrono::Duration::try_seconds(expiry - 1).unwrap();
     cluster_uuid::ActiveModel {
-        cluster: Set("cluster1".to_string()),
+        cluster: Set(CLUSTER_1.to_string()),
         uuid: Set("recent_uuid".to_string()),
         timestamp: Set(recent_ts),
         ..Default::default()
@@ -461,7 +463,7 @@ async fn test_handle_new_connection_valid_uuid() {
     assert_eq!(found.unwrap().name(), "cluster2");
 
     // Other clusters should still be offline
-    let cluster1 = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster1 = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     assert!(!mgr.is_cluster_online(cluster1.as_ref()));
     let cluster3 = mgr.get_cluster_by_name("cluster3").unwrap();
     assert!(!mgr.is_cluster_online(cluster3.as_ref()));
@@ -580,7 +582,7 @@ async fn test_remove_connection() {
 
     // Other clusters should still be online
     let found = mgr.get_cluster_by_connection(1);
-    assert_eq!(found.unwrap().name(), "cluster1");
+    assert_eq!(found.unwrap().name(), CLUSTER_1);
     let found = mgr.get_cluster_by_connection(3);
     assert_eq!(found.unwrap().name(), "cluster3");
 
@@ -728,7 +730,7 @@ async fn test_reconnect_clusters_skips_ltk_clusters() {
     // LTK cluster must NOT be in the UUID list; non-LTK clusters must be
     let clusters = get_uuid_clusters(&db).await;
     assert!(!clusters.contains(&"ltk_cluster".to_string()));
-    assert!(clusters.contains(&"cluster1".to_string()));
+    assert!(clusters.contains(&CLUSTER_1.to_string()));
     assert!(clusters.contains(&"cluster2".to_string()));
 }
 
@@ -768,10 +770,10 @@ async fn test_create_file_download_session() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let dl_cluster = mgr.create_file_download(&cluster, "dl-uuid-1").await;
 
-    assert_eq!(dl_cluster.name(), "cluster1");
+    assert_eq!(dl_cluster.name(), CLUSTER_1);
 
     // Should be findable via get_file_download
     let state = mgr
@@ -800,10 +802,10 @@ async fn test_create_file_upload_session() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let ul_cluster = mgr.create_file_upload(&cluster, "ul-uuid-1").await;
 
-    assert_eq!(ul_cluster.name(), "cluster1");
+    assert_eq!(ul_cluster.name(), CLUSTER_1);
 
     // Should be findable via get_file_upload
     let state = mgr
@@ -834,11 +836,11 @@ async fn test_handle_new_connection_file_download() {
 
     // Connect using the file download token
     let result = connect_file_download(&mgr, "dl-token-1", 50).await;
-    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER_1);
 
     // Should be trackable by connection
     let found = mgr.get_cluster_by_connection(50);
-    assert_eq!(found.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(found.as_ref().unwrap().name(), CLUSTER_1);
 }
 
 /// Verifies that `handle_new_connection` rejects a second WebSocket connection to an already-bound file download session.
@@ -858,7 +860,7 @@ async fn test_handle_new_connection_file_download_duplicate_rejected() {
 
     // First connection binds the session
     let result = connect_file_download(&mgr, "dl-token-dup", 50).await;
-    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER_1);
 
     // Second connection to the same token must be rejected
     let (tx2, _rx2) = tokio::sync::mpsc::unbounded_channel();
@@ -886,11 +888,11 @@ async fn test_handle_new_connection_file_upload() {
 
     // Connect using the file upload token
     let result = connect_file_upload(&mgr, "ul-token-1", 60).await;
-    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER_1);
 
     // Should be trackable by connection
     let found = mgr.get_cluster_by_connection(60);
-    assert_eq!(found.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(found.as_ref().unwrap().name(), CLUSTER_1);
 }
 
 /// Verifies that a duplicate file upload connection for an already-online upload session is rejected.
@@ -910,7 +912,7 @@ async fn test_handle_new_connection_file_upload_duplicate_rejected() {
 
     // First connection authenticates
     let result = connect_file_upload(&mgr, "ul-token-dup", 60).await;
-    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER_1);
 
     // Second connection with the same token must be rejected
     let (tx2, _rx2) = tokio::sync::mpsc::unbounded_channel();
@@ -921,10 +923,7 @@ async fn test_handle_new_connection_file_upload_duplicate_rejected() {
     );
 
     // Original connection remains active; the new one is not registered
-    assert_eq!(
-        mgr.get_cluster_by_connection(60).unwrap().name(),
-        "cluster1"
-    );
+    assert_eq!(mgr.get_cluster_by_connection(60).unwrap().name(), CLUSTER_1);
     assert!(mgr.get_cluster_by_connection(61).is_none());
 }
 
@@ -945,7 +944,7 @@ async fn test_remove_connection_file_download_cleanup() {
 
     // Create and connect a file download session
     let result = connect_file_download(&mgr, "dl-cleanup", 70).await;
-    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER_1);
 
     // Remove the connection
     mgr.remove_connection(70, true).await;
@@ -974,7 +973,7 @@ async fn test_remove_connection_file_upload_cleanup() {
 
     // Create and connect a file upload session
     let result = connect_file_upload(&mgr, "ul-cleanup", 80).await;
-    assert_eq!(result.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER_1);
 
     // Remove the connection
     mgr.remove_connection(80, true).await;
@@ -1034,10 +1033,10 @@ async fn test_pong_times_initialized_after_connection() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    let _rx = connect_cluster(&mgr, &db, "cluster1", 1).await;
+    let _rx = connect_cluster(&mgr, &db, CLUSTER_1, 1).await;
 
     // Cluster should be online
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     assert!(cluster.is_online());
 
     // First check_pings: pong_times exists (from connect) so no eviction.
@@ -1045,7 +1044,7 @@ async fn test_pong_times_initialized_after_connection() {
     mgr.check_pings().await;
 
     // Cluster should still be online — the pong_times entry protected it.
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     assert!(
         cluster.is_online(),
         "cluster should survive the first check_pings after connection"
@@ -1067,7 +1066,7 @@ async fn test_check_pings_send_ping_success() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    let mut rx = connect_cluster(&mgr, &db, "cluster1", 1).await;
+    let mut rx = connect_cluster(&mgr, &db, CLUSTER_1, 1).await;
 
     // First check_pings: sends a Ping frame
     mgr.check_pings().await;
@@ -1086,7 +1085,7 @@ async fn test_check_pings_send_ping_success() {
     mgr.check_pings().await;
 
     // Cluster should still be online
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     assert!(
         cluster.is_online(),
         "cluster should survive when pong is received between pings"
@@ -1112,10 +1111,10 @@ async fn test_check_pings_evicts_dead_connection() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    let _rx = connect_cluster(&mgr, &db, "cluster1", 1).await;
+    let _rx = connect_cluster(&mgr, &db, CLUSTER_1, 1).await;
 
     // Cluster starts online
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     assert!(cluster.is_online());
 
     // First check_pings: sends a ping, clears pong_times
@@ -1130,7 +1129,7 @@ async fn test_check_pings_evicts_dead_connection() {
     mgr.check_pings().await;
 
     // Cluster should now be offline
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     assert!(
         !cluster.is_online(),
         "cluster should be evicted after 2 consecutive missed pongs"
@@ -1291,16 +1290,16 @@ async fn test_application_shutdown_triggers_every_registered_session() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let _dl_a = mgr.create_file_download(&cluster, "dl-a").await;
     let _dl_b = mgr.create_file_download(&cluster, "dl-b").await;
 
     let (tx_a, _rx_a) = tokio::sync::mpsc::unbounded_channel();
     let (tx_b, _rx_b) = tokio::sync::mpsc::unbounded_channel();
     let result_a = mgr.handle_new_connection(101, tx_a, "dl-a").await;
-    assert_eq!(result_a.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(result_a.as_ref().unwrap().name(), CLUSTER_1);
     let result_b = mgr.handle_new_connection(102, tx_b, "dl-b").await;
-    assert_eq!(result_b.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(result_b.as_ref().unwrap().name(), CLUSTER_1);
 
     let first = mgr.begin_application_shutdown();
     assert_eq!(first, 2, "both sessions should receive the trigger");
@@ -1343,9 +1342,9 @@ async fn test_application_shutdown_rejects_dedicated_admission_only() {
     assert!(mgr.is_application_shutting_down());
 
     // Dedicated admission is rejected.
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let dl_cluster = mgr.create_file_download(&cluster, "dl-rejected").await;
-    assert_eq!(dl_cluster.name(), "cluster1");
+    assert_eq!(dl_cluster.name(), CLUSTER_1);
     assert!(
         mgr.get_file_download("dl-rejected").is_none(),
         "create_file_download during shutdown must not publish state"
@@ -1358,7 +1357,7 @@ async fn test_application_shutdown_rejects_dedicated_admission_only() {
 
     // Upload admission is unaffected.
     let ul_cluster = mgr.create_file_upload(&cluster, "ul-ok").await;
-    assert_eq!(ul_cluster.name(), "cluster1");
+    assert_eq!(ul_cluster.name(), CLUSTER_1);
     let upload_state = mgr
         .get_file_upload("ul-ok")
         .expect("upload session created during shutdown must be retrievable");
@@ -1391,16 +1390,16 @@ async fn test_application_shutdown_rejects_file_download_ws_admission() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let _dl_first = mgr.create_file_download(&cluster, "dl-first").await;
     let _dl_second = mgr.create_file_download(&cluster, "dl-second").await;
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let first = mgr.handle_new_connection(201, tx, "dl-first").await;
-    assert_eq!(first.as_ref().unwrap().name(), "cluster1");
+    assert_eq!(first.as_ref().unwrap().name(), CLUSTER_1);
     assert_eq!(
         mgr.get_cluster_by_connection(201).unwrap().name(),
-        "cluster1"
+        CLUSTER_1
     );
 
     mgr.begin_application_shutdown();
@@ -1426,7 +1425,7 @@ async fn test_dedicated_download_clusters_snapshot() {
 
     assert_eq!(mgr.dedicated_download_clusters().len(), 0);
 
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let _dl = mgr.create_file_download(&cluster, "dl-snap").await;
     assert_eq!(mgr.dedicated_download_clusters().len(), 1);
 
@@ -1443,7 +1442,7 @@ async fn test_application_shutdown_drains_dedicated_tasks_within_bound() {
     let db = make_db().await;
     let mgr = make_manager_with_three_clusters(&db).await;
 
-    let cluster = mgr.get_cluster_by_name("cluster1").unwrap();
+    let cluster = mgr.get_cluster_by_name(CLUSTER_1).unwrap();
     let _dl_cluster = mgr.create_file_download(&cluster, "dl-drain").await;
 
     let concrete = mgr
