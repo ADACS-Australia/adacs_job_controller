@@ -765,14 +765,22 @@ impl Cluster {
         );
     }
 
-    /// Records a transfer error and notifies any waiting readers.
+    /// Records a transfer error, logs a warning, and notifies any waiting readers.
     async fn record_transfer_error(
+        cluster_name: &str,
+        message_name: &str,
         error_details: &tokio::sync::Mutex<String>,
         error: &AtomicBool,
         data_ready: &AtomicBool,
         data_notify: &Notify,
         details: String,
     ) {
+        tracing::warn!(
+            "Cluster[{}]: {} received - {}",
+            cluster_name,
+            message_name,
+            details
+        );
         *error_details.lock().await = details;
         error.store(true, Ordering::Release);
         data_ready.store(true, Ordering::Release);
@@ -786,12 +794,9 @@ impl Cluster {
         };
 
         let details = message.pop_string();
-        tracing::warn!(
-            "Cluster[{}]: FILE_ERROR received - {}",
-            self.name(),
-            details
-        );
         Self::record_transfer_error(
+            &self.name(),
+            "FILE_ERROR",
             &state.error_details,
             &state.error,
             &state.data_ready,
@@ -831,12 +836,9 @@ impl Cluster {
             return;
         };
         let details = message.pop_string();
-        tracing::warn!(
-            "Cluster[{}]: FILE_UPLOAD_ERROR received - {}",
-            self.name(),
-            details
-        );
         Self::record_transfer_error(
+            &self.name(),
+            "FILE_UPLOAD_ERROR",
             &state.error_details,
             &state.error,
             &state.data_ready,
