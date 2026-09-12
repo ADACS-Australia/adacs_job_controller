@@ -52,6 +52,12 @@ fn cluster_capturing_messages(
     c
 }
 
+/// Insert a standard test job (cluster=ozstar, bundle=b, application=testapp).
+/// Returns the inserted job id.
+async fn insert_standard_test_job(db: &sea_orm::DatabaseConnection) -> i64 {
+    insert_test_job(db, "ozstar", "b", "testapp").await
+}
+
 // ---------------------------------------------------------------------------
 // create_job tests
 // ---------------------------------------------------------------------------
@@ -407,7 +413,7 @@ async fn run_cancel(
 
 async fn assert_cancel_rejected_for_state(state: JobStatus) {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, state as i32, "system").await;
     let (status, _) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -449,7 +455,7 @@ fn manager_with_offline_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Mes
 #[tokio::test]
 async fn test_cancel_job_pending_directly_cancelled_no_ws() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
 
     let (manager, sent) = manager_with_online_cluster();
@@ -488,7 +494,7 @@ async fn test_cancel_job_pending_directly_cancelled_no_ws() {
 #[tokio::test]
 async fn test_cancel_job_submitting_sends_cancel_ws_message() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
     insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
 
@@ -530,7 +536,7 @@ async fn test_cancel_job_submitting_sends_cancel_ws_message() {
 #[tokio::test]
 async fn test_cancel_job_offline_cluster_no_ws_message() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
     insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
 
@@ -569,7 +575,7 @@ async fn test_cancel_job_offline_cluster_no_ws_message() {
 #[tokio::test]
 async fn test_cancel_job_running_sends_cancel_ws_message() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
 
     let (manager, sent) = manager_with_online_cluster();
@@ -597,7 +603,7 @@ async fn test_cancel_job_running_sends_cancel_ws_message() {
 #[tokio::test]
 async fn test_cancel_job_already_cancelling_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Cancelling as i32, "system").await;
     let (status, body) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -617,7 +623,7 @@ async fn test_cancel_job_already_cancelling_returns_400() {
 #[tokio::test]
 async fn test_cancel_job_already_cancelled_returns_400() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Cancelled as i32, "system").await;
     let (status, body) = run_cancel(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -814,7 +820,7 @@ async fn run_delete(
 #[tokio::test]
 async fn test_delete_job_pending_directly_deleted_no_ws() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
 
     let (manager, sent) = manager_with_online_cluster();
@@ -847,7 +853,7 @@ async fn test_delete_job_pending_directly_deleted_no_ws() {
 #[tokio::test]
 async fn test_delete_job_cancelled_sends_delete_ws_message() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Cancelled as i32, "system").await;
 
     let (manager, sent) = manager_with_online_cluster();
@@ -886,7 +892,7 @@ async fn test_delete_job_cancelled_sends_delete_ws_message() {
 #[tokio::test]
 async fn test_delete_job_offline_cluster_no_ws_message() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Cancelled as i32, "system").await;
 
     let (manager, sent) = manager_with_offline_cluster();
@@ -924,7 +930,7 @@ async fn test_delete_job_offline_cluster_no_ws_message() {
 #[tokio::test]
 async fn test_delete_job_completed_sends_delete_ws_message() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Completed as i32, "system").await;
 
     let (manager, sent) = manager_with_online_cluster();
@@ -947,7 +953,7 @@ async fn test_delete_job_completed_sends_delete_ws_message() {
 #[tokio::test]
 async fn test_delete_job_error_sends_delete_ws_message() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Error as i32, "system").await;
 
     let (manager, sent) = manager_with_online_cluster();
@@ -960,7 +966,7 @@ async fn test_delete_job_error_sends_delete_ws_message() {
 // Invalid states for delete
 async fn assert_delete_rejected_for_state(state: JobStatus) {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, state as i32, "system").await;
     let (status, _) = run_delete(job_id, &db, mock_cluster_manager_no_clusters()).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -1926,7 +1932,7 @@ async fn test_create_job_works_without_content_type_header() {
 #[tokio::test]
 async fn test_cancel_job_works_without_content_type_header() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
 
     let (manager, _) = manager_with_online_cluster();
@@ -1965,7 +1971,7 @@ async fn test_cancel_job_works_without_content_type_header() {
 #[tokio::test]
 async fn test_delete_job_works_without_content_type_header() {
     let db = setup_test_db().await;
-    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let job_id = insert_standard_test_job(&db).await;
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
 
     let (manager, _) = manager_with_online_cluster();
