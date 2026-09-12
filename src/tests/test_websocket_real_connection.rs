@@ -40,6 +40,11 @@ use sea_orm::{
 // Test server helpers
 // ---------------------------------------------------------------------------
 
+/// Build a valid test JWT for the default test application.
+fn test_token() -> String {
+    encode_test_jwt(&json!({"userId": 1, "application": "testapp"}))
+}
+
 /// Start a real axum server on a random port with both HTTP and WS
 async fn start_http_server(
     db: sea_orm::DatabaseConnection,
@@ -173,7 +178,7 @@ async fn test_real_websocket_connection_and_auth() {
 
     // Start real server
     let (port, server_handle) = start_http_server(db.clone(), manager).await;
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+    let token = test_token();
 
     // Connect real WebSocket client and expect SERVER_READY
     let (sink, _stream) = connect_and_expect_server_ready(port, &token).await;
@@ -199,7 +204,7 @@ async fn test_real_websocket_connection_and_auth() {
 #[tokio::test]
 async fn test_server_initiated_close_sends_close_frame_to_client() {
     let (cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+    let token = test_token();
 
     let (sink, mut stream) = connect_and_expect_server_ready(port, &token).await;
 
@@ -258,7 +263,7 @@ async fn test_server_initiated_close_sends_close_frame_to_client() {
 #[ignore = "inherently slow (~grace period); run with --ignored"]
 async fn test_close_handshake_timeout_forces_tcp_close() {
     let (cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+    let token = test_token();
 
     let (sink, mut stream) = connect_and_expect_server_ready(port, &token).await;
 
@@ -483,7 +488,7 @@ async fn test_multiple_clusters_concurrent_job_submission() {
 
     // Start real HTTP server
     let (_port, server_handle) = start_http_server(db.clone(), manager).await;
-    let token = encode_test_jwt(&json!({"userId": 1, "application": "testapp"}));
+    let token = test_token();
 
     // Submit jobs to 2 clusters (ozstar and nci - gadi not in JWT secret)
     let clusters = ["ozstar", "nci"];
