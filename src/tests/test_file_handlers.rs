@@ -52,6 +52,11 @@ async fn no_cluster_app() -> (
     (app, secrets)
 }
 
+/// Build an app with the given test DB and cluster manager.
+fn make_app(db: sea_orm::DatabaseConnection, manager: MockClusterManagerTrait) -> axum::Router {
+    create_router(make_test_state(db, manager))
+}
+
 fn file_list_cluster(
     file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
     extra: Arc<dyn Fn(String) -> futures::future::BoxFuture<'static, ()> + Send + Sync>,
@@ -109,7 +114,7 @@ async fn test_create_file_download_single_path_returns_file_id() {
 
     let manager = manager_with_online_cluster_no_messages();
 
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 10}));
 
     let resp = app
@@ -171,7 +176,7 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     let manager = manager_with_online_cluster_no_messages();
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -227,7 +232,7 @@ async fn test_create_file_download_no_path_returns_400() {
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -272,7 +277,7 @@ async fn test_create_file_download_rejects_empty_paths() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     // Single empty path — must not create a record.
@@ -361,7 +366,7 @@ async fn test_download_file_no_file_id_returns_400() {
     manager.expect_get_cluster_by_name().returning(|_| None);
     manager.expect_get_file_download().returning(|_| None);
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
 
     let resp = app
         .oneshot(
@@ -393,7 +398,7 @@ async fn test_download_file_unknown_uuid_returns_400() {
     let mut manager = MockClusterManagerTrait::new();
     manager.expect_get_cluster_by_name().returning(|_| None);
     manager.expect_get_file_download().returning(|_| None);
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let resp = app
         .oneshot(
             Request::builder()
@@ -434,7 +439,7 @@ async fn test_download_file_cluster_offline_returns_503() {
         .returning(move |_| Some(c.clone()));
     manager.expect_get_file_download().returning(|_| None);
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
 
     let resp = app
         .oneshot(
@@ -527,7 +532,7 @@ async fn test_download_file_streams_chunks() {
             Some(fd_state)
         });
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
 
     // Perform 5 repeated downloads like the C++ test
     for (i, uuid) in uuids.iter().enumerate().take(5) {
@@ -625,7 +630,7 @@ async fn test_download_file_error_from_cluster_returns_400() {
         .expect_get_file_download()
         .returning(move |_| Some(Arc::clone(&fd_for_manager)));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
 
     let resp = app
         .oneshot(
@@ -692,7 +697,7 @@ async fn test_download_file_job_id_exceeding_u32_returns_400() {
         .expect_get_file_download_cleanup_trigger()
         .returning(move |_| Some(trigger_for_mock.clone()));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
 
     let resp = app
         .oneshot(
@@ -747,7 +752,7 @@ async fn test_download_file_session_not_found_returns_400() {
         .returning(move |_| Some(trigger_for_mock.clone()));
     manager.expect_get_file_download().returning(|_| None);
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
 
     let resp = app
         .oneshot(
@@ -814,7 +819,7 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     let manager = manager_with_online_cluster_no_messages();
     // send_message should NOT be called (already mocked with .returning in cluster)
 
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -1247,7 +1252,7 @@ async fn test_list_files_cluster_offline_returns_503() {
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -1295,7 +1300,7 @@ async fn test_list_files_job_id_exceeding_u32_returns_400() {
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -1347,7 +1352,7 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     // Missing both cluster and bundle — should be 400
@@ -1388,7 +1393,7 @@ async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -1443,7 +1448,7 @@ async fn test_upload_file_no_target_path_returns_400() {
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -1509,7 +1514,7 @@ async fn test_upload_file_job_id_exceeding_u32_returns_400() {
         Box::pin(async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> })
     });
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -1559,7 +1564,7 @@ async fn test_upload_file_cluster_offline_returns_503() {
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -1660,7 +1665,7 @@ async fn test_upload_file_success_full_flow() {
         .expect_get_file_upload()
         .returning(move |_| Some(Arc::clone(&fu_for_manager)));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
     let payload = b"file content here";
 
@@ -1737,7 +1742,7 @@ async fn test_upload_file_server_error_returns_400() {
         .expect_get_file_upload()
         .returning(move |_| Some(Arc::clone(&fu_for_manager)));
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     let resp = app
@@ -2165,7 +2170,7 @@ async fn test_create_download_empty_path_list_returns_empty_file_ids() {
 
     let manager = manager_with_online_cluster_no_messages();
 
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 10}));
 
     let resp = app
@@ -2323,7 +2328,7 @@ async fn test_create_file_download_works_without_content_type_header() {
 
     let manager = manager_with_online_cluster_no_messages();
 
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 10}));
 
     // Send request WITHOUT Content-Type header
@@ -2393,7 +2398,7 @@ async fn test_list_files_works_without_content_type_header() {
 
     let manager = manager_with_online_cluster_no_messages();
 
-    let app = create_router(make_test_state(db.clone(), manager));
+    let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     // Send request WITHOUT Content-Type header
@@ -2436,7 +2441,7 @@ async fn test_create_file_download_rejects_invalid_json_without_content_type() {
     let mut manager = MockClusterManagerTrait::new();
     manager.expect_get_cluster_by_name().returning(|_| None);
 
-    let app = create_router(make_test_state(db, manager));
+    let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
     // Send request with invalid JSON and no Content-Type header
