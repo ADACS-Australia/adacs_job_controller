@@ -6,6 +6,12 @@ use sea_orm::DatabaseConnection;
 use sea_orm::DbBackend;
 use sea_orm_migration::prelude::*;
 
+async fn run_migrations(db: &DatabaseConnection) {
+    Migrator::up(db, None)
+        .await
+        .expect("Migrations should succeed");
+}
+
 async fn count_jobserver_tables(db: &DatabaseConnection, predicate: &str) -> i64 {
     let stmt = sea_orm::Statement::from_string(
         DbBackend::Sqlite,
@@ -21,9 +27,7 @@ async fn count_jobserver_tables(db: &DatabaseConnection, predicate: &str) -> i64
 async fn test_all_migrations_up() {
     let db = make_db().await;
 
-    Migrator::up(&db, None)
-        .await
-        .expect("Migrations should succeed");
+    run_migrations(&db).await;
 
     let expected_tables = [
         "jobserver_job",
@@ -49,21 +53,15 @@ async fn test_all_migrations_up() {
 async fn test_migrations_idempotent() {
     let db = make_db().await;
 
-    Migrator::up(&db, None)
-        .await
-        .expect("First migration run should succeed");
-    Migrator::up(&db, None)
-        .await
-        .expect("Second migration run should succeed (idempotent)");
+    run_migrations(&db).await;
+    run_migrations(&db).await;
 }
 
 #[tokio::test]
 async fn test_migrations_down() {
     let db = make_db().await;
 
-    Migrator::up(&db, None)
-        .await
-        .expect("Migrations should succeed");
+    run_migrations(&db).await;
     Migrator::down(&db, None)
         .await
         .expect("Rollback should succeed");
