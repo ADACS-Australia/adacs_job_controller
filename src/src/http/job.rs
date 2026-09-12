@@ -16,7 +16,9 @@ use sea_orm::{
 use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
-use crate::http::utils::{INVALID_CLUSTER_MSG, job_id_to_u32, parse_csv_u64, parse_job_steps};
+use crate::http::utils::{
+    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, job_id_to_u32, parse_csv_u64, parse_job_steps,
+};
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
 };
@@ -126,10 +128,7 @@ pub async fn create_job(
         );
         return Err((
             StatusCode::BAD_REQUEST,
-            format!(
-                "Application {} does not have access to cluster {}",
-                auth.secret.name, body.cluster
-            ),
+            app_no_cluster_access_msg(&auth.secret.name, &body.cluster),
         ));
     }
 
@@ -700,10 +699,7 @@ pub async fn get_job_with_access_check(
     if !auth.secret.clusters.contains(&j.cluster) {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!(
-                "Application {} does not have access to cluster {}",
-                auth.secret.name, j.cluster
-            ),
+            app_no_cluster_access_msg(&auth.secret.name, &j.cluster),
         ));
     }
 
