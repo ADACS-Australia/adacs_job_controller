@@ -454,7 +454,7 @@ mod tests {
     fn test_filter_files_non_recursive() {
         let files = make_files();
         let result = filter_files(&files, "/project", false);
-        let names: Vec<&str> = result.iter().map(|f| f.file_name.as_str()).collect();
+        let names = names(&result);
         assert!(names.contains(&"/project"));
         assert!(names.contains(&"/project/file1.txt"));
         assert!(names.contains(&"/project/subdir"));
@@ -467,7 +467,7 @@ mod tests {
     fn test_filter_files_recursive() {
         let files = make_files();
         let result = filter_files(&files, "/project", true);
-        let names: Vec<&str> = result.iter().map(|f| f.file_name.as_str()).collect();
+        let names = names(&result);
         assert!(names.contains(&"/project"));
         assert!(names.contains(&"/project/file1.txt"));
         assert!(names.contains(&"/project/subdir"));
@@ -497,7 +497,7 @@ mod tests {
     fn test_filter_files_empty_path_recursive_with_relative_paths() {
         let files = make_relative_files();
         let result = filter_files(&files, "", true);
-        let names: Vec<&str> = result.iter().map(|f| f.file_name.as_str()).collect();
+        let names = names(&result);
         assert!(names.contains(&"job.sh"));
         assert!(names.contains(&"subdir"));
         assert!(names.contains(&"subdir/output.txt"));
@@ -510,7 +510,7 @@ mod tests {
     fn test_filter_files_empty_path_non_recursive_with_relative_paths() {
         let files = make_relative_files();
         let result = filter_files(&files, "", false);
-        let names: Vec<&str> = result.iter().map(|f| f.file_name.as_str()).collect();
+        let names = names(&result);
         assert!(names.contains(&"job.sh"));
         assert!(names.contains(&"subdir"));
         assert!(!names.contains(&"subdir/output.txt"));
@@ -521,7 +521,7 @@ mod tests {
     fn test_filter_files_with_dotdot() {
         let files = make_files();
         let result = filter_files(&files, "/project/../project", true);
-        let names: Vec<&str> = result.iter().map(|f| f.file_name.as_str()).collect();
+        let names = names(&result);
         assert!(names.contains(&"/project/file1.txt"));
         assert!(names.contains(&"/project/subdir/file2.txt"));
     }
