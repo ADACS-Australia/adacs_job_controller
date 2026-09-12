@@ -26,6 +26,8 @@ use sea_orm::{
 // env var, so it must not run concurrently or it races on shared state.
 static LTK_TIMEOUT_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+const CLUSTER_2: &str = "cluster2";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -96,7 +98,7 @@ fn three_cluster_configs() -> Vec<ClusterConfig> {
             ltk: None,
         },
         ClusterConfig {
-            name: "cluster2".to_string(),
+            name: CLUSTER_2.to_string(),
             host: "cluster2.com".to_string(),
             username: "user2".to_string(),
             path: "/cluster2/".to_string(),
@@ -288,7 +290,7 @@ async fn test_reconnect_clusters_skips_online() {
     let uuid = uuid::Uuid::new_v4().to_string();
     cluster_uuid::ActiveModel {
         id: sea_orm::ActiveValue::NotSet,
-        cluster: Set("cluster2".to_string()),
+        cluster: Set(CLUSTER_2.to_string()),
         uuid: Set(uuid.clone()),
         timestamp: Set(chrono::Utc::now().naive_utc()),
     }
@@ -300,7 +302,7 @@ async fn test_reconnect_clusters_skips_online() {
     let conn_id = 100;
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(conn_id, tx, &uuid).await;
-    assert_eq!(result.as_ref().unwrap().name(), "cluster2");
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER_2);
 
     // Clear remaining UUIDs
     cluster_uuid::Entity::delete_many().exec(&db).await.unwrap();
@@ -311,7 +313,7 @@ async fn test_reconnect_clusters_skips_online() {
 
     // Verify cluster2 is NOT in the UUID list (it's online)
     let clusters = get_uuid_clusters(&db).await;
-    assert!(!clusters.contains(&"cluster2".to_string()));
+    assert!(!clusters.contains(&CLUSTER_2.to_string()));
 }
 
 /// Verifies that `handle_new_connection` removes expired UUID tokens and preserves recent ones.
@@ -430,7 +432,7 @@ async fn test_handle_new_connection_valid_uuid() {
     for i in 0..5 {
         last_uuid = format!("real-uuid-{i}");
         cluster_uuid::ActiveModel {
-            cluster: Set("cluster2".to_string()),
+            cluster: Set(CLUSTER_2.to_string()),
             uuid: Set(last_uuid.clone()),
             timestamp: Set(chrono::Utc::now().naive_utc()),
             ..Default::default()
@@ -445,7 +447,7 @@ async fn test_handle_new_connection_valid_uuid() {
     let result = mgr.handle_new_connection(10, tx, &last_uuid).await;
     assert_eq!(
         result.as_ref().unwrap().name(),
-        "cluster2",
+        CLUSTER_2,
         "handle_new_connection should return the cluster that owns the UUID"
     );
 
@@ -453,12 +455,12 @@ async fn test_handle_new_connection_valid_uuid() {
     assert_eq!(count_uuids(&db).await, 0);
 
     // cluster2 should now be online
-    let cluster2 = mgr.get_cluster_by_name("cluster2").unwrap();
+    let cluster2 = mgr.get_cluster_by_name(CLUSTER_2).unwrap();
     assert!(mgr.is_cluster_online(cluster2.as_ref()));
 
     // cluster2 should be findable by connection ID
     let found = mgr.get_cluster_by_connection(10);
-    assert_eq!(found.unwrap().name(), "cluster2");
+    assert_eq!(found.unwrap().name(), CLUSTER_2);
 
     // Other clusters should still be offline
     let cluster1 = mgr.get_cluster_by_name("cluster1").unwrap();
@@ -484,7 +486,7 @@ async fn test_handle_new_connection_already_connected_rejected() {
 
     // Insert UUID for cluster2 and connect it
     cluster_uuid::ActiveModel {
-        cluster: Set("cluster2".to_string()),
+        cluster: Set(CLUSTER_2.to_string()),
         uuid: Set("uuid-first".to_string()),
         timestamp: Set(chrono::Utc::now().naive_utc()),
         ..Default::default()
@@ -495,15 +497,15 @@ async fn test_handle_new_connection_already_connected_rejected() {
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let result = mgr.handle_new_connection(1, tx, "uuid-first").await;
-    assert_eq!(result.as_ref().unwrap().name(), "cluster2");
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER_2);
 
     // cluster2 is now online
-    let cluster2 = mgr.get_cluster_by_name("cluster2").unwrap();
+    let cluster2 = mgr.get_cluster_by_name(CLUSTER_2).unwrap();
     assert!(mgr.is_cluster_online(cluster2.as_ref()));
 
     // Insert another UUID for the same cluster and try to connect again
     cluster_uuid::ActiveModel {
-        cluster: Set("cluster2".to_string()),
+        cluster: Set(CLUSTER_2.to_string()),
         uuid: Set("uuid-second".to_string()),
         timestamp: Set(chrono::Utc::now().naive_utc()),
         ..Default::default()
@@ -522,7 +524,7 @@ async fn test_handle_new_connection_already_connected_rejected() {
 
     // The original connection should still be active
     let found = mgr.get_cluster_by_connection(1);
-    assert_eq!(found.unwrap().name(), "cluster2");
+    assert_eq!(found.unwrap().name(), CLUSTER_2);
 
     // The new connection should NOT be in the map
     assert!(mgr.get_cluster_by_connection(2).is_none());
@@ -572,7 +574,7 @@ async fn test_remove_connection() {
     mgr.remove_connection(2, true).await;
 
     // cluster2 should be offline
-    let cluster2 = mgr.get_cluster_by_name("cluster2").unwrap();
+    let cluster2 = mgr.get_cluster_by_name(CLUSTER_2).unwrap();
     assert!(!mgr.is_cluster_online(cluster2.as_ref()));
 
     // cluster2 should not be findable by connection
@@ -729,7 +731,7 @@ async fn test_reconnect_clusters_skips_ltk_clusters() {
     let clusters = get_uuid_clusters(&db).await;
     assert!(!clusters.contains(&"ltk_cluster".to_string()));
     assert!(clusters.contains(&"cluster1".to_string()));
-    assert!(clusters.contains(&"cluster2".to_string()));
+    assert!(clusters.contains(&CLUSTER_2.to_string()));
 }
 
 /// Verifies that `handle_pong` records timestamps without panicking, even for connections that do not exist.
