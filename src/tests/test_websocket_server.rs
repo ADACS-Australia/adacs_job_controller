@@ -23,6 +23,9 @@ use common::{
     ws_router,
 };
 
+/// Bearer token accepted by the forwarding cluster manager in these tests.
+const VALID_TOKEN: &str = "valid-token";
+
 // ---------------------------------------------------------------------------
 // Test server helpers
 // ---------------------------------------------------------------------------
@@ -71,7 +74,7 @@ async fn connect_and_await_server_ready(
         >,
     >,
 ) {
-    let (sink, mut stream) = connect_ws_auth(port, "valid-token").await;
+    let (sink, mut stream) = connect_ws_auth(port, VALID_TOKEN).await;
     recv_binary(&mut stream).await;
     (sink, stream)
 }
@@ -198,7 +201,7 @@ async fn test_ws_valid_token_receives_server_ready() {
     let port = server.port;
 
     // Connect with Authorization: Bearer header
-    let (_, mut stream) = connect_ws_auth(port, "valid-token").await;
+    let (_, mut stream) = connect_ws_auth(port, VALID_TOKEN).await;
 
     // The server should send SERVER_READY after accepting the connection
     let data = recv_binary(&mut stream)
