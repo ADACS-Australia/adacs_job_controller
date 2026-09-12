@@ -23,6 +23,9 @@ use crate::protocol::constants::{
 use crate::protocol::message::Message;
 use crate::protocol::types::{JobStatus, Priority};
 
+const ERR_JOB_INVALID_STATE: &str = "Job is in invalid state";
+const ERR_CLUSTER_DID_NOT_EXIST: &str = "Cluster for job did not exist";
+
 // ---- Request/Response types ----
 
 /// JSON body for `POST /job/apiv1/job/` — submit a new job to a cluster.
@@ -634,10 +637,7 @@ async fn load_job_for_transition(
     let current_state = latest.state;
 
     if invalid_states.contains(&current_state) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Job is in invalid state".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, ERR_JOB_INVALID_STATE.to_string()));
     }
 
     // Validate cluster exists (checked after state check so state errors take priority)
@@ -646,7 +646,7 @@ async fn load_job_for_transition(
         .get_cluster_by_name(&job.cluster)
         .ok_or((
             StatusCode::BAD_REQUEST,
-            "Cluster for job did not exist".to_string(),
+            ERR_CLUSTER_DID_NOT_EXIST.to_string(),
         ))?;
 
     Ok((job, cluster_obj, current_state))
