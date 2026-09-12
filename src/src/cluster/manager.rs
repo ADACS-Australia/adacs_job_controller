@@ -1148,11 +1148,12 @@ mod tests {
         "start_tasks should trigger immediate reconnect attempt";
 
     const CLUSTER_B: &str = "cluster_b";
+    const CLUSTER_A: &str = "cluster_a";
 
     fn test_configs() -> Vec<ClusterConfig> {
         vec![
             ClusterConfig {
-                name: "cluster_a".to_string(),
+                name: CLUSTER_A.to_string(),
                 host: "host-a.example.com".to_string(),
                 username: "user_a".to_string(),
                 path: "/path/a".to_string(),
@@ -1183,7 +1184,7 @@ mod tests {
     fn test_cluster_config_struct() {
         let configs = test_configs();
         assert_eq!(configs.len(), 2);
-        assert_eq!(configs[0].name, "cluster_a");
+        assert_eq!(configs[0].name, CLUSTER_A);
         assert_eq!(configs[0].connection_type, "ssh");
         assert_eq!(configs[1].name, CLUSTER_B);
         assert_eq!(configs[1].connection_type, "manual");
@@ -1351,7 +1352,7 @@ mod tests {
         let mut mock = MockClusterManagerTrait::new();
         mock.expect_report_websocket_error().returning(|_, _| ());
 
-        mock.report_websocket_error(Some("cluster_a".into()), "test error".into());
+        mock.report_websocket_error(Some(CLUSTER_A.into()), "test error".into());
     }
 
     #[test]
