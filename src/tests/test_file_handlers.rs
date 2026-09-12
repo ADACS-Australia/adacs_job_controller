@@ -52,6 +52,15 @@ async fn no_cluster_app() -> (
     (app, secrets)
 }
 
+/// Build a mock manager for download tests that is not shutting down.
+fn download_manager_with_online_cluster() -> MockClusterManagerTrait {
+    let mut manager = manager_with_online_cluster_and_create_file_download();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager
+}
+
 fn file_list_cluster(
     file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
     extra: Arc<dyn Fn(String) -> futures::future::BoxFuture<'static, ()> + Send + Sync>,
@@ -480,10 +489,7 @@ async fn test_download_file_streams_chunks() {
     }
 
     // Set up mock manager that creates a fresh FileDownloadState for each download
-    let mut manager = manager_with_online_cluster_and_create_file_download();
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
+    let mut manager = download_manager_with_online_cluster();
     manager.expect_begin_application_shutdown().returning(|| 0);
     manager
         .expect_dedicated_download_clusters()
@@ -610,10 +616,7 @@ async fn test_download_file_error_from_cluster_returns_400() {
     });
 
     let fd_for_manager = Arc::clone(&fd_state);
-    let mut manager = manager_with_online_cluster_and_create_file_download();
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
+    let mut manager = download_manager_with_online_cluster();
     manager.expect_begin_application_shutdown().returning(|| 0);
     manager
         .expect_dedicated_download_clusters()
@@ -680,10 +683,7 @@ async fn test_download_file_job_id_exceeding_u32_returns_400() {
     .await
     .unwrap();
 
-    let mut manager = manager_with_online_cluster_and_create_file_download();
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
+    let mut manager = download_manager_with_online_cluster();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let session = DownloadSession::new(uuid.clone(), Arc::new(FileDownloadState::new()), tx);
     let trigger = session.cleanup_trigger();
@@ -734,10 +734,7 @@ async fn test_download_file_session_not_found_returns_400() {
     let uuid = "missing-session-uuid".to_string();
     insert_file_download(&db, &uuid, "").await;
 
-    let mut manager = manager_with_online_cluster_and_create_file_download();
-    manager
-        .expect_is_application_shutting_down()
-        .returning(|| false);
+    let mut manager = download_manager_with_online_cluster();
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let session = DownloadSession::new(uuid.clone(), Arc::new(FileDownloadState::new()), tx);
     let trigger = session.cleanup_trigger();
