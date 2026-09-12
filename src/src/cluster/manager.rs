@@ -277,6 +277,20 @@ impl ClusterManager {
     }
 
     /// Shared lookup used by the trait implementation. Returns the
+    /// exact `Arc<DownloadSession>` for `uuid` when application shutdown
+    /// has not begun. During shutdown new admission is rejected, so the
+    /// HTTP layer observes `None` and routes to its existing
+    /// `SERVICE_UNAVAILABLE` path.
+    fn file_download_entry(&self, uuid: &str) -> Option<Arc<DownloadSession>> {
+        if self.is_application_shutting_down() {
+            return None;
+        }
+        self.file_download_map
+            .get(uuid)
+            .map(|entry| Arc::clone(entry.value()))
+    }
+
+    /// Shared lookup used by the trait implementation. Returns the
     /// trait-object cluster pointer alongside the exact `Arc<DownloadSession>`
     /// and accepted `ConnectionId` so the WebSocket handler can retain all
     /// three without holding a map guard.
@@ -1047,21 +1061,13 @@ impl ClusterManagerTrait for ClusterManager {
     }
 
     fn get_file_download(&self, uuid: &str) -> Option<Arc<FileDownloadState>> {
-        if self.is_application_shutting_down() {
-            return None;
-        }
-        self.file_download_map
-            .get(uuid)
-            .map(|entry| Arc::clone(entry.value().transfer()))
+        self.file_download_entry(uuid)
+            .map(|session| Arc::clone(session.transfer()))
     }
 
     fn get_file_download_cleanup_trigger(&self, uuid: &str) -> Option<DownloadCleanupTrigger> {
-        if self.shutdown_initiated.load(Ordering::SeqCst) {
-            return None;
-        }
-        self.file_download_map
-            .get(uuid)
-            .map(|entry| entry.value().cleanup_trigger())
+        self.file_download_entry(uuid)
+            .map(|session| session.cleanup_trigger())
     }
 
     fn is_application_shutting_down(&self) -> bool {
