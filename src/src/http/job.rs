@@ -17,7 +17,7 @@ use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    FETCHING_CLUSTER_MSG, INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, job_id_to_u32,
+    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, job_id_to_u32,
     parse_csv_u64, parse_job_steps,
 };
 use crate::protocol::constants::{
@@ -137,7 +137,7 @@ pub async fn create_job(
         ));
     }
 
-    tracing::trace!(FETCHING_CLUSTER_MSG, body.cluster);
+    tracing::trace!("HTTP: Fetching cluster '{}'", body.cluster);
     let cluster = state
         .cluster_manager
         .get_cluster_by_name(&body.cluster)

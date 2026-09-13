@@ -24,9 +24,6 @@ pub fn app_no_cluster_access_msg(app: &str, cluster: &str) -> String {
 /// HTTP `Content-Type` request header name.
 pub const CONTENT_TYPE_HEADER: &str = "content-type";
 
-/// Trace message logged when fetching a cluster by name from an HTTP handler.
-pub const FETCHING_CLUSTER_MSG: &str = "HTTP: Fetching cluster '{}'";
-
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
