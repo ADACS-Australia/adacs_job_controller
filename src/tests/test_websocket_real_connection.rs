@@ -430,6 +430,7 @@ async fn test_file_download_record_persistence() {
 /// # Assert
 /// - All jobs inserted into database
 /// - All clusters received their jobs
+///
 /// Builds a `MockClusterManagerTrait` that resolves the three standard
 /// clusters (ozstar, nci, gadi) by name and accepts new connections.
 fn three_cluster_manager(
