@@ -1120,3 +1120,77 @@ fn client_timeout_secs(state: &AppState) -> u64 {
         .client_timeout_seconds
         .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cluster::file_download::{
+        DownloadCleanupRequest, DownloadSession, DownloadSessionState, FileDownloadState,
+    };
+
+    fn make_session() -> (
+        Arc<DownloadSession>,
+        DownloadCleanupTrigger,
+        tokio::sync::mpsc::UnboundedReceiver<DownloadCleanupRequest>,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let session = DownloadSession::new(
+            "test-download".to_string(),
+            Arc::new(FileDownloadState::new()),
+            tx,
+        );
+        let trigger = session.cleanup_trigger();
+        (session, trigger, rx)
+    }
+
+    fn closing_state(reason: DownloadShutdownReason) -> DownloadSessionState {
+        DownloadSessionState::Closing {
+            connection_id: None,
+            reason,
+        }
+    }
+
+    #[test]
+    fn trigger_fires_reason_and_disarms() {
+        let (session, trigger, _rx) = make_session();
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+        assert!(guard.trigger(DownloadShutdownReason::Complete));
+        assert_eq!(
+            session.state(),
+            closing_state(DownloadShutdownReason::Complete)
+        );
+    }
+
+    #[test]
+    fn into_trigger_consumes_without_firing() {
+        let (session, trigger, _rx) = make_session();
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+        let released = guard.into_trigger();
+        assert!(released.is_some());
+        assert_eq!(session.state(), DownloadSessionState::Pending);
+    }
+
+    #[test]
+    fn drop_fires_fallback_when_not_disarmed() {
+        let (session, trigger, _rx) = make_session();
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+        drop(guard);
+        assert_eq!(
+            session.state(),
+            closing_state(DownloadShutdownReason::ResponseError)
+        );
+    }
+
+    #[test]
+    fn trigger_clone_shares_trigger() {
+        let (session, trigger, _rx) = make_session();
+        let guard = PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError);
+        let clone = guard.trigger_clone();
+        assert!(clone.is_some());
+        assert!(clone.unwrap().trigger(DownloadShutdownReason::Complete));
+        assert_eq!(
+            session.state(),
+            closing_state(DownloadShutdownReason::Complete)
+        );
+    }
+}
