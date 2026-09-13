@@ -101,27 +101,17 @@ impl Cluster {
     /// Create a new master cluster.
     #[must_use]
     pub fn new(details: ClusterConfig, app_context: Option<Arc<AppContext>>) -> Arc<Self> {
-        let queue = empty_priority_queues();
-        let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
-
-        Arc::new(Self {
-            role_string: format!("master {}", details.name),
+        let role_string = format!("master {}", details.name);
+        Self::new_with_role(
             details,
-            role: ClusterRole::Master,
-            connection_tx,
-            connection_rx,
-            queue,
-            queued_message_size: AtomicUsize::new(0),
-            data_notify: Notify::new(),
-            queue_size_notify: Notify::new(),
-            running: AtomicBool::new(true),
-            download_task_handles: std::sync::Mutex::new(Vec::new()),
+            ClusterRole::Master,
+            role_string,
+            None,
+            None,
+            None,
+            Arc::new(tokio::sync::Mutex::new(())),
             app_context,
-            file_download_state: None,
-            file_upload_state: None,
-            uuid: None,
-            file_download_pause_resume_lock: Arc::new(tokio::sync::Mutex::new(())),
-        })
+        )
     }
 
     /// Create a file-download cluster.
@@ -132,27 +122,16 @@ impl Cluster {
         app_context: Option<Arc<AppContext>>,
         pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
     ) -> Arc<Self> {
-        let queue = empty_priority_queues();
-        let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
-
-        Arc::new(Self {
-            role_string: format!("file download {uuid}"),
+        Self::new_with_role(
             details,
-            role: ClusterRole::FileDownload,
-            connection_tx,
-            connection_rx,
-            queue,
-            queued_message_size: AtomicUsize::new(0),
-            data_notify: Notify::new(),
-            queue_size_notify: Notify::new(),
-            running: AtomicBool::new(true),
-            download_task_handles: std::sync::Mutex::new(Vec::new()),
+            ClusterRole::FileDownload,
+            format!("file download {uuid}"),
+            Some(download_state),
+            None,
+            Some(uuid),
+            pause_resume_lock,
             app_context,
-            file_download_state: Some(download_state),
-            file_upload_state: None,
-            uuid: Some(uuid),
-            file_download_pause_resume_lock: pause_resume_lock,
-        })
+        )
     }
 
     /// Create a file-upload cluster.
@@ -162,13 +141,36 @@ impl Cluster {
         upload_state: Arc<FileUploadState>,
         app_context: Option<Arc<AppContext>>,
     ) -> Arc<Self> {
+        Self::new_with_role(
+            details,
+            ClusterRole::FileUpload,
+            format!("file upload {uuid}"),
+            None,
+            Some(upload_state),
+            Some(uuid),
+            Arc::new(tokio::sync::Mutex::new(())),
+            app_context,
+        )
+    }
+
+    /// Shared constructor for all cluster roles.
+    fn new_with_role(
+        details: ClusterConfig,
+        role: ClusterRole,
+        role_string: String,
+        file_download_state: Option<Arc<FileDownloadState>>,
+        file_upload_state: Option<Arc<FileUploadState>>,
+        uuid: Option<String>,
+        file_download_pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
+        app_context: Option<Arc<AppContext>>,
+    ) -> Arc<Self> {
         let queue = empty_priority_queues();
         let (connection_tx, connection_rx) = tokio::sync::watch::channel(None);
 
         Arc::new(Self {
-            role_string: format!("file upload {uuid}"),
+            role_string,
             details,
-            role: ClusterRole::FileUpload,
+            role,
             connection_tx,
             connection_rx,
             queue,
@@ -178,10 +180,10 @@ impl Cluster {
             running: AtomicBool::new(true),
             download_task_handles: std::sync::Mutex::new(Vec::new()),
             app_context,
-            file_download_state: None,
-            file_upload_state: Some(upload_state),
-            uuid: Some(uuid),
-            file_download_pause_resume_lock: Arc::new(tokio::sync::Mutex::new(())),
+            file_download_state,
+            file_upload_state,
+            uuid,
+            file_download_pause_resume_lock,
         })
     }
 
