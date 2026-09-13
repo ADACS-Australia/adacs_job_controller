@@ -10,7 +10,7 @@ mod common;
 use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{Request, Response, StatusCode};
 use tower::ServiceExt;
 
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
@@ -72,23 +72,13 @@ async fn test_create_job_cluster_online_inserts_and_submits() {
     let db = setup_test_db().await;
     let (manager, sent) = manager_with_online_cluster();
 
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(
-                    r#"{"cluster":"ozstar","parameters":"{}","bundle":"mybundle"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = post_create_job(
+        &db,
+        manager,
+        42,
+        serde_json::json!({"cluster":"ozstar","parameters":"{}","bundle":"mybundle"}),
+    )
+    .await;
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
@@ -146,23 +136,13 @@ async fn test_create_job_cluster_offline_only_pending_no_ws_message() {
     let db = setup_test_db().await;
     let (manager, _) = manager_with_offline_cluster();
 
-    let app = create_router(make_test_state(db.clone(), manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(
-                    r#"{"cluster":"ozstar","parameters":"{}","bundle":"b"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = post_create_job(
+        &db,
+        manager,
+        1,
+        serde_json::json!({"cluster":"ozstar","parameters":"{}","bundle":"b"}),
+    )
+    .await;
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(
@@ -200,23 +180,13 @@ async fn test_create_job_cluster_not_in_secret_returns_400() {
     let mut manager = MockClusterManagerTrait::new();
     manager.expect_get_cluster_by_name().returning(|_| None);
 
-    let app = create_router(make_test_state(db, manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(
-                    r#"{"cluster":"unknown_cluster","parameters":"{}","bundle":"b"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = post_create_job(
+        &db,
+        manager,
+        1,
+        serde_json::json!({"cluster":"unknown_cluster","parameters":"{}","bundle":"b"}),
+    )
+    .await;
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
@@ -240,27 +210,13 @@ async fn test_create_job_parameters_too_long_returns_400() {
     let db = setup_test_db().await;
     let manager = mock_cluster_manager_no_clusters();
 
-    let app = create_router(make_test_state(db, manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
     let body = serde_json::json!({
         "cluster": "ozstar",
         "parameters": "a".repeat(100_001),
         "bundle": "b"
     });
 
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = post_create_job(&db, manager, 1, body).await;
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
@@ -284,27 +240,13 @@ async fn test_create_job_bundle_too_long_returns_400() {
     let db = setup_test_db().await;
     let manager = mock_cluster_manager_no_clusters();
 
-    let app = create_router(make_test_state(db, manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
-
     let body = serde_json::json!({
         "cluster": "ozstar",
         "parameters": "{}",
         "bundle": "b".repeat(10_001)
     });
 
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(body.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = post_create_job(&db, manager, 1, body).await;
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
@@ -333,23 +275,13 @@ async fn test_create_job_job_id_exceeding_u32_returns_400() {
 
     let (manager, sent) = manager_with_online_cluster();
 
-    let app = create_router(make_test_state(db, manager));
-    let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/job/apiv1/job/")
-                .header("content-type", "application/json")
-                .header("authorization", &token)
-                .body(Body::from(
-                    r#"{"cluster":"ozstar","parameters":"{}","bundle":"mybundle"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = post_create_job(
+        &db,
+        manager,
+        42,
+        serde_json::json!({"cluster":"ozstar","parameters":"{}","bundle":"mybundle"}),
+    )
+    .await;
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
@@ -363,6 +295,23 @@ async fn test_create_job_job_id_exceeding_u32_returns_400() {
     assert!(sent.lock().unwrap().is_empty());
 }
 
+async fn post_create_job(
+    db: &sea_orm::DatabaseConnection,
+    manager: MockClusterManagerTrait,
+    user_id: i64,
+    body: serde_json::Value,
+) -> Response<Body> {
+    let app = create_router(make_test_state(db.clone(), manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": user_id}));
+    let req = Request::builder()
+        .method("POST")
+        .uri("/job/apiv1/job/")
+        .header("content-type", "application/json")
+        .header("authorization", &token)
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    app.oneshot(req).await.unwrap()
+}
 // ---------------------------------------------------------------------------
 // cancel_job tests — state machine exhaustively tested
 // ---------------------------------------------------------------------------
