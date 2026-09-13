@@ -31,7 +31,7 @@ where
 {
     tracing::debug!("Loading {} from: {}", label, path.display());
     let content = std::fs::read_to_string(path)?;
-    tracing::trace!(trace_msg, content.len());
+    tracing::trace!("{}", format_args!(trace_msg, content.len()));
     let items: Vec<T> = serde_json::from_str(&content)?;
     tracing::info!("Loaded {} {}", items.len(), label);
     Ok(items)
