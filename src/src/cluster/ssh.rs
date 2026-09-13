@@ -304,6 +304,9 @@ async fn run_via_kerberos(config: &ClusterConfig, token: &str) -> Result<(), Ssh
     Ok(())
 }
 
+/// Environment variable that points `ssh` at the Kerberos client keytab.
+const KRB5_CLIENT_KTNAME: &str = "KRB5_CLIENT_KTNAME";
+
 /// Build the `ssh` command used for Kerberos-authenticated connections.
 ///
 /// The `KRB5_CLIENT_KTNAME` environment variable is scoped to the child
@@ -330,7 +333,7 @@ fn build_kerberos_ssh_command(
         host,
         remote_cmd,
     ])
-    .env("KRB5_CLIENT_KTNAME", keytab_path);
+    .env(KRB5_CLIENT_KTNAME, keytab_path);
     cmd
 }
 
@@ -624,7 +627,7 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
         // SAFETY: Test-only cleanup to guarantee a clean baseline; the test
         // process is single-threaded at this point.
         unsafe {
-            std::env::remove_var("KRB5_CLIENT_KTNAME");
+            std::env::remove_var(KRB5_CLIENT_KTNAME);
         }
 
         let keytab_path = Path::new("/tmp/fake-krb5.keytab");
@@ -632,14 +635,13 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
 
         let envs: Vec<_> = cmd.as_std().get_envs().collect();
         assert!(
-            envs.iter().any(|(k, v)| {
-                *k == "KRB5_CLIENT_KTNAME" && *v == Some(keytab_path.as_os_str())
-            }),
+            envs.iter()
+                .any(|(k, v)| { *k == KRB5_CLIENT_KTNAME && *v == Some(keytab_path.as_os_str()) }),
             "KRB5_CLIENT_KTNAME must be set on the child ssh command"
         );
 
         assert!(
-            std::env::var_os("KRB5_CLIENT_KTNAME").is_none(),
+            std::env::var_os(KRB5_CLIENT_KTNAME).is_none(),
             "KRB5_CLIENT_KTNAME must not leak into the global process environment"
         );
     }
