@@ -26,6 +26,15 @@ use crate::protocol::message::Message;
 use crate::protocol::types::{ClusterRole, FileInfo, FileListState, JobStatus, Priority};
 use crate::utils::uuid::generate_uuid;
 
+fn warn_role_mismatch(name: &str, role: &ClusterRole, message_name: &str) {
+    tracing::warn!(
+        "Cluster[{}]: {} received but role is {}, expected file upload",
+        name,
+        message_name,
+        role
+    );
+}
+
 /// Shared application context needed by Cluster for DB and file-list coordination.
 pub struct AppContext {
     /// `SeaORM` connection for cluster-side database operations (token lookups, job persistence).
@@ -1050,22 +1059,14 @@ impl ClusterTrait for Cluster {
                 self.handle_server_ready();
             }
             SERVER_READY => {
-                tracing::warn!(
-                    "Cluster[{}]: SERVER_READY received but role is {}, expected file upload",
-                    self.name(),
-                    self.role
-                );
+                warn_role_mismatch(&self.name(), &self.role, "SERVER_READY");
             }
             FILE_UPLOAD_ERROR => self.handle_file_upload_error(&mut message).await,
             FILE_UPLOAD_COMPLETE if self.role == ClusterRole::FileUpload => {
                 self.handle_file_upload_complete();
             }
             FILE_UPLOAD_COMPLETE => {
-                tracing::warn!(
-                    "Cluster[{}]: FILE_UPLOAD_COMPLETE received but role is {}, expected file upload",
-                    self.name(),
-                    self.role
-                );
+                warn_role_mismatch(&self.name(), &self.role, "FILE_UPLOAD_COMPLETE");
             }
 
             other => {
