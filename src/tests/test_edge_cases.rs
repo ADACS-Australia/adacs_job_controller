@@ -51,6 +51,7 @@ use adacs_job_controller::cluster::traits::{
 };
 use adacs_job_controller::config::settings::FILE_CHUNK_SIZE;
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
+use adacs_job_controller::http::file::UPLOAD_ID_KEY;
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
@@ -2181,7 +2182,7 @@ async fn test_continuous_file_uploads_sequential() {
 
     // Upload IDs must be different (separate sessions)
     assert_ne!(
-        body1["uploadId"], body2["uploadId"],
+        body1[UPLOAD_ID_KEY], body2[UPLOAD_ID_KEY],
         "Each upload should receive a unique session ID"
     );
 }
@@ -2784,7 +2785,7 @@ async fn test_large_file_uploads() {
     )
     .unwrap();
     assert_eq!(body["status"].as_str().unwrap(), "completed");
-    let upload_id = body["uploadId"]
+    let upload_id = body[UPLOAD_ID_KEY]
         .as_str()
         .expect("uploadId should be present");
     assert!(uuid::Uuid::parse_str(upload_id).is_ok());
