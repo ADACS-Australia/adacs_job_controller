@@ -26,6 +26,7 @@ pub const CONTENT_TYPE_HEADER: &str = "content-type";
 
 /// Error message returned when a job ID exceeds the maximum value supported by
 /// the `u32` wire format. Shared across HTTP handlers.
+#[must_use]
 pub fn job_id_exceeds_max_msg(job_id: u64) -> String {
     format!("Job ID {job_id} exceeds maximum supported value")
 }
