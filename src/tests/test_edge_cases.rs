@@ -1221,7 +1221,7 @@ async fn test_download_force_download_sets_attachment_disposition() {
     assert_force_download_sets_disposition(
         db,
         "force-dl-uuid".to_string(),
-        Some("true"),
+        "true",
         "attachment",
     )
     .await;
@@ -1347,7 +1347,7 @@ async fn test_download_force_download_numeric_one_sets_attachment_disposition() 
     assert_force_download_sets_disposition(
         db,
         "force-one-dl-uuid".to_string(),
-        Some("1"),
+        "1",
         "attachment",
     )
     .await;
@@ -1369,7 +1369,7 @@ async fn test_download_force_download_uppercase_true_sets_attachment_disposition
     assert_force_download_sets_disposition(
         db,
         "force-true-dl-uuid".to_string(),
-        Some("TRUE"),
+        "TRUE",
         "attachment",
     )
     .await;
@@ -1381,7 +1381,7 @@ async fn test_download_force_download_uppercase_true_sets_attachment_disposition
 async fn assert_force_download_sets_disposition(
     db: sea_orm::DatabaseConnection,
     uuid_val: String,
-    force_param: Option<&str>,
+    force_param: &str,
     expected_disposition: &str,
 ) {
     insert_file_download(&db, &uuid_val, "/path/to/report.pdf").await;
@@ -1422,10 +1422,7 @@ async fn assert_force_download_sets_disposition(
 
     let app = create_router(make_test_state(db, manager));
 
-    let query = match force_param {
-        Some(param) => format!("?fileId={uuid_val}&forceDownload={param}"),
-        None => format!("?fileId={uuid_val}"),
-    };
+    let query = format!("?fileId={uuid_val}&forceDownload={force_param}");
     let resp = app
         .oneshot(
             Request::builder()
@@ -1446,7 +1443,7 @@ async fn assert_force_download_sets_disposition(
 
     assert!(
         content_disp.contains(expected_disposition),
-        "forceDownload={force_param:?} should set Content-Disposition: {expected_disposition}; got: {content_disp}"
+        "forceDownload={force_param} should set Content-Disposition: {expected_disposition}; got: {content_disp}"
     );
     assert!(
         content_disp.contains("report.pdf"),

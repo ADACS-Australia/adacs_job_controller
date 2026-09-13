@@ -576,7 +576,7 @@ async fn assert_noop_for_states(
         check(&cluster).await;
         cluster.wait_for_queue_drain(true).await;
 
-        let matching: Vec<_> = drain_messages_with_id(&mut rx, message_id);
+        let matching = drain_messages_with_id(&mut rx, message_id);
 
         assert!(
             matching.is_empty(),
