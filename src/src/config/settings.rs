@@ -33,11 +33,13 @@ where
 }
 
 // Database settings
-pub static DATABASE_USER: LazyLock<String> = LazyLock::new(|| env_or("MYSQL_USER", "jobserver"));
+const DEFAULT_DB_CREDENTIAL: &str = "jobserver";
+pub static DATABASE_USER: LazyLock<String> =
+    LazyLock::new(|| env_or("MYSQL_USER", DEFAULT_DB_CREDENTIAL));
 pub static DATABASE_PASSWORD: LazyLock<String> =
-    LazyLock::new(|| env_or("MYSQL_PASSWORD", "jobserver"));
+    LazyLock::new(|| env_or("MYSQL_PASSWORD", DEFAULT_DB_CREDENTIAL));
 pub static DATABASE_SCHEMA: LazyLock<String> =
-    LazyLock::new(|| env_or("MYSQL_DATABASE", "jobserver"));
+    LazyLock::new(|| env_or("MYSQL_DATABASE", DEFAULT_DB_CREDENTIAL));
 pub static DATABASE_HOST: LazyLock<String> = LazyLock::new(|| env_or("DATABASE_HOST", "localhost"));
 pub static DATABASE_PORT: LazyLock<u16> = LazyLock::new(|| env_or_uint("DATABASE_PORT", 3306));
 
