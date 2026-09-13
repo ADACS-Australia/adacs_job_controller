@@ -24,6 +24,7 @@ use crate::protocol::constants::{
 };
 use crate::protocol::message::Message;
 use crate::protocol::types::{JobStatus, Priority};
+use crate::utils::job_source_key;
 
 const ERR_JOB_INVALID_STATE: &str = "Job is in invalid state";
 const ERR_CLUSTER_DID_NOT_EXIST: &str = "Cluster for job did not exist";
@@ -201,7 +202,7 @@ pub async fn create_job(
             "HTTP: Cluster online - submitting job {} to cluster",
             job_id
         );
-        let source = format!("{job_id}_{}", body.cluster);
+        let source = job_source_key(job_id, &body.cluster);
         let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, &source);
         msg.push_uint(job_id_to_u32(job_id as u64)?);
         msg.push_string(&body.bundle);
@@ -506,7 +507,7 @@ async fn record_job_transition(
     .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
 
     if !pending && cluster_obj.is_online() {
-        let source = format!("{}_{}", job_id, job.cluster);
+        let source = job_source_key(job_id, &job.cluster);
         let mut msg = Message::new(wire_msg_id, Priority::Medium, &source);
         msg.push_uint(job_id_to_u32(job_id)?);
         cluster_obj.send_message(msg).await;
