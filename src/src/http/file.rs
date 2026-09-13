@@ -16,7 +16,7 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, USER_ID_CLAIM, app_no_cluster_access_msg, db_error,
+    ERR_CLUSTER_TIMEOUT, INVALID_CLUSTER_MSG, USER_ID_CLAIM, app_no_cluster_access_msg, db_error,
     failed_to_read_body_msg, filter_files, job_id_to_u32,
 };
 use crate::protocol::constants::{
@@ -451,8 +451,7 @@ pub async fn download_file(
             uuid
         );
         fd_state.error.store(true, Ordering::Release);
-        *fd_state.error_details.lock().await =
-            "Remote cluster took too long to respond.".to_string();
+        *fd_state.error_details.lock().await = ERR_CLUSTER_TIMEOUT.to_string();
     }
 
     if fd_state.error.load(Ordering::Acquire) {
@@ -754,8 +753,7 @@ pub async fn upload_file(
             uuid
         );
         fu_state.error.store(true, Ordering::Release);
-        *fu_state.error_details.lock().await =
-            "Remote cluster took too long to respond.".to_string();
+        *fu_state.error_details.lock().await = ERR_CLUSTER_TIMEOUT.to_string();
     }
 
     check_upload_error(&fu_state).await?;
@@ -1034,7 +1032,7 @@ async fn request_file_list(
         );
         let mut locked = fl_state.lock().await;
         locked.error = true;
-        locked.error_details = "Remote cluster took too long to respond.".to_string();
+        locked.error_details = ERR_CLUSTER_TIMEOUT.to_string();
     }
 
     let locked = fl_state.lock().await;
