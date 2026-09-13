@@ -27,6 +27,9 @@ pub const CONTENT_TYPE_HEADER: &str = "content-type";
 /// JWT claim key holding the submitting user's id.
 pub const USER_ID_CLAIM: &str = "userId";
 
+/// Error message returned when a remote cluster takes too long to respond.
+pub const ERR_CLUSTER_TIMEOUT: &str = "Remote cluster took too long to respond.";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
