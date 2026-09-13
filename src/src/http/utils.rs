@@ -147,12 +147,7 @@ pub fn parse_job_steps(s: &str) -> Vec<(String, u32)> {
 /// Returns `400 Bad Request` if `job_id` exceeds the maximum value supported
 /// by the `u32` wire format.
 pub fn job_id_to_u32(job_id: u64) -> Result<u32, (StatusCode, String)> {
-    u32::try_from(job_id).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            job_id_exceeds_max_msg(job_id),
-        )
-    })
+    u32::try_from(job_id).map_err(|_| (StatusCode::BAD_REQUEST, job_id_exceeds_max_msg(job_id)))
 }
 
 /// Canonicalize a file path (resolve ".." and "." without filesystem access).

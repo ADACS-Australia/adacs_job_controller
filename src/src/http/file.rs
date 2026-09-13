@@ -410,10 +410,7 @@ pub async fn download_file(
                 &mut pre_response_guard,
                 DownloadShutdownReason::ResponseError,
             );
-            return Err((
-                StatusCode::BAD_REQUEST,
-                job_id_exceeds_max_msg(job_id),
-            ));
+            return Err((StatusCode::BAD_REQUEST, job_id_exceeds_max_msg(job_id)));
         }
     };
 
