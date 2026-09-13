@@ -335,6 +335,7 @@ impl Message {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::constants::SYSTEM_SOURCE;
     use crate::protocol::types::Priority;
 
     // ---- Round-trip tests for every type ----
@@ -698,7 +699,7 @@ mod tests {
     /// Header fields (`source`, `id`) and every payload value match the originals.
     #[test]
     fn test_multi_field_message() {
-        let mut msg = Message::new(2000, Priority::Highest, "system");
+        let mut msg = Message::new(2000, Priority::Highest, SYSTEM_SOURCE);
         msg.push_bool(true);
         msg.push_ubyte(42);
         msg.push_ushort(1234);
@@ -711,7 +712,7 @@ mod tests {
 
         let mut msg2 = Message::from_bytes(msg.into_data());
         // Header is parsed automatically
-        assert_eq!(msg2.source(), "system");
+        assert_eq!(msg2.source(), SYSTEM_SOURCE);
         assert_eq!(msg2.id(), 2000);
 
         assert!(msg2.pop_bool());
@@ -837,9 +838,9 @@ mod tests {
     /// `id()`, `source()`, and `priority()` return the original values; raw data is at least 18 bytes.
     #[test]
     fn test_new_creates_correct_header() {
-        let msg = Message::new(2000, Priority::Medium, "system");
+        let msg = Message::new(2000, Priority::Medium, SYSTEM_SOURCE);
         assert_eq!(msg.id(), 2000);
-        assert_eq!(msg.source(), "system");
+        assert_eq!(msg.source(), SYSTEM_SOURCE);
         assert_eq!(msg.priority(), Priority::Medium);
 
         // Verify the raw data starts with the source string and then msg_id
@@ -851,7 +852,7 @@ mod tests {
 
         // Parse back to verify
         let msg2 = Message::from_bytes(data.to_vec());
-        assert_eq!(msg2.source(), "system");
+        assert_eq!(msg2.source(), SYSTEM_SOURCE);
         assert_eq!(msg2.id(), 2000);
     }
 
