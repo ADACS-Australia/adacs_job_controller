@@ -16,8 +16,8 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, failed_to_read_body_msg, filter_files,
-    job_id_to_u32,
+    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, failed_to_read_body_msg,
+    filter_files, job_id_to_u32,
 };
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
@@ -214,7 +214,7 @@ pub async fn create_file_download(
         .await
         .map_err(|e| {
             tracing::error!("HTTP: Database insert failed: {}", e);
-            (StatusCode::BAD_REQUEST, format!("DB error: {e}"))
+            db_error(e)
         })?;
 
         uuids.push(uuid);
@@ -341,7 +341,7 @@ pub async fn download_file(
         .await
         .map_err(|e| {
             tracing::error!("HTTP: Database fetch failed: {}", e);
-            (StatusCode::BAD_REQUEST, format!("DB error: {e}"))
+            db_error(e)
         })?
         .ok_or_else(|| {
             tracing::debug!(
@@ -889,7 +889,7 @@ pub async fn list_files(
             .filter(job_history::Column::What.eq(JOB_COMPLETION_SOURCE))
             .one(&state.db)
             .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
+            .map_err(db_error)?
             .is_some()
     } else {
         false
@@ -901,7 +901,7 @@ pub async fn list_files(
             .filter(file_list_cache::Column::JobId.eq(job_id.cast_signed()))
             .all(&state.db)
             .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?;
+            .map_err(db_error)?;
 
         if !cached.is_empty() {
             let files: Vec<FileInfo> = cached
@@ -1123,7 +1123,7 @@ pub async fn resolve_cluster_bundle_for_file_list(
         .filter(job::Column::Application.is_in(applications.to_vec()))
         .one(&state.db)
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("DB error: {e}")))?
+        .map_err(db_error)?
         .ok_or((
             StatusCode::BAD_REQUEST,
             format!("Unable to find job with ID {job_id} for application {app_name}"),
