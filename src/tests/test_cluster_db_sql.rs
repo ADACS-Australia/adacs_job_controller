@@ -10,6 +10,7 @@ use common::make_db;
 
 use std::sync::{Arc, Mutex};
 
+use adacs_job_controller::cluster::traits::ClusterTrait;
 use adacs_job_controller::db::cluster_db::maybe_handle_cluster_db_message;
 use adacs_job_controller::db::models::{BundleJob, ClusterJob, ClusterJobStatus};
 use adacs_job_controller::protocol::constants::*;
@@ -43,6 +44,11 @@ async fn make_cluster_db() -> DatabaseConnection {
     let db = make_db().await;
     setup_cluster_db(&db).await;
     db
+}
+
+/// Build a capturing mock cluster named "ozstar".
+fn ozstar_capturing_cluster() -> (impl ClusterTrait, Arc<Mutex<Vec<Message>>>) {
+    mock_cluster_capturing("ozstar")
 }
 
 /// Insert a `bundle_job` row with the given content and hash on the "ozstar" cluster.
@@ -124,7 +130,7 @@ async fn assert_bundle_create_or_update_inserts(
         content: r#"{"script":"run.sh"}"#.to_string(),
     };
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
         m.push_uint(req_id);
         bundle.to_message(m);
@@ -188,7 +194,7 @@ async fn insert_cluster_job_status(
 async fn test_handle_job_save_insert() {
     let db = make_cluster_db().await;
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
 
     let job = ClusterJob {
         id: 0, // insert
@@ -296,7 +302,7 @@ async fn test_handle_job_save_update() {
         deleted: false,
     };
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
         m.push_uint(200);
         updated_job.to_message(m);
@@ -362,7 +368,7 @@ async fn test_handle_job_get_by_id_found() {
     .unwrap();
     let row_id = inserted.id;
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOB_GET_BY_ID, |m| {
         m.push_uint(301);
         m.push_ulong(row_id.cast_unsigned());
@@ -406,7 +412,7 @@ async fn test_handle_job_get_by_id_found() {
 async fn test_handle_job_get_by_id_not_found() {
     let db = make_cluster_db().await;
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOB_GET_BY_ID, |m| {
         m.push_uint(302);
         m.push_ulong(99999);
@@ -455,7 +461,7 @@ async fn test_handle_job_get_by_job_id_found() {
     .await
     .unwrap();
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOB_GET_BY_JOB_ID, |m| {
         m.push_uint(400);
         m.push_ulong(77);
@@ -516,7 +522,7 @@ async fn test_handle_job_get_by_job_id_cluster_scoping() {
         }
     }
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOB_GET_BY_JOB_ID, |m| {
         m.push_uint(401);
         m.push_ulong(77);
@@ -578,7 +584,7 @@ async fn test_handle_job_get_running_jobs() {
         .unwrap();
     }
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOB_GET_RUNNING_JOBS, |m| {
         m.push_uint(500);
     });
@@ -631,7 +637,7 @@ async fn test_handle_job_delete() {
     .unwrap();
     let row_id = inserted.id;
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOB_DELETE, |m| {
         m.push_uint(600);
         m.push_ulong(row_id.cast_unsigned());
@@ -678,7 +684,7 @@ async fn test_handle_jobstatus_save_insert() {
         state: 500,
     };
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
         m.push_uint(700);
         status.to_message(m);
@@ -746,7 +752,7 @@ async fn test_handle_jobstatus_save_update() {
         state: 999,
     };
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
         m.push_uint(701);
         status.to_message(m);
@@ -794,7 +800,7 @@ async fn test_handle_jobstatus_get_by_job_id() {
         insert_cluster_job_status(&db, jid, what, state).await;
     }
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID, |m| {
         m.push_uint(800);
         m.push_ulong(20);
@@ -846,7 +852,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
         insert_cluster_job_status(&db, jid, what, state).await;
     }
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT, |m| {
         m.push_uint(900);
         m.push_ulong(30);
@@ -895,7 +901,7 @@ async fn test_handle_jobstatus_delete_by_id_list() {
 
     let to_delete = [ids[0], ids[2]]; // delete "a" and "c"
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_DELETE_BY_ID_LIST, |m| {
         m.push_uint(1000);
         m.push_uint(2);
@@ -943,7 +949,7 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
 
     let to_delete = [ids[0], ids[2]]; // delete "a" and "c"
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_DELETE_BY_ID_LIST, |m| {
         m.push_uint(1000);
         m.push_uint(u32::MAX); // inflated count — only 2 ids follow
@@ -1022,7 +1028,7 @@ async fn test_handle_bundle_create_or_update_existing() {
         content: "new_content".to_string(),
     };
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
         m.push_uint(1101);
         bundle.to_message(m);
@@ -1079,7 +1085,7 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
         content: "new_content".to_string(),
     };
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
         m.push_uint(1102);
         bundle.to_message(m);
@@ -1129,7 +1135,7 @@ async fn test_handle_bundle_get_by_id_found() {
     let inserted = insert_bundle_job(&db, "bundle_content", "xyz").await;
     let bundle_id = inserted.id;
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_BUNDLE_GET_JOB_BY_ID, |m| {
         m.push_uint(1200);
         m.push_ulong(bundle_id.cast_unsigned());
@@ -1165,7 +1171,7 @@ async fn test_handle_bundle_get_by_id_found() {
 async fn test_handle_bundle_get_by_id_not_found() {
     let db = make_cluster_db().await;
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_BUNDLE_GET_JOB_BY_ID, |m| {
         m.push_uint(1201);
         m.push_ulong(99999);
@@ -1200,7 +1206,7 @@ async fn test_handle_bundle_delete() {
     let inserted = insert_bundle_job(&db, "c", "h").await;
     let bundle_id = inserted.id;
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_BUNDLE_DELETE_JOB, |m| {
         m.push_uint(1300);
         m.push_ulong(bundle_id.cast_unsigned());
@@ -1238,7 +1244,7 @@ async fn test_handle_bundle_delete() {
 async fn test_unhandled_message_returns_false() {
     let db = make_cluster_db().await;
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
 
     let mut msg = dispatch_message(UPDATE_JOB, |m| {
         m.push_uint(0);
@@ -1288,7 +1294,7 @@ async fn test_handle_jobstatus_get_by_job_id_nonexistent_job() {
 
     // Request statuses for a job ID that doesn't exist
     let invalid_job_id = (job_row_id + 100).cast_unsigned();
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID, |m| {
         m.push_uint(5001);
         m.push_ulong(invalid_job_id);
@@ -1331,7 +1337,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
 
     // Query with a non-existent job ID
     let invalid_job_id = (job_row_id + 100).cast_unsigned();
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT, |m| {
         m.push_uint(5002);
         m.push_ulong(invalid_job_id);
@@ -1380,7 +1386,7 @@ async fn test_handle_jobstatus_save_nonexistent_job_fk() {
         state: 42,
     };
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
         m.push_uint(5003);
         status.to_message(m);
@@ -1449,7 +1455,7 @@ async fn test_handle_bundle_update_wrong_hash_returns_error() {
         content: "updated content".to_string(),
     };
 
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
         m.push_uint(5004);
         bundle.to_message(m);
@@ -1540,7 +1546,7 @@ async fn test_handle_bundle_delete_nonexistent_is_noop() {
     insert_bundle_job(&db, "keep me", "keep_hash").await;
 
     // Try to delete a non-existent ID
-    let (mock, sent) = mock_cluster_capturing("ozstar");
+    let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_BUNDLE_DELETE_JOB, |m| {
         m.push_uint(5005);
         m.push_ulong(99999);
