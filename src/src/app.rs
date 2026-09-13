@@ -48,7 +48,10 @@ pub async fn run() -> anyhow::Result<()> {
     let jwt_secrets = crate::config::access_secrets::load_access_secrets(std::path::Path::new(
         &access_secret_path,
     ))?;
-    tracing::debug!("Loaded {} access secrets", jwt_secrets.len());
+    tracing::debug!(
+        "{}",
+        crate::config::loaded_access_secrets(jwt_secrets.len())
+    );
 
     tracing::debug!("Connecting to database");
     let db_url = format!(
@@ -75,7 +78,10 @@ pub async fn run() -> anyhow::Result<()> {
     tracing::trace!("Cluster config path: {}", cluster_config_path);
     let cluster_configs =
         crate::config::clusters::load_cluster_configs(std::path::Path::new(&cluster_config_path))?;
-    tracing::debug!("Loaded {} cluster configurations", cluster_configs.len());
+    tracing::debug!(
+        "{}",
+        crate::config::loaded_cluster_configs(cluster_configs.len())
+    );
 
     tracing::debug!("Creating cluster manager");
     let cluster_manager =
