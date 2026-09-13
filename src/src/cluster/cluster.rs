@@ -1978,6 +1978,17 @@ mod tests {
     // Tests that need timeouts use tokio::time::pause() for instant virtual time.
     // -----------------------------------------------------------------------
 
+    /// Queues enough `msg_size`-byte messages to reach `MAX_FILE_BUFFER_SIZE`, plus `extra` more.
+    async fn queue_above_threshold(cluster: &Cluster, msg_size: usize, extra: usize) {
+        let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
+        let num_msgs = (max_buf / msg_size) + extra;
+        for _ in 0..num_msgs {
+            cluster
+                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
+                .await;
+        }
+    }
+
     /// Verifies that `wait_for_queue_drain` returns true immediately when the queue is empty.
     #[tokio::test]
     async fn test_wait_for_queue_drain_empty_queue() {
@@ -2027,14 +2038,7 @@ mod tests {
         cluster.stop();
 
         // Queue exactly MAX_FILE_BUFFER_SIZE bytes (50MB default)
-        let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
-        let msg_size = 1024 * 100; // 100KB per message
-        let num_msgs = max_buf / msg_size;
-        for _ in 0..num_msgs {
-            cluster
-                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
-                .await;
-        }
+        queue_above_threshold(&cluster, 1024 * 100, 0).await;
 
         // At exactly threshold, should still return true (using <=)
         assert!(cluster.wait_for_queue_drain(false).await);
@@ -2049,14 +2053,7 @@ mod tests {
         cluster.stop();
 
         // Queue more than MAX_FILE_BUFFER_SIZE
-        let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
-        let msg_size = 1024 * 100;
-        let num_msgs = (max_buf / msg_size) + 10;
-        for _ in 0..num_msgs {
-            cluster
-                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
-                .await;
-        }
+        queue_above_threshold(&cluster, 1024 * 100, 10).await;
 
         // Queue is above threshold, cluster stopped -> should timeout
         assert!(!cluster.wait_for_queue_drain(false).await);
@@ -2069,14 +2066,7 @@ mod tests {
         let cluster = make_test_cluster();
 
         // Queue more than MAX_FILE_BUFFER_SIZE with small messages for fast drain
-        let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
-        let msg_size = 1024 * 10; // 10KB per message
-        let num_msgs = (max_buf / msg_size) + 5;
-        for _ in 0..num_msgs {
-            cluster
-                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
-                .await;
-        }
+        queue_above_threshold(&cluster, 1024 * 10, 5).await;
 
         // Connect and start scheduler to drain
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -2101,14 +2091,7 @@ mod tests {
         cluster.stop();
 
         // Queue enough to exceed threshold
-        let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
-        let msg_size = 1024 * 100;
-        let num_msgs = (max_buf / msg_size) + 20;
-        for _ in 0..num_msgs {
-            cluster
-                .queue_message("test".into(), vec![0u8; msg_size], Priority::Medium)
-                .await;
-        }
+        queue_above_threshold(&cluster, 1024 * 100, 20).await;
 
         // No draining -> timeout
         assert!(!cluster.wait_for_queue_drain(false).await);
