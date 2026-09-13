@@ -31,6 +31,7 @@ const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
 const BAD_REQUEST_MSG: &str = "Bad Request";
 
 pub const UPLOAD_ID_KEY: &str = "uploadId";
+const FILE_IDS_KEY: &str = "fileIds";
 
 /// Error returned when neither `jobId` nor explicit `cluster`/`bundle` is provided.
 const MISSING_CLUSTER_BUNDLE_ERR: &str =
@@ -163,7 +164,7 @@ pub async fn create_file_download(
 
     if file_paths.is_empty() {
         tracing::debug!("HTTP: Empty file paths list - returning empty response");
-        return Ok(Json(serde_json::json!({ "fileIds": [] })));
+        return Ok(Json(serde_json::json!({ (FILE_IDS_KEY): [] })));
     }
 
     tracing::trace!("HTTP: Resolving cluster and bundle");
@@ -222,7 +223,7 @@ pub async fn create_file_download(
 
     tracing::info!("HTTP: Created {} file download record(s)", uuids.len());
     if has_paths {
-        Ok(Json(serde_json::json!({ "fileIds": uuids })))
+        Ok(Json(serde_json::json!({ (FILE_IDS_KEY): uuids })))
     } else {
         Ok(Json(serde_json::json!({ "fileId": uuids[0] })))
     }
