@@ -259,6 +259,8 @@ mod tests {
     use crate::cluster::manager::ClusterManager;
     use crate::config::clusters::ClusterConfig;
 
+    const SHUTDOWN_CLUSTER_NAME: &str = "shutdown_cluster";
+
     #[test]
     fn test_app_state_is_clone() {
         fn assert_clone<T: Clone>() {}
@@ -289,7 +291,7 @@ mod tests {
         let file_list_map = Arc::new(DashMap::new());
         let manager: Arc<ClusterManager> = ClusterManager::new(
             vec![ClusterConfig {
-                name: "shutdown_cluster".to_string(),
+                name: SHUTDOWN_CLUSTER_NAME.to_string(),
                 host: "127.0.0.1".to_string(),
                 username: "test".to_string(),
                 path: "/tmp".to_string(),
@@ -304,7 +306,7 @@ mod tests {
         );
 
         let master = manager
-            .get_cluster_by_name("shutdown_cluster")
+            .get_cluster_by_name(SHUTDOWN_CLUSTER_NAME)
             .expect("manager should expose the configured cluster");
 
         // Create several dedicated download clusters and inject a
