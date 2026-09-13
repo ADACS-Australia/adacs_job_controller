@@ -198,6 +198,11 @@ async fn send_save_response(cluster: &dyn ClusterTrait, db_request_id: u32, save
     cluster.send_message(response).await;
 }
 
+/// Logs a failed DB query with the cluster name and the underlying error.
+fn log_query_failed(cluster_name: &impl std::fmt::Display, error: &impl std::fmt::Display) {
+    tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, error);
+}
+
 // ---- DB_JOB_* handlers ----
 
 /// Looks up cluster jobs by external job ID and sends a `DB_RESPONSE` with matching rows.
@@ -216,7 +221,7 @@ async fn handle_job_get_by_job_id(
         .all(db)
         .await
         .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, e);
+            log_query_failed(&cluster_name, e);
         })
         .unwrap_or_default()
         .into_iter()
@@ -242,7 +247,7 @@ async fn handle_job_get_by_id(
         .one(db)
         .await
         .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+            log_query_failed(&cluster.name(), e);
         })
         .unwrap_or(None)
         .map(ClusterJob::from);
@@ -265,7 +270,7 @@ async fn handle_job_get_running_jobs(
         .all(db)
         .await
         .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, e);
+            log_query_failed(&cluster_name, e);
         })
         .unwrap_or_default()
         .into_iter()
@@ -372,7 +377,7 @@ async fn handle_jobstatus_get_by_job_id_and_what(
         .all(db)
         .await
         .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+            log_query_failed(&cluster.name(), e);
         })
         .unwrap_or_default()
         .into_iter()
@@ -399,7 +404,7 @@ async fn handle_jobstatus_get_by_job_id(
         .all(db)
         .await
         .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+            log_query_failed(&cluster.name(), e);
         })
         .unwrap_or_default()
         .into_iter()
@@ -551,7 +556,7 @@ async fn handle_bundle_create_or_update(
             .one(db)
             .await
             .inspect_err(|e| {
-                tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, e);
+                log_query_failed(&cluster_name, e);
             })
             .unwrap_or(None);
 
@@ -586,7 +591,7 @@ async fn handle_bundle_create_or_update(
             .one(db)
             .await
             .inspect_err(|e| {
-                tracing::error!("ClusterDB[{}]: query failed: {}", cluster_name, e);
+                log_query_failed(&cluster_name, e);
             })
             .unwrap_or(None);
 
@@ -621,7 +626,7 @@ async fn handle_bundle_get_by_id(
         .one(db)
         .await
         .inspect_err(|e| {
-            tracing::error!("ClusterDB[{}]: query failed: {}", cluster.name(), e);
+            log_query_failed(&cluster.name(), e);
         })
         .unwrap_or(None)
         .map(BundleJob::from);
