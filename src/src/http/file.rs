@@ -28,6 +28,8 @@ use crate::utils::uuid::generate_uuid;
 
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
 
+pub const UPLOAD_ID_KEY: &str = "uploadId";
+
 /// Wait until `data_ready` becomes true or `timeout` elapses.
 ///
 /// # Errors
@@ -813,7 +815,7 @@ pub async fn upload_file(
     check_upload_error(&fu_state).await?;
 
     Ok(Json(serde_json::json!({
-        "uploadId": uuid,
+        UPLOAD_ID_KEY: uuid,
         "status": "completed",
     })))
 }
