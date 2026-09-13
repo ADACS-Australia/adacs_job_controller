@@ -28,6 +28,8 @@ use sea_orm::{
 // Helpers
 // ---------------------------------------------------------------------------
 
+const BUNDLE_HASH: &str = "samehash";
+
 async fn setup_cluster_db(db: &DatabaseConnection) {
     let builder = DbBackend::Sqlite;
     let schema = Schema::new(builder);
@@ -965,7 +967,7 @@ async fn test_handle_bundle_create_or_update_new() {
 async fn test_handle_bundle_create_or_update_existing() {
     let db = make_cluster_db().await;
 
-    let inserted = insert_bundle_job(&db, "old", "samehash").await;
+    let inserted = insert_bundle_job(&db, "old", BUNDLE_HASH).await;
     let existing_id = inserted.id;
 
     let bundle = BundleJob {
@@ -977,7 +979,7 @@ async fn test_handle_bundle_create_or_update_existing() {
     let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
         m.push_uint(1101);
         bundle.to_message(m);
-        m.push_string("samehash");
+        m.push_string(BUNDLE_HASH);
     });
 
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
@@ -1022,7 +1024,7 @@ async fn test_handle_bundle_create_or_update_existing() {
 async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
     let db = make_cluster_db().await;
 
-    let inserted = insert_bundle_job(&db, "old", "samehash").await;
+    let inserted = insert_bundle_job(&db, "old", BUNDLE_HASH).await;
     let existing_id = inserted.id;
 
     let bundle = BundleJob {
@@ -1034,7 +1036,7 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
     let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
         m.push_uint(1102);
         bundle.to_message(m);
-        m.push_string("samehash");
+        m.push_string(BUNDLE_HASH);
     });
 
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
@@ -1046,7 +1048,7 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
         .unwrap()
         .unwrap();
     assert_eq!(model.content, "new_content");
-    assert_eq!(model.bundle_hash, "samehash");
+    assert_eq!(model.bundle_hash, BUNDLE_HASH);
 
     // No new row inserted
     let count = bundle_job::Entity::find().count(&db).await.unwrap();
