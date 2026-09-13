@@ -1218,13 +1218,8 @@ fn simulate_completed_download() -> Arc<FileDownloadState> {
 #[tokio::test]
 async fn test_download_force_download_sets_attachment_disposition() {
     let db = setup_test_db().await;
-    assert_force_download_sets_disposition(
-        db,
-        "force-dl-uuid".to_string(),
-        "true",
-        "attachment",
-    )
-    .await;
+    assert_force_download_sets_disposition(db, "force-dl-uuid".to_string(), "true", "attachment")
+        .await;
 }
 
 /// Verifies that a download without `forceDownload` sets `Content-Disposition: inline` in the response.
@@ -1344,13 +1339,8 @@ async fn test_download_force_download_false_sets_inline_disposition() {
 #[tokio::test]
 async fn test_download_force_download_numeric_one_sets_attachment_disposition() {
     let db = setup_test_db().await;
-    assert_force_download_sets_disposition(
-        db,
-        "force-one-dl-uuid".to_string(),
-        "1",
-        "attachment",
-    )
-    .await;
+    assert_force_download_sets_disposition(db, "force-one-dl-uuid".to_string(), "1", "attachment")
+        .await;
 }
 
 /// Verifies that `forceDownload=TRUE` (uppercase) sets `Content-Disposition: attachment`.
