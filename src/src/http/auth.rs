@@ -10,6 +10,9 @@ use crate::config::access_secrets::AccessSecret;
 /// Error message returned when a request is not authorized.
 const NOT_AUTHORIZED_MSG: &str = "Not authorized";
 
+/// Name of the HTTP header carrying the bearer token.
+const AUTHORIZATION_HEADER: &str = "authorization";
+
 /// Result of a successful JWT authorization check.
 #[derive(Debug, Clone)]
 pub struct AuthResult {
@@ -39,7 +42,7 @@ where
         // Get the authorization header
         let auth_header = parts
             .headers
-            .get("authorization")
+            .get(AUTHORIZATION_HEADER)
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| {
                 tracing::debug!("AUTH: No authorization header present");
@@ -167,7 +170,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/test")
-                    .header("authorization", "invalid.token.here")
+                    .header(AUTHORIZATION_HEADER, "invalid.token.here")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -187,7 +190,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/test")
-                    .header("authorization", authorization)
+                    .header(AUTHORIZATION_HEADER, authorization)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -242,7 +245,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/test")
-                    .header("authorization", &token)
+                    .header(AUTHORIZATION_HEADER, &token)
                     .body(Body::empty())
                     .unwrap(),
             )
