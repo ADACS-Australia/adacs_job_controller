@@ -1239,10 +1239,14 @@ mod tests {
         }
     }
 
+    fn make_test_cluster() -> Arc<Cluster> {
+        Cluster::new(test_config(), None)
+    }
+
     /// Verifies basic `Cluster::new` construction sets the expected name, offline status, and role.
     #[test]
     fn test_cluster_creation() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         assert_eq!(cluster.name(), "test_cluster");
         assert!(!cluster.is_online());
         assert_eq!(cluster.role(), ClusterRole::Master);
@@ -1273,7 +1277,7 @@ mod tests {
     /// Verifies that `queue_message` increments `queued_message_size` by the payload length.
     #[tokio::test]
     async fn test_queue_message_and_size() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         let data = vec![1u8, 2, 3, 4, 5];
         cluster
             .queue_message("source1".into(), data.clone(), Priority::Medium)
@@ -1288,7 +1292,7 @@ mod tests {
     /// Verifies that `send_message` queues the full serialized message payload.
     #[tokio::test]
     async fn test_send_message_queues_data() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         let msg = Message::new(SUBMIT_JOB, Priority::Medium, "test_source");
         let expected_size = msg.clone().into_data().len();
         cluster.send_message(msg).await;
@@ -1302,7 +1306,7 @@ mod tests {
     /// Verifies that calling `stop()` sets `running` to false.
     #[tokio::test]
     async fn test_stop_sets_running_false() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         assert!(cluster.running.load(Ordering::Relaxed));
         cluster.stop();
         assert!(!cluster.running.load(Ordering::Relaxed));
@@ -1315,7 +1319,7 @@ mod tests {
     /// Verifies comprehensive queue insertion: multiple sources and priorities, correct dequeuing order.
     #[tokio::test]
     async fn test_queue_message_comprehensive() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop(); // stop scheduler so messages stay in queue
 
         // Check that source doesn't exist yet in Highest
@@ -1523,7 +1527,7 @@ mod tests {
     /// Verifies that `prune_once` removes sources with empty queues while retaining sources with data.
     #[tokio::test]
     async fn test_prune_sources() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop(); // don't start background tasks
 
         // Queue messages from 3 sources
@@ -1648,7 +1652,7 @@ mod tests {
     /// higher than the given level.
     #[tokio::test]
     async fn test_has_higher_priority_data() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop();
 
         // No data -> no higher priority data at any level
@@ -1825,7 +1829,7 @@ mod tests {
     /// and round-robins within each priority tier.
     #[tokio::test]
     async fn test_scheduler_priority_and_round_robin_ordering() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
 
         // Queue messages at various priorities from multiple sources
         // Highest: s1 (2 msgs), s2 (1 msg)
@@ -1958,7 +1962,7 @@ mod tests {
     /// Verifies that `wait_for_queue_drain` returns true immediately when the queue is empty.
     #[tokio::test]
     async fn test_wait_for_queue_drain_empty_queue() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         // Empty queue, waitForEmpty=false -> true
         assert!(cluster.wait_for_queue_drain(false).await);
         // Empty queue, waitForEmpty=true -> true
@@ -1968,7 +1972,7 @@ mod tests {
     /// Verifies that a queue below the MAX threshold returns true without waiting.
     #[tokio::test]
     async fn test_wait_for_queue_drain_below_threshold() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop();
 
         // Queue 1KB (well below 50MB threshold)
@@ -1985,7 +1989,7 @@ mod tests {
     async fn test_wait_for_queue_drain_below_threshold_wait_for_empty_timeout() {
         tokio::time::pause(); // use virtual time for instant timeout
 
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop();
 
         // Queue 1KB
@@ -2000,7 +2004,7 @@ mod tests {
     /// Verifies that a queue at exactly `MAX_FILE_BUFFER_SIZE` still returns true (boundary is inclusive).
     #[tokio::test]
     async fn test_wait_for_queue_drain_at_threshold() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop();
 
         // Queue exactly MAX_FILE_BUFFER_SIZE bytes (50MB default)
@@ -2022,7 +2026,7 @@ mod tests {
     async fn test_wait_for_queue_drain_above_threshold_timeout() {
         tokio::time::pause(); // use virtual time
 
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop();
 
         // Queue more than MAX_FILE_BUFFER_SIZE
@@ -2043,7 +2047,7 @@ mod tests {
     /// below the MAX threshold.
     #[tokio::test]
     async fn test_wait_for_queue_drain_success_when_draining() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
 
         // Queue more than MAX_FILE_BUFFER_SIZE with small messages for fast drain
         let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
@@ -2074,7 +2078,7 @@ mod tests {
     async fn test_wait_for_queue_drain_timeout_when_stopped() {
         tokio::time::pause(); // virtual time for instant timeout
 
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop();
 
         // Queue enough to exceed threshold
@@ -2096,7 +2100,7 @@ mod tests {
     async fn test_wait_for_queue_drain_wait_for_empty_timeout() {
         tokio::time::pause(); // virtual time
 
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
         cluster.stop();
 
         // Queue messages but don't start scheduler
@@ -2114,7 +2118,7 @@ mod tests {
     /// threshold and the scheduler is draining them.
     #[tokio::test]
     async fn test_wait_for_queue_drain_multiple_sources() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
 
         // Queue from multiple sources to exceed MAX_FILE_BUFFER_SIZE
         let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
@@ -2155,7 +2159,7 @@ mod tests {
     /// levels and the scheduler is actively sending.
     #[tokio::test]
     async fn test_wait_for_queue_drain_mixed_priorities() {
-        let cluster = Cluster::new(test_config(), None);
+        let cluster = make_test_cluster();
 
         // Queue across different priorities to exceed MAX_FILE_BUFFER_SIZE
         let max_buf = *MAX_FILE_BUFFER_SIZE as usize;
