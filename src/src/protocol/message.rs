@@ -338,6 +338,10 @@ mod tests {
     use crate::protocol::constants::SYSTEM_SOURCE;
     use crate::protocol::types::Priority;
 
+    fn test_message() -> Message {
+        Message::new(1, Priority::Lowest, "t")
+    }
+
     // ---- Round-trip tests for every type ----
 
     /// Verifies that `push_bool` / `pop_bool` round-trips `true` and `false`.
@@ -372,7 +376,7 @@ mod tests {
     /// Each pop returns the original u8 value in order.
     #[test]
     fn test_ubyte_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_ubyte(0);
         msg.push_ubyte(127);
         msg.push_ubyte(255);
@@ -394,7 +398,7 @@ mod tests {
     /// Each pop returns the original i8 value in order.
     #[test]
     fn test_byte_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_byte(-128);
         msg.push_byte(0);
         msg.push_byte(127);
@@ -416,7 +420,7 @@ mod tests {
     /// Each pop returns the original u16 value in order.
     #[test]
     fn test_ushort_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_ushort(0);
         msg.push_ushort(12345);
         msg.push_ushort(u16::MAX);
@@ -438,7 +442,7 @@ mod tests {
     /// Each pop returns the original i16 value in order.
     #[test]
     fn test_short_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_short(i16::MIN);
         msg.push_short(0);
         msg.push_short(i16::MAX);
@@ -460,7 +464,7 @@ mod tests {
     /// Each pop returns the original u32 value in order.
     #[test]
     fn test_uint_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_uint(0);
         msg.push_uint(0xDEAD_BEEF);
         msg.push_uint(u32::MAX);
@@ -482,7 +486,7 @@ mod tests {
     /// Each pop returns the original i32 value in order.
     #[test]
     fn test_int_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_int(i32::MIN);
         msg.push_int(0);
         msg.push_int(i32::MAX);
@@ -504,7 +508,7 @@ mod tests {
     /// Each pop returns the original u64 value in order.
     #[test]
     fn test_ulong_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_ulong(0);
         msg.push_ulong(0xDEAD_BEEFCAFEBABE);
         msg.push_ulong(u64::MAX);
@@ -526,7 +530,7 @@ mod tests {
     /// Each pop returns the original i64 value in order.
     #[test]
     fn test_long_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_long(i64::MIN);
         msg.push_long(0);
         msg.push_long(i64::MAX);
@@ -549,7 +553,7 @@ mod tests {
     #[allow(clippy::float_cmp)]
     #[test]
     fn test_float_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_float(0.0);
         msg.push_float(std::f32::consts::PI);
         msg.push_float(-1.5e10);
@@ -572,7 +576,7 @@ mod tests {
     #[allow(clippy::float_cmp)]
     #[test]
     fn test_double_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_double(0.0);
         msg.push_double(std::f64::consts::PI);
         msg.push_double(-1.5e100);
@@ -594,7 +598,7 @@ mod tests {
     /// Each pop returns the original string in order.
     #[test]
     fn test_string_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_string("hello world");
         msg.push_string("");
         msg.push_string("a]b[c{d}e");
@@ -616,7 +620,7 @@ mod tests {
     /// Each pop returns the original Unicode string unchanged.
     #[test]
     fn test_string_unicode() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_string("こんにちは");
         msg.push_string("🎉🚀🔥");
         msg.push_string("café résumé");
@@ -639,7 +643,7 @@ mod tests {
     #[test]
     fn test_string_long() {
         let long_string = "x".repeat(100_000);
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_string(&long_string);
         let mut msg2 = Message::from_bytes(msg.into_data());
         assert_eq!(msg2.pop_string(), long_string);
@@ -658,7 +662,7 @@ mod tests {
     /// `pop_string` returns `""` and `remaining()` is `0` (the malformed bytes were consumed).
     #[test]
     fn test_pop_string_invalid_utf8_returns_empty() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_bytes(&[0xFF, 0xFE]);
         let mut msg2 = Message::from_bytes(msg.into_data());
         assert_eq!(msg2.pop_string(), "");
@@ -677,7 +681,7 @@ mod tests {
     /// Each pop returns the original byte sequence in order.
     #[test]
     fn test_bytes_roundtrip() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_bytes(&[0x00, 0xFF, 0x42, 0x13]);
         msg.push_bytes(&[]);
         let mut msg2 = Message::from_bytes(msg.into_data());
@@ -946,7 +950,7 @@ mod tests {
     /// Each pop returns the original negative value.
     #[test]
     fn test_negative_integers() {
-        let mut msg = Message::new(1, Priority::Lowest, "t");
+        let mut msg = test_message();
         msg.push_byte(-1);
         msg.push_short(-256);
         msg.push_int(-100_000);
