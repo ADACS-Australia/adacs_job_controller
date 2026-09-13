@@ -1294,6 +1294,51 @@ async fn test_handle_file_list_truncated_message_graceful() {
     }
 }
 
+/// Verifies that a `FILE_LIST` message with `num_files = 0` for a registered UUID
+/// clears the file list and sets `data_ready` (a job with no files).
+///
+/// # Setup
+/// A UUID `"test-fl-empty"` is pre-registered in the `file_list_map`.
+/// A `FILE_LIST` message with `num_files = 0` and no entries is built.
+///
+/// # Act
+/// The message is dispatched via `cluster.handle_message`.
+///
+/// # Assert
+/// The `FileListState` has `files` empty and `data_ready` set to `true`.
+#[tokio::test]
+async fn test_handle_file_list_empty_file_list_sets_data_ready() {
+    let (cluster, file_list_map) = make_file_list_cluster();
+
+    let uuid = "test-fl-empty";
+
+    // Register UUID in the file list map
+    let fl_state = register_file_list_uuid(&file_list_map, uuid);
+
+    // Verify initial state
+    {
+        let state = fl_state.lock().await;
+        assert!(state.files.is_empty());
+        assert!(!state.error);
+        assert!(state.error_details.is_empty());
+        assert!(!state.data_ready);
+    }
+
+    // Send FILE_LIST message with num_files = 0
+    let msg = build_file_list_message(uuid, 0, &[]);
+
+    cluster.handle_message(msg).await;
+
+    // File list stays empty and data_ready is set
+    {
+        let state = fl_state.lock().await;
+        assert!(state.files.is_empty());
+        assert!(!state.error);
+        assert!(state.error_details.is_empty());
+        assert!(state.data_ready);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // File list error handling
 // ---------------------------------------------------------------------------
