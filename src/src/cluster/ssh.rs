@@ -404,6 +404,10 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         }
     }
 
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Runtime::new().unwrap().block_on(future)
+    }
+
     #[test]
     fn ssh_error_display_connection_failed() {
         let e = SshError::ConnectionFailed("timeout".to_string());
@@ -440,8 +444,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         let config = test_cluster_config("", "ssh");
         // Should attempt SSH connection and fail (empty key is invalid)
         let result = run_remote_client(&config, "test-token");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(result).unwrap_err();
+        let err = block_on(result).unwrap_err();
         // Empty key fails during auth parsing
         assert!(matches!(err, SshError::AuthenticationFailed(_)));
     }
@@ -451,8 +454,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         let config = test_cluster_config("", "unknown_type");
         // Should treat unknown type as SSH (catch-all), not return an error
         let result = run_remote_client(&config, "test-token");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(result).unwrap_err();
+        let err = block_on(result).unwrap_err();
         // Empty key fails during auth parsing
         assert!(matches!(err, SshError::AuthenticationFailed(_)));
     }
@@ -463,8 +465,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         // With an empty key, parsing should produce an AuthFailed error,
         // not a panic or IO error
         let result = run_via_ssh(&config, "t");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(result).unwrap_err();
+        let err = block_on(result).unwrap_err();
         assert!(matches!(err, SshError::AuthenticationFailed(_)));
     }
 
@@ -474,8 +475,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
     fn invalid_key_returns_auth_error() {
         let config = test_cluster_config("not-a-real-key", "ssh");
         let result = run_via_ssh(&config, "t");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(result).unwrap_err();
+        let err = block_on(result).unwrap_err();
         assert!(matches!(err, SshError::AuthenticationFailed(_)));
     }
 
@@ -531,8 +531,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
     #[test]
     fn load_private_key_parses_openssh_private_key() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let parsed = rt.block_on(load_private_key(PKCS8_ED25519_KEY)).unwrap();
+        let parsed = block_on(load_private_key(PKCS8_ED25519_KEY)).unwrap();
 
         assert_eq!(parsed.algorithm(), Algorithm::Ed25519);
     }
@@ -568,8 +567,7 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
 -----END RSA PRIVATE KEY-----
 ";
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let parsed = rt.block_on(load_private_key(legacy_rsa_key)).unwrap();
+        let parsed = block_on(load_private_key(legacy_rsa_key)).unwrap();
 
         assert!(parsed.algorithm().is_rsa());
     }
@@ -580,10 +578,7 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
         let key_path = tmp.path().join("id_test");
         fs::write(&key_path, PKCS8_ED25519_KEY.as_bytes()).unwrap();
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let parsed = rt
-            .block_on(load_private_key(key_path.to_str().unwrap()))
-            .unwrap();
+        let parsed = block_on(load_private_key(key_path.to_str().unwrap())).unwrap();
 
         assert_eq!(parsed.algorithm(), Algorithm::Ed25519);
     }
