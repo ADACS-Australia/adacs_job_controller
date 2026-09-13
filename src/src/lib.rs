@@ -4,7 +4,6 @@ pub mod config;
 pub mod db;
 pub mod http;
 pub mod protocol;
-#[cfg(test)]
 pub mod test_support;
 pub mod utils;
 pub mod websocket;
