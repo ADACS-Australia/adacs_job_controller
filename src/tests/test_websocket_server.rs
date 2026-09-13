@@ -181,13 +181,9 @@ async fn test_ws_valid_token_receives_server_ready() {
     // The server should send SERVER_READY after accepting the connection
     let data = recv_binary(&mut stream)
         .await
-        .expect("Expected SERVER_READY binary message");
+        .expect(common::EXPECT_SERVER_READY_BINARY);
     let msg = Message::from_bytes(data);
-    assert_eq!(
-        msg.id(),
-        SERVER_READY,
-        "First message should be SERVER_READY"
-    );
+    assert_eq!(msg.id(), SERVER_READY, "{}", common::FIRST_MSG_SERVER_READY);
     assert_eq!(msg.source(), SYSTEM_SOURCE);
 }
 
@@ -395,13 +391,9 @@ async fn test_ws_lowercase_bearer_scheme_accepted() {
     // The server should send SERVER_READY after accepting the connection
     let data = recv_binary(&mut stream)
         .await
-        .expect("Expected SERVER_READY binary message");
+        .expect(common::EXPECT_SERVER_READY_BINARY);
     let msg = Message::from_bytes(data);
-    assert_eq!(
-        msg.id(),
-        SERVER_READY,
-        "First message should be SERVER_READY"
-    );
+    assert_eq!(msg.id(), SERVER_READY, "{}", common::FIRST_MSG_SERVER_READY);
     assert_eq!(msg.source(), SYSTEM_SOURCE);
 
     sink.close().await.unwrap();

@@ -281,6 +281,12 @@ pub fn manager_with_online_cluster_and_create_file_download() -> MockClusterMana
 // WebSocket test helpers
 // ---------------------------------------------------------------------------
 
+/// Assertion message used when the first WS message is not `SERVER_READY`.
+pub const FIRST_MSG_SERVER_READY: &str = "First message should be SERVER_READY";
+
+/// Assertion message used when no `SERVER_READY` binary message is received.
+pub const EXPECT_SERVER_READY_BINARY: &str = "Expected SERVER_READY binary message";
+
 /// Check whether a WS connection was closed (Close frame / transport error / EOF)
 /// within the given timeout.
 pub async fn connection_closes(
