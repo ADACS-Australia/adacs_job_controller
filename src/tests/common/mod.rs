@@ -108,19 +108,6 @@ pub fn master_cluster(name: &str, details_name: &str) -> MockClusterTrait {
     c
 }
 
-/// Drain all pending binary `WsOutbound` messages from the channel as raw bytes.
-pub fn drain_binary_messages(
-    rx: &mut tokio::sync::mpsc::UnboundedReceiver<WsOutbound>,
-) -> Vec<Vec<u8>> {
-    let mut messages = Vec::new();
-    while let Ok(outbound) = rx.try_recv() {
-        if let WsOutbound::Binary(data) = outbound {
-            messages.push(data);
-        }
-    }
-    messages
-}
-
 /// Build a mock cluster that captures all `send_message` calls.
 pub fn mock_cluster_capturing(name: &str) -> (MockClusterTrait, Arc<Mutex<Vec<Message>>>) {
     let sent = Arc::new(Mutex::new(Vec::<Message>::new()));
