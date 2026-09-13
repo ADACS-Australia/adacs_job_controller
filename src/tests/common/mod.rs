@@ -481,6 +481,17 @@ pub async fn insert_job_history_at(
     .expect("insert job history failed");
 }
 
+/// Insert a job with the given initial state, using the default test
+/// cluster/bundle/application. Returns the inserted job id.
+pub async fn insert_test_job_with_state(
+    db: &sea_orm::DatabaseConnection,
+    state: adacs_job_controller::protocol::types::JobStatus,
+) -> i64 {
+    let job_id = insert_test_job(db, "ozstar", "b", "testapp").await;
+    insert_job_history(db, job_id, state as i32, "system").await;
+    job_id
+}
+
 // ---------------------------------------------------------------------------
 // Multi-secret JWT helpers for cross-app access tests
 // ---------------------------------------------------------------------------
