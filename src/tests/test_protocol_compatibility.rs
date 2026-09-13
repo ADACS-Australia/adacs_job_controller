@@ -8,6 +8,8 @@ use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::{FileInfo, Priority};
 
+const SUBMIT_JOB_SOURCE: &str = "job_1_cluster_a";
+
 // ---------------------------------------------------------------------------
 // Exact byte-sequence tests
 // ---------------------------------------------------------------------------
@@ -28,7 +30,7 @@ fn test_submit_job_message_exact_bytes() {
     // Build a SUBMIT_JOB message matching the expected wire format:
     //   header: source(string) + msg_id(u32)
     //   payload: job_id(u32) + bundle(string) + params(string)
-    let source = "job_1_cluster_a";
+    let source = SUBMIT_JOB_SOURCE;
     let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, source);
     msg.push_uint(42); // job_id
     msg.push_string("my_bundle");
@@ -57,7 +59,7 @@ fn test_submit_job_message_exact_bytes() {
 /// bytes; the following 4 bytes are the little-endian `SUBMIT_JOB` message ID constant.
 #[test]
 fn test_submit_job_header_byte_layout() {
-    let source = "job_1_cluster_a";
+    let source = SUBMIT_JOB_SOURCE;
     let msg = Message::new(SUBMIT_JOB, Priority::Medium, source);
     let data = msg.data();
 
