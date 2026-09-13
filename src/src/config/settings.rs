@@ -2,16 +2,19 @@ use std::fmt::{Debug, Display};
 use std::str::FromStr;
 use std::sync::LazyLock;
 
+fn log_config(key: &str, value: &str) {
+    tracing::trace!("Config: {} = {}", key, value);
+}
+
 fn env_or(key: &str, default: &str) -> String {
     let value = std::env::var(key).unwrap_or_else(|_| default.to_string());
-    tracing::trace!(
-        "Config: {} = {}",
+    log_config(
         key,
         if key.contains("SECRET") || key.contains("PASSWORD") {
             "***REDACTED***"
         } else {
             &value
-        }
+        },
     );
     value
 }
@@ -25,7 +28,7 @@ where
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(default);
-    tracing::trace!("Config: {} = {}", key, value);
+    log_config(key, &value.to_string());
     value
 }
 
