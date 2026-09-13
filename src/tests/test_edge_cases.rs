@@ -118,10 +118,6 @@ fn download_manager(fd: Arc<FileDownloadState>) -> MockClusterManagerTrait {
     manager
         .expect_is_application_shutting_down()
         .returning(|| false);
-    manager.expect_begin_application_shutdown().returning(|| 0);
-    manager
-        .expect_dedicated_download_clusters()
-        .returning(Vec::new);
     let cluster = Arc::new(online_cluster_no_messages());
     let c = Arc::clone(&cluster);
     manager
@@ -1372,7 +1368,11 @@ async fn assert_force_download_sets_attachment(
 
     let fd_state = simulate_completed_download();
 
-    let manager = download_manager(Arc::clone(&fd_state));
+    let mut manager = download_manager(Arc::clone(&fd_state));
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
 
     let app = create_router(make_test_state(db, manager));
 
