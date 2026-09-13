@@ -54,6 +54,28 @@ async fn start_server_with_forwarding_cluster(
     (server, removed_count)
 }
 
+/// Connect with a valid token and drain the `SERVER_READY` message.
+/// Returns the split sink and stream ready for further use.
+async fn connect_and_await_server_ready(
+    port: u16,
+) -> (
+    futures_util::stream::SplitSink<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        TungsteniteMsg,
+    >,
+    futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+) {
+    let (sink, mut stream) = connect_ws_auth(port, "valid-token").await;
+    recv_binary(&mut stream).await;
+    (sink, stream)
+}
+
 /// Poll `cond` every 5ms until `timeout` elapses.
 /// Returns `true` as soon as `cond()` returns `true`, otherwise `false`.
 async fn wait_until<F>(timeout: std::time::Duration, cond: F) -> bool
@@ -214,11 +236,8 @@ async fn test_ws_valid_token_handles_disconnect_gracefully() {
     let (server, removed_count) = start_server_with_forwarding_cluster(None).await;
     let port = server.port;
 
-    // Connect with Authorization: Bearer header
-    let (mut sink, mut stream) = connect_ws_auth(port, "valid-token").await;
-
-    // Receive SERVER_READY
-    recv_binary(&mut stream).await;
+    // Connect with Authorization: Bearer header and await SERVER_READY
+    let (mut sink, _stream) = connect_and_await_server_ready(port).await;
 
     // Client closes connection
     sink.close().await.unwrap();
@@ -272,11 +291,8 @@ async fn test_ws_binary_message_dispatched_to_cluster() {
     let server = start_server(manager).await;
     let port = server.port;
 
-    // Connect with Authorization: Bearer header
-    let (mut sink, mut stream) = connect_ws_auth(port, "valid-token").await;
-
-    // Wait for SERVER_READY
-    recv_binary(&mut stream).await;
+    // Connect with Authorization: Bearer header and await SERVER_READY
+    let (mut sink, _stream) = connect_and_await_server_ready(port).await;
 
     // Send an UPDATE_JOB message
     let mut update_msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
@@ -338,11 +354,8 @@ async fn test_ws_pong_handled() {
     let server = start_server(manager).await;
     let port = server.port;
 
-    // Connect with Authorization: Bearer header
-    let (mut sink, mut stream) = connect_ws_auth(port, "valid-token").await;
-
-    // Wait for SERVER_READY
-    recv_binary(&mut stream).await;
+    // Connect with Authorization: Bearer header and await SERVER_READY
+    let (mut sink, _stream) = connect_and_await_server_ready(port).await;
 
     // Send a Pong — the server should forward it to handle_pong
     sink.send(TungsteniteMsg::Pong(vec![].into()))
