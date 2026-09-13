@@ -21,6 +21,9 @@ pub fn app_no_cluster_access_msg(app: &str, cluster: &str) -> String {
     format!("Application {app} does not have access to cluster {cluster}")
 }
 
+/// HTTP `Content-Type` request header name.
+pub const CONTENT_TYPE_HEADER: &str = "content-type";
+
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
 /// # FIXME
@@ -43,7 +46,7 @@ where
         // Check Content-Type header and log warning if missing
         let content_type = req
             .headers()
-            .get("content-type")
+            .get(CONTENT_TYPE_HEADER)
             .and_then(|v| v.to_str().ok());
 
         if content_type.is_none() {
