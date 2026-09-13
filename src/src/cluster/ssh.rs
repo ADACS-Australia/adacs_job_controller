@@ -390,6 +390,20 @@ mod tests {
 MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 -----END PRIVATE KEY-----";
 
+    fn test_cluster_config(key: &str, connection_type: &str) -> ClusterConfig {
+        ClusterConfig {
+            name: "test".to_string(),
+            host: "0.0.0.0".to_string(),
+            username: "test".to_string(),
+            path: "/tmp".to_string(),
+            key: key.to_string(),
+            connection_type: connection_type.to_string(),
+            keytab: String::new(),
+            kerberos_principal: String::new(),
+            ltk: None,
+        }
+    }
+
     #[test]
     fn ssh_error_display_connection_failed() {
         let e = SshError::ConnectionFailed("timeout".to_string());
@@ -423,17 +437,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
     #[test]
     fn run_remote_client_ssh_type_dispatches_to_ssh_path() {
-        let config = ClusterConfig {
-            name: "test".to_string(),
-            host: "0.0.0.0".to_string(),
-            username: "test".to_string(),
-            path: "/tmp".to_string(),
-            key: String::new(),
-            connection_type: "ssh".to_string(),
-            keytab: String::new(),
-            kerberos_principal: String::new(),
-            ltk: None,
-        };
+        let config = test_cluster_config("", "ssh");
         // Should attempt SSH connection and fail (empty key is invalid)
         let result = run_remote_client(&config, "test-token");
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -444,17 +448,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
     #[test]
     fn run_remote_client_catch_all_dispatches_to_ssh() {
-        let config = ClusterConfig {
-            name: "test".to_string(),
-            host: "0.0.0.0".to_string(),
-            username: "test".to_string(),
-            path: "/tmp".to_string(),
-            key: String::new(),
-            connection_type: "unknown_type".to_string(),
-            keytab: String::new(),
-            kerberos_principal: String::new(),
-            ltk: None,
-        };
+        let config = test_cluster_config("", "unknown_type");
         // Should treat unknown type as SSH (catch-all), not return an error
         let result = run_remote_client(&config, "test-token");
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -465,17 +459,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
     #[test]
     fn empty_key_returns_auth_error_not_panic() {
-        let config = ClusterConfig {
-            name: "test".to_string(),
-            host: "0.0.0.0".to_string(),
-            username: "test".to_string(),
-            path: "/tmp".to_string(),
-            key: String::new(),
-            connection_type: "ssh".to_string(),
-            keytab: String::new(),
-            kerberos_principal: String::new(),
-            ltk: None,
-        };
+        let config = test_cluster_config("", "ssh");
         // With an empty key, parsing should produce an AuthFailed error,
         // not a panic or IO error
         let result = run_via_ssh(&config, "t");
@@ -488,17 +472,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
     /// This validates the connection-attempt path without needing a real SSH server.
     #[test]
     fn invalid_key_returns_auth_error() {
-        let config = ClusterConfig {
-            name: "test".to_string(),
-            host: "0.0.0.0".to_string(),
-            username: "test".to_string(),
-            path: "/tmp".to_string(),
-            key: "not-a-real-key".to_string(),
-            connection_type: "ssh".to_string(),
-            keytab: String::new(),
-            kerberos_principal: String::new(),
-            ltk: None,
-        };
+        let config = test_cluster_config("not-a-real-key", "ssh");
         let result = run_via_ssh(&config, "t");
         let rt = tokio::runtime::Runtime::new().unwrap();
         let err = rt.block_on(result).unwrap_err();
