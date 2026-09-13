@@ -34,6 +34,11 @@ pub struct AppContext {
     pub file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
 }
 
+/// Shared log message for a failed DB query, used by the resend background tasks.
+fn cluster_query_failed_msg(cluster: &str, err: &dyn std::fmt::Display) -> String {
+    format!("Cluster[{}]: query failed: {}", cluster, err)
+}
+
 /// The core Cluster type that implements message queuing, scheduling, and dispatch.
 ///
 /// Each Cluster holds a priority-based message queue and a WS connection sender.
@@ -922,7 +927,7 @@ impl Cluster {
             .all(db)
             .await
             .inspect_err(|e| {
-                tracing::error!("Cluster[{}]: query failed: {}", self.name(), e);
+                tracing::error!("{}", cluster_query_failed_msg(&self.name(), e));
             })
             .unwrap_or_default();
 
@@ -943,7 +948,7 @@ impl Cluster {
             .all(db)
             .await
             .inspect_err(|e| {
-                tracing::error!("Cluster[{}]: query failed: {}", self.name(), e);
+                tracing::error!("{}", cluster_query_failed_msg(&self.name(), e));
             })
             .unwrap_or_default();
 
