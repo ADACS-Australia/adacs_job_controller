@@ -29,7 +29,7 @@ pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
     let content = std::fs::read_to_string(path)?;
     tracing::trace!("Access secrets file read ({} bytes)", content.len());
     let secrets: Vec<AccessSecret> = serde_json::from_str(&content)?;
-    tracing::info!("Loaded {} access secrets", secrets.len());
+    tracing::info!("{}", crate::config::loaded_access_secrets(secrets.len()));
     for (i, secret) in secrets.iter().enumerate() {
         tracing::trace!(
             "Secret #{}: name='{}', clusters={:?}, applications={:?}",
