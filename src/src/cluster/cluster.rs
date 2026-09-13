@@ -2300,7 +2300,7 @@ mod tests {
     /// short payload yields only the entries actually present in the buffer.
     #[tokio::test]
     async fn test_file_list_response_huge_count_short_payload() {
-        let db = sea_orm::Database::connect("sqlite::memory:")
+        let db = sea_orm::Database::connect(crate::test_support::SQLITE_MEMORY)
             .await
             .expect(crate::test_support::SQLITE_IN_MEMORY_CONNECTION_FAILED);
         let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
