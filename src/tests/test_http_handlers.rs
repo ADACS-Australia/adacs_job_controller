@@ -37,12 +37,6 @@ fn test_router_with_manager(
     create_router(common::make_test_state_with_secrets(db, manager, secrets))
 }
 
-/// Create a Router wired to a mock cluster manager with no clusters and default test JWT secrets.
-fn test_router() -> Router {
-    let manager = common::mock_cluster_manager_no_clusters();
-    test_router_with_manager(manager, test_jwt_secrets())
-}
-
 // ---------------------------------------------------------------------------
 // Authentication tests (apply to all routes)
 // ---------------------------------------------------------------------------
@@ -50,7 +44,8 @@ fn test_router() -> Router {
 /// Sends POST /job/apiv1/job/ with the given optional `Authorization` header
 /// value and asserts the response is 403 Forbidden.
 async fn assert_post_job_forbidden(auth_header: Option<&str>) {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let mut builder = Request::builder()
         .method("POST")
@@ -64,6 +59,21 @@ async fn assert_post_job_forbidden(auth_header: Option<&str>) {
         .oneshot(builder.body(Body::empty()).unwrap())
         .await
         .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+/// Sends a request with the given method and URI (no `Authorization` header)
+/// and asserts the response is 403 Forbidden.
+async fn assert_no_auth_forbidden(method: &str, uri: &str, body: Body, content_type: Option<&str>) {
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
+
+    let mut builder = Request::builder().method(method).uri(uri);
+    if let Some(ct) = content_type {
+        builder = builder.header("content-type", ct);
+    }
+    let resp = app.oneshot(builder.body(body).unwrap()).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
@@ -113,7 +123,8 @@ async fn test_auth_wrong_secret_returns_forbidden() {
 /// Verifies 400 Bad Request with body containing "does not have access".
 #[tokio::test]
 async fn test_create_job_no_cluster_access_returns_bad_request() {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
 
@@ -155,7 +166,8 @@ async fn test_create_job_no_cluster_access_returns_bad_request() {
 /// Verifies 400 response with body containing "Invalid cluster".
 #[tokio::test]
 async fn test_create_job_cluster_not_found_returns_bad_request() {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
 
@@ -187,34 +199,15 @@ async fn test_create_job_cluster_not_found_returns_bad_request() {
 // ---------------------------------------------------------------------------
 
 /// Tests that PATCH /job/apiv1/file/ with no auth returns 403 Forbidden.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends PATCH /job/apiv1/file/ with no Authorization header.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_list_files_no_auth_returns_forbidden() {
-    let app = test_router();
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("PATCH")
-                .uri("/job/apiv1/file/")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"path":"/project","recursive":true,"cluster":"ozstar","bundle":"test"}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_no_auth_forbidden(
+        "PATCH",
+        "/job/apiv1/file/",
+        Body::from(r#"{"path":"/project","recursive":true,"cluster":"ozstar","bundle":"test"}"#),
+        Some("application/json"),
+    )
+    .await;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,31 +215,9 @@ async fn test_list_files_no_auth_returns_forbidden() {
 // ---------------------------------------------------------------------------
 
 /// Tests that GET /job/apiv1/job/ with no auth returns 403 Forbidden.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends GET /job/apiv1/job/ with no Authorization header.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_get_jobs_no_auth_returns_forbidden() {
-    let app = test_router();
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/job/apiv1/job/")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_no_auth_forbidden("GET", "/job/apiv1/job/", Body::empty(), None).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,30 +225,15 @@ async fn test_get_jobs_no_auth_returns_forbidden() {
 // ---------------------------------------------------------------------------
 
 /// Tests that PUT /job/apiv1/file/upload/ with no auth returns 403 Forbidden.
-///
-/// # Setup
-/// Creates a minimal router with a mock manager.
-///
-/// # Act
-/// Sends PUT /job/apiv1/file/upload/ with no Authorization header.
-///
-/// # Assert
-/// Verifies the response status is 403 Forbidden.
 #[tokio::test]
 async fn test_upload_file_no_auth_returns_forbidden() {
-    let app = test_router();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri("/job/apiv1/file/upload/?jobId=1&cluster=ozstar&bundle=b&targetPath=/dest")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_no_auth_forbidden(
+        "PUT",
+        "/job/apiv1/file/upload/?jobId=1&cluster=ozstar&bundle=b&targetPath=/dest",
+        Body::empty(),
+        None,
+    )
+    .await;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +253,8 @@ async fn test_upload_file_no_auth_returns_forbidden() {
 #[tokio::test]
 async fn test_list_files_valid_auth_missing_cluster_returns_error() {
     // Authenticated but cluster not in secret -> should get BAD_REQUEST
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
@@ -335,7 +292,8 @@ async fn test_list_files_valid_auth_missing_cluster_returns_error() {
 /// Verifies the response is not 404 (indicates the route exists).
 #[tokio::test]
 async fn test_routes_exist_for_job_api() {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let resp = app
         .oneshot(
@@ -365,7 +323,8 @@ async fn test_routes_exist_for_job_api() {
 /// Verifies the response is not 404 (indicates the route exists).
 #[tokio::test]
 async fn test_routes_exist_for_file_api() {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let resp = app
         .oneshot(
@@ -394,7 +353,8 @@ async fn test_routes_exist_for_file_api() {
 /// Verifies the response is not 404 (indicates the route exists).
 #[tokio::test]
 async fn test_upload_route_exists() {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let resp = app
         .oneshot(
@@ -613,7 +573,8 @@ async fn test_cluster_get_cluster_details() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_file_api_path_regression() {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     for method in ["POST", "GET", "PATCH"] {
         let resp = app
@@ -649,7 +610,8 @@ async fn test_file_api_path_regression() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_file_upload_api_path_regression() {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     let resp = app
         .oneshot(
@@ -680,7 +642,8 @@ async fn test_file_upload_api_path_regression() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_job_api_path_regression() {
-    let app = test_router();
+    let manager = common::mock_cluster_manager_no_clusters();
+    let app = test_router_with_manager(manager, test_jwt_secrets());
 
     for method in ["GET", "POST", "PATCH", "DELETE"] {
         let resp = app
