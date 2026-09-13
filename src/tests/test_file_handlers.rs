@@ -33,7 +33,6 @@ use common::{
     online_cluster_no_messages, setup_test_db, test_cluster_config, test_jwt_secrets,
     test_jwt_secrets_multi, upload_cluster,
 };
-};
 
 use adacs_job_controller::protocol::types::JobStatus;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
