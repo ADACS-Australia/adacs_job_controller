@@ -41,15 +41,7 @@ fn default_connection_type() -> String {
 /// - The file cannot be read
 /// - The JSON is invalid
 pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
-<<<<<<< HEAD
-    tracing::debug!("Loading cluster configurations from: {}", path.display());
-    let content = std::fs::read_to_string(path)?;
-    tracing::trace!("Cluster config file read ({} bytes)", content.len());
-    let configs: Vec<ClusterConfig> = serde_json::from_str(&content)?;
-    tracing::info!("{}", crate::config::loaded_cluster_configs(configs.len()));
-=======
-    let configs: Vec<ClusterConfig> = super::load_json_file(path, "cluster configurations")?;
->>>>>>> 0c1836a (chore(gardener): Extract shared JSON file-loading boilerplate into generic load_json_file helper in config/mod.rs)
+    let configs: Vec<ClusterConfig> = super::load_json_file(path, "cluster configurations", "Cluster config file read ({} bytes)")?;
     for (i, config) in configs.iter().enumerate() {
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
