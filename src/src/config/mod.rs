@@ -25,6 +25,7 @@ use std::path::Path;
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or the JSON is invalid.
+#[allow(clippy::format_argument_must_be_a_string_literal)]
 pub fn load_json_file<T>(path: &Path, label: &str, trace_msg: &str) -> anyhow::Result<Vec<T>>
 where
     T: serde::de::DeserializeOwned,
