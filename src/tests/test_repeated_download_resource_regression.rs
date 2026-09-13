@@ -16,29 +16,15 @@ use axum::http::Request;
 use dashmap::DashMap;
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::manager::ClusterManager;
 use adacs_job_controller::cluster::traits::{ClusterManagerTrait, ClusterTrait};
-use adacs_job_controller::protocol::types::FileListState;
-use sea_orm::DatabaseConnection;
 
 use common::encode_test_jwt;
 use common::repeated_download::{
-    build_app, build_file_chunk, build_file_details, build_state, connect_ws, fresh_manager,
+    build_file_chunk, build_file_details, build_test_app, connect_ws, fresh_manager,
     insert_regression_file_download, insert_regression_job, send_msg, start_server,
     wait_for_cleanup,
 };
 use common::setup_test_db;
-
-/// Build the full app with a short `client_timeout_seconds` so the
-/// readiness/chunk timeouts fire quickly within the test.
-fn build_app_with_timeout(
-    db: DatabaseConnection,
-    manager: Arc<ClusterManager>,
-    file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>>,
-    http_timeout: u64,
-) -> axum::Router {
-    build_app(build_state(db, manager, file_list_map, Some(http_timeout)))
-}
 
 // ---------------------------------------------------------------------------
 // Repeated-download regression: manager-level deterministic core
@@ -178,13 +164,12 @@ async fn repeated_download_responsive_peer_returns_to_baseline() {
     // fire quickly within the test. The `HTTP` layer uses this value as
     // both the readiness timeout and the chunk inactivity timeout.
     let http_timeout = 2u64;
-    let state = build_state(
+    let app = build_test_app(
         db.clone(),
         Arc::clone(&manager),
         Arc::clone(&file_list_map),
         Some(http_timeout),
     );
-    let app = build_app(state);
     let (port, server_handle) = start_server(app).await;
 
     let cleanup_deadline = Duration::from_secs(
@@ -251,11 +236,11 @@ async fn repeated_download_responsive_peer_returns_to_baseline() {
         // focuses on the resource-invariant side: after the request
         // returns and the WS task ends, all maps must return to baseline.
         let token = encode_test_jwt(&serde_json::json!({"userId": 1, "application": "testapp"}));
-        let app = build_app_with_timeout(
+        let app = build_test_app(
             db.clone(),
             Arc::clone(&manager),
             Arc::clone(&file_list_map),
-            http_timeout,
+            Some(http_timeout),
         );
         let resp = app
             .oneshot(
@@ -358,13 +343,12 @@ async fn repeated_download_unresponsive_peer_returns_to_baseline() {
 
     let file_list_map = Arc::new(DashMap::new());
     let http_timeout = 2u64;
-    let state = build_state(
+    let app = build_test_app(
         db.clone(),
         Arc::clone(&manager),
         Arc::clone(&file_list_map),
         Some(http_timeout),
     );
-    let app = build_app(state);
     let (port, server_handle) = start_server(app).await;
 
     let grace_secs = adacs_job_controller::websocket::server::WS_CLOSE_HANDSHAKE_GRACE_SECONDS;
@@ -385,11 +369,11 @@ async fn repeated_download_unresponsive_peer_returns_to_baseline() {
         let (_ws_sink, _ws_stream) = connect_ws(port, &file_id).await;
 
         let token = encode_test_jwt(&serde_json::json!({"userId": 1, "application": "testapp"}));
-        let app = build_app_with_timeout(
+        let app = build_test_app(
             db.clone(),
             Arc::clone(&manager),
             Arc::clone(&file_list_map),
-            http_timeout,
+            Some(http_timeout),
         );
         let start = std::time::Instant::now();
         let resp = app
