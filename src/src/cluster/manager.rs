@@ -1114,6 +1114,9 @@ mod tests {
         ColumnTrait, ConnectionTrait, Database, DbBackend, EntityTrait, QueryFilter, Schema,
     };
 
+    const START_TASKS_RECONNECT_MSG: &str =
+        "start_tasks should trigger immediate reconnect attempt";
+
     fn test_configs() -> Vec<ClusterConfig> {
         vec![
             ClusterConfig {
@@ -1189,7 +1192,8 @@ mod tests {
         while get_uuid_for_cluster(&db, "cluster_b").await.is_none() {
             assert!(
                 std::time::Instant::now() < deadline,
-                "start_tasks should trigger immediate reconnect attempt"
+                "{}",
+                START_TASKS_RECONNECT_MSG
             );
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
@@ -1197,7 +1201,8 @@ mod tests {
         assert_eq!(
             manager.reconnect_attempts.get("cluster_b").map(|v| *v),
             Some(1),
-            "start_tasks should trigger immediate reconnect attempt"
+            "{}",
+            START_TASKS_RECONNECT_MSG
         );
     }
 
