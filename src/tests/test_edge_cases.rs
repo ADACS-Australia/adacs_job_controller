@@ -1279,7 +1279,7 @@ async fn test_download_without_force_download_sets_inline_disposition() {
     assert_eq!(resp.status(), StatusCode::OK);
     let content_disp = resp
         .headers()
-        .get("content-disposition")
+        .get(common::CONTENT_DISPOSITION_HEADER)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
@@ -1332,7 +1332,7 @@ async fn test_download_force_download_false_sets_inline_disposition() {
     assert_eq!(resp.status(), StatusCode::OK);
     let content_disp = resp
         .headers()
-        .get("content-disposition")
+        .get(common::CONTENT_DISPOSITION_HEADER)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
@@ -1439,7 +1439,7 @@ async fn assert_force_download_sets_attachment(
     assert_eq!(resp.status(), StatusCode::OK);
     let content_disp = resp
         .headers()
-        .get("content-disposition")
+        .get(common::CONTENT_DISPOSITION_HEADER)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
@@ -1519,7 +1519,7 @@ async fn test_download_sanitizes_unsafe_filename_in_disposition() {
     assert_eq!(resp.status(), StatusCode::OK);
     let content_disp = resp
         .headers()
-        .get("content-disposition")
+        .get(common::CONTENT_DISPOSITION_HEADER)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
