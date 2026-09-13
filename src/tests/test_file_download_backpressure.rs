@@ -20,23 +20,25 @@ use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
 use adacs_job_controller::protocol::types::Priority;
 
+const TEST_UUID: &str = "test_uuid";
+
 /// Build a `FILE_CHUNK` message with the given data.
 fn make_file_chunk_message(data: &[u8]) -> Message {
-    let mut msg = Message::new(FILE_CHUNK, Priority::Highest, "test_uuid");
+    let mut msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_UUID);
     msg.push_bytes(data);
     Message::from_bytes(msg.into_data())
 }
 
 /// Build a `FILE_DETAILS` message with the given file size.
 fn make_file_details_message(file_size: u64) -> Message {
-    let mut msg = Message::new(FILE_DETAILS, Priority::Highest, "test_uuid");
+    let mut msg = Message::new(FILE_DETAILS, Priority::Highest, TEST_UUID);
     msg.push_ulong(file_size);
     Message::from_bytes(msg.into_data())
 }
 
 /// Build a `FILE_ERROR` message.
 fn make_file_error_message(detail: &str) -> Message {
-    let mut msg = Message::new(FILE_ERROR, Priority::Highest, "test_uuid");
+    let mut msg = Message::new(FILE_ERROR, Priority::Highest, TEST_UUID);
     msg.push_string(detail);
     Message::from_bytes(msg.into_data())
 }
@@ -53,7 +55,7 @@ async fn make_file_download_cluster() -> (
     let db = common::make_db().await;
     let cluster = Cluster::new_file_download(
         test_cluster_config("test"),
-        "test_uuid".to_string(),
+        TEST_UUID.to_string(),
         Arc::clone(&download_state),
         Some(make_app_context(db)),
         pause_lock,
