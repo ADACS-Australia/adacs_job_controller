@@ -25,7 +25,11 @@ pub struct AccessSecret {
 /// - The file cannot be read
 /// - The JSON is invalid
 pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
-    let secrets: Vec<AccessSecret> = super::load_json_file(path, "access secrets", "Access secrets file read ({} bytes)")?;
+    let secrets: Vec<AccessSecret> = super::load_json_file(
+        path,
+        "access secrets",
+        "Access secrets file read ({} bytes)",
+    )?;
     for (i, secret) in secrets.iter().enumerate() {
         tracing::trace!(
             "Secret #{}: name='{}', clusters={:?}, applications={:?}",
