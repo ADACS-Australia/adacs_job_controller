@@ -603,21 +603,18 @@ async fn test_cluster_get_cluster_details() {
 
 /// Builds a no-clusters router and asserts the given endpoint is NOT 404 for each
 /// HTTP method. Used to guard against accidental API path changes (C++ compatibility).
-async fn assert_path_not_found(methods: &[&str], uri: &str) {
+async fn assert_path_not_found(methods: &[&str], uri: &str, content_type: Option<&str>) {
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
 
     for method in methods {
+        let mut builder = Request::builder().method(*method).uri(uri);
+        if let Some(ct) = content_type {
+            builder = builder.header("content-type", ct);
+        }
         let resp = app
             .clone()
-            .oneshot(
-                Request::builder()
-                    .method(*method)
-                    .uri(uri)
-                    .header("content-type", "application/json")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(builder.body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -641,7 +638,7 @@ async fn assert_path_not_found(methods: &[&str], uri: &str) {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_file_api_path_regression() {
-    assert_path_not_found(&["POST", "GET", "PATCH"], "/job/apiv1/file/").await;
+    assert_path_not_found(&["POST", "GET", "PATCH"], "/job/apiv1/file/", Some("application/json")).await;
 }
 
 /// Regression test: Verifies File Upload API uses `/job/apiv1/file/upload/` path.
@@ -656,7 +653,7 @@ async fn test_file_api_path_regression() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_file_upload_api_path_regression() {
-    assert_path_not_found(&["PUT"], "/job/apiv1/file/upload/").await;
+    assert_path_not_found(&["PUT"], "/job/apiv1/file/upload/", None).await;
 }
 
 /// Regression test: Verifies Job API uses `/job/apiv1/job/` path.
@@ -670,5 +667,5 @@ async fn test_file_upload_api_path_regression() {
 /// Verifies response is NOT 404 (route exists).
 #[tokio::test]
 async fn test_job_api_path_regression() {
-    assert_path_not_found(&["GET", "POST", "PATCH", "DELETE"], "/job/apiv1/job/").await;
+    assert_path_not_found(&["GET", "POST", "PATCH", "DELETE"], "/job/apiv1/job/", Some("application/json")).await;
 }
