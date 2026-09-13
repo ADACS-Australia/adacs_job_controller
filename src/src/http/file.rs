@@ -19,7 +19,6 @@ use crate::http::utils::{
     CONTENT_LENGTH_HEADER, INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error,
     failed_to_read_body_msg, filter_files, job_id_to_u32,
 };
-};
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
     RESUME_FILE_CHUNK_STREAM, UPLOAD_FILE,
