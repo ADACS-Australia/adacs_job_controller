@@ -2290,4 +2290,36 @@ mod tests {
         assert_eq!(locked.files[1].file_name, "dir_b");
         assert!(locked.data_ready);
     }
+
+    /// Verifies that a `FILE_LIST_ERROR` message records the error flag, the error
+    /// detail string, and sets `data_ready` on the matching `FileListState`.
+    #[tokio::test]
+    async fn test_file_list_error_records_detail_and_sets_data_ready() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+        let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+            Arc::new(DashMap::new());
+        let app_context = Arc::new(AppContext {
+            db,
+            file_list_map: Arc::clone(&file_list_map),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        let uuid = "file-list-error-uuid-1";
+        let state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+        file_list_map.insert(uuid.to_string(), Arc::clone(&state));
+
+        let mut msg = Message::new(FILE_LIST_ERROR, Priority::Lowest, "test_cluster");
+        msg.push_string(uuid);
+        msg.push_string("permission denied");
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_error(&mut msg).await;
+
+        let locked = state.lock().await;
+        assert!(locked.error);
+        assert_eq!(locked.error_details, "permission denied");
+        assert!(locked.data_ready);
+    }
 }
