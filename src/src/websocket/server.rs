@@ -554,6 +554,8 @@ mod tests {
         DownloadSession, DownloadSessionState, DownloadShutdownReason, FileDownloadState,
     };
 
+    const NOT_CLOSED_PANIC: &str = "session should be Closed, got ";
+
     #[test]
     fn test_generate_connection_id_unique() {
         let id1 = generate_connection_id();
@@ -678,7 +680,7 @@ mod tests {
                 connection_id: Some(7),
                 reason: DownloadShutdownReason::WebSocketError,
             } => {}
-            other => panic!("session should be Closed, got {other:?}"),
+            other => panic!("{NOT_CLOSED_PANIC}{other:?}"),
         }
     }
 
@@ -698,7 +700,7 @@ mod tests {
         drop(g);
         match session.state() {
             DownloadSessionState::Closed { .. } => {}
-            other => panic!("session should be Closed, got {other:?}"),
+            other => panic!("{NOT_CLOSED_PANIC}{other:?}"),
         }
     }
 
