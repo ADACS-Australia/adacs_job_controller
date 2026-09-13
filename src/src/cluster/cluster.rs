@@ -1260,6 +1260,24 @@ mod tests {
         assert!(cluster.role_string().contains("file download"));
     }
 
+    /// Verifies that `handle_file_error` records the error details and sets error,
+    /// data_ready, and error_details on the FileDownloadState.
+    #[tokio::test]
+    async fn test_handle_file_error_sets_download_error() {
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster =
+            Cluster::new_file_download(test_config(), "uuid-err".into(), state.clone(), None, lock);
+
+        let mut msg = Message::new(FILE_ERROR, Priority::Highest, "download failed");
+
+        cluster.handle_file_error(&mut msg).await;
+
+        assert!(state.error.load(Ordering::Relaxed));
+        assert!(state.data_ready.load(Ordering::Relaxed));
+        assert_eq!(*state.error_details.lock().await, "download failed");
+    }
+
     /// Verifies that `new_file_upload` creates a cluster with `FileUpload` role and correct UUID.
     #[test]
     fn test_cluster_file_upload_creation() {
