@@ -65,21 +65,15 @@ async fn assert_post_job_forbidden(auth_header: Option<&str>) {
 
 /// Sends a request with the given method and URI (no `Authorization` header)
 /// and asserts the response is 403 Forbidden.
-async fn assert_no_auth_forbidden(method: &str, uri: &str, body: Body) {
+async fn assert_no_auth_forbidden(method: &str, uri: &str, body: Body, content_type: Option<&str>) {
     let manager = common::mock_cluster_manager_no_clusters();
     let app = test_router_with_manager(manager, test_jwt_secrets());
 
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method(method)
-                .uri(uri)
-                .header("content-type", "application/json")
-                .body(body)
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let mut builder = Request::builder().method(method).uri(uri);
+    if let Some(ct) = content_type {
+        builder = builder.header("content-type", ct);
+    }
+    let resp = app.oneshot(builder.body(body).unwrap()).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
@@ -211,6 +205,7 @@ async fn test_list_files_no_auth_returns_forbidden() {
         "PATCH",
         "/job/apiv1/file/",
         Body::from(r#"{"path":"/project","recursive":true,"cluster":"ozstar","bundle":"test"}"#),
+        Some("application/json"),
     )
     .await;
 }
@@ -222,7 +217,7 @@ async fn test_list_files_no_auth_returns_forbidden() {
 /// Tests that GET /job/apiv1/job/ with no auth returns 403 Forbidden.
 #[tokio::test]
 async fn test_get_jobs_no_auth_returns_forbidden() {
-    assert_no_auth_forbidden("GET", "/job/apiv1/job/", Body::empty()).await;
+    assert_no_auth_forbidden("GET", "/job/apiv1/job/", Body::empty(), None).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +231,7 @@ async fn test_upload_file_no_auth_returns_forbidden() {
         "PUT",
         "/job/apiv1/file/upload/?jobId=1&cluster=ozstar&bundle=b&targetPath=/dest",
         Body::empty(),
+        None,
     )
     .await;
 }
