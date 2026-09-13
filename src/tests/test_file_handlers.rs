@@ -19,7 +19,7 @@ use adacs_job_controller::cluster::file_download::{DownloadSession, FileDownload
 use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
-use adacs_job_controller::http::file::UPLOAD_ID_KEY;
+use adacs_job_controller::http::file::{FILE_ID_KEY, UPLOAD_ID_KEY};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::http::utils::CONTENT_TYPE_HEADER;
 use adacs_job_controller::protocol::constants::*;
@@ -168,7 +168,9 @@ async fn test_create_file_download_single_path_returns_file_id() {
     )
     .unwrap();
 
-    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    let file_id = body[FILE_ID_KEY]
+        .as_str()
+        .expect("fileId should be present");
     assert!(uuid::Uuid::parse_str(file_id).is_ok());
 
     // Verify the record is in the DB
@@ -1831,7 +1833,9 @@ async fn test_create_download_app2_can_access_app1_job() {
             .unwrap(),
     )
     .unwrap();
-    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    let file_id = body[FILE_ID_KEY]
+        .as_str()
+        .expect("fileId should be present");
     assert!(uuid::Uuid::parse_str(file_id).is_ok());
 }
 
@@ -1921,7 +1925,9 @@ async fn test_create_download_no_jobid_success_with_cluster_and_bundle() {
             .unwrap(),
     )
     .unwrap();
-    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    let file_id = body[FILE_ID_KEY]
+        .as_str()
+        .expect("fileId should be present");
     assert!(uuid::Uuid::parse_str(file_id).is_ok());
 
     // Verify the record is in the DB with the resolved cluster/bundle and job=0
@@ -1981,7 +1987,9 @@ async fn test_create_download_no_jobid_with_zero_jobid_success() {
             .unwrap(),
     )
     .unwrap();
-    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    let file_id = body[FILE_ID_KEY]
+        .as_str()
+        .expect("fileId should be present");
     assert!(uuid::Uuid::parse_str(file_id).is_ok());
 
     // Verify the record is in the DB with the resolved cluster/bundle and job=0
@@ -2356,7 +2364,9 @@ async fn test_create_file_download_works_without_content_type_header() {
     )
     .unwrap();
 
-    let file_id = body["fileId"].as_str().expect("fileId should be present");
+    let file_id = body[FILE_ID_KEY]
+        .as_str()
+        .expect("fileId should be present");
     assert!(uuid::Uuid::parse_str(file_id).is_ok());
 }
 
