@@ -52,6 +52,24 @@ async fn wait_until_data_ready(
     .map_err(|_| ())
 }
 
+/// Wait until `data_ready` becomes true or `timeout` elapses, setting the
+/// session's error flag and details on timeout.
+async fn wait_for_data_ready_or_timeout(
+    data_ready: &std::sync::atomic::AtomicBool,
+    data_notify: &tokio::sync::Notify,
+    timeout: std::time::Duration,
+    error: &std::sync::atomic::AtomicBool,
+    error_details: &tokio::sync::Mutex<String>,
+) {
+    if wait_until_data_ready(data_ready, data_notify, timeout)
+        .await
+        .is_err()
+    {
+        error.store(true, Ordering::Release);
+        *error_details.lock().await = "Remote cluster took too long to respond.".to_string();
+    }
+}
+
 // ---- Request/Response types ----
 
 /// JSON body for `POST /job/apiv1/file/` — create file download records.
@@ -431,13 +449,14 @@ pub async fn download_file(
     };
 
     let timeout = std::time::Duration::from_secs(client_timeout_secs(&state));
-    let ready = wait_until_data_ready(&fd_state.data_ready, &fd_state.data_notify, timeout).await;
-
-    if ready.is_err() {
-        fd_state.error.store(true, Ordering::Release);
-        *fd_state.error_details.lock().await =
-            "Remote cluster took too long to respond.".to_string();
-    }
+    wait_for_data_ready_or_timeout(
+        &fd_state.data_ready,
+        &fd_state.data_notify,
+        timeout,
+        &fd_state.error,
+        &fd_state.error_details,
+    )
+    .await;
 
     if fd_state.error.load(Ordering::Acquire) {
         let details = fd_state.error_details.lock().await.clone();
@@ -729,13 +748,14 @@ pub async fn upload_file(
     ))?;
 
     let timeout = std::time::Duration::from_secs(client_timeout_secs(&state));
-    let ready = wait_until_data_ready(&fu_state.data_ready, &fu_state.data_notify, timeout).await;
-
-    if ready.is_err() {
-        fu_state.error.store(true, Ordering::Release);
-        *fu_state.error_details.lock().await =
-            "Remote cluster took too long to respond.".to_string();
-    }
+    wait_for_data_ready_or_timeout(
+        &fu_state.data_ready,
+        &fu_state.data_notify,
+        timeout,
+        &fu_state.error,
+        &fu_state.error_details,
+    )
+    .await;
 
     check_upload_error(&fu_state).await?;
 
