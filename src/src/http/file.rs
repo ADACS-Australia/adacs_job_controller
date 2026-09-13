@@ -16,8 +16,8 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, JOB_ID_EXCEEDS_MAX_MSG, app_no_cluster_access_msg, db_error,
-    failed_to_read_body_msg, filter_files, job_id_to_u32,
+    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, failed_to_read_body_msg,
+    filter_files, job_id_exceeds_max_msg, job_id_to_u32,
 };
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
@@ -412,7 +412,7 @@ pub async fn download_file(
             );
             return Err((
                 StatusCode::BAD_REQUEST,
-                JOB_ID_EXCEEDS_MAX_MSG.replace("{job_id}", &job_id.to_string()),
+                job_id_exceeds_max_msg(job_id),
             ));
         }
     };

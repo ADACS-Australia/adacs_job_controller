@@ -26,7 +26,9 @@ pub const CONTENT_TYPE_HEADER: &str = "content-type";
 
 /// Error message returned when a job ID exceeds the maximum value supported by
 /// the `u32` wire format. Shared across HTTP handlers.
-pub const JOB_ID_EXCEEDS_MAX_MSG: &str = "Job ID {job_id} exceeds maximum supported value";
+pub fn job_id_exceeds_max_msg(job_id: u64) -> String {
+    format!("Job ID {job_id} exceeds maximum supported value")
+}
 
 /// Lenient JSON extractor that accepts requests without Content-Type header.
 ///
@@ -148,7 +150,7 @@ pub fn job_id_to_u32(job_id: u64) -> Result<u32, (StatusCode, String)> {
     u32::try_from(job_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
-            JOB_ID_EXCEEDS_MAX_MSG.replace("{job_id}", &job_id.to_string()),
+            job_id_exceeds_max_msg(job_id),
         )
     })
 }
