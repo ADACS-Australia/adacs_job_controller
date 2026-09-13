@@ -1174,8 +1174,14 @@ impl ClusterTrait for Cluster {
     }
 
     fn send_ping(&self) {
-        if let Some(sender) = self.connection_rx.borrow().as_ref() {
-            let _ = sender.send(WsOutbound::Ping);
+        if let Some(sender) = self.connection_rx.borrow().as_ref()
+            && let Err(e) = sender.send(WsOutbound::Ping)
+        {
+            tracing::warn!(
+                "Cluster[{}]: Failed to send keep-alive Ping frame: {}",
+                self.name(),
+                e
+            );
         }
     }
 
@@ -1187,8 +1193,14 @@ impl ClusterTrait for Cluster {
         // peer then sees a real WebSocket Close (and EOF on the
         // TCP read) and can reconnect, instead of being stranded
         // on a half-open socket that still pongs.
-        if let Some(sender) = self.connection_rx.borrow().as_ref() {
-            let _ = sender.send(WsOutbound::Close);
+        if let Some(sender) = self.connection_rx.borrow().as_ref()
+            && let Err(e) = sender.send(WsOutbound::Close)
+        {
+            tracing::warn!(
+                "Cluster[{}]: Failed to send Close frame: {}",
+                self.name(),
+                e
+            );
         }
         let _ = self.connection_tx.send(None);
     }
