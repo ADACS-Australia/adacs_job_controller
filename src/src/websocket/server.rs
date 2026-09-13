@@ -13,6 +13,7 @@ use tokio::sync::Notify;
 use crate::app::AppState;
 use crate::cluster::file_download::{DownloadSession, DownloadSessionState};
 use crate::cluster::traits::ConnectionId;
+use crate::http::auth::BEARER_PREFIX;
 use crate::protocol::constants::{SERVER_READY, SYSTEM_SOURCE, UNKNOWN};
 use crate::protocol::message::Message;
 use crate::protocol::types::Priority;
@@ -69,8 +70,10 @@ fn extract_token_from_headers(headers: &HeaderMap) -> String {
         .and_then(|v| v.to_str().ok())
         .and_then(|header| {
             // Per RFC 6750 the auth scheme is case-insensitive, so accept any casing.
-            match header.get(..7) {
-                Some(prefix) if prefix.eq_ignore_ascii_case("Bearer ") => Some(&header[7..]),
+            match header.get(..BEARER_PREFIX.len()) {
+                Some(prefix) if prefix.eq_ignore_ascii_case(BEARER_PREFIX) => {
+                    Some(&header[BEARER_PREFIX.len()..])
+                }
                 _ => None,
             }
         })
@@ -576,7 +579,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
-            format!("Bearer {TEST_TOKEN}").parse().unwrap(),
+            format!("{BEARER_PREFIX}{TEST_TOKEN}").parse().unwrap(),
         );
         assert_eq!(extract_token_from_headers(&headers), TEST_TOKEN);
     }
