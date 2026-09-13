@@ -20,6 +20,7 @@ use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
 use adacs_job_controller::http::server::create_router;
+use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::types::{ClusterRole, FileInfo, FileListState};
 
 use common::{
@@ -790,7 +791,13 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     // Mark as complete
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
-    insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
+    insert_job_history(
+        &db,
+        job_id,
+        JobStatus::Completed as i32,
+        JOB_COMPLETION_SOURCE,
+    )
+    .await;
 
     // Pre-populate cache
     for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
@@ -942,7 +949,13 @@ async fn test_list_files_completed_job_populates_cache() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     // Mark as complete
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
-    insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
+    insert_job_history(
+        &db,
+        job_id,
+        JobStatus::Completed as i32,
+        JOB_COMPLETION_SOURCE,
+    )
+    .await;
 
     let file_list_map: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
         Arc::new(dashmap::DashMap::new());
@@ -2372,7 +2385,13 @@ async fn test_list_files_works_without_content_type_header() {
 
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
     insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
-    insert_job_history(&db, job_id, JobStatus::Completed as i32, "_job_completion_").await;
+    insert_job_history(
+        &db,
+        job_id,
+        JobStatus::Completed as i32,
+        JOB_COMPLETION_SOURCE,
+    )
+    .await;
 
     for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
         file_list_cache::ActiveModel {

@@ -1333,7 +1333,7 @@ async fn test_get_jobs_end_time_gt_includes_jobs_completed_after_cutoff() {
         &db,
         job1,
         JobStatus::Completed as i32,
-        "_job_completion_",
+        JOB_COMPLETION_SOURCE,
         ts_secs(200),
     )
     .await;
@@ -1345,7 +1345,7 @@ async fn test_get_jobs_end_time_gt_includes_jobs_completed_after_cutoff() {
         &db,
         job2,
         JobStatus::Completed as i32,
-        "_job_completion_",
+        JOB_COMPLETION_SOURCE,
         ts_secs(800),
     )
     .await;
@@ -1379,7 +1379,7 @@ async fn test_get_jobs_end_time_lt_includes_jobs_completed_before_cutoff() {
         &db,
         job1,
         JobStatus::Completed as i32,
-        "_job_completion_",
+        JOB_COMPLETION_SOURCE,
         ts_secs(200),
     )
     .await;
@@ -1390,7 +1390,7 @@ async fn test_get_jobs_end_time_lt_includes_jobs_completed_before_cutoff() {
         &db,
         job2,
         JobStatus::Completed as i32,
-        "_job_completion_",
+        JOB_COMPLETION_SOURCE,
         ts_secs(800),
     )
     .await;
@@ -1452,7 +1452,7 @@ async fn test_get_jobs_end_time_gt_excludes_job_at_exact_boundary() {
         &db,
         job1,
         JobStatus::Completed as i32,
-        "_job_completion_",
+        JOB_COMPLETION_SOURCE,
         ts_secs(500),
     )
     .await;
@@ -1462,7 +1462,7 @@ async fn test_get_jobs_end_time_gt_excludes_job_at_exact_boundary() {
         &db,
         job2,
         JobStatus::Completed as i32,
-        "_job_completion_",
+        JOB_COMPLETION_SOURCE,
         ts_secs(501),
     )
     .await;
@@ -1488,7 +1488,7 @@ async fn test_get_jobs_end_time_lt_excludes_job_at_exact_boundary() {
         &db,
         job1,
         JobStatus::Completed as i32,
-        "_job_completion_",
+        JOB_COMPLETION_SOURCE,
         ts_secs(499),
     )
     .await;
@@ -1498,7 +1498,7 @@ async fn test_get_jobs_end_time_lt_excludes_job_at_exact_boundary() {
         &db,
         job2,
         JobStatus::Completed as i32,
-        "_job_completion_",
+        JOB_COMPLETION_SOURCE,
         ts_secs(500),
     )
     .await;
