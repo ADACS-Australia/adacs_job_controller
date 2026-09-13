@@ -16,6 +16,13 @@ use adacs_job_controller::protocol::types::Priority;
 
 use common::mock_cluster_capturing;
 
+/// Builds a `DB_RESPONSE` message with a `db_request_id` and `SYSTEM_SOURCE`.
+fn make_db_response(db_request_id: u32) -> Message {
+    let mut response = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
+    response.push_uint(db_request_id);
+    response
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch routing: known DB message IDs return true
 // ---------------------------------------------------------------------------
@@ -147,8 +154,7 @@ fn test_db_bundle_create_or_update_message_construction() {
 fn test_db_response_format_with_result_count() {
     // Verify the response format: DB_RESPONSE, db_request_id, then results
     let db_request_id: u32 = 42;
-    let mut response = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
-    response.push_uint(db_request_id);
+    let mut response = make_db_response(db_request_id);
     response.push_uint(2); // 2 results
 
     // Add two ClusterJob results
@@ -212,8 +218,7 @@ fn test_db_response_format_with_result_count() {
 /// The parsed message ID, `db_request_id`, and result count are all correct.
 #[test]
 fn test_db_response_format_empty_result() {
-    let mut response = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
-    response.push_uint(999); // db_request_id
+    let mut response = make_db_response(999);
     response.push_uint(0); // no results
 
     let mut parsed = Message::from_bytes(response.into_data());
@@ -304,8 +309,7 @@ async fn test_mock_cluster_captures_sent_messages() {
     let (mock, sent) = mock_cluster_capturing("test_cluster");
 
     // Simulate what the DB dispatcher would do: create and send a response
-    let mut response = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
-    response.push_uint(42);
+    let mut response = make_db_response(42);
     response.push_uint(0);
 
     mock.send_message(response).await;
@@ -331,8 +335,7 @@ async fn test_mock_cluster_multiple_messages() {
     let (mock, sent) = mock_cluster_capturing("test_cluster");
 
     for i in 0..5 {
-        let mut msg = Message::new(DB_RESPONSE, Priority::Highest, SYSTEM_SOURCE);
-        msg.push_uint(i);
+        let msg = make_db_response(i);
         mock.send_message(msg).await;
     }
 
