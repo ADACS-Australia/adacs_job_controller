@@ -1091,20 +1091,20 @@ async fn resolve_cluster_bundle(
     } else {
         let cluster = cluster_param
             .filter(|s| !s.is_empty())
-            .ok_or((StatusCode::BAD_REQUEST, "Bad request".to_string()))?;
+            .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
         let bundle = bundle_param
             .filter(|s| !s.is_empty())
-            .ok_or((StatusCode::BAD_REQUEST, "Bad request".to_string()))?;
+            .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
 
         if !auth.secret.clusters.iter().any(|c| c == cluster) {
-            return Err((StatusCode::BAD_REQUEST, "Bad request".to_string()));
+            return Err((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()));
         }
 
         // Verify the cluster actually exists
         state
             .cluster_manager
             .get_cluster_by_name(cluster)
-            .ok_or((StatusCode::BAD_REQUEST, "Bad request".to_string()))?;
+            .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
 
         Ok((cluster.to_string(), bundle.to_string()))
     }
