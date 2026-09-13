@@ -20,6 +20,7 @@ use crate::config::settings::{
     CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS, CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS,
     CLUSTER_MANAGER_PING_INTERVAL_SECONDS,
 };
+use crate::protocol::constants::UNKNOWN;
 use crate::protocol::types::ClusterRole;
 
 type FileDownloadAdmissionContext = (
@@ -633,7 +634,7 @@ impl ClusterManager {
             let cluster_name = self
                 .connection_map
                 .get(&conn_id)
-                .map_or_else(|| "unknown".to_string(), |c| c.name());
+                .map_or_else(|| UNKNOWN.to_string(), |c| c.name());
             tracing::warn!(
                 "WS: Cluster {} timed out waiting for pong (conn_id={}). Disconnecting.",
                 cluster_name,
@@ -952,7 +953,7 @@ impl ClusterManagerTrait for ClusterManager {
             let cluster_name = self
                 .connection_map
                 .get(&conn_id)
-                .map_or_else(|| "unknown".to_string(), |c| c.name());
+                .map_or_else(|| UNKNOWN.to_string(), |c| c.name());
             tracing::trace!(
                 "WS: Cluster {} had {}ms latency.",
                 cluster_name,
