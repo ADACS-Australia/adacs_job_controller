@@ -29,6 +29,9 @@ use crate::utils::job_source_key;
 const ERR_JOB_INVALID_STATE: &str = "Job is in invalid state";
 const ERR_CLUSTER_DID_NOT_EXIST: &str = "Cluster for job did not exist";
 
+/// JSON response key for a job's internal ID.
+const JOB_ID_KEY: &str = "jobId";
+
 // ---- Request/Response types ----
 
 /// JSON body for `POST /job/apiv1/job/` — submit a new job to a cluster.
@@ -244,7 +247,7 @@ pub async fn create_job(
         job_id,
         body.cluster
     );
-    Ok(Json(serde_json::json!({ "jobId": job_id })))
+    Ok(Json(serde_json::json!({ JOB_ID_KEY: job_id })))
 }
 
 // ---- GET /job/apiv1/job/ ----
@@ -445,7 +448,7 @@ pub async fn get_jobs(
                 hs.iter()
                     .map(|h| {
                         serde_json::json!({
-                            "jobId": h.job_id,
+                            JOB_ID_KEY: h.job_id,
                             "timestamp": h.timestamp.format("%Y-%m-%d %H:%M:%S%.6f UTC").to_string(),
                             "what": h.what,
                             "state": h.state,
