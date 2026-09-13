@@ -16,7 +16,7 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, ensure_cluster_access,
+    INVALID_CLUSTER_MSG, db_error, ensure_cluster_access,
     failed_to_read_body_msg, filter_files, job_id_to_u32,
 };
 use crate::protocol::constants::{

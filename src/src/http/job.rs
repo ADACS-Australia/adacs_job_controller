@@ -17,7 +17,7 @@ use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, ensure_cluster_access, job_id_to_u32,
+    INVALID_CLUSTER_MSG, db_error, ensure_cluster_access, job_id_to_u32,
     parse_csv_u64, parse_job_steps,
 };
 use crate::protocol::constants::{
