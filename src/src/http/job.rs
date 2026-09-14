@@ -208,7 +208,14 @@ pub async fn create_job(
         );
         let source = job_source_key(job_id, &body.cluster);
         let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, &source);
-        msg.push_uint(job_id_to_u32(job_id as u64)?);
+        let Ok(job_id_u32) = job_id_to_u32(job_id as u64) else {
+            tracing::warn!(
+                "HTTP: Job {} created but ID exceeds u32 wire range - skipping submit",
+                job_id
+            );
+            return Ok(Json(serde_json::json!({ JOB_ID_KEY: job_id })));
+        };
+        msg.push_uint(job_id_u32);
         msg.push_string(&body.bundle);
         msg.push_string(&body.parameters);
         tracing::trace!(
@@ -495,6 +502,13 @@ async fn record_job_transition(
         (intermediate_state as i32, intermediate_details.to_string())
     };
 
+    let send_wire = !pending && cluster_obj.is_online();
+    let job_id_u32 = if send_wire {
+        Some(job_id_to_u32(job_id)?)
+    } else {
+        None
+    };
+
     job_history::ActiveModel {
         job_id: Set(job.id),
         timestamp: Set(chrono::Utc::now().naive_utc()),
@@ -507,10 +521,10 @@ async fn record_job_transition(
     .await
     .map_err(db_error)?;
 
-    if !pending && cluster_obj.is_online() {
+    if let Some(job_id_u32) = job_id_u32 {
         let source = job_source_key(job_id, &job.cluster);
         let mut msg = Message::new(wire_msg_id, Priority::Medium, &source);
-        msg.push_uint(job_id_to_u32(job_id)?);
+        msg.push_uint(job_id_u32);
         cluster_obj.send_message(msg).await;
     }
 

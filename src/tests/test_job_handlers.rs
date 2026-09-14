@@ -238,10 +238,10 @@ async fn test_create_job_bundle_too_long_returns_400() {
 /// Sends POST /job/apiv1/job/ with valid auth.
 ///
 /// # Assert
-/// Verifies 400 Bad Request with body containing "exceeds maximum supported value",
-/// and no `SUBMIT_JOB` WS message was sent.
+/// Verifies 200 OK returning the created job ID (the job exists even though its
+/// ID exceeds the u32 wire range), and no `SUBMIT_JOB` WS message was sent.
 #[tokio::test]
-async fn test_create_job_job_id_exceeding_u32_returns_400() {
+async fn test_create_job_job_id_exceeding_u32_returns_200() {
     let db = setup_test_db().await;
     insert_test_job_with_id(&db, i64::from(u32::MAX), "ozstar", "b", "testapp").await;
 
@@ -255,15 +255,12 @@ async fn test_create_job_job_id_exceeding_u32_returns_400() {
     )
     .await;
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::OK);
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .unwrap();
-    assert!(
-        String::from_utf8_lossy(&body).contains("exceeds maximum supported value"),
-        "body: {}",
-        String::from_utf8_lossy(&body)
-    );
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["jobId"], serde_json::json!(i64::from(u32::MAX) + 1));
     assert!(sent.lock().unwrap().is_empty());
 }
 
@@ -595,7 +592,9 @@ async fn test_cancel_job_not_found_returns_400() {
 /// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
 ///
 /// # Assert
-/// Verifies 400 Bad Request with body containing "exceeds maximum supported value".
+/// Verifies 400 Bad Request with body containing "exceeds maximum supported value",
+/// and that no new job-history row was written (the wire message is skipped before
+/// any DB mutation).
 #[tokio::test]
 async fn test_cancel_job_job_id_exceeding_u32_returns_400() {
     let db = setup_test_db().await;
@@ -611,6 +610,13 @@ async fn test_cancel_job_job_id_exceeding_u32_returns_400() {
         body.contains("exceeds maximum supported value"),
         "body: {body}"
     );
+
+    let histories = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(job_id))
+        .all(&db)
+        .await
+        .unwrap();
+    assert_eq!(histories.len(), 1, "no new history row should be written");
 }
 
 /// Tests that cancelling a job whose cluster is not found by the manager returns 400.
