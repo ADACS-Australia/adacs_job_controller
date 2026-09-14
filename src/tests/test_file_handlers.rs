@@ -1522,28 +1522,14 @@ async fn test_upload_file_job_id_exceeding_u32_returns_400() {
     insert_test_job_with_id(&db, huge, "ozstar", "b", "testapp").await;
 
     let cluster_main = Arc::new(online_cluster_no_messages());
-    let upload_cluster = {
-        let mut c = MockClusterTrait::new();
-        c.expect_name().returning(|| "ozstar-up".to_string());
-        c.expect_is_online().returning(|| true);
-        c.expect_role().returning(|| ClusterRole::Master);
-        c.expect_role_string().returning(|| "master".to_string());
-        c.expect_cluster_details()
-            .returning(|| test_cluster_config("ozstar"));
-        c.expect_send_message().returning(|_| Box::pin(async {}));
-        Arc::new(c)
-    };
-
-    let uc = Arc::clone(&upload_cluster);
     let mut manager = MockClusterManagerTrait::new();
     let cm = Arc::clone(&cluster_main);
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(cm.clone()));
-    manager.expect_create_file_upload().returning(move |_, _| {
-        let c = Arc::clone(&uc);
-        Box::pin(async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> })
-    });
+    // The job ID is validated before the upload session is created, so the
+    // overflow path must never create (and thus never leak) an upload session.
+    manager.expect_create_file_upload().never();
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
