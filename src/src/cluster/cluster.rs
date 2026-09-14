@@ -1270,9 +1270,11 @@ impl Cluster {
 mod tests {
     use super::*;
 
+    const TEST_CLUSTER: &str = "test_cluster";
+
     fn test_config() -> ClusterConfig {
         ClusterConfig {
-            name: "test_cluster".to_string(),
+            name: TEST_CLUSTER.to_string(),
             host: "localhost".to_string(),
             username: "user".to_string(),
             path: "/tmp".to_string(),
@@ -1292,7 +1294,7 @@ mod tests {
     #[test]
     fn test_cluster_creation() {
         let cluster = make_test_cluster();
-        assert_eq!(cluster.name(), "test_cluster");
+        assert_eq!(cluster.name(), TEST_CLUSTER);
         assert!(!cluster.is_online());
         assert_eq!(cluster.role(), ClusterRole::Master);
     }
@@ -2315,7 +2317,7 @@ mod tests {
         let state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
         file_list_map.insert(uuid.to_string(), Arc::clone(&state));
 
-        let mut msg = Message::new(FILE_LIST, Priority::Lowest, "test_cluster");
+        let mut msg = Message::new(FILE_LIST, Priority::Lowest, TEST_CLUSTER);
         msg.push_string(uuid);
         msg.push_uint(u32::MAX);
         msg.push_string("file_a.txt");
@@ -2354,7 +2356,7 @@ mod tests {
         let state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
         file_list_map.insert(uuid.to_string(), Arc::clone(&state));
 
-        let mut msg = Message::new(FILE_LIST_ERROR, Priority::Lowest, "test_cluster");
+        let mut msg = Message::new(FILE_LIST_ERROR, Priority::Lowest, TEST_CLUSTER);
         msg.push_string(uuid);
         msg.push_string("permission denied");
         let mut msg = Message::from_bytes(msg.into_data());
@@ -2386,7 +2388,7 @@ mod tests {
         );
 
         let chunk = vec![1u8, 2, 3, 4];
-        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, "test_cluster");
+        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
         msg.push_bytes(&chunk);
         let mut msg = Message::from_bytes(msg.into_data());
 
@@ -2421,7 +2423,7 @@ mod tests {
         }
 
         let chunk = vec![9u8, 8, 7];
-        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, "test_cluster");
+        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
         msg.push_bytes(&chunk);
         let mut msg = Message::from_bytes(msg.into_data());
 
@@ -2470,7 +2472,7 @@ mod tests {
             id: Set(42),
             user: Set(1),
             parameters: Set("params".to_string()),
-            cluster: Set("test_cluster".to_string()),
+            cluster: Set(TEST_CLUSTER.to_string()),
             bundle: Set("bundle".to_string()),
             application: Set("testapp".to_string()),
         }
@@ -2492,7 +2494,7 @@ mod tests {
         cluster.start_tasks();
 
         // Build an UPDATE_JOB message with JOB_COMPLETION_SOURCE.
-        let mut msg = Message::new(UPDATE_JOB, Priority::Highest, "test_cluster");
+        let mut msg = Message::new(UPDATE_JOB, Priority::Highest, TEST_CLUSTER);
         msg.push_uint(42);
         msg.push_string(JOB_COMPLETION_SOURCE);
         msg.push_uint(JobStatus::Completed as u32);
