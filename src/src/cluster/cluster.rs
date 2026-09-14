@@ -1329,6 +1329,31 @@ mod tests {
         assert_eq!(*state.error_details.lock().await, "download failed");
     }
 
+    /// Verifies that `handle_file_details` stores the advertised file size and sets
+    /// received_data and data_ready on the FileDownloadState.
+    #[test]
+    fn test_handle_file_details_sets_download_state() {
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster = Cluster::new_file_download(
+            test_config(),
+            "uuid-details".into(),
+            state.clone(),
+            None,
+            lock,
+        );
+
+        let mut msg = Message::new(FILE_DETAILS, Priority::Highest, "test_cluster");
+        msg.push_ulong(42);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_details(&mut msg);
+
+        assert_eq!(state.file_size.load(Ordering::Relaxed), 42);
+        assert!(state.received_data.load(Ordering::Relaxed));
+        assert!(state.data_ready.load(Ordering::Relaxed));
+    }
+
     /// Verifies that `new_file_upload` creates a cluster with `FileUpload` role and correct UUID.
     #[test]
     fn test_cluster_file_upload_creation() {
