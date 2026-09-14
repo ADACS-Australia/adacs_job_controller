@@ -1329,6 +1329,35 @@ mod tests {
         assert_eq!(*state.error_details.lock().await, "download failed");
     }
 
+    /// Verifies that `handle_server_ready` sets `data_ready` on the FileUploadState.
+    #[test]
+    fn test_handle_server_ready_sets_data_ready() {
+        let state = Arc::new(FileUploadState::new());
+        let cluster =
+            Cluster::new_file_upload(test_config(), "uuid-ready".into(), state.clone(), None);
+
+        cluster.handle_server_ready();
+
+        assert!(state.data_ready.load(Ordering::Relaxed));
+    }
+
+    /// Verifies that `handle_file_upload_error` records the error details and sets
+    /// error, error_details, and data_ready on the FileUploadState.
+    #[tokio::test]
+    async fn test_handle_file_upload_error_records_details() {
+        let state = Arc::new(FileUploadState::new());
+        let cluster =
+            Cluster::new_file_upload(test_config(), "uuid-uerr".into(), state.clone(), None);
+
+        let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Highest, "upload failed");
+
+        cluster.handle_file_upload_error(&mut msg).await;
+
+        assert!(state.error.load(Ordering::Relaxed));
+        assert!(state.data_ready.load(Ordering::Relaxed));
+        assert_eq!(*state.error_details.lock().await, "upload failed");
+    }
+
     /// Verifies that `handle_file_details` stores the advertised file size and sets
     /// received_data and data_ready on the FileDownloadState.
     #[test]
