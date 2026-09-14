@@ -1364,6 +1364,31 @@ mod tests {
         assert!(cluster.role_string().contains("file upload"));
     }
 
+    /// Verifies that `handle_message` routes `SERVER_READY` on a non-FileUpload
+    /// cluster through the role-mismatch guard without setting upload state.
+    #[tokio::test]
+    async fn test_handle_message_server_ready_guards_non_file_upload() {
+        let cluster = make_test_cluster();
+        let msg = Message::new(SERVER_READY, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        assert!(cluster.file_upload_state.is_none());
+    }
+
+    /// Verifies that `handle_message` routes `FILE_UPLOAD_COMPLETE` on a
+    /// non-FileUpload cluster through the role-mismatch guard without setting
+    /// upload state.
+    #[tokio::test]
+    async fn test_handle_message_file_upload_complete_guards_non_file_upload() {
+        let cluster = make_test_cluster();
+        let msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        assert!(cluster.file_upload_state.is_none());
+    }
+
     /// Verifies that `queue_message` increments `queued_message_size` by the payload length.
     #[tokio::test]
     async fn test_queue_message_and_size() {
