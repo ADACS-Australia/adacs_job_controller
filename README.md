@@ -70,7 +70,7 @@ Make sure `.env` is configured and MySQL is accessible.
 
 ### Running Tests
 
-The test suite (~767 tests) uses in-memory SQLite and must run sequentially to avoid race conditions with shared global state.
+The test suite uses in-memory SQLite and must run sequentially to avoid race conditions with shared global state.
 
 ```bash
 # Run all tests
