@@ -2439,6 +2439,33 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // FILE_UPLOAD_COMPLETE handling
+    // -----------------------------------------------------------------------
+
+    /// Verifies that `handle_file_upload_complete` sets the `complete` and
+    /// `data_ready` flags on the matching `FileUploadState`.
+    #[test]
+    fn test_handle_file_upload_complete_sets_complete_and_data_ready() {
+        let state = Arc::new(FileUploadState::new());
+        let cluster =
+            Cluster::new_file_upload(test_config(), "uuid-upload".into(), state.clone(), None);
+
+        cluster.handle_file_upload_complete();
+
+        assert!(state.complete.load(Ordering::Relaxed));
+        assert!(state.data_ready.load(Ordering::Relaxed));
+    }
+
+    /// Verifies that `handle_file_upload_complete` returns without panicking when
+    /// there is no registered `FileUploadState`.
+    #[test]
+    fn test_handle_file_upload_complete_no_state_returns() {
+        let cluster = make_test_cluster();
+
+        cluster.handle_file_upload_complete();
+    }
+
+    // -----------------------------------------------------------------------
     // UPDATE_JOB handling
     // -----------------------------------------------------------------------
 
