@@ -1354,6 +1354,49 @@ mod tests {
         assert!(state.data_ready.load(Ordering::Relaxed));
     }
 
+    /// Verifies that `handle_file_error` returns without panicking or mutating
+    /// state when there is no registered `FileDownloadState`.
+    #[tokio::test]
+    async fn test_handle_file_error_no_state_returns() {
+        let cluster = make_test_cluster();
+
+        let mut msg = Message::new(FILE_ERROR, Priority::Highest, "download failed");
+        cluster.handle_file_error(&mut msg).await;
+
+        assert!(cluster.file_download_state.is_none());
+    }
+
+    /// Verifies that `handle_file_details` returns without panicking or mutating
+    /// state when there is no registered `FileDownloadState`.
+    #[test]
+    fn test_handle_file_details_no_state_returns() {
+        let cluster = make_test_cluster();
+
+        let mut msg = Message::new(FILE_DETAILS, Priority::Highest, TEST_CLUSTER);
+        msg.push_ulong(42);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_details(&mut msg);
+
+        assert!(cluster.file_download_state.is_none());
+    }
+
+    /// Verifies that `handle_file_chunk` returns without panicking or mutating
+    /// state when there is no registered `FileDownloadState`.
+    #[tokio::test]
+    async fn test_handle_file_chunk_no_state_returns() {
+        let cluster = make_test_cluster();
+
+        let chunk = vec![1u8, 2, 3, 4];
+        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
+        msg.push_bytes(&chunk);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_chunk(&mut msg).await;
+
+        assert!(cluster.file_download_state.is_none());
+    }
+
     /// Verifies that `new_file_upload` creates a cluster with `FileUpload` role and correct UUID.
     #[test]
     fn test_cluster_file_upload_creation() {
