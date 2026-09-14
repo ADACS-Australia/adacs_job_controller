@@ -721,6 +721,8 @@ pub async fn upload_file(
     let uuid = generate_uuid();
     tracing::trace!("HTTP: Generated upload session UUID: {}", uuid);
 
+    let job_id_u32 = job_id_to_u32(params.job_id.unwrap_or(0))?;
+
     tracing::debug!("HTTP: Creating file upload session");
     let upload_cluster = state
         .cluster_manager
@@ -729,7 +731,7 @@ pub async fn upload_file(
 
     tracing::trace!("HTTP: Sending UPLOAD_FILE message to cluster");
     let mut msg = Message::new(UPLOAD_FILE, Priority::Highest, &uuid);
-    msg.push_uint(job_id_to_u32(params.job_id.unwrap_or(0))?);
+    msg.push_uint(job_id_u32);
     msg.push_string(&s_bundle);
     msg.push_string(&target_path);
     msg.push_ulong(content_length);
@@ -1005,13 +1007,14 @@ async fn request_file_list(
     recursive: bool,
 ) -> Result<Vec<FileInfo>, (StatusCode, String)> {
     let uuid = generate_uuid();
+    let job_id_u32 = job_id_to_u32(job_id)?;
     let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
     state
         .file_list_map
         .insert(uuid.clone(), Arc::clone(&fl_state));
 
     let mut msg = Message::new(FILE_LIST, Priority::Highest, &uuid);
-    msg.push_uint(job_id_to_u32(job_id)?);
+    msg.push_uint(job_id_u32);
     msg.push_string(&uuid);
     msg.push_string(bundle);
     msg.push_string(path);
