@@ -404,17 +404,14 @@ pub async fn download_file(
         .map(|trigger| PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError));
 
     // Validate the job ID before sending the DOWNLOAD_FILE message.
-    let job_id_u32 = match u32::try_from(job_id) {
+    let job_id_u32 = match job_id_to_u32(job_id) {
         Ok(value) => value,
-        Err(_) => {
+        Err((_, msg)) => {
             fire_guard(
                 &mut pre_response_guard,
                 DownloadShutdownReason::ResponseError,
             );
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("Job ID {job_id} exceeds maximum supported value"),
-            ));
+            return Err((StatusCode::BAD_REQUEST, msg));
         }
     };
 
