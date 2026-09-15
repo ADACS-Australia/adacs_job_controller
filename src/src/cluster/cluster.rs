@@ -1088,7 +1088,12 @@ impl ClusterTrait for Cluster {
             SERVER_READY => {
                 warn_role_mismatch(&self.name(), &self.role, "SERVER_READY");
             }
-            FILE_UPLOAD_ERROR => self.handle_file_upload_error(&mut message).await,
+            FILE_UPLOAD_ERROR if self.role == ClusterRole::FileUpload => {
+                self.handle_file_upload_error(&mut message).await;
+            }
+            FILE_UPLOAD_ERROR => {
+                warn_role_mismatch(&self.name(), &self.role, "FILE_UPLOAD_ERROR");
+            }
             FILE_UPLOAD_COMPLETE if self.role == ClusterRole::FileUpload => {
                 self.handle_file_upload_complete();
             }
@@ -1455,6 +1460,19 @@ mod tests {
     async fn test_handle_message_file_upload_complete_guards_non_file_upload() {
         let cluster = make_test_cluster();
         let msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        assert!(cluster.file_upload_state.is_none());
+    }
+
+    /// Verifies that `handle_message` routes `FILE_UPLOAD_ERROR` on a
+    /// non-FileUpload cluster through the role-mismatch guard without setting
+    /// upload state.
+    #[tokio::test]
+    async fn test_handle_message_file_upload_error_guards_non_file_upload() {
+        let cluster = make_test_cluster();
+        let msg = Message::new(FILE_UPLOAD_ERROR, Priority::Highest, TEST_CLUSTER);
 
         cluster.handle_message(msg).await;
 
