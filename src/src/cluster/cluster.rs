@@ -27,12 +27,13 @@ use crate::protocol::types::{ClusterRole, FileInfo, FileListState, JobStatus, Pr
 use crate::utils::job_source_key;
 use crate::utils::uuid::generate_uuid;
 
-fn warn_role_mismatch(name: &str, role: &ClusterRole, message_name: &str) {
+fn warn_role_mismatch(name: &str, role: &ClusterRole, expected: &ClusterRole, message_name: &str) {
     tracing::warn!(
-        "Cluster[{}]: {} received but role is {}, expected file upload",
+        "Cluster[{}]: {} received but role is {}, expected {}",
         name,
         message_name,
-        role
+        role,
+        expected
     );
 }
 
@@ -1084,23 +1085,63 @@ impl ClusterTrait for Cluster {
             FILE_LIST_ERROR => self.handle_file_list_error(&mut message).await,
 
             // FileDownload messages
-            FILE_CHUNK => self.handle_file_chunk(&mut message).await,
-            FILE_DETAILS => self.handle_file_details(&mut message),
-            FILE_ERROR => self.handle_file_error(&mut message).await,
+            FILE_CHUNK if self.role == ClusterRole::FileDownload => {
+                self.handle_file_chunk(&mut message).await;
+            }
+            FILE_CHUNK => {
+                warn_role_mismatch(
+                    &self.name(),
+                    &self.role,
+                    &ClusterRole::FileDownload,
+                    "FILE_CHUNK",
+                );
+            }
+            FILE_DETAILS if self.role == ClusterRole::FileDownload => {
+                self.handle_file_details(&mut message);
+            }
+            FILE_DETAILS => {
+                warn_role_mismatch(
+                    &self.name(),
+                    &self.role,
+                    &ClusterRole::FileDownload,
+                    "FILE_DETAILS",
+                );
+            }
+            FILE_ERROR if self.role == ClusterRole::FileDownload => {
+                self.handle_file_error(&mut message).await;
+            }
+            FILE_ERROR => {
+                warn_role_mismatch(
+                    &self.name(),
+                    &self.role,
+                    &ClusterRole::FileDownload,
+                    "FILE_ERROR",
+                );
+            }
 
             // FileUpload messages
             SERVER_READY if self.role == ClusterRole::FileUpload => {
                 self.handle_server_ready();
             }
             SERVER_READY => {
-                warn_role_mismatch(&self.name(), &self.role, "SERVER_READY");
+                warn_role_mismatch(
+                    &self.name(),
+                    &self.role,
+                    &ClusterRole::FileUpload,
+                    "SERVER_READY",
+                );
             }
             FILE_UPLOAD_ERROR => self.handle_file_upload_error(&mut message).await,
             FILE_UPLOAD_COMPLETE if self.role == ClusterRole::FileUpload => {
                 self.handle_file_upload_complete();
             }
             FILE_UPLOAD_COMPLETE => {
-                warn_role_mismatch(&self.name(), &self.role, "FILE_UPLOAD_COMPLETE");
+                warn_role_mismatch(
+                    &self.name(),
+                    &self.role,
+                    &ClusterRole::FileUpload,
+                    "FILE_UPLOAD_COMPLETE",
+                );
             }
 
             other => {
@@ -1490,6 +1531,42 @@ mod tests {
         cluster.handle_message(msg).await;
 
         assert!(cluster.file_upload_state.is_none());
+    }
+
+    /// Verifies that `handle_message` routes `FILE_CHUNK` on a non-FileDownload
+    /// cluster through the role-mismatch guard without setting download state.
+    #[tokio::test]
+    async fn test_handle_message_file_chunk_guards_non_file_download() {
+        let cluster = make_test_cluster();
+        let msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        assert!(cluster.file_download_state.is_none());
+    }
+
+    /// Verifies that `handle_message` routes `FILE_DETAILS` on a non-FileDownload
+    /// cluster through the role-mismatch guard without setting download state.
+    #[tokio::test]
+    async fn test_handle_message_file_details_guards_non_file_download() {
+        let cluster = make_test_cluster();
+        let msg = Message::new(FILE_DETAILS, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        assert!(cluster.file_download_state.is_none());
+    }
+
+    /// Verifies that `handle_message` routes `FILE_ERROR` on a non-FileDownload
+    /// cluster through the role-mismatch guard without setting download state.
+    #[tokio::test]
+    async fn test_handle_message_file_error_guards_non_file_download() {
+        let cluster = make_test_cluster();
+        let msg = Message::new(FILE_ERROR, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        assert!(cluster.file_download_state.is_none());
     }
 
     /// Verifies that `queue_message` increments `queued_message_size` by the payload length.
