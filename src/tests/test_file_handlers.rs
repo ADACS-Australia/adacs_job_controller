@@ -376,6 +376,63 @@ async fn test_create_file_download_rejects_empty_paths() {
     assert_eq!(records[0].path, "/valid.txt");
 }
 
+/// Tests that POST /file/ with a job ID exceeding `u32::MAX` returns 400 and
+/// writes no `file_download` record.
+///
+/// # Setup
+/// Wires an online cluster.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with `{"jobId": <u32::MAX + 1>, "path": "/a.txt"}`.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "exceeds maximum supported value"
+/// and that no `file_download` row was created.
+#[tokio::test]
+async fn test_create_file_download_job_id_exceeding_u32_returns_400() {
+    let db = setup_test_db().await;
+    let huge: i64 = i64::from(u32::MAX) + 1;
+
+    let manager = manager_with_online_cluster_no_messages();
+    let app = make_app(db.clone(), manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": huge,
+                        "path": "/a.txt"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("exceeds maximum supported value"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+
+    let records = file_download::Entity::find().all(&db).await.unwrap();
+    assert!(
+        records.is_empty(),
+        "no file_download record should be created"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // GET /job/apiv1/file/ — stream file download (WS→HTTP data flow)
 // ---------------------------------------------------------------------------
