@@ -773,6 +773,51 @@ async fn test_check_unsubmitted_jobs_resends_all_stale_jobs_in_batch() {
     assert_eq!(resent_ids, vec![1, 2, 3]);
 }
 
+/// Verifies that `check_unsubmitted_jobs` resubmits every stale PENDING job for a
+/// cluster even when there are more than 500 of them (regression for the removed
+/// hardcoded `.limit(500)` on the per-cluster job query).
+///
+/// # Setup
+/// 501 old PENDING jobs are inserted for `"ozstar"`, each with an old history row.
+/// The cluster is given a live WS sender and the scheduler is started.
+///
+/// # Act
+/// `cluster.check_unsubmitted_jobs().await` is called, then the channel is drained.
+///
+/// # Assert
+/// Exactly 501 `SUBMIT_JOB` messages are emitted — every eligible job is
+/// resubmitted, not just the first 500.
+#[tokio::test]
+async fn test_check_unsubmitted_jobs_resends_all_when_over_500() {
+    let db = setup_test_db().await;
+
+    for job_id in 1..=501 {
+        insert_job(
+            &db,
+            job_id,
+            "ozstar",
+            &format!("bundle-{job_id}"),
+            "myapp",
+            "{}",
+        )
+        .await;
+        insert_job_history_at(&db, job_id, 10, "submit", old_timestamp()).await;
+    }
+
+    let (cluster, mut rx) = make_online_cluster(&db).await;
+
+    cluster.check_unsubmitted_jobs().await;
+    cluster.wait_for_queue_drain(true).await;
+
+    let submit_msgs = drain_messages_with_id(&mut rx, SUBMIT_JOB);
+    assert_eq!(
+        submit_msgs.len(),
+        501,
+        "Expected all 501 stale jobs to be resubmitted, not just the first 500"
+    );
+    cluster.stop();
+}
+
 /// Verifies that `check_unsubmitted_jobs` skips a stale PENDING job whose id exceeds
 /// the `u32` range instead of panicking on the `u32::try_from` conversion.
 ///
