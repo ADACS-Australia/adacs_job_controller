@@ -27,12 +27,13 @@ use crate::protocol::types::{ClusterRole, FileInfo, FileListState, JobStatus, Pr
 use crate::utils::job_source_key;
 use crate::utils::uuid::generate_uuid;
 
-fn warn_role_mismatch(name: &str, role: &ClusterRole, message_name: &str) {
+fn warn_role_mismatch(name: &str, role: &ClusterRole, message_name: &str, expected: &str) {
     tracing::warn!(
-        "Cluster[{}]: {} received but role is {}, expected file upload",
+        "Cluster[{}]: {} received but role is {}, expected {}",
         name,
         message_name,
-        role
+        role,
+        expected
     );
 }
 
@@ -1079,9 +1080,24 @@ impl ClusterTrait for Cluster {
 
         match message.id() {
             // Master cluster messages
-            UPDATE_JOB => self.handle_update_job(&mut message).await,
-            FILE_LIST => self.handle_file_list_response(&mut message).await,
-            FILE_LIST_ERROR => self.handle_file_list_error(&mut message).await,
+            UPDATE_JOB if self.role == ClusterRole::Master => {
+                self.handle_update_job(&mut message).await;
+            }
+            UPDATE_JOB => {
+                warn_role_mismatch(&self.name(), &self.role, "UPDATE_JOB", "master");
+            }
+            FILE_LIST if self.role == ClusterRole::Master => {
+                self.handle_file_list_response(&mut message).await;
+            }
+            FILE_LIST => {
+                warn_role_mismatch(&self.name(), &self.role, "FILE_LIST", "master");
+            }
+            FILE_LIST_ERROR if self.role == ClusterRole::Master => {
+                self.handle_file_list_error(&mut message).await;
+            }
+            FILE_LIST_ERROR => {
+                warn_role_mismatch(&self.name(), &self.role, "FILE_LIST_ERROR", "master");
+            }
 
             // FileDownload messages
             FILE_CHUNK => self.handle_file_chunk(&mut message).await,
@@ -1093,14 +1109,19 @@ impl ClusterTrait for Cluster {
                 self.handle_server_ready();
             }
             SERVER_READY => {
-                warn_role_mismatch(&self.name(), &self.role, "SERVER_READY");
+                warn_role_mismatch(&self.name(), &self.role, "SERVER_READY", "file upload");
             }
             FILE_UPLOAD_ERROR => self.handle_file_upload_error(&mut message).await,
             FILE_UPLOAD_COMPLETE if self.role == ClusterRole::FileUpload => {
                 self.handle_file_upload_complete();
             }
             FILE_UPLOAD_COMPLETE => {
-                warn_role_mismatch(&self.name(), &self.role, "FILE_UPLOAD_COMPLETE");
+                warn_role_mismatch(
+                    &self.name(),
+                    &self.role,
+                    "FILE_UPLOAD_COMPLETE",
+                    "file upload",
+                );
             }
 
             other => {
@@ -1297,6 +1318,40 @@ mod tests {
         Cluster::new(test_config(), None)
     }
 
+    /// Captures `tracing` output (WARN and above) for the duration of the returned
+    /// guard, so tests can assert on emitted warning messages.
+    fn capture_warn_lines() -> (
+        tracing::subscriber::DefaultGuard,
+        Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        struct CapturingWriter {
+            lines: Arc<std::sync::Mutex<Vec<String>>>,
+        }
+        impl std::io::Write for CapturingWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.lines
+                    .lock()
+                    .unwrap()
+                    .push(String::from_utf8_lossy(buf).to_string());
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let lines = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let writer_lines = Arc::clone(&lines);
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || CapturingWriter {
+                lines: Arc::clone(&writer_lines),
+            })
+            .with_max_level(tracing::Level::WARN)
+            .finish();
+        let guard = tracing::subscriber::set_default(subscriber);
+        (guard, lines)
+    }
+
     /// Verifies basic `Cluster::new` construction sets the expected name, offline status, and role.
     #[test]
     fn test_cluster_creation() {
@@ -1490,6 +1545,69 @@ mod tests {
         cluster.handle_message(msg).await;
 
         assert!(cluster.file_upload_state.is_none());
+    }
+
+    /// Verifies that `handle_message` routes `UPDATE_JOB` on a non-Master
+    /// cluster through the role-mismatch guard instead of the handler.
+    #[tokio::test]
+    async fn test_handle_message_update_job_guards_non_master() {
+        let (_guard, lines) = capture_warn_lines();
+        let upload_state = Arc::new(FileUploadState::new());
+        let cluster =
+            Cluster::new_file_upload(test_config(), "uuid-update".into(), upload_state, None);
+        let msg = Message::new(UPDATE_JOB, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        let lines = lines.lock().unwrap();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("UPDATE_JOB") && l.contains("expected master")),
+            "expected role-mismatch warning for UPDATE_JOB, got: {lines:?}"
+        );
+    }
+
+    /// Verifies that `handle_message` routes `FILE_LIST` on a non-Master
+    /// cluster through the role-mismatch guard instead of the handler.
+    #[tokio::test]
+    async fn test_handle_message_file_list_guards_non_master() {
+        let (_guard, lines) = capture_warn_lines();
+        let upload_state = Arc::new(FileUploadState::new());
+        let cluster =
+            Cluster::new_file_upload(test_config(), "uuid-flist".into(), upload_state, None);
+        let msg = Message::new(FILE_LIST, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        let lines = lines.lock().unwrap();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("FILE_LIST") && l.contains("expected master")),
+            "expected role-mismatch warning for FILE_LIST, got: {lines:?}"
+        );
+    }
+
+    /// Verifies that `handle_message` routes `FILE_LIST_ERROR` on a non-Master
+    /// cluster through the role-mismatch guard instead of the handler.
+    #[tokio::test]
+    async fn test_handle_message_file_list_error_guards_non_master() {
+        let (_guard, lines) = capture_warn_lines();
+        let upload_state = Arc::new(FileUploadState::new());
+        let cluster =
+            Cluster::new_file_upload(test_config(), "uuid-flerr".into(), upload_state, None);
+        let msg = Message::new(FILE_LIST_ERROR, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        let lines = lines.lock().unwrap();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("FILE_LIST_ERROR") && l.contains("expected master")),
+            "expected role-mismatch warning for FILE_LIST_ERROR, got: {lines:?}"
+        );
     }
 
     /// Verifies that `queue_message` increments `queued_message_size` by the payload length.
