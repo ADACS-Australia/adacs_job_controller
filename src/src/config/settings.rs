@@ -142,6 +142,8 @@ pub static WEBSOCKET_PORT: LazyLock<u16> = LazyLock::new(|| env_or_uint("WEBSOCK
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_database_port() {
@@ -204,6 +206,62 @@ mod tests {
         assert_eq!(
             env_or_uint::<u64>("__NONEXISTENT_TEST_VAR__", 123_456),
             123_456
+        );
+    }
+
+    #[test]
+    fn test_env_or_redacts_secret_and_password_in_logs() {
+        struct CaptureWriter(Arc<Mutex<String>>);
+
+        impl io::Write for CaptureWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("capture buffer lock")
+                    .push_str(&String::from_utf8_lossy(buf));
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let buf = Arc::new(Mutex::new(String::new()));
+        let writer = Arc::clone(&buf);
+        let make_writer = move || CaptureWriter(Arc::clone(&writer));
+
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(make_writer)
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            let secret = env_or("__TEST_API_SECRET__", "raw-secret-value");
+            let password = env_or("__TEST_DB_PASSWORD__", "raw-password-value");
+            let plain = env_or("__TEST_PLAIN_KEY__", "raw-plain-value");
+
+            assert_eq!(secret, "raw-secret-value");
+            assert_eq!(password, "raw-password-value");
+            assert_eq!(plain, "raw-plain-value");
+        });
+
+        let logs = buf.lock().expect("capture buffer lock");
+        assert!(
+            logs.contains("***REDACTED***"),
+            "secret keys must be redacted"
+        );
+        assert!(
+            !logs.contains("raw-secret-value"),
+            "secret value must not leak into logs"
+        );
+        assert!(
+            !logs.contains("raw-password-value"),
+            "password value must not leak into logs"
+        );
+        assert!(
+            logs.contains("raw-plain-value"),
+            "non-secret value should be logged in full"
         );
     }
 
