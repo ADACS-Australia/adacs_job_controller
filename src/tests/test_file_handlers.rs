@@ -29,8 +29,8 @@ use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_file_download, insert_job_history,
     insert_test_job, insert_test_job_with_id, make_test_state, make_test_state_with_secrets,
     manager_with_online_cluster_and_create_file_download, manager_with_online_cluster_no_messages,
-    offline_cluster, online_cluster, online_cluster_no_messages, setup_test_db,
-    test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
+    mock_cluster_capturing, offline_cluster, online_cluster, online_cluster_no_messages,
+    setup_test_db, test_cluster_config, test_jwt_secrets, test_jwt_secrets_multi, upload_cluster,
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
@@ -613,6 +613,114 @@ async fn test_download_file_streams_chunks() {
             body_bytes.len()
         );
     }
+}
+
+/// Tests that the HTTP download stream sends a single `RESUME_FILE_CHUNK_STREAM`
+/// message and clears `client_paused` once the client has drained below
+/// `MIN_FILE_BUFFER_SIZE` after a pause.
+///
+/// # Setup
+/// Inserts a download record. Wires a capturing cluster for `create_file_download`
+/// and a `FileDownloadState` pre-set to `client_paused = true` with
+/// `received_bytes = MIN_FILE_BUFFER_SIZE` and a single buffered chunk of that size.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}, which streams the buffered chunk and
+/// evaluates the RESUME backpressure branch.
+///
+/// # Assert
+/// Verifies exactly one `RESUME_FILE_CHUNK_STREAM` is sent to the cluster and
+/// `client_paused` is reset to false.
+#[tokio::test]
+async fn test_download_file_resumes_after_backpressure() {
+    use adacs_job_controller::config::settings::MIN_FILE_BUFFER_SIZE;
+
+    let db = setup_test_db().await;
+    let uuid = "resume-uuid".to_string();
+    insert_file_download(&db, &uuid, "/file.txt").await;
+
+    let min_buf = *MIN_FILE_BUFFER_SIZE;
+    let chunk = vec![0u8; usize::try_from(min_buf).unwrap()];
+
+    // Pre-set the download state to a paused stream that has drained below the
+    // minimum buffer: client_paused = true, received_bytes = MIN_FILE_BUFFER_SIZE,
+    // and a single buffered chunk of that size ready to stream.
+    let fd_state = Arc::new(FileDownloadState::new());
+    fd_state.client_paused.store(true, Ordering::Relaxed);
+    fd_state.received_bytes.store(min_buf, Ordering::Relaxed);
+    fd_state.file_size.store(min_buf, Ordering::Relaxed);
+    fd_state.received_data.store(true, Ordering::Relaxed);
+    fd_state.data_ready.store(true, Ordering::Relaxed);
+    let _ = fd_state.chunk_sender.send(chunk);
+
+    // Capturing cluster for create_file_download so we can observe the RESUME.
+    let (dl_cluster, sent) = mock_cluster_capturing("ozstar");
+    let dl_cluster = Arc::new(dl_cluster);
+
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_cluster_by_name()
+        .returning(|_| Some(Arc::new(online_cluster("ozstar"))));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&dl_cluster);
+            Box::pin(
+                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
+            )
+        });
+    let fd_state_for_manager = Arc::clone(&fd_state);
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd_state_for_manager)));
+
+    let app = make_app(db, manager);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Drain the response body so the stream runs to completion.
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(body_bytes.len() as u64, min_buf);
+
+    // Exactly one RESUME should have been sent to the cluster.
+    let sent = sent.lock().unwrap();
+    let resume_count = sent
+        .iter()
+        .filter(|m| m.id() == RESUME_FILE_CHUNK_STREAM)
+        .count();
+    assert_eq!(
+        resume_count, 1,
+        "Expected exactly one RESUME_FILE_CHUNK_STREAM"
+    );
+
+    // client_paused should be cleared after the RESUME.
+    assert!(
+        !fd_state.client_paused.load(Ordering::Relaxed),
+        "client_paused should be reset to false after RESUME"
+    );
 }
 
 /// Tests that a cluster file error propagates to a 400 response with the error message.
