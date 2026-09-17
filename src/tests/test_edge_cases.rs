@@ -1337,6 +1337,29 @@ async fn test_download_force_download_uppercase_true_sets_attachment_disposition
     .await;
 }
 
+/// Verifies that an arbitrary non-true `forceDownload` value (e.g. `yes`) sets
+/// `Content-Disposition: inline` (not attachment).
+///
+/// # Setup
+/// Inserts a download record for `report.pdf`; simulates a small 5-byte file stream.
+///
+/// # Act
+/// Sends a GET request with the `forceDownload=yes` query parameter.
+///
+/// # Assert
+/// Response is 200 OK and `Content-Disposition` contains `inline` and the filename `report.pdf`.
+#[tokio::test]
+async fn test_download_force_download_arbitrary_value_sets_inline_disposition() {
+    let db = setup_test_db().await;
+    assert_force_download_sets_disposition(
+        db,
+        "force-arbitrary-dl-uuid".to_string(),
+        "yes",
+        "inline",
+    )
+    .await;
+}
+
 /// Shared helper: performs one file download request with the given optional `forceDownload` value and
 /// asserts the response is 200 OK with `Content-Disposition` set to the expected disposition
 /// containing the filename.
