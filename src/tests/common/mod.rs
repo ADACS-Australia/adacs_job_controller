@@ -332,6 +332,9 @@ pub fn manager_with_online_cluster_and_create_file_download() -> MockClusterMana
             )
         });
     manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager
 }
 
 // ---------------------------------------------------------------------------
