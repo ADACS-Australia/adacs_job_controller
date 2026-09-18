@@ -1607,6 +1607,31 @@ async fn test_get_jobs_partially_malformed_job_ids_returns_empty() {
     );
 }
 
+/// Tests that an out-of-`i64`-range jobIds value (e.g. `u64::MAX`) returns an empty list
+/// rather than silently wrapping to a negative `i64` that matches nothing.
+///
+/// # Setup
+/// Inserts one job (job1=Pending).
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?jobIds=18446744073709551615.
+///
+/// # Assert
+/// Verifies an empty array is returned (the out-of-range filter must not widen results).
+#[tokio::test]
+async fn test_get_jobs_out_of_range_job_ids_returns_empty() {
+    let db = setup_test_db().await;
+    let job1 = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    insert_job_history(&db, job1, JobStatus::Pending as i32, "system").await;
+
+    let body = get_jobs_with_query(db, "?jobIds=18446744073709551615").await;
+    let jobs = body.as_array().unwrap();
+    assert!(
+        jobs.is_empty(),
+        "out-of-i64-range jobIds must not widen the result set"
+    );
+}
+
 /// Tests that a malformed jobSteps filter (present but with no valid (what, state) pairs)
 /// returns an empty list rather than silently dropping the filter and returning all jobs.
 ///
