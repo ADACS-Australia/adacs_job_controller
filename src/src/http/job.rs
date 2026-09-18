@@ -17,7 +17,7 @@ use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, auth_user_id, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, job_id_to_u32, parse_csv_u64,
+    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, job_id_to_u32, parse_csv_i64,
     parse_job_steps,
 };
 use crate::protocol::constants::{
@@ -346,15 +346,14 @@ pub async fn get_jobs(
     // Filter by explicit job_ids
     if let Some(ref ids_str) = params.job_ids {
         let trimmed = ids_str.trim();
-        let all_numeric = trimmed.split(',').all(|v| v.trim().parse::<u64>().is_ok());
+        let all_numeric = trimmed.split(',').all(|v| v.trim().parse::<i64>().is_ok());
         if !all_numeric {
             // A malformed filter (e.g. any non-numeric token) must not widen the result set.
             return Ok(Json(serde_json::json!([])));
         }
-        let ids = parse_csv_u64(ids_str);
+        let ids = parse_csv_i64(ids_str);
         if !ids.is_empty() {
-            let ids_i64: Vec<i64> = ids.iter().map(|&id| id.cast_signed()).collect();
-            job_query = job_query.filter(job::Column::Id.is_in(ids_i64));
+            job_query = job_query.filter(job::Column::Id.is_in(ids));
         }
     }
 
