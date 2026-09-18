@@ -33,10 +33,6 @@ const BAD_REQUEST_MSG: &str = "Bad Request";
 pub const UPLOAD_ID_KEY: &str = "uploadId";
 const FILE_IDS_KEY: &str = "fileIds";
 
-/// Error returned when neither `jobId` nor explicit `cluster`/`bundle` is provided.
-const MISSING_CLUSTER_BUNDLE_ERR: &str =
-    "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'";
-
 /// JSON response key for the created file-download record's UUID.
 pub const FILE_ID_KEY: &str = "fileId";
 const FILES_KEY: &str = "files";
@@ -865,27 +861,15 @@ pub async fn list_files(
     let job_id = body.job_id.unwrap_or(0);
     job_id_to_u32(job_id)?;
 
-    let (s_cluster, s_bundle) = if job_id != 0 {
-        resolve_cluster_bundle_for_file_list(&state, &auth, &applications, job_id).await?
-    } else {
-        let cluster = body.cluster.ok_or((
-            StatusCode::BAD_REQUEST,
-            MISSING_CLUSTER_BUNDLE_ERR.to_string(),
-        ))?;
-        let bundle = body.bundle.ok_or((
-            StatusCode::BAD_REQUEST,
-            MISSING_CLUSTER_BUNDLE_ERR.to_string(),
-        ))?;
-
-        if !auth.secret.clusters.contains(&cluster) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                app_no_cluster_access_msg(&auth.secret.name, &cluster),
-            ));
-        }
-
-        (cluster, bundle)
-    };
+    let (s_cluster, s_bundle) = resolve_cluster_bundle(
+        &state,
+        &auth,
+        &applications,
+        job_id,
+        body.cluster.as_deref(),
+        body.bundle.as_deref(),
+    )
+    .await?;
 
     let cluster = get_online_cluster(&state, &s_cluster)?;
 
