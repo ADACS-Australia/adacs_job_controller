@@ -1122,6 +1122,7 @@ pub async fn resolve_cluster_bundle_for_file_list(
     app_name: &str,
     job_id: u64,
 ) -> Result<(String, String), (StatusCode, String)> {
+    job_id_to_u32(job_id)?;
     let j = job::Entity::find_by_id(job_id.cast_signed())
         .filter(job::Column::Application.is_in(applications.to_vec()))
         .one(&state.db)
