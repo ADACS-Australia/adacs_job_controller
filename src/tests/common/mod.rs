@@ -305,6 +305,9 @@ pub fn manager_with_online_cluster_no_messages() -> MockClusterManagerTrait {
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
     manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager
 }
 
 /// Build a mock `ClusterManagerTrait` wired to an online cluster for
@@ -325,6 +328,9 @@ pub fn manager_with_online_cluster_and_create_file_download() -> MockClusterMana
                 async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
             )
         });
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     manager
 }
 
