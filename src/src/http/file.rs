@@ -16,8 +16,8 @@ use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, get_applications};
 use crate::http::utils::{
-    ERR_CLUSTER_TIMEOUT, INVALID_CLUSTER_MSG, USER_ID_CLAIM, app_no_cluster_access_msg, db_error,
-    failed_to_read_body_msg, filter_files, job_id_to_u32,
+    ERR_CLUSTER_TIMEOUT, INVALID_CLUSTER_MSG, USER_ID_CLAIM, db_error, failed_to_read_body_msg,
+    filter_files, job_id_to_u32,
 };
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
@@ -32,10 +32,6 @@ const BAD_REQUEST_MSG: &str = "Bad Request";
 
 pub const UPLOAD_ID_KEY: &str = "uploadId";
 const FILE_IDS_KEY: &str = "fileIds";
-
-/// Error returned when neither `jobId` nor explicit `cluster`/`bundle` is provided.
-const MISSING_CLUSTER_BUNDLE_ERR: &str =
-    "The 'cluster' and 'bundle' parameters were not provided in the absence of 'jobId'";
 
 /// JSON response key for the created file-download record's UUID.
 pub const FILE_ID_KEY: &str = "fileId";
@@ -859,28 +855,15 @@ pub async fn list_files(
     let applications = get_applications(&auth.secret);
     let job_id = body.job_id.unwrap_or(0);
 
-    let (s_cluster, s_bundle) = if job_id != 0 {
-        resolve_cluster_bundle_for_file_list(&state, &applications, &auth.secret.name, job_id)
-            .await?
-    } else {
-        let cluster = body.cluster.ok_or((
-            StatusCode::BAD_REQUEST,
-            MISSING_CLUSTER_BUNDLE_ERR.to_string(),
-        ))?;
-        let bundle = body.bundle.ok_or((
-            StatusCode::BAD_REQUEST,
-            MISSING_CLUSTER_BUNDLE_ERR.to_string(),
-        ))?;
-
-        if !auth.secret.clusters.contains(&cluster) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                app_no_cluster_access_msg(&auth.secret.name, &cluster),
-            ));
-        }
-
-        (cluster, bundle)
-    };
+    let (s_cluster, s_bundle) = resolve_cluster_bundle(
+        &state,
+        &auth,
+        &applications,
+        job_id,
+        body.cluster.as_deref(),
+        body.bundle.as_deref(),
+    )
+    .await?;
 
     let cluster = get_online_cluster(&state, &s_cluster)?;
 

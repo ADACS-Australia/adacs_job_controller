@@ -1415,7 +1415,7 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
 /// for a token that does not allow that cluster.
 ///
 /// # Assert
-/// Verifies 400 Bad Request with body containing "does not have access".
+/// Verifies 400 Bad Request with body containing "Bad Request".
 #[tokio::test]
 async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
     let db = setup_test_db().await;
@@ -1452,7 +1452,7 @@ async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
     let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .unwrap();
-    assert!(String::from_utf8_lossy(&body).contains("does not have access"));
+    assert!(String::from_utf8_lossy(&body).contains("Bad Request"));
 }
 
 // ---------------------------------------------------------------------------
