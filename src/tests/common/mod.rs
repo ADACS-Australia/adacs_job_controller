@@ -305,6 +305,9 @@ pub fn manager_with_online_cluster_no_messages() -> MockClusterManagerTrait {
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
     manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager
 }
 
 /// Build a mock `ClusterManagerTrait` wired to an online cluster for
@@ -422,6 +425,9 @@ pub async fn make_app_with_online_cluster() -> (axum::Router, sea_orm::DatabaseC
                 dyn adacs_job_controller::cluster::traits::ClusterTrait,
             >)
     });
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     manager
         .expect_handle_new_connection()
         .returning(move |_, _, _| Box::pin(async move { None }));

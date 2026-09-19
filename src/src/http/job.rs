@@ -29,6 +29,7 @@ use crate::utils::job_source_key;
 
 const ERR_JOB_INVALID_STATE: &str = "Job is in invalid state";
 const ERR_CLUSTER_DID_NOT_EXIST: &str = "Cluster for job did not exist";
+const ERR_APP_SHUTTING_DOWN: &str = "Application is shutting down";
 
 /// JSON response key for a job's internal ID.
 const JOB_ID_KEY: &str = "jobId";
@@ -147,6 +148,20 @@ pub async fn create_job(
         body.cluster,
         cluster.is_online()
     );
+
+    // Application shutdown: reject new job submission via the same typed
+    // error / status code already returned for offline clusters. No job
+    // record is created and no SUBMIT_JOB message is queued.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!(
+            "HTTP: Rejecting job creation (cluster='{}') - application shutdown in progress",
+            body.cluster
+        );
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            ERR_APP_SHUTTING_DOWN.to_string(),
+        ));
+    }
 
     let user_id = auth
         .payload
