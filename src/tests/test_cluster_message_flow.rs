@@ -1303,6 +1303,57 @@ async fn test_handle_file_list_truncated_message_graceful() {
     }
 }
 
+/// Verifies that a `FILE_LIST` message whose final entry has a non-empty filename
+/// but no trailing `is_directory`/`file_size` fields drops that truncated entry
+/// instead of recording a corrupted entry with defaulted fields.
+///
+/// # Setup
+/// A UUID `"test-fl-truncated-tail"` is pre-registered in the `file_list_map`.
+/// A `FILE_LIST` message is built claiming 2 entries: one complete entry and one
+/// whose filename string consumes all remaining bytes (no trailing fields).
+///
+/// # Act
+/// The message is dispatched via `cluster.handle_message`.
+///
+/// # Assert
+/// The `FileListState` contains only the 1 complete entry and `data_ready` is set
+/// to `true`; no bogus `file_size = 0` entry is added.
+#[tokio::test]
+async fn test_handle_file_list_truncated_final_entry_is_dropped() {
+    let (cluster, file_list_map) = make_file_list_cluster();
+
+    let uuid = "test-fl-truncated-tail";
+
+    // Register UUID in the file list map
+    let fl_state = register_file_list_uuid(&file_list_map, uuid);
+
+    // Build a FILE_LIST message claiming 2 entries: one complete, one truncated
+    // (filename present, trailing is_directory/file_size fields missing).
+    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
+    msg.push_string(uuid);
+    msg.push_uint(2);
+    msg.push_string("/file1");
+    msg.push_bool(false);
+    msg.push_ulong(0x1234);
+    msg.push_string("/truncated");
+    let msg = Message::from_bytes(msg.into_data());
+
+    cluster.handle_message(msg).await;
+
+    // Only the complete entry is populated; the truncated one is dropped.
+    {
+        let state = fl_state.lock().await;
+        assert_eq!(state.files.len(), 1);
+        assert!(!state.error);
+        assert!(state.error_details.is_empty());
+        assert!(state.data_ready);
+
+        assert_eq!(state.files[0].file_name, "/file1");
+        assert!(!state.files[0].is_directory);
+        assert_eq!(state.files[0].file_size, 0x1234);
+    }
+}
+
 /// Verifies that a `FILE_LIST` message with `num_files = 0` for a registered UUID
 /// clears the file list and sets `data_ready` (a job with no files).
 ///
