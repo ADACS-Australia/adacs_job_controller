@@ -1329,6 +1329,14 @@ async fn test_handle_file_list_truncated_final_entry_is_dropped() {
 
     // Build a FILE_LIST message claiming 2 entries: one complete, one truncated
     // (filename present, trailing is_directory/file_size fields missing).
+    //
+    // `push_string` encodes a string as an 8-byte length prefix followed by the
+    // bytes (protocol::message::push_string -> push_ulong). The final filename
+    // "/truncated" therefore occupies 8 + 10 = 18 bytes, so at the start of
+    // the final loop iteration `remaining() == 18 >= MIN_FILE_LIST_ENTRY_BYTES`
+    // (17) and the pre-existing guard passes. After `pop_string` consumes those
+    // 18 bytes `remaining() == 0 < 9`, so the new guard drops the entry. This
+    // genuinely exercises the `remaining() < 9` branch.
     let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
     msg.push_string(uuid);
     msg.push_uint(2);
