@@ -34,7 +34,9 @@ use common::{
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
+};
 use std::sync::atomic::Ordering;
 
 // ---------------------------------------------------------------------------
@@ -245,6 +247,69 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
     for id in file_ids {
         assert!(uuid::Uuid::parse_str(id.as_str().unwrap_or("")).is_ok());
     }
+}
+
+/// Tests that POST /file/ rolls back all `file_download` rows when a mid-batch
+/// insert fails, leaving no partial records for the job.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster. Adds a `SQLite` trigger that
+/// aborts any insert once a row already exists, forcing the second insert in a
+/// multi-path batch to fail after the first has succeeded.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with `{"jobId": ..., "paths": ["/a.txt", "/b.txt"]}`.
+///
+/// # Assert
+/// Verifies an error status and that no `file_download` rows remain for the job.
+#[tokio::test]
+async fn test_create_file_download_rolls_back_on_mid_batch_insert_failure() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    db.execute(sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Sqlite,
+        "CREATE TRIGGER fail_after_first BEFORE INSERT ON jobserver_filedownload
+         WHEN (SELECT COUNT(*) FROM jobserver_filedownload) >= 1
+         BEGIN SELECT RAISE(ABORT, 'forced mid-batch failure'); END;",
+    ))
+    .await
+    .unwrap();
+
+    let manager = manager_with_online_cluster_no_messages();
+    let app = make_app(db.clone(), manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "paths": ["/a.txt", "/b.txt"]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let remaining = file_download::Entity::find()
+        .filter(file_download::Column::Job.eq(job_id))
+        .all(&db)
+        .await
+        .unwrap();
+    assert!(
+        remaining.is_empty(),
+        "no file_download rows should remain after a mid-batch insert failure"
+    );
 }
 
 /// Tests that POST /file/ without a path or paths field returns 400.
