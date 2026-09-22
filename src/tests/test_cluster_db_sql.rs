@@ -372,6 +372,60 @@ async fn test_handle_job_save_update() {
     assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
 
+/// Verifies that a `DB_JOB_SAVE` update for a non-existent row id reports failure
+/// (returns id=0) and does not create a new row.
+///
+/// # Setup
+/// Empty in-memory DB with cluster job schema; `ClusterJob` carries a non-existent
+/// id (e.g. 99999) with `job_id=10`.
+///
+/// # Act
+/// Dispatch a `DB_JOB_SAVE` message with `db_request_id=201` and the payload.
+///
+/// # Assert
+/// No row is created in `cluster_job`; the `DB_RESPONSE` contains `db_request_id=201`
+/// and id=0 (signalling a failed write).
+#[tokio::test]
+async fn test_handle_job_save_update_missing_row_returns_zero() {
+    let db = make_cluster_db().await;
+
+    let missing_id = 99999i64;
+    let job = ClusterJob {
+        id: missing_id,
+        job_id: 10,
+        scheduler_id: 0,
+        submitting: false,
+        submitting_count: 0,
+        bundle_hash: "hash".to_string(),
+        working_directory: "/work".to_string(),
+        running: false,
+        deleting: false,
+        deleted: false,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(201);
+        job.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    // No row should have been created for the missing id.
+    let count = cluster_job::Entity::find()
+        .filter(cluster_job::Column::Id.eq(missing_id))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "No row should be created for a failed update");
+
+    // Response: db_request_id=201, then 0 (failed write).
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 201);
+    assert_eq!(body.pop_ulong(), 0, "Failed update should return id=0");
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_GET_BY_ID — found
 // ---------------------------------------------------------------------------
