@@ -308,6 +308,16 @@ pub async fn get_jobs(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<JobQueryParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // Application shutdown: reject new reads with 503 before touching the DB,
+    // matching the guard used by every other HTTP handler.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!("HTTP: Rejecting get_jobs - application shutdown in progress");
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Application is shutting down".to_string(),
+        ));
+    }
+
     let applications = get_applications(&auth.secret);
 
     if params.start_time_gt.is_some() && params.start_time_lt.is_some() {

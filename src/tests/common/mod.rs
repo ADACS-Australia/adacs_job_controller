@@ -286,6 +286,9 @@ pub fn encode_test_jwt(claims: &serde_json::Value) -> String {
 pub fn mock_cluster_manager_no_clusters() -> MockClusterManagerTrait {
     let mut mock_manager = MockClusterManagerTrait::new();
     mock_manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    mock_manager
         .expect_get_file_download_admission()
         .returning(|_| None);
     mock_manager
