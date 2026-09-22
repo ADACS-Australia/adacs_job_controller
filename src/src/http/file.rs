@@ -194,7 +194,7 @@ pub async fn create_file_download(
         .unwrap_or(0);
     tracing::trace!("HTTP: User ID: {}", user_id);
 
-    let job_id = body.job_id.unwrap_or(0).cast_signed();
+    let job_id = job_id_to_u32(body.job_id.unwrap_or(0))? as i64;
 
     let mut uuids = Vec::new();
     for (i, path) in file_paths.iter().enumerate() {

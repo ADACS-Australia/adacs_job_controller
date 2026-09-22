@@ -34,7 +34,9 @@ use common::{
 };
 
 use adacs_job_controller::protocol::types::JobStatus;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+};
 use std::sync::atomic::Ordering;
 
 // ---------------------------------------------------------------------------
@@ -242,6 +244,61 @@ async fn test_create_file_download_multiple_paths_returns_file_ids() {
     for id in file_ids {
         assert!(uuid::Uuid::parse_str(id.as_str().unwrap_or("")).is_ok());
     }
+}
+
+/// Tests that POST /file/ with a jobId exceeding `u32::MAX` returns 400 and
+/// creates no download record.
+///
+/// # Setup
+/// Inserts a job with id `u32::MAX + 1` so cluster/bundle resolution succeeds.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with `{"jobId": u32::MAX + 1, "path": "/a.txt"}`.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "exceeds maximum supported
+/// value" and that no `jobserver_filedownload` row was created.
+#[tokio::test]
+async fn test_create_file_download_job_id_exceeding_u32_returns_400() {
+    let db = setup_test_db().await;
+    let huge: i64 = i64::from(u32::MAX) + 1;
+    insert_test_job_with_id(&db, huge, "ozstar", "b", "testapp").await;
+
+    let manager = manager_with_online_cluster_no_messages();
+    let app = make_app(db.clone(), manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": huge,
+                        "path": "/a.txt"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("exceeds maximum supported value"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+
+    let count = file_download::Entity::find().count(&db).await.unwrap();
+    assert_eq!(count, 0, "no download record should be created");
 }
 
 /// Tests that POST /file/ without a path or paths field returns 400.
