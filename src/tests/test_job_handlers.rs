@@ -238,10 +238,10 @@ async fn test_create_job_bundle_too_long_returns_400() {
 /// Sends POST /job/apiv1/job/ with valid auth.
 ///
 /// # Assert
-/// Verifies 200 OK returning the created job ID (the job exists even though its
-/// ID exceeds the u32 wire range), and no `SUBMIT_JOB` WS message was sent.
+/// Verifies 400 Bad Request when the created job's ID exceeds the u32 wire
+/// range, and no `SUBMIT_JOB` WS message was sent.
 #[tokio::test]
-async fn test_create_job_job_id_exceeding_u32_returns_200() {
+async fn test_create_job_job_id_exceeding_u32_returns_error() {
     let db = setup_test_db().await;
     insert_test_job_with_id(&db, i64::from(u32::MAX), "ozstar", "b", "testapp").await;
 
@@ -255,12 +255,7 @@ async fn test_create_job_job_id_exceeding_u32_returns_200() {
     )
     .await;
 
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["jobId"], serde_json::json!(i64::from(u32::MAX) + 1));
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert!(sent.lock().unwrap().is_empty());
 }
 
