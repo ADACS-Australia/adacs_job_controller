@@ -518,6 +518,16 @@ impl Cluster {
             return;
         };
 
+        if JobStatus::try_from(status).is_err() {
+            tracing::warn!(
+                "Cluster[{}]: Ignoring UPDATE_JOB for job {} with unknown status {}",
+                self.name(),
+                job_id,
+                status
+            );
+            return;
+        }
+
         tracing::trace!(
             "Cluster[{}]: Inserting job history for job {}",
             self.name(),
@@ -2769,5 +2779,79 @@ mod tests {
         cluster.handle_update_job(&mut msg).await;
 
         assert!(cluster.app_context.is_none());
+    }
+
+    /// Verifies that `handle_update_job` skips inserting a `job_history` row and
+    /// logs a warning when the UPDATE_JOB status is not a known `JobStatus`.
+    #[tokio::test]
+    async fn test_handle_update_job_skips_insert_on_unknown_status() {
+        use crate::db::entities::job_history;
+        use sea_orm::{
+            ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
+            Schema,
+        };
+        use std::sync::Mutex;
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        db.execute(builder.build(&schema.create_table_from_entity(job_history::Entity)))
+            .await
+            .expect("create table failed");
+
+        let app_context = Arc::new(AppContext {
+            db: db.clone(),
+            file_list_map: Arc::new(DashMap::new()),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        // Capture warnings emitted during handle_update_job.
+        let captured: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+        let writer = Arc::clone(&captured);
+        let _ = tracing_subscriber::fmt()
+            .with_writer(move || {
+                struct Buf(Arc<Mutex<String>>);
+                impl std::io::Write for Buf {
+                    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                        self.0
+                            .lock()
+                            .unwrap()
+                            .push_str(&String::from_utf8_lossy(buf));
+                        Ok(buf.len())
+                    }
+                    fn flush(&mut self) -> std::io::Result<()> {
+                        Ok(())
+                    }
+                }
+                Buf(writer.clone())
+            })
+            .try_init();
+
+        // Build an UPDATE_JOB message with an out-of-range status.
+        let mut msg = Message::new(UPDATE_JOB, Priority::Highest, TEST_CLUSTER);
+        msg.push_uint(42);
+        msg.push_string("what");
+        msg.push_uint(999);
+        msg.push_string("details");
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_update_job(&mut msg).await;
+
+        // No job_history row should be inserted for the unknown status.
+        let count = job_history::Entity::find()
+            .filter(job_history::Column::JobId.eq(42i64))
+            .count(&db)
+            .await
+            .expect("query failed");
+        assert_eq!(count, 0);
+
+        // A warning about the unknown status should have been logged.
+        assert!(
+            captured.lock().unwrap().contains("unknown status 999"),
+            "expected a warning about the unknown status"
+        );
     }
 }
