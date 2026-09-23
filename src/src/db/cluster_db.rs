@@ -159,10 +159,16 @@ fn wire_row_count(cluster_name: &str, rows: usize) -> u32 {
 }
 
 /// Builds a `DB_RESPONSE` with the wire row count followed by each row, then sends it.
+///
+/// A trailing `u32` error marker is appended after the rows: `0` for success,
+/// `1` when the underlying query failed. This lets a cluster distinguish a
+/// failed lookup from a legitimate empty result set while preserving the
+/// existing count+rows shape for the success case.
 async fn send_rows_response<T>(
     cluster: &dyn ClusterTrait,
     db_request_id: u32,
     rows: &[T],
+    error: bool,
     to_message: impl Fn(&T, &mut Message),
 ) {
     let mut response = prepare_response(db_request_id);
@@ -170,15 +176,21 @@ async fn send_rows_response<T>(
     for row in rows {
         to_message(row, &mut response);
     }
+    response.push_uint(u32::from(error));
     cluster.send_message(response).await;
 }
 
 /// Builds a `DB_RESPONSE` for a single-row lookup: count=1 followed by the row
 /// when present, or count=0 when absent, then sends it.
+///
+/// A trailing `u32` error marker is appended after the row: `0` for success,
+/// `1` when the underlying query failed, so a failed lookup is not
+/// indistinguishable from a genuine not-found.
 async fn send_single_row_response<T>(
     cluster: &dyn ClusterTrait,
     db_request_id: u32,
     row: Option<T>,
+    error: bool,
     to_message: impl Fn(&T, &mut Message),
 ) {
     let mut response = prepare_response(db_request_id);
@@ -191,6 +203,7 @@ async fn send_single_row_response<T>(
             response.push_uint(0);
         }
     }
+    response.push_uint(u32::from(error));
     cluster.send_message(response).await;
 }
 
@@ -222,16 +235,16 @@ async fn handle_get_by_id_impl<E, T>(
     let db_request_id = message.pop_uint();
     let id = message.pop_ulong().cast_signed();
 
-    let row: Option<T> = find_by_id(id)
-        .one(db)
-        .await
-        .inspect_err(|e| {
-            log_query_failed(&cluster.name(), e);
-        })
-        .unwrap_or(None)
-        .map(convert);
-
-    send_single_row_response(cluster, db_request_id, row, to_message).await;
+    match find_by_id(id).one(db).await {
+        Ok(row) => {
+            let row = row.map(convert);
+            send_single_row_response(cluster, db_request_id, row, false, to_message).await;
+        }
+        Err(e) => {
+            log_query_failed(&cluster.name(), &e);
+            send_single_row_response(cluster, db_request_id, None, true, to_message).await;
+        }
+    }
 }
 
 /// Logs a failed DB insert with the cluster name and the underlying error.
@@ -261,20 +274,23 @@ async fn handle_job_get_by_job_id(
     let job_id = message.pop_ulong().cast_signed();
     let cluster_name = cluster.name();
 
-    let rows: Vec<ClusterJob> = cluster_job::Entity::find()
+    let (rows, error) = match cluster_job::Entity::find()
         .filter(cluster_job::Column::JobId.eq(job_id))
         .filter(cluster_job::Column::Cluster.eq(&cluster_name))
         .all(db)
         .await
-        .inspect_err(|e| {
-            log_query_failed(&cluster_name, e);
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .map(ClusterJob::from)
-        .collect();
+    {
+        Ok(rows) => (
+            rows.into_iter().map(ClusterJob::from).collect::<Vec<_>>(),
+            false,
+        ),
+        Err(e) => {
+            log_query_failed(&cluster_name, &e);
+            (Vec::new(), true)
+        }
+    };
 
-    send_rows_response(cluster, db_request_id, &rows, |row, msg| {
+    send_rows_response(cluster, db_request_id, &rows, error, |row, msg| {
         row.to_message(msg)
     })
     .await;
@@ -306,20 +322,23 @@ async fn handle_job_get_running_jobs(
     let db_request_id = message.pop_uint();
     let cluster_name = cluster.name();
 
-    let rows: Vec<ClusterJob> = cluster_job::Entity::find()
+    let (rows, error) = match cluster_job::Entity::find()
         .filter(cluster_job::Column::Cluster.eq(&cluster_name))
         .filter(cluster_job::Column::Running.eq(true))
         .all(db)
         .await
-        .inspect_err(|e| {
-            log_query_failed(&cluster_name, e);
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .map(ClusterJob::from)
-        .collect();
+    {
+        Ok(rows) => (
+            rows.into_iter().map(ClusterJob::from).collect::<Vec<_>>(),
+            false,
+        ),
+        Err(e) => {
+            log_query_failed(&cluster_name, &e);
+            (Vec::new(), true)
+        }
+    };
 
-    send_rows_response(cluster, db_request_id, &rows, |row, msg| {
+    send_rows_response(cluster, db_request_id, &rows, error, |row, msg| {
         row.to_message(msg)
     })
     .await;
@@ -427,18 +446,20 @@ async fn handle_jobstatus_get_by_job_id_impl(
         query = query.filter(cluster_job_status::Column::What.eq(what));
     }
 
-    let rows: Vec<ClusterJobStatus> = query
-        .all(db)
-        .await
-        .inspect_err(|e| {
-            log_query_failed(&cluster.name(), e);
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .map(ClusterJobStatus::from)
-        .collect();
+    let (rows, error) = match query.all(db).await {
+        Ok(rows) => (
+            rows.into_iter()
+                .map(ClusterJobStatus::from)
+                .collect::<Vec<_>>(),
+            false,
+        ),
+        Err(e) => {
+            log_query_failed(&cluster.name(), &e);
+            (Vec::new(), true)
+        }
+    };
 
-    send_rows_response(cluster, db_request_id, &rows, |row, msg| {
+    send_rows_response(cluster, db_request_id, &rows, error, |row, msg| {
         row.to_message(msg)
     })
     .await;

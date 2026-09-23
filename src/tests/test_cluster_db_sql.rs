@@ -1195,6 +1195,88 @@ async fn test_unhandled_message_returns_false() {
     assert_eq!(captured.len(), 0);
 }
 
+// ---------------------------------------------------------------------------
+// DB query failure — error marker in DB_RESPONSE
+// ---------------------------------------------------------------------------
+
+/// Verifies that a DB query failure is surfaced as an error marker in the
+/// `DB_RESPONSE` rather than being collapsed into an indistinguishable
+/// `count=0` empty result.
+///
+/// # Setup
+/// In-memory DB with cluster job schema; the connection is then closed so any
+/// subsequent query fails.
+///
+/// # Act
+/// Dispatch a `DB_JOB_GET_BY_JOB_ID` message with `db_request_id=6000` and
+/// `job_id=42` against the closed connection.
+///
+/// # Assert
+/// The `DB_RESPONSE` echoes `db_request_id=6000`, carries `count=0` (no rows)
+/// and a trailing error marker of `1`, distinguishing the failure from a
+/// legitimate empty result (which would carry an error marker of `0`).
+#[tokio::test]
+async fn test_handle_job_get_by_job_id_query_failure_carries_error_marker() {
+    let db = make_cluster_db().await;
+    db.close_by_ref().await.unwrap();
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_GET_BY_JOB_ID, |m| {
+        m.push_uint(6000);
+        m.push_ulong(42);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 6000);
+    assert_eq!(body.pop_uint(), 0, "failed query carries no rows");
+    assert_eq!(
+        body.pop_uint(),
+        1,
+        "failed query must carry a non-zero error marker"
+    );
+}
+
+/// Verifies that a single-row lookup query failure is surfaced as an error
+/// marker in the `DB_RESPONSE` rather than a `count=0` not-found.
+///
+/// # Setup
+/// In-memory DB with cluster job schema; the connection is then closed so any
+/// subsequent query fails.
+///
+/// # Act
+/// Dispatch a `DB_JOB_GET_BY_ID` message with `db_request_id=6001` and a row id
+/// against the closed connection.
+///
+/// # Assert
+/// The `DB_RESPONSE` echoes `db_request_id=6001`, carries `count=0` and a
+/// trailing error marker of `1`.
+#[tokio::test]
+async fn test_handle_job_get_by_id_query_failure_carries_error_marker() {
+    let db = make_cluster_db().await;
+    db.close_by_ref().await.unwrap();
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_GET_BY_ID, |m| {
+        m.push_uint(6001);
+        m.push_ulong(1);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 6001);
+    assert_eq!(body.pop_uint(), 0, "failed query carries no rows");
+    assert_eq!(
+        body.pop_uint(),
+        1,
+        "failed query must carry a non-zero error marker"
+    );
+}
+
 // ===========================================================================
 // FK / error-path tests
 //
