@@ -14,9 +14,9 @@ use crate::cluster::file_download::{DownloadCleanupTrigger, DownloadShutdownReas
 use crate::cluster::file_upload::FileUploadState;
 use crate::config::settings;
 use crate::db::entities::{file_download, file_list_cache, job, job_history};
-use crate::http::auth::{AuthResult, get_applications};
+use crate::http::auth::{AuthResult, auth_user_id, get_applications};
 use crate::http::utils::{
-    ERR_CLUSTER_TIMEOUT, INVALID_CLUSTER_MSG, USER_ID_CLAIM, app_no_cluster_access_msg, db_error,
+    ERR_CLUSTER_TIMEOUT, INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error,
     failed_to_read_body_msg, filter_files, job_id_to_u32,
 };
 use crate::protocol::constants::{
@@ -187,11 +187,7 @@ pub async fn create_file_download(
         s_bundle
     );
 
-    let user_id = auth
-        .payload
-        .get(USER_ID_CLAIM)
-        .and_then(sea_orm::JsonValue::as_i64)
-        .unwrap_or(0);
+    let user_id = auth_user_id(&auth);
     tracing::trace!("HTTP: User ID: {}", user_id);
 
     let job_id = body.job_id.unwrap_or(0).cast_signed();

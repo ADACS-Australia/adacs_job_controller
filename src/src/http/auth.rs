@@ -6,6 +6,7 @@ use axum::http::request::Parts;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 
 use crate::config::access_secrets::AccessSecret;
+use crate::http::utils::USER_ID_CLAIM;
 
 /// Error message returned when a request is not authorized.
 const NOT_AUTHORIZED_MSG: &str = "Not authorized";
@@ -105,6 +106,16 @@ pub fn get_applications(secret: &AccessSecret) -> Vec<String> {
     let mut apps = vec![secret.name.clone()];
     apps.extend(secret.applications.iter().cloned());
     apps
+}
+
+/// Extract the JWT `userId` claim as an `i64`, defaulting to `0` when the
+/// claim is absent or not numeric.
+#[must_use]
+pub fn auth_user_id(auth: &AuthResult) -> i64 {
+    auth.payload
+        .get(USER_ID_CLAIM)
+        .and_then(sea_orm::JsonValue::as_i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -281,5 +292,35 @@ mod tests {
         };
         let apps = get_applications(&secret);
         assert_eq!(apps, vec!["myapp"]);
+    }
+
+    fn auth_result_with_payload(payload: serde_json::Value) -> AuthResult {
+        AuthResult {
+            payload,
+            secret: AccessSecret {
+                name: "app".to_string(),
+                secret: "s".to_string(),
+                applications: vec![],
+                clusters: vec![],
+            },
+        }
+    }
+
+    #[test]
+    fn test_auth_user_id_missing_claim() {
+        let auth = auth_result_with_payload(serde_json::json!({}));
+        assert_eq!(auth_user_id(&auth), 0);
+    }
+
+    #[test]
+    fn test_auth_user_id_numeric_claim() {
+        let auth = auth_result_with_payload(serde_json::json!({"userId": 42}));
+        assert_eq!(auth_user_id(&auth), 42);
+    }
+
+    #[test]
+    fn test_auth_user_id_non_numeric_claim() {
+        let auth = auth_result_with_payload(serde_json::json!({"userId": "abc"}));
+        assert_eq!(auth_user_id(&auth), 0);
     }
 }
