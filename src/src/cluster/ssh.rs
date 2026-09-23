@@ -69,10 +69,19 @@ impl client::Handler for SshHandler {
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &russh::keys::PublicKey,
+        server_public_key: &russh::keys::PublicKey,
     ) -> Result<bool, Self::Error> {
+        tracing::info!(
+            "SSH: Accepted server host key ({})",
+            format_server_key(server_public_key)
+        );
         Ok(true)
     }
+}
+
+/// Format a server host key's algorithm and SHA-256 fingerprint for logging.
+fn format_server_key(key: &russh::keys::PublicKey) -> String {
+    format!("{} {}", key.algorithm(), key.fingerprint(HashAlg::Sha256))
 }
 
 /// Run the remote `adacs_job_client` on a cluster via SSH.
@@ -534,6 +543,16 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         let parsed = block_on(load_private_key(PKCS8_ED25519_KEY)).unwrap();
 
         assert_eq!(parsed.algorithm(), Algorithm::Ed25519);
+    }
+
+    #[test]
+    fn format_server_key_contains_algorithm_and_sha256_fingerprint() {
+        let key = block_on(load_private_key(PKCS8_ED25519_KEY)).unwrap();
+        let formatted = format_server_key(key.public_key());
+        assert!(
+            formatted.starts_with("ssh-ed25519 SHA256:"),
+            "unexpected format: {formatted}"
+        );
     }
 
     #[test]
