@@ -181,11 +181,7 @@ pub async fn create_file_download(
         body.bundle.as_deref(),
     )
     .await?;
-    tracing::debug!(
-        "HTTP: Resolved cluster='{}', bundle='{}'",
-        s_cluster,
-        s_bundle
-    );
+    log_cluster_bundle_resolved(&s_cluster, &s_bundle);
 
     let user_id = auth
         .payload
@@ -710,11 +706,7 @@ pub async fn upload_file(
         params.bundle.as_deref(),
     )
     .await?;
-    tracing::debug!(
-        "HTTP: Resolved cluster='{}', bundle='{}'",
-        s_cluster,
-        s_bundle
-    );
+    log_cluster_bundle_resolved(&s_cluster, &s_bundle);
 
     let cluster = get_online_cluster(&state, &s_cluster)?;
 
@@ -1140,6 +1132,11 @@ fn client_timeout_secs(state: &AppState) -> u64 {
     state
         .client_timeout_seconds
         .unwrap_or(*settings::CLIENT_TIMEOUT_SECONDS)
+}
+
+/// Logs that a cluster and bundle were resolved for an HTTP file request.
+fn log_cluster_bundle_resolved(cluster: &str, bundle: &str) {
+    tracing::debug!("HTTP: Resolved cluster='{}', bundle='{}'", cluster, bundle);
 }
 
 #[cfg(test)]
