@@ -345,8 +345,7 @@ pub async fn get_jobs(
     // Filter by explicit job_ids
     if let Some(ref ids_str) = params.job_ids {
         let trimmed = ids_str.trim();
-        let all_numeric =
-            trimmed.is_empty() || trimmed.split(',').all(|v| v.trim().parse::<u64>().is_ok());
+        let all_numeric = trimmed.split(',').all(|v| v.trim().parse::<u64>().is_ok());
         if !all_numeric {
             // A malformed filter (e.g. any non-numeric token) must not widen the result set.
             return Ok(Json(serde_json::json!([])));
