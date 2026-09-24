@@ -58,6 +58,16 @@ if [[ "$COVERAGE" == true ]]; then
         COVERAGE_CMD="$COVERAGE_CMD --open"
     fi
 
+    # Tests share global state and must run sequentially, so enforce
+    # --test-threads=1 unless the caller explicitly passes their own.
+    if [[ "$TEST_THREADS_SET" == false ]]; then
+        if [[ "$COVERAGE_CMD" == *" -- "* ]]; then
+            COVERAGE_CMD="${COVERAGE_CMD/ -- / -- --test-threads=1 }"
+        else
+            COVERAGE_CMD="$COVERAGE_CMD -- --test-threads=1"
+        fi
+    fi
+
     exec $COVERAGE_CMD
 else
     # Run tests sequentially by default; respect an explicit --test-threads.
