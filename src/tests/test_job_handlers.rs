@@ -1621,6 +1621,28 @@ async fn test_get_jobs_malformed_job_ids_returns_empty() {
     assert!(jobs.is_empty(), "malformed jobIds must not return all jobs");
 }
 
+/// Tests that a present-but-empty jobIds filter (e.g. "?jobIds=%20" or "?jobIds=")
+/// returns an empty list rather than silently dropping the filter and returning all jobs.
+///
+/// # Setup
+/// Inserts one job (job1=Pending).
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?jobIds=%20.
+///
+/// # Assert
+/// Verifies an empty array is returned (the empty-after-trim filter must not widen results).
+#[tokio::test]
+async fn test_get_jobs_blank_job_ids_returns_empty() {
+    let db = setup_test_db().await;
+    let job1 = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    insert_job_history(&db, job1, JobStatus::Pending as i32, "system").await;
+
+    let body = get_jobs_with_query(db, "?jobIds=%20").await;
+    let jobs = body.as_array().unwrap();
+    assert!(jobs.is_empty(), "blank jobIds must not return all jobs");
+}
+
 /// Tests that a partially-malformed jobIds filter (e.g. "1,abc,2") returns an empty
 /// list rather than applying a partial filter and returning only the numeric ids.
 ///
