@@ -402,7 +402,7 @@ pub async fn get_jobs(
                 step_cond = step_cond.add(
                     Condition::all()
                         .add(job_history::Column::What.eq(what.clone()))
-                        .add(job_history::Column::State.eq((*sv).cast_signed())),
+                        .add(job_history::Column::State.eq(*sv)),
                 );
             }
             let subq = Query::select()
