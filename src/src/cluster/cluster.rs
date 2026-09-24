@@ -2491,6 +2491,40 @@ mod tests {
         assert!(locked.data_ready);
     }
 
+    /// Verifies that `handle_file_list_response` returns without panicking or
+    /// mutating state when there is no matching `FileListState` (unknown UUID or
+    /// missing app context).
+    #[tokio::test]
+    async fn test_handle_file_list_response_no_state_returns() {
+        let cluster = make_test_cluster();
+
+        let mut msg = Message::new(FILE_LIST, Priority::Lowest, TEST_CLUSTER);
+        msg.push_string("unknown-file-list-uuid");
+        msg.push_uint(0);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_response(&mut msg).await;
+
+        assert!(cluster.app_context.is_none());
+    }
+
+    /// Verifies that `handle_file_list_error` returns without panicking or
+    /// mutating state when there is no matching `FileListState` (unknown UUID or
+    /// missing app context).
+    #[tokio::test]
+    async fn test_handle_file_list_error_no_state_returns() {
+        let cluster = make_test_cluster();
+
+        let mut msg = Message::new(FILE_LIST_ERROR, Priority::Lowest, TEST_CLUSTER);
+        msg.push_string("unknown-file-list-uuid");
+        msg.push_string("permission denied");
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_error(&mut msg).await;
+
+        assert!(cluster.app_context.is_none());
+    }
+
     // -----------------------------------------------------------------------
     // FILE_CHUNK handling
     // -----------------------------------------------------------------------
