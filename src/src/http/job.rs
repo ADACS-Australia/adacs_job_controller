@@ -15,10 +15,10 @@ use sea_orm::{
 
 use crate::app::AppState;
 use crate::db::entities::{job, job_history};
-use crate::http::auth::{AuthResult, get_applications};
+use crate::http::auth::{AuthResult, auth_user_id, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, USER_ID_CLAIM, app_no_cluster_access_msg, db_error, job_id_to_u32,
-    parse_csv_u64, parse_job_steps,
+    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, job_id_to_u32, parse_csv_u64,
+    parse_job_steps,
 };
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
@@ -148,11 +148,7 @@ pub async fn create_job(
         cluster.is_online()
     );
 
-    let user_id = auth
-        .payload
-        .get(USER_ID_CLAIM)
-        .and_then(sea_orm::JsonValue::as_i64)
-        .unwrap_or(0);
+    let user_id = auth_user_id(&auth);
     tracing::trace!("HTTP: User ID extracted from token: {}", user_id);
 
     tracing::debug!("HTTP: Starting database transaction for job creation");
