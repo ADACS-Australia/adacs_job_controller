@@ -395,11 +395,14 @@ async fn handle_job_save(
             deleted: Set(job.deleted),
             cluster: NotSet,
         };
-        if let Err(e) = active.update(db).await {
-            log_update_failed(&cluster_name, &e);
-        }
-
-        send_save_response(cluster, db_request_id, job.id.cast_unsigned()).await;
+        let saved_id = match active.update(db).await {
+            Ok(_) => job.id.cast_unsigned(),
+            Err(e) => {
+                log_update_failed(&cluster_name, &e);
+                0
+            }
+        };
+        send_save_response(cluster, db_request_id, saved_id).await;
     }
 }
 
