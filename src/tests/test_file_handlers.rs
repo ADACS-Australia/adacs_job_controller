@@ -486,6 +486,52 @@ async fn test_download_file_cluster_offline_returns_503() {
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
+/// Tests that GET /file/ when the cluster is not registered returns 400.
+///
+/// # Setup
+/// Inserts a download record pointing at "ozstar". Wires a cluster manager
+/// whose `get_cluster_by_name` returns `None`.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "Invalid cluster".
+#[tokio::test]
+async fn test_download_file_cluster_not_found_returns_400() {
+    let db = setup_test_db().await;
+    // Insert a file download record pointing at "ozstar"
+    let uuid = "test-uuid-5678".to_string();
+    insert_file_download(&db, &uuid, "").await;
+
+    let mut manager = MockClusterManagerTrait::new();
+    manager.expect_get_cluster_by_name().returning(|_| None);
+    manager.expect_get_file_download().returning(|_| None);
+
+    let app = make_app(db, manager);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("Invalid cluster"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
 /// Tests the full file download flow: WS pushes data, HTTP streams it back.
 ///
 /// # Setup
