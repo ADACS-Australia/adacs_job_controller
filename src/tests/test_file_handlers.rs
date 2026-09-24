@@ -63,6 +63,9 @@ async fn no_jobid_download_app(
     } else {
         manager.expect_get_cluster_by_name().returning(|_| None);
     }
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     let app = create_router(make_test_state_with_secrets(
         db.clone(),
         manager,
@@ -262,6 +265,9 @@ async fn test_create_file_download_no_path_returns_400() {
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -308,6 +314,9 @@ async fn test_create_file_download_rejects_empty_paths() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
@@ -394,6 +403,7 @@ async fn test_create_file_download_job_id_exceeding_u32_returns_400() {
     let huge: i64 = i64::from(u32::MAX) + 1;
 
     let manager = manager_with_online_cluster_no_messages();
+
     let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
@@ -430,6 +440,57 @@ async fn test_create_file_download_job_id_exceeding_u32_returns_400() {
     assert!(
         records.is_empty(),
         "no file_download record should be created"
+    );
+}
+
+/// Tests that POST /file/ returns 503 when the application is shutting down.
+///
+/// # Setup
+/// Wires a manager whose `is_application_shutting_down` returns `true`.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with a valid path.
+///
+/// # Assert
+/// Verifies 503 Service Unavailable and that no download record is created.
+#[tokio::test]
+async fn test_create_file_download_returns_503_when_shutting_down() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| true);
+
+    let app = make_app(db.clone(), manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "path": "/result/output.txt"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    let records = file_download::Entity::find().all(&db).await.unwrap();
+    assert!(
+        records.is_empty(),
+        "no download record should be created during shutdown"
     );
 }
 

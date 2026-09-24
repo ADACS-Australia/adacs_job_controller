@@ -145,6 +145,17 @@ pub async fn create_file_download(
         body.cluster
     );
 
+    // Application shutdown: reject new download-record creation via the same
+    // typed error / status code already returned for offline clusters. No DB
+    // insert is attempted.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!("HTTP: Rejecting file download - application shutdown in progress");
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
+        ));
+    }
+
     let job_id_u32 = job_id_to_u32(body.job_id.unwrap_or(0))?;
 
     let applications = get_applications(&auth.secret);
