@@ -149,6 +149,20 @@ pub async fn create_job(
         cluster.is_online()
     );
 
+    // Application shutdown: reject new job submission via the same typed
+    // error / status code already returned for offline clusters. No job
+    // record is created and no SUBMIT_JOB message is queued.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!(
+            "HTTP: Rejecting job creation (cluster='{}') - application shutdown in progress",
+            body.cluster
+        );
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            ERR_APPLICATION_SHUTDOWN.to_string(),
+        ));
+    }
+
     let user_id = auth_user_id(&auth);
     tracing::trace!("HTTP: User ID extracted from token: {}", user_id);
 

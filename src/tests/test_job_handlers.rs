@@ -259,6 +259,45 @@ async fn test_create_job_job_id_exceeding_u32_returns_error() {
     assert!(sent.lock().unwrap().is_empty());
 }
 
+/// Tests that `create_job` returns 503 when the application is shutting down.
+///
+/// # Setup
+/// Wires an online cluster and sets the manager's `is_application_shutting_down` to true.
+///
+/// # Act
+/// Sends POST /job/apiv1/job/ with valid auth.
+///
+/// # Assert
+/// Verifies 503 Service Unavailable and no job record is created.
+#[tokio::test]
+async fn test_create_job_app_shutting_down_returns_503() {
+    let db = setup_test_db().await;
+    let (cluster, _) = mock_cluster_capturing_with_online("ozstar", true);
+    let cluster = Arc::new(cluster);
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| true);
+
+    let resp = post_create_job(
+        &db,
+        manager,
+        1,
+        serde_json::json!({"cluster":"ozstar","parameters":"{}","bundle":"b"}),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    // No job record should be created during shutdown
+    let jobs = job::Entity::find().all(&db).await.unwrap();
+    assert!(jobs.is_empty());
+}
+
 async fn post_create_job(
     db: &sea_orm::DatabaseConnection,
     manager: MockClusterManagerTrait,
@@ -1953,6 +1992,9 @@ async fn test_create_job_works_without_content_type_header() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 42}));
