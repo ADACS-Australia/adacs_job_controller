@@ -666,6 +666,13 @@ impl Cluster {
                 break;
             }
             let file_name = message.pop_string();
+            // A valid entry needs 1 byte for `is_directory` plus 8 bytes for
+            // `file_size` after the variable-length `file_name`. If fewer
+            // remain, the final entry is truncated; drop it rather than
+            // recording a corrupted entry with defaulted `is_directory`/`file_size`.
+            if message.remaining() < 9 {
+                break;
+            }
             let is_directory = message.pop_bool();
             let file_size = message.pop_ulong();
             files.push(FileInfo {
