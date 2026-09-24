@@ -392,4 +392,22 @@ mod tests {
         assert!(!session.complete(Some(7)));
         assert_eq!(session.state(), DownloadSessionState::Connected(7));
     }
+
+    #[test]
+    fn trigger_transitions_to_closing_when_cleanup_receiver_dropped() {
+        let (session, rx) = make_session();
+        drop(rx);
+        assert!(
+            session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::WebSocketClosed)
+        );
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: None,
+                reason: DownloadShutdownReason::WebSocketClosed,
+            }
+        );
+    }
 }
