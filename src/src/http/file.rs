@@ -846,6 +846,7 @@ pub async fn list_files(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let applications = get_applications(&auth.secret);
     let job_id = body.job_id.unwrap_or(0);
+    job_id_to_u32(job_id)?;
 
     let (s_cluster, s_bundle) = if job_id != 0 {
         resolve_cluster_bundle_for_file_list(&state, &applications, &auth.secret.name, job_id)
