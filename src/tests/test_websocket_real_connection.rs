@@ -474,6 +474,9 @@ fn three_cluster_manager(
             _ => None,
         });
     manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager
         .expect_handle_new_connection()
         .returning(move |_, _, _| Box::pin(async move { None }));
     manager
