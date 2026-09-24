@@ -1002,7 +1002,7 @@ impl Cluster {
                 let mut msg = Message::new(
                     message_id,
                     Priority::Medium,
-                    &job_source_key(j.id, &cluster_name),
+                    &job_source_key(j.id, cluster_name),
                 );
                 let Ok(job_id_u32) = u32::try_from(j.id) else {
                     tracing::warn!(
