@@ -1358,6 +1358,30 @@ mod tests {
         assert_eq!(*state.error_details.lock().await, "upload failed");
     }
 
+    /// Verifies that `handle_server_ready` returns without panicking or mutating
+    /// state when there is no registered `FileUploadState`.
+    #[test]
+    fn test_handle_server_ready_no_state_returns() {
+        let cluster = make_test_cluster();
+
+        cluster.handle_server_ready();
+
+        assert!(cluster.file_upload_state.is_none());
+    }
+
+    /// Verifies that `handle_file_upload_error` returns without panicking or
+    /// mutating state when there is no registered `FileUploadState`.
+    #[tokio::test]
+    async fn test_handle_file_upload_error_no_state_returns() {
+        let cluster = make_test_cluster();
+
+        let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Highest, "upload failed");
+
+        cluster.handle_file_upload_error(&mut msg).await;
+
+        assert!(cluster.file_upload_state.is_none());
+    }
+
     /// Verifies that `handle_file_details` stores the advertised file size and sets
     /// received_data and data_ready on the FileDownloadState.
     #[test]
