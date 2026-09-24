@@ -121,18 +121,20 @@ pub fn parse_csv_u64(s: &str) -> Vec<u64> {
 /// Format: "what1,state1,what2,state2,..."
 /// Returns a Vec to preserve duplicate `what` values (e.g. same source, different states).
 ///
-/// A malformed filter — an empty token, a non-numeric state, or a dangling
-/// `what` token — yields an empty result rather than a partial (what, state)
-/// list, so the caller never silently widens the result set.
+/// A malformed filter — an empty token, a non-numeric state, an out-of-range
+/// state, or a dangling `what` token — yields an empty result rather than a
+/// partial (what, state) list, so the caller never silently widens the result
+/// set. The state is parsed as `i32` to match the `job_history.state` column
+/// type, so values outside that range are rejected instead of wrapping.
 #[must_use]
-pub fn parse_job_steps(s: &str) -> Vec<(String, u32)> {
+pub fn parse_job_steps(s: &str) -> Vec<(String, i32)> {
     let parts: Vec<&str> = s.split(',').map(str::trim).collect();
     if parts.is_empty() || parts.iter().any(|p| p.is_empty()) || !parts.len().is_multiple_of(2) {
         return Vec::new();
     }
     let mut result = Vec::with_capacity(parts.len() / 2);
     for pair in parts.chunks_exact(2) {
-        let Ok(state) = pair[1].parse::<u32>() else {
+        let Ok(state) = pair[1].parse::<i32>() else {
             return Vec::new();
         };
         result.push((pair[0].to_string(), state));
@@ -387,6 +389,16 @@ mod tests {
         assert!(parse_job_steps("jid0,500,jid1").is_empty());
         assert!(parse_job_steps("a,,500").is_empty());
         assert!(parse_job_steps(",500").is_empty());
+    }
+
+    /// Regression test: an out-of-range state value (outside `i32` range) must
+    /// yield an empty result rather than wrapping via `cast_signed()` to match
+    /// the `job_history.state` `i32` column.
+    #[test]
+    fn test_parse_job_steps_out_of_range_state_yields_empty() {
+        assert!(parse_job_steps("foo,4294967295").is_empty());
+        assert!(parse_job_steps("foo,2147483648").is_empty());
+        assert!(parse_job_steps("foo,-2147483649").is_empty());
     }
 
     /// Verifies that an empty input string yields an empty result.
