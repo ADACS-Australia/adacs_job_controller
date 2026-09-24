@@ -24,7 +24,7 @@ use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_job_history_at,
     insert_test_job, insert_test_job_with_id, insert_test_job_with_state, make_test_state,
     make_test_state_with_secrets, mock_cluster_capturing_with_online,
-    mock_cluster_manager_no_clusters, setup_test_db, test_cluster_config, test_jwt_secrets_multi,
+    mock_cluster_manager_no_clusters, setup_test_db, test_jwt_secrets_multi,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
