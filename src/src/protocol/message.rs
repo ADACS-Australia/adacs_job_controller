@@ -171,45 +171,7 @@ impl Message {
         val
     }
 
-    #[allow(dead_code)]
-    pub fn push_byte(&mut self, value: i8) {
-        self.push_ubyte(value as u8);
-    }
-
-    #[allow(dead_code)]
-    pub fn pop_byte(&mut self) -> i8 {
-        self.pop_ubyte() as i8
-    }
-
     // --- Push / Pop: u16 / i16 ---
-
-    #[allow(dead_code)]
-    pub fn push_ushort(&mut self, value: u16) {
-        self.data.extend_from_slice(&value.to_le_bytes());
-    }
-
-    /// Pop an unsigned 16-bit integer from the message buffer.
-    ///
-    /// If there are fewer than 2 bytes remaining in the buffer, a warning is
-    /// logged and `0` is returned.
-    #[allow(dead_code)]
-    pub fn pop_ushort(&mut self) -> u16 {
-        self.pop_le()
-    }
-
-    #[allow(dead_code)]
-    pub fn push_short(&mut self, value: i16) {
-        self.data.extend_from_slice(&value.to_le_bytes());
-    }
-
-    /// Pop a signed 16-bit integer from the message buffer.
-    ///
-    /// If there are fewer than 2 bytes remaining in the buffer, a warning is
-    /// logged and `0` is returned.
-    #[allow(dead_code)]
-    pub fn pop_short(&mut self) -> i16 {
-        self.pop_le()
-    }
 
     // --- Push / Pop: u32 / i32 ---
 
@@ -222,20 +184,6 @@ impl Message {
     /// If there are fewer than 4 bytes remaining in the buffer, a warning is
     /// logged and `0` is returned.
     pub fn pop_uint(&mut self) -> u32 {
-        self.pop_le()
-    }
-
-    #[allow(dead_code)]
-    pub fn push_int(&mut self, value: i32) {
-        self.data.extend_from_slice(&value.to_le_bytes());
-    }
-
-    /// Pop a signed 32-bit integer from the message buffer.
-    ///
-    /// If there are fewer than 4 bytes remaining in the buffer, a warning is
-    /// logged and `0` is returned.
-    #[allow(dead_code)]
-    pub fn pop_int(&mut self) -> i32 {
         self.pop_le()
     }
 
@@ -253,49 +201,7 @@ impl Message {
         self.pop_le()
     }
 
-    #[allow(dead_code)]
-    pub fn push_long(&mut self, value: i64) {
-        self.data.extend_from_slice(&value.to_le_bytes());
-    }
-
-    /// Pop a signed 64-bit integer from the message buffer.
-    ///
-    /// If there are fewer than 8 bytes remaining in the buffer, a warning is
-    /// logged and `0` is returned.
-    #[allow(dead_code)]
-    pub fn pop_long(&mut self) -> i64 {
-        self.pop_le()
-    }
-
     // --- Push / Pop: f32 / f64 ---
-
-    #[allow(dead_code)]
-    pub fn push_float(&mut self, value: f32) {
-        self.data.extend_from_slice(&value.to_le_bytes());
-    }
-
-    /// Pop a 32-bit float from the message buffer.
-    ///
-    /// If there are fewer than 4 bytes remaining in the buffer, a warning is
-    /// logged and `0.0` is returned.
-    #[allow(dead_code)]
-    pub fn pop_float(&mut self) -> f32 {
-        self.pop_le()
-    }
-
-    #[allow(dead_code)]
-    pub fn push_double(&mut self, value: f64) {
-        self.data.extend_from_slice(&value.to_le_bytes());
-    }
-
-    /// Pop a 64-bit float from the message buffer.
-    ///
-    /// If there are fewer than 8 bytes remaining in the buffer, a warning is
-    /// logged and `0.0` is returned.
-    #[allow(dead_code)]
-    pub fn pop_double(&mut self) -> f64 {
-        self.pop_le()
-    }
 
     // --- Push / Pop: String ---
 
@@ -386,72 +292,6 @@ mod tests {
         assert_eq!(msg2.pop_ubyte(), 255);
     }
 
-    /// Verifies that `push_byte` / `pop_byte` round-trips boundary and mid-range i8 values.
-    ///
-    /// # Setup
-    /// Create a new message, push -128, 0, and 127.
-    ///
-    /// # Act
-    /// Serialise via `into_data`, parse back with `from_bytes`.
-    ///
-    /// # Assert
-    /// Each pop returns the original i8 value in order.
-    #[test]
-    fn test_byte_roundtrip() {
-        let mut msg = test_message();
-        msg.push_byte(-128);
-        msg.push_byte(0);
-        msg.push_byte(127);
-        let mut msg2 = Message::from_bytes(msg.into_data());
-        assert_eq!(msg2.pop_byte(), -128);
-        assert_eq!(msg2.pop_byte(), 0);
-        assert_eq!(msg2.pop_byte(), 127);
-    }
-
-    /// Verifies that `push_ushort` / `pop_ushort` round-trips boundary and mid-range u16 values.
-    ///
-    /// # Setup
-    /// Create a new message, push 0, 12345, and `u16::MAX`.
-    ///
-    /// # Act
-    /// Serialise via `into_data`, parse back with `from_bytes`.
-    ///
-    /// # Assert
-    /// Each pop returns the original u16 value in order.
-    #[test]
-    fn test_ushort_roundtrip() {
-        let mut msg = test_message();
-        msg.push_ushort(0);
-        msg.push_ushort(12345);
-        msg.push_ushort(u16::MAX);
-        let mut msg2 = Message::from_bytes(msg.into_data());
-        assert_eq!(msg2.pop_ushort(), 0);
-        assert_eq!(msg2.pop_ushort(), 12345);
-        assert_eq!(msg2.pop_ushort(), u16::MAX);
-    }
-
-    /// Verifies that `push_short` / `pop_short` round-trips boundary and zero i16 values.
-    ///
-    /// # Setup
-    /// Create a new message, push `i16::MIN`, 0, and `i16::MAX`.
-    ///
-    /// # Act
-    /// Serialise via `into_data`, parse back with `from_bytes`.
-    ///
-    /// # Assert
-    /// Each pop returns the original i16 value in order.
-    #[test]
-    fn test_short_roundtrip() {
-        let mut msg = test_message();
-        msg.push_short(i16::MIN);
-        msg.push_short(0);
-        msg.push_short(i16::MAX);
-        let mut msg2 = Message::from_bytes(msg.into_data());
-        assert_eq!(msg2.pop_short(), i16::MIN);
-        assert_eq!(msg2.pop_short(), 0);
-        assert_eq!(msg2.pop_short(), i16::MAX);
-    }
-
     /// Verifies that `push_uint` / `pop_uint` round-trips zero, a known bit-pattern, and `u32::MAX`.
     ///
     /// # Setup
@@ -474,28 +314,6 @@ mod tests {
         assert_eq!(msg2.pop_uint(), u32::MAX);
     }
 
-    /// Verifies that `push_int` / `pop_int` round-trips boundary and zero i32 values.
-    ///
-    /// # Setup
-    /// Create a new message, push `i32::MIN`, 0, and `i32::MAX`.
-    ///
-    /// # Act
-    /// Serialise via `into_data`, parse back with `from_bytes`.
-    ///
-    /// # Assert
-    /// Each pop returns the original i32 value in order.
-    #[test]
-    fn test_int_roundtrip() {
-        let mut msg = test_message();
-        msg.push_int(i32::MIN);
-        msg.push_int(0);
-        msg.push_int(i32::MAX);
-        let mut msg2 = Message::from_bytes(msg.into_data());
-        assert_eq!(msg2.pop_int(), i32::MIN);
-        assert_eq!(msg2.pop_int(), 0);
-        assert_eq!(msg2.pop_int(), i32::MAX);
-    }
-
     /// Verifies that `push_ulong` / `pop_ulong` round-trips zero, a known bit-pattern, and `u64::MAX`.
     ///
     /// # Setup
@@ -516,74 +334,6 @@ mod tests {
         assert_eq!(msg2.pop_ulong(), 0);
         assert_eq!(msg2.pop_ulong(), 0xDEAD_BEEFCAFEBABE);
         assert_eq!(msg2.pop_ulong(), u64::MAX);
-    }
-
-    /// Verifies that `push_long` / `pop_long` round-trips boundary and zero i64 values.
-    ///
-    /// # Setup
-    /// Create a new message, push `i64::MIN`, 0, and `i64::MAX`.
-    ///
-    /// # Act
-    /// Serialise via `into_data`, parse back with `from_bytes`.
-    ///
-    /// # Assert
-    /// Each pop returns the original i64 value in order.
-    #[test]
-    fn test_long_roundtrip() {
-        let mut msg = test_message();
-        msg.push_long(i64::MIN);
-        msg.push_long(0);
-        msg.push_long(i64::MAX);
-        let mut msg2 = Message::from_bytes(msg.into_data());
-        assert_eq!(msg2.pop_long(), i64::MIN);
-        assert_eq!(msg2.pop_long(), 0);
-        assert_eq!(msg2.pop_long(), i64::MAX);
-    }
-
-    /// Verifies that `push_float` / `pop_float` round-trips zero, pi, and a large negative f32.
-    ///
-    /// # Setup
-    /// Create a new message, push `0.0`, `f32::consts::PI`, and `-1.5e10`.
-    ///
-    /// # Act
-    /// Serialise via `into_data`, parse back with `from_bytes`.
-    ///
-    /// # Assert
-    /// Each pop returns the original f32 value exactly (bit-for-bit).
-    #[allow(clippy::float_cmp)]
-    #[test]
-    fn test_float_roundtrip() {
-        let mut msg = test_message();
-        msg.push_float(0.0);
-        msg.push_float(std::f32::consts::PI);
-        msg.push_float(-1.5e10);
-        let mut msg2 = Message::from_bytes(msg.into_data());
-        assert_eq!(msg2.pop_float(), 0.0);
-        assert_eq!(msg2.pop_float(), std::f32::consts::PI);
-        assert_eq!(msg2.pop_float(), -1.5e10);
-    }
-
-    /// Verifies that `push_double` / `pop_double` round-trips zero, pi, and a large negative f64.
-    ///
-    /// # Setup
-    /// Create a new message, push `0.0`, `f64::consts::PI`, and `-1.5e100`.
-    ///
-    /// # Act
-    /// Serialise via `into_data`, parse back with `from_bytes`.
-    ///
-    /// # Assert
-    /// Each pop returns the original f64 value exactly (bit-for-bit).
-    #[allow(clippy::float_cmp)]
-    #[test]
-    fn test_double_roundtrip() {
-        let mut msg = test_message();
-        msg.push_double(0.0);
-        msg.push_double(std::f64::consts::PI);
-        msg.push_double(-1.5e100);
-        let mut msg2 = Message::from_bytes(msg.into_data());
-        assert_eq!(msg2.pop_double(), 0.0);
-        assert_eq!(msg2.pop_double(), std::f64::consts::PI);
-        assert_eq!(msg2.pop_double(), -1.5e100);
     }
 
     /// Verifies that `push_string` / `pop_string` round-trips a non-empty, empty, and special-char string.
@@ -706,11 +456,8 @@ mod tests {
         let mut msg = Message::new(2000, Priority::Highest, SYSTEM_SOURCE);
         msg.push_bool(true);
         msg.push_ubyte(42);
-        msg.push_ushort(1234);
         msg.push_uint(0xCAFE_BABE);
         msg.push_ulong(9_999_999_999);
-        msg.push_float(std::f32::consts::PI);
-        msg.push_double(std::f64::consts::E);
         msg.push_string("payload");
         msg.push_bytes(&[1, 2, 3]);
 
@@ -721,11 +468,8 @@ mod tests {
 
         assert!(msg2.pop_bool());
         assert_eq!(msg2.pop_ubyte(), 42);
-        assert_eq!(msg2.pop_ushort(), 1234);
         assert_eq!(msg2.pop_uint(), 0xCAFE_BABE);
         assert_eq!(msg2.pop_ulong(), 9_999_999_999);
-        assert!((msg2.pop_float() - std::f32::consts::PI).abs() < 1e-6);
-        assert!((msg2.pop_double() - std::f64::consts::E).abs() < 1e-9);
         assert_eq!(msg2.pop_string(), "payload");
         assert_eq!(msg2.pop_bytes(), vec![1, 2, 3]);
     }
@@ -754,26 +498,6 @@ mod tests {
         assert_eq!(data[header_len + 1], 0x56);
         assert_eq!(data[header_len + 2], 0x34);
         assert_eq!(data[header_len + 3], 0x12);
-    }
-
-    /// Verifies that a pushed u16 is stored as two little-endian bytes in the raw buffer.
-    ///
-    /// # Setup
-    /// Create a new message with empty source; record the header byte length.
-    ///
-    /// # Act
-    /// Push `0xABCD` via `push_ushort`.
-    ///
-    /// # Assert
-    /// The two bytes immediately after the header are `[0xCD, 0xAB]`.
-    #[test]
-    fn test_ushort_byte_layout_little_endian() {
-        let mut msg = Message::new(1, Priority::Lowest, "");
-        let header_len = msg.data().len();
-        msg.push_ushort(0xABCD);
-        let data = msg.data();
-        assert_eq!(data[header_len], 0xCD);
-        assert_eq!(data[header_len + 1], 0xAB);
     }
 
     /// Verifies that a pushed u64 is stored as eight little-endian bytes in the raw buffer.
@@ -938,31 +662,6 @@ mod tests {
 
     // ---- Edge cases ----
 
-    /// Verifies that negative signed integers round-trip correctly across all signed integer types.
-    ///
-    /// # Setup
-    /// Create a new message, push -1 (i8), -256 (i16), -`100_000` (i32), and -`1_000_000_000_000` (i64).
-    ///
-    /// # Act
-    /// Serialise via `into_data`, parse back with `from_bytes`.
-    ///
-    /// # Assert
-    /// Each pop returns the original negative value.
-    #[test]
-    fn test_negative_integers() {
-        let mut msg = test_message();
-        msg.push_byte(-1);
-        msg.push_short(-256);
-        msg.push_int(-100_000);
-        msg.push_long(-1_000_000_000_000);
-
-        let mut msg2 = Message::from_bytes(msg.into_data());
-        assert_eq!(msg2.pop_byte(), -1);
-        assert_eq!(msg2.pop_short(), -256);
-        assert_eq!(msg2.pop_int(), -100_000);
-        assert_eq!(msg2.pop_long(), -1_000_000_000_000);
-    }
-
     /// Verifies that zero and empty values round-trip correctly for all supported types.
     ///
     /// # Setup
@@ -979,11 +678,8 @@ mod tests {
         let mut msg = Message::new(0, Priority::Lowest, "");
         msg.push_bool(false);
         msg.push_ubyte(0);
-        msg.push_ushort(0);
         msg.push_uint(0);
         msg.push_ulong(0);
-        msg.push_float(0.0);
-        msg.push_double(0.0);
         msg.push_string("");
         msg.push_bytes(&[]);
 
@@ -992,11 +688,8 @@ mod tests {
         assert_eq!(msg2.id(), 0);
         assert!(!msg2.pop_bool());
         assert_eq!(msg2.pop_ubyte(), 0);
-        assert_eq!(msg2.pop_ushort(), 0);
         assert_eq!(msg2.pop_uint(), 0);
         assert_eq!(msg2.pop_ulong(), 0);
-        assert_eq!(msg2.pop_float(), 0.0);
-        assert_eq!(msg2.pop_double(), 0.0);
         assert_eq!(msg2.pop_string(), "");
         assert_eq!(msg2.pop_bytes(), Vec::<u8>::new());
     }
@@ -1021,15 +714,8 @@ mod tests {
         let mut msg = Message::from_bytes(Vec::new());
         assert!(!msg.pop_bool());
         assert_eq!(msg.pop_ubyte(), 0);
-        assert_eq!(msg.pop_byte(), 0);
-        assert_eq!(msg.pop_ushort(), 0);
-        assert_eq!(msg.pop_short(), 0);
         assert_eq!(msg.pop_uint(), 0);
-        assert_eq!(msg.pop_int(), 0);
         assert_eq!(msg.pop_ulong(), 0);
-        assert_eq!(msg.pop_long(), 0);
-        assert_eq!(msg.pop_float(), 0.0);
-        assert_eq!(msg.pop_double(), 0.0);
         assert_eq!(msg.pop_string(), "");
         assert_eq!(msg.pop_bytes(), Vec::<u8>::new());
     }
@@ -1049,14 +735,8 @@ mod tests {
     #[test]
     fn test_pop_defaults_on_partial_buffer() {
         let mut msg = Message::from_bytes(vec![0x01]);
-        assert_eq!(msg.pop_ushort(), 0);
-        assert_eq!(msg.pop_short(), 0);
         assert_eq!(msg.pop_uint(), 0);
-        assert_eq!(msg.pop_int(), 0);
         assert_eq!(msg.pop_ulong(), 0);
-        assert_eq!(msg.pop_long(), 0);
-        assert_eq!(msg.pop_float(), 0.0);
-        assert_eq!(msg.pop_double(), 0.0);
         assert_eq!(msg.pop_string(), "");
         assert_eq!(msg.pop_bytes(), Vec::<u8>::new());
     }
