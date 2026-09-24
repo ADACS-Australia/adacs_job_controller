@@ -645,6 +645,8 @@ async fn load_job_for_transition(
     job_id: u64,
     invalid_states: &[i32],
 ) -> Result<(job::Model, Arc<dyn ClusterTrait>, i32), (StatusCode, String)> {
+    job_id_to_u32(job_id)?;
+
     let job = get_job_with_access_check(state, auth, job_id).await?;
 
     let latest = get_latest_job_history(state, job.id).await?;
