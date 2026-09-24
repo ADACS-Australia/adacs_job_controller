@@ -2592,6 +2592,52 @@ async fn test_list_files_app4_cannot_access_app1_job() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Tests that a secret whose cluster allow-list excludes the job's cluster is
+/// rejected on the jobId file paths, even when the job's application is in scope.
+///
+/// # Setup
+/// Inserts an app1 job on "nci". Uses the multi-secret configuration where
+/// secret[1] (app2) lists "app1" in its applications but its `clusters`
+/// allow-list only contains "ozstar" (not "nci").
+///
+/// # Act
+/// Sends PATCH and POST /job/apiv1/file/ with app2's token and the app1 job ID.
+///
+/// # Assert
+/// Verifies 400 Bad Request for both operations — the cluster allow-list check
+/// applies to the jobId resolution paths, matching cancel/delete.
+#[tokio::test]
+async fn test_file_handlers_app2_cannot_access_app1_job_on_other_cluster() {
+    let secrets = test_jwt_secrets_multi();
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "nci", "b", "app1").await;
+
+    let manager = manager_with_online_cluster_no_messages();
+
+    let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
+    let token = encode_jwt_for_secret(&secrets[1], &serde_json::json!({"userId": 10}));
+
+    for method in ["PATCH", "POST"] {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri("/job/apiv1/file/")
+                    .header("authorization", &token)
+                    .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                    .body(Body::from(
+                        serde_json::json!({"jobId": job_id, "path": "/test/path"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Content-Type tolerance tests
 // ---------------------------------------------------------------------------
@@ -2775,10 +2821,14 @@ async fn test_resolve_cluster_bundle_for_file_list_success() {
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
     let state = make_test_state(db, MockClusterManagerTrait::new());
+    let auth = adacs_job_controller::http::auth::AuthResult {
+        payload: serde_json::json!({"userId": 1}),
+        secret: test_jwt_secrets()[0].clone(),
+    };
     let result = adacs_job_controller::http::file::resolve_cluster_bundle_for_file_list(
         &state,
+        &auth,
         &["testapp".to_string()],
-        "testapp",
         job_id as u64,
     )
     .await;
@@ -2803,10 +2853,14 @@ async fn test_resolve_cluster_bundle_for_file_list_app_without_access_returns_er
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
     let state = make_test_state(db, MockClusterManagerTrait::new());
+    let auth = adacs_job_controller::http::auth::AuthResult {
+        payload: serde_json::json!({"userId": 1}),
+        secret: test_jwt_secrets()[0].clone(),
+    };
     let result = adacs_job_controller::http::file::resolve_cluster_bundle_for_file_list(
         &state,
+        &auth,
         &["other_app".to_string()],
-        "other_app",
         job_id as u64,
     )
     .await;
@@ -2817,7 +2871,7 @@ async fn test_resolve_cluster_bundle_for_file_list_app_without_access_returns_er
         msg.contains(&format!("Unable to find job with ID {job_id}")),
         "msg: {msg}"
     );
-    assert!(msg.contains("other_app"), "msg: {msg}");
+    assert!(msg.contains("testapp"), "msg: {msg}");
 }
 
 /// Tests that `resolve_cluster_bundle_for_file_list` returns an error when the job
@@ -2837,10 +2891,14 @@ async fn test_resolve_cluster_bundle_for_file_list_missing_job_returns_error() {
     let missing_job_id: u64 = 999_999;
 
     let state = make_test_state(db, MockClusterManagerTrait::new());
+    let auth = adacs_job_controller::http::auth::AuthResult {
+        payload: serde_json::json!({"userId": 1}),
+        secret: test_jwt_secrets()[0].clone(),
+    };
     let result = adacs_job_controller::http::file::resolve_cluster_bundle_for_file_list(
         &state,
+        &auth,
         &["testapp".to_string()],
-        "testapp",
         missing_job_id,
     )
     .await;

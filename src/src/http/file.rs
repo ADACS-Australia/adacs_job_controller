@@ -866,8 +866,7 @@ pub async fn list_files(
     job_id_to_u32(job_id)?;
 
     let (s_cluster, s_bundle) = if job_id != 0 {
-        resolve_cluster_bundle_for_file_list(&state, &applications, &auth.secret.name, job_id)
-            .await?
+        resolve_cluster_bundle_for_file_list(&state, &auth, &applications, job_id).await?
     } else {
         let cluster = body.cluster.ok_or((
             StatusCode::BAD_REQUEST,
@@ -1106,7 +1105,7 @@ async fn resolve_cluster_bundle(
     bundle_param: Option<&str>,
 ) -> Result<(String, String), (StatusCode, String)> {
     if job_id != 0 {
-        resolve_cluster_bundle_for_file_list(state, applications, &auth.secret.name, job_id).await
+        resolve_cluster_bundle_for_file_list(state, auth, applications, job_id).await
     } else {
         let cluster = cluster_param
             .filter(|s| !s.is_empty())
@@ -1138,8 +1137,8 @@ async fn resolve_cluster_bundle(
 /// - Job is not found or inaccessible to the application
 pub async fn resolve_cluster_bundle_for_file_list(
     state: &AppState,
+    auth: &AuthResult,
     applications: &[String],
-    app_name: &str,
     job_id: u64,
 ) -> Result<(String, String), (StatusCode, String)> {
     let j = job::Entity::find_by_id(job_id.cast_signed())
@@ -1149,8 +1148,18 @@ pub async fn resolve_cluster_bundle_for_file_list(
         .map_err(db_error)?
         .ok_or((
             StatusCode::BAD_REQUEST,
-            format!("Unable to find job with ID {job_id} for application {app_name}"),
+            format!(
+                "Unable to find job with ID {job_id} for application {}",
+                auth.secret.name
+            ),
         ))?;
+
+    if !auth.secret.clusters.contains(&j.cluster) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            app_no_cluster_access_msg(&auth.secret.name, &j.cluster),
+        ));
+    }
 
     Ok((j.cluster, j.bundle))
 }
