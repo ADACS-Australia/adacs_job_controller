@@ -7,7 +7,10 @@
 
 mod common;
 
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
+    QueryFilter, Statement,
+};
 
 use adacs_job_controller::db::entities::file_list_cache;
 use adacs_job_controller::db::file_list_cache::replace_file_list;
@@ -103,5 +106,36 @@ async fn test_replace_file_list_only_affects_target_job() {
     assert_eq!(
         cached_paths(&db, target_job).await,
         vec!["/target/new.txt".to_string()]
+    );
+}
+
+/// A failed insert must roll back the whole replacement, leaving the prior
+/// cache intact (atomic replacement) rather than empty or partially populated.
+#[tokio::test]
+async fn test_replace_file_list_failed_insert_preserves_prior_cache() {
+    let db = setup_test_db().await;
+    let job_id = 99;
+
+    insert_cache_row(&db, job_id, "/old/keep.txt").await;
+
+    db.execute(Statement::from_string(
+        DatabaseBackend::Sqlite,
+        "CREATE TRIGGER fail_file_list_insert BEFORE INSERT ON jobserver_filelistcache \
+         WHEN NEW.path = '/fail' BEGIN SELECT RAISE(ABORT, 'forced insert failure'); END;"
+            .to_string(),
+    ))
+    .await
+    .unwrap();
+
+    replace_file_list(
+        &db,
+        job_id,
+        &[file("/fail", false), file("/new/other.txt", false)],
+    )
+    .await;
+
+    assert_eq!(
+        cached_paths(&db, job_id).await,
+        vec!["/old/keep.txt".to_string()]
     );
 }
