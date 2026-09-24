@@ -1079,6 +1079,9 @@ async fn test_list_files_ws_response_populates_result() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     // Build AppState with the shared file_list_map
     let state = adacs_job_controller::app::AppState {
@@ -1185,6 +1188,9 @@ async fn test_list_files_completed_job_populates_cache() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let state = adacs_job_controller::app::AppState {
         db: db.clone(),
@@ -1480,6 +1486,59 @@ async fn test_list_files_cluster_offline_returns_503() {
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
+/// Tests that PATCH /file/ (list files) returns 503 when the application is
+/// shutting down, before creating a file-list session or sending a `FILE_LIST`
+/// message to the cluster.
+///
+/// # Setup
+/// Inserts a Running job (no cache). Wires an online cluster. Mocks the
+/// cluster manager as shutting down.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/file/ with the job ID.
+///
+/// # Assert
+/// Verifies 503 Service Unavailable.
+#[tokio::test]
+async fn test_list_files_shutdown_returns_503() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
+
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_cluster_by_name()
+        .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| true);
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "path": "",
+                        "recursive": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
 /// Tests that PATCH /file/ for a job whose ID exceeds `u32::MAX` returns 400
 /// instead of silently truncating the job ID in the `FILE_LIST` message.
 ///
@@ -1501,6 +1560,9 @@ async fn test_list_files_job_id_exceeding_u32_returns_400() {
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
