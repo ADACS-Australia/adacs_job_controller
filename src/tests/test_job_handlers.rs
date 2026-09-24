@@ -338,6 +338,9 @@ fn manager_with_cluster(online: bool) -> (MockClusterManagerTrait, Arc<Mutex<Vec
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     (manager, sent)
 }
 
@@ -347,6 +350,21 @@ fn manager_with_online_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Mess
 
 fn manager_with_offline_cluster() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
     manager_with_cluster(false)
+}
+
+/// Build a mock manager with an online cluster that reports application shutdown.
+fn manager_with_online_cluster_shutdown() -> (MockClusterManagerTrait, Arc<Mutex<Vec<Message>>>) {
+    let (cluster, sent) = mock_cluster_capturing_with_online("ozstar", true);
+    let cluster = Arc::new(cluster);
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| true);
+    (manager, sent)
 }
 
 /// Tests that a PENDING job is directly transitioned to Cancelled without a WS message.
@@ -707,6 +725,44 @@ async fn test_cancel_delete_app3_cannot_access_app1_job_on_shared_cluster() {
     }
 }
 
+/// Tests that cancelling a job during application shutdown returns 503 without
+/// writing a history row or sending a wire message.
+///
+/// # Setup
+/// Inserts a job with PENDING → SUBMITTING history and a manager reporting
+/// `is_application_shutting_down() == true`.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
+///
+/// # Assert
+/// Verifies 503 Service Unavailable, no new history row, and no WS message.
+#[tokio::test]
+async fn test_cancel_job_shutdown_returns_503_no_history_no_ws() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+    insert_job_history(&db, job_id, JobStatus::Submitting as i32, "system").await;
+
+    let (manager, sent) = manager_with_online_cluster_shutdown();
+    let (status, body) = run_cancel(job_id, &db, manager).await;
+
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body: {body}");
+
+    // No new history row should be written (latest stays Submitting)
+    let latest = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(job_id))
+        .order_by_desc(job_history::Column::Timestamp)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.state, JobStatus::Submitting as i32);
+
+    // No wire message should be sent
+    assert!(sent.lock().unwrap().is_empty());
+}
+
 // ---------------------------------------------------------------------------
 // delete_job tests — state machine exhaustively tested
 // ---------------------------------------------------------------------------
@@ -940,6 +996,44 @@ async fn test_delete_job_job_id_exceeding_u32_returns_400() {
         body.contains("exceeds maximum supported value"),
         "body: {body}"
     );
+}
+
+/// Tests that deleting a job during application shutdown returns 503 without
+/// writing a history row or sending a wire message.
+///
+/// # Setup
+/// Inserts a job with PENDING → COMPLETED history and a manager reporting
+/// `is_application_shutting_down() == true`.
+///
+/// # Act
+/// Sends DELETE /job/apiv1/job/ with the job ID.
+///
+/// # Assert
+/// Verifies 503 Service Unavailable, no new history row, and no WS message.
+#[tokio::test]
+async fn test_delete_job_shutdown_returns_503_no_history_no_ws() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+    insert_job_history(&db, job_id, JobStatus::Completed as i32, "system").await;
+
+    let (manager, sent) = manager_with_online_cluster_shutdown();
+    let (status, body) = run_delete(job_id, &db, manager).await;
+
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body: {body}");
+
+    // No new history row should be written (latest stays Completed)
+    let latest = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(job_id))
+        .order_by_desc(job_history::Column::Timestamp)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest.state, JobStatus::Completed as i32);
+
+    // No wire message should be sent
+    assert!(sent.lock().unwrap().is_empty());
 }
 
 // ---------------------------------------------------------------------------

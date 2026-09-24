@@ -29,6 +29,7 @@ use crate::utils::job_source_key;
 
 const ERR_JOB_INVALID_STATE: &str = "Job is in invalid state";
 const ERR_CLUSTER_DID_NOT_EXIST: &str = "Cluster for job did not exist";
+const ERR_APPLICATION_SHUTDOWN: &str = "Application is shutting down";
 
 /// JSON response key for a job's internal ID.
 const JOB_ID_KEY: &str = "jobId";
@@ -562,6 +563,16 @@ pub async fn cancel_job(
     let (job, cluster_obj, current_state) =
         load_job_for_transition(&state, &auth, body.job_id, &invalid_states).await?;
 
+    // Application shutdown: reject new work once shutdown has begun, before any
+    // history row is written or wire message is sent (mirrors download_file).
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!("HTTP: Rejecting job cancel - application shutdown in progress");
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            ERR_APPLICATION_SHUTDOWN.to_string(),
+        ));
+    }
+
     record_job_transition(
         &state,
         &cluster_obj,
@@ -610,6 +621,16 @@ pub async fn delete_job(
 
     let (job, cluster_obj, current_state) =
         load_job_for_transition(&state, &auth, body.job_id, &invalid_states).await?;
+
+    // Application shutdown: reject new work once shutdown has begun, before any
+    // history row is written or wire message is sent (mirrors download_file).
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!("HTTP: Rejecting job delete - application shutdown in progress");
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            ERR_APPLICATION_SHUTDOWN.to_string(),
+        ));
+    }
 
     record_job_transition(
         &state,
