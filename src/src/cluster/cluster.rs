@@ -2687,4 +2687,22 @@ mod tests {
 
         cluster.stop();
     }
+
+    /// Verifies that `handle_update_job` returns without panicking when there is
+    /// no `AppContext` available.
+    #[tokio::test]
+    async fn test_handle_update_job_no_app_context_returns() {
+        let cluster = make_test_cluster();
+
+        let mut msg = Message::new(UPDATE_JOB, Priority::Highest, TEST_CLUSTER);
+        msg.push_uint(42);
+        msg.push_string("test");
+        msg.push_uint(JobStatus::Running as u32);
+        msg.push_string("details");
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_update_job(&mut msg).await;
+
+        assert!(cluster.app_context.is_none());
+    }
 }
