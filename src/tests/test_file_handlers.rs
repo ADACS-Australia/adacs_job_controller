@@ -299,7 +299,7 @@ async fn test_create_file_download_rolls_back_on_mid_batch_insert_failure() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
     let remaining = file_download::Entity::find()
         .filter(file_download::Column::Job.eq(job_id))
