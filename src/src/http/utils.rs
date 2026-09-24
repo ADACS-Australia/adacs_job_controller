@@ -99,14 +99,14 @@ async fn read_body_limited(
     Ok(bytes)
 }
 
-/// Build the standard `400 Bad Request` response for a database error.
+/// Build the standard `500 Internal Server Error` response for a database error.
 ///
 /// # Errors
 ///
-/// Returns the `(StatusCode::BAD_REQUEST, "DB error: ...")` tuple used by HTTP
-/// handlers when a database operation fails.
+/// Returns the `(StatusCode::INTERNAL_SERVER_ERROR, "DB error: ...")` tuple used
+/// by HTTP handlers when a database operation fails.
 pub fn db_error(e: impl std::fmt::Display) -> (StatusCode, String) {
-    (StatusCode::BAD_REQUEST, format!("DB error: {e}"))
+    (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {e}"))
 }
 
 /// Parse a comma-separated list of u64 values from a query parameter string.
