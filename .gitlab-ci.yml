@@ -71,6 +71,11 @@ test-and-coverage:
       # Output for GitLab coverage regex
       LINE_COV=$(jq -r '.data[].totals.lines.percent' coverage.json)
       echo "TOTAL ${LINE_COV}% covered"
+      # Enforce minimum line coverage floor (tech-debt #20)
+      if ! jq -e '.data[0].totals.lines.percent >= 80' coverage.json > /dev/null; then
+        echo "Line coverage ${LINE_COV}% is below the 80% floor" >&2
+        exit 1
+      fi
   coverage: '/TOTAL\s+(\d+\.\d+)%/'
   artifacts:
     reports:
