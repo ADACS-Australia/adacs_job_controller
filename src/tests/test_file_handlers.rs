@@ -1641,6 +1641,9 @@ async fn test_upload_file_job_id_exceeding_u32_returns_400() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(cm.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     // The job ID is validated before the upload session is created, so the
     // overflow path must never create (and thus never leak) an upload session.
     manager.expect_create_file_upload().never();
@@ -1694,6 +1697,54 @@ async fn test_upload_file_cluster_offline_returns_503() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                ))
+                .header("authorization", &token)
+                .header("content-length", "5")
+                .body(Body::from("hello"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+/// Tests that PUT /file/upload/ during application shutdown returns 503 without
+/// creating an upload session, mirroring the download path's shutdown guard.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster but marks the application as
+/// shutting down.
+///
+/// # Act
+/// Sends PUT /job/apiv1/file/upload/ with valid parameters.
+///
+/// # Assert
+/// Verifies 503 Service Unavailable and that no upload session is created.
+#[tokio::test]
+async fn test_upload_file_application_shutdown_returns_503() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let cluster = Arc::new(online_cluster("ozstar"));
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| true);
+    manager.expect_create_file_upload().never();
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1788,6 +1839,9 @@ async fn test_upload_file_success_full_flow() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(cm.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     manager.expect_create_file_upload().returning(move |_, _| {
         let c = Arc::clone(&uc);
         Box::pin(async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> })
@@ -1865,6 +1919,9 @@ async fn test_upload_file_server_error_returns_400() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(cm.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     manager.expect_create_file_upload().returning(move |_, _| {
         let c = Arc::clone(&uc);
         Box::pin(async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> })

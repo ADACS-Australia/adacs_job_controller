@@ -706,6 +706,21 @@ pub async fn upload_file(
 
     let cluster = get_online_cluster(&state, &s_cluster)?;
 
+    // Application shutdown: reject new dedicated admission via the same
+    // typed error / status code already returned for offline clusters and
+    // used by the download path. No session is created, so no orphaned
+    // file_upload_map entry is left behind.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!(
+            "HTTP: Rejecting upload (cluster='{}') - application shutdown in progress",
+            s_cluster
+        );
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
+        ));
+    }
+
     let uuid = generate_uuid();
     tracing::trace!("HTTP: Generated upload session UUID: {}", uuid);
 
