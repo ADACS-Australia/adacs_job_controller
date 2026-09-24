@@ -532,6 +532,61 @@ async fn test_download_file_cluster_not_found_returns_400() {
     );
 }
 
+/// Tests that GET /file/ returns 503 with the offline message when the
+/// application is shutting down, and that no download session is created.
+///
+/// # Setup
+/// Inserts a download record pointing at "ozstar". Wires an online cluster
+/// and a manager whose `is_application_shutting_down` returns `true`.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}.
+///
+/// # Assert
+/// Verifies 503 Service Unavailable with the `REMOTE_CLUSTER_OFFLINE_MSG`
+/// body, and that `create_file_download` is never called (no session created).
+#[tokio::test]
+async fn test_download_file_application_shutdown_returns_503() {
+    let db = setup_test_db().await;
+    let uuid = "shutdown-uuid".to_string();
+    insert_file_download(&db, &uuid, "").await;
+
+    let cluster = Arc::new(online_cluster("ozstar"));
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| true);
+    manager.expect_create_file_download().times(0);
+
+    let app = make_app(db, manager);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&body),
+        "Remote Cluster Offline",
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
 /// Tests the full file download flow: WS pushes data, HTTP streams it back.
 ///
 /// # Setup
