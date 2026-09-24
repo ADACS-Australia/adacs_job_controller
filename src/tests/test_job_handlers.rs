@@ -1040,6 +1040,43 @@ async fn test_get_jobs_conflicting_time_filters_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Tests that GET /job/ returns 503 Service Unavailable when the application
+/// is shutting down, before any DB query is performed.
+///
+/// # Setup
+/// Mock manager reports `is_application_shutting_down == true`.
+///
+/// # Act
+/// Sends GET /job/apiv1/job/ with a valid token.
+///
+/// # Assert
+/// Verifies 503 Service Unavailable.
+#[tokio::test]
+async fn test_get_jobs_application_shutdown_returns_503() {
+    let db = setup_test_db().await;
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| true);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/job/apiv1/job/")
+                .header("authorization", &token)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
 /// Tests that the job history array is included in the response, ordered descending by timestamp.
 ///
 /// # Setup
