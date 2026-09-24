@@ -938,7 +938,7 @@ impl Cluster {
         push_bundle_and_params: bool,
     ) {
         use crate::db::entities::{job, job_history};
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
         use std::collections::HashMap;
 
         if !self.is_online() {
@@ -960,7 +960,6 @@ impl Cluster {
 
         let jobs = job::Entity::find()
             .filter(job::Column::Cluster.eq(cluster_name.as_str()))
-            .limit(500)
             .all(db)
             .await
             .inspect_err(|e| {
