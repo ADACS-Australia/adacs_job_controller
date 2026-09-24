@@ -525,11 +525,14 @@ async fn handle_jobstatus_save(
             what: Set(status.what.clone()),
             state: Set(status.state),
         };
-        if let Err(e) = active.update(db).await {
-            log_update_failed(&cluster.name(), &e);
-        }
-
-        send_save_response(cluster, db_request_id, status.id.cast_unsigned()).await;
+        let saved_id = match active.update(db).await {
+            Ok(_) => status.id.cast_unsigned(),
+            Err(e) => {
+                log_update_failed(&cluster.name(), &e);
+                0
+            }
+        };
+        send_save_response(cluster, db_request_id, saved_id).await;
     }
 }
 
@@ -549,12 +552,16 @@ async fn update_bundle_job(
         cluster: NotSet,
         bundle_hash: NotSet,
     };
-    if let Err(e) = active.update(db).await {
-        log_update_failed(&cluster.name(), &e);
-    }
+    let saved_id = match active.update(db).await {
+        Ok(_) => model_id.cast_unsigned(),
+        Err(e) => {
+            log_update_failed(&cluster.name(), &e);
+            0
+        }
+    };
 
     let mut response = prepare_response(db_request_id);
-    response.push_ulong(model_id.cast_unsigned());
+    response.push_ulong(saved_id);
     cluster.send_message(response).await;
 }
 

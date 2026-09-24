@@ -787,6 +787,43 @@ async fn test_handle_jobstatus_save_update() {
     assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
 
+/// Verifies that a `DB_JOBSTATUS_SAVE` update that fails reports `0` in the `DB_RESPONSE`
+/// instead of a stale non-zero row id.
+///
+/// # Setup
+/// Empty in-memory DB; `ClusterJobStatus` carries a non-zero `id` that does not exist.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=702` and the non-existent id.
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=702` and a saved id of `0`.
+#[tokio::test]
+async fn test_handle_jobstatus_save_update_failure() {
+    let db = make_cluster_db().await;
+
+    let missing_id = 99999;
+    let status = ClusterJobStatus {
+        id: missing_id,
+        job_id: 10,
+        what: "new_what".to_string(),
+        state: 999,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(702);
+        status.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 702);
+    assert_eq!(body.pop_ulong(), 0, "failed update must report saved id 0");
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOBSTATUS_GET_BY_JOB_ID
 // ---------------------------------------------------------------------------
