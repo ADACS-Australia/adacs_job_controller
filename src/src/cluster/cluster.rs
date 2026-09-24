@@ -169,6 +169,7 @@ impl Cluster {
     }
 
     /// Shared constructor for all cluster roles.
+    #[allow(clippy::too_many_arguments)]
     fn new_with_role(
         details: ClusterConfig,
         role: ClusterRole,
