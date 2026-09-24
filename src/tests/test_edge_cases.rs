@@ -928,7 +928,15 @@ async fn test_upload_oversized_content_length_returns_400() {
 
     let fu_for_manager = Arc::clone(&fu_state);
 
-    let upload_cluster = Arc::new(upload_cluster());
+    // The dedicated upload session must be torn down on the body-length
+    // mismatch error path (mirroring the download path's cleanup), so the
+    // mock expects `close` to be called exactly once.
+    let mut upload_cluster = upload_cluster();
+    upload_cluster
+        .expect_close()
+        .times(1)
+        .returning(|_| Box::pin(async {}));
+    let upload_cluster = Arc::new(upload_cluster);
 
     let cluster_main = Arc::new(online_cluster_no_messages());
     let manager =
