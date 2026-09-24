@@ -205,13 +205,7 @@ pub async fn create_job(
         );
         let source = job_source_key(job_id, &body.cluster);
         let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, &source);
-        let Ok(job_id_u32) = job_id_to_u32(job_id as u64) else {
-            tracing::warn!(
-                "HTTP: Job {} created but ID exceeds u32 wire range - skipping submit",
-                job_id
-            );
-            return Ok(Json(serde_json::json!({ JOB_ID_KEY: job_id })));
-        };
+        let job_id_u32 = job_id_to_u32(job_id as u64)?;
         msg.push_uint(job_id_u32);
         msg.push_string(&body.bundle);
         msg.push_string(&body.parameters);
