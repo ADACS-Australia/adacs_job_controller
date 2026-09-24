@@ -698,6 +698,8 @@ pub async fn upload_file(
         })?;
     tracing::trace!("HTTP: Content-Length: {} bytes", content_length);
 
+    let job_id_u32 = job_id_to_u32(params.job_id.unwrap_or(0))?;
+
     let applications = get_applications(&auth.secret);
 
     tracing::trace!("HTTP: Resolving cluster and bundle for upload");
@@ -720,8 +722,6 @@ pub async fn upload_file(
 
     let uuid = generate_uuid();
     tracing::trace!("HTTP: Generated upload session UUID: {}", uuid);
-
-    let job_id_u32 = job_id_to_u32(params.job_id.unwrap_or(0))?;
 
     tracing::debug!("HTTP: Creating file upload session");
     let upload_cluster = state
