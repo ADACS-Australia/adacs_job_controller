@@ -615,6 +615,74 @@ async fn test_download_file_streams_chunks() {
     }
 }
 
+/// Tests that downloading a zero-length file returns 200 with an empty body.
+///
+/// # Setup
+/// Inserts a download record. Wires a `FileDownloadState` whose `file_size` is
+/// `0` and `received_data` is `true`, simulating a `FILE_DETAILS` with size 0.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}.
+///
+/// # Assert
+/// Verifies 200 OK, `Content-Length: 0`, and an empty response body.
+#[tokio::test]
+async fn test_download_file_zero_length_returns_empty_body() {
+    let db = setup_test_db().await;
+    let uuid = "empty-file-uuid".to_string();
+    insert_file_download(&db, &uuid, "").await;
+
+    let fd_state = Arc::new(FileDownloadState::new());
+    fd_state.file_size.store(0, Ordering::Release);
+    fd_state.received_data.store(true, Ordering::Release);
+    fd_state.data_ready.store(true, Ordering::Release);
+    fd_state.data_notify.notify_waiters();
+
+    let fd_for_manager = Arc::clone(&fd_state);
+    let mut manager = download_manager_with_online_cluster();
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd_for_manager)));
+
+    let app = make_app(db, manager);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok()),
+        Some("0"),
+        "Content-Length should be 0 for an empty file"
+    );
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        body_bytes.is_empty(),
+        "Response body should be empty for a zero-length file, got {} bytes",
+        body_bytes.len()
+    );
+}
+
 /// Tests that a cluster file error propagates to a 400 response with the error message.
 ///
 /// # Setup
