@@ -1531,6 +1531,45 @@ async fn test_get_jobs_combined_filters_applied_at_db_level() {
     assert_eq!(jobs[0]["id"].as_i64().unwrap(), job1);
 }
 
+/// Tests that jobIds and jobSteps filters are AND'd together at the DB level.
+///
+/// # Setup
+/// Inserts job1 (Pending → Running), job2 (Pending → Running), and job3 (Pending only).
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?jobIds={job1},{job2}&jobSteps=system,{Running}.
+///
+/// # Assert
+/// Verifies only job1 satisfies both conditions (in the requested IDs AND has Running history);
+/// job2 matches jobIds but not jobSteps, and job3 matches neither.
+#[tokio::test]
+async fn test_get_jobs_combined_job_ids_and_job_steps_filters() {
+    let db = setup_test_db().await;
+    // job1: Pending → Running — passes jobIds AND jobSteps filter
+    let job1 = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    insert_job_history(&db, job1, JobStatus::Pending as i32, "system").await;
+    insert_job_history(&db, job1, JobStatus::Running as i32, "system").await;
+
+    // job2: Pending → Running but NOT in the requested jobIds — fails jobIds filter
+    let job2 = insert_test_job(&db, "ozstar", "b2", "testapp").await;
+    insert_job_history(&db, job2, JobStatus::Pending as i32, "system").await;
+    insert_job_history(&db, job2, JobStatus::Running as i32, "system").await;
+
+    // job3: in the requested jobIds but Pending only — fails jobSteps filter
+    let job3 = insert_test_job(&db, "ozstar", "b3", "testapp").await;
+    insert_job_history(&db, job3, JobStatus::Pending as i32, "system").await;
+
+    let running_val = JobStatus::Running as u32;
+    let body = get_jobs_with_query(
+        db,
+        &format!("?jobIds={job1},{job3}&jobSteps=system,{running_val}"),
+    )
+    .await;
+    let jobs = body.as_array().unwrap();
+    assert_eq!(jobs.len(), 1, "only job1 passes both filters");
+    assert_eq!(jobs[0]["id"].as_i64().unwrap(), job1);
+}
+
 /// Tests that the jobIds filter returns only the explicitly requested job IDs.
 ///
 /// # Setup
