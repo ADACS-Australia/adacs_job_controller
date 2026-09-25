@@ -414,23 +414,21 @@ pub async fn get_jobs(
             // A malformed or blank filter (e.g. no valid (what, state) pairs) must not widen the result set.
             return Ok(Json(serde_json::json!([])));
         }
-        if !steps.is_empty() {
-            let mut step_cond = Condition::any();
-            for (what, sv) in &steps {
-                step_cond = step_cond.add(
-                    Condition::all()
-                        .add(job_history::Column::What.eq(what.clone()))
-                        .add(job_history::Column::State.eq(*sv)),
-                );
-            }
-            let subq = Query::select()
-                .distinct()
-                .column(job_history::Column::JobId)
-                .from(job_history::Entity)
-                .cond_where(step_cond)
-                .to_owned();
-            job_query = job_query.filter(job::Column::Id.in_subquery(subq));
+        let mut step_cond = Condition::any();
+        for (what, sv) in &steps {
+            step_cond = step_cond.add(
+                Condition::all()
+                    .add(job_history::Column::What.eq(what.clone()))
+                    .add(job_history::Column::State.eq(*sv)),
+            );
         }
+        let subq = Query::select()
+            .distinct()
+            .column(job_history::Column::JobId)
+            .from(job_history::Entity)
+            .cond_where(step_cond)
+            .to_owned();
+        job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
     let filtered_jobs = job_query.all(&state.db).await.map_err(db_error)?;
