@@ -17,7 +17,7 @@ use crate::db::entities::{file_download, file_list_cache, job, job_history};
 use crate::http::auth::{AuthResult, auth_user_id, get_applications};
 use crate::http::utils::{
     ERR_CLUSTER_TIMEOUT, INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error,
-    failed_to_read_body_msg, filter_files, job_id_to_u32,
+    failed_to_read_body_msg, filter_files, has_cluster_access, job_id_to_u32,
 };
 use crate::protocol::constants::{
     DOWNLOAD_FILE, FILE_LIST, FILE_UPLOAD_CHUNK, FILE_UPLOAD_COMPLETE, JOB_COMPLETION_SOURCE,
@@ -1109,8 +1109,11 @@ async fn resolve_cluster_bundle(
             .filter(|s| !s.is_empty())
             .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
 
-        if !auth.secret.clusters.iter().any(|c| c == cluster) {
-            return Err((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()));
+        if !has_cluster_access(&auth.secret, cluster) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                app_no_cluster_access_msg(&auth.secret.name, cluster),
+            ));
         }
 
         // Verify the cluster actually exists
@@ -1150,7 +1153,7 @@ pub async fn resolve_cluster_bundle_for_file_list(
             ),
         ))?;
 
-    if !auth.secret.clusters.contains(&j.cluster) {
+    if !has_cluster_access(&auth.secret, &j.cluster) {
         return Err((
             StatusCode::BAD_REQUEST,
             app_no_cluster_access_msg(&auth.secret.name, &j.cluster),

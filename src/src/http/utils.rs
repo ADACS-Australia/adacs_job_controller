@@ -1,5 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
+use crate::config::access_secrets::AccessSecret;
 use crate::protocol::types::FileInfo;
 use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
@@ -19,6 +20,12 @@ pub const INVALID_CLUSTER_MSG: &str = "Invalid cluster";
 #[must_use]
 pub fn app_no_cluster_access_msg(app: &str, cluster: &str) -> String {
     format!("Application {app} does not have access to cluster {cluster}")
+}
+
+/// Returns true if the access secret grants access to the named cluster.
+#[must_use]
+pub fn has_cluster_access(secret: &AccessSecret, cluster: &str) -> bool {
+    secret.clusters.iter().any(|c| c == cluster)
 }
 
 /// HTTP `Content-Type` request header name.
@@ -312,6 +319,42 @@ mod tests {
         assert!(parse_csv_i64("").is_empty());
         assert_eq!(parse_csv_i64("1,,3"), vec![1, 3]);
         assert_eq!(parse_csv_i64("abc,2,def"), vec![2]);
+    }
+
+    /// Verifies that `has_cluster_access` returns true when the secret grants access
+    /// to the named cluster.
+    #[test]
+    fn test_has_cluster_access_allow() {
+        let secret = AccessSecret {
+            name: "app".to_string(),
+            secret: "s".to_string(),
+            applications: vec![],
+            clusters: vec!["ozstar".to_string(), "nci".to_string()],
+        };
+        assert!(has_cluster_access(&secret, "ozstar"));
+        assert!(has_cluster_access(&secret, "nci"));
+    }
+
+    /// Verifies that `has_cluster_access` returns false when the secret does not
+    /// grant access to the named cluster, including for empty cluster lists.
+    #[test]
+    fn test_has_cluster_access_deny() {
+        let secret = AccessSecret {
+            name: "app".to_string(),
+            secret: "s".to_string(),
+            applications: vec![],
+            clusters: vec!["ozstar".to_string()],
+        };
+        assert!(!has_cluster_access(&secret, "nci"));
+        assert!(!has_cluster_access(&secret, ""));
+
+        let empty = AccessSecret {
+            name: "app".to_string(),
+            secret: "s".to_string(),
+            applications: vec![],
+            clusters: vec![],
+        };
+        assert!(!has_cluster_access(&empty, "ozstar"));
     }
 
     /// Verifies that a job ID within the `u32` range is converted successfully.
