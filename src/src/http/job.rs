@@ -366,9 +366,7 @@ pub async fn get_jobs(
             return Ok(Json(serde_json::json!([])));
         }
         let ids = parse_csv_i64(ids_str);
-        if !ids.is_empty() {
-            job_query = job_query.filter(job::Column::Id.is_in(ids));
-        }
+        job_query = job_query.filter(job::Column::Id.is_in(ids));
     }
 
     // start_time_gt: job must have a SYSTEM_SOURCE history entry where MIN(timestamp) > cutoff
