@@ -618,6 +618,10 @@ async fn test_upload_queue_drain_timeout_returns_400() {
         // Queue drain always fails (timeout)
         c.expect_wait_for_queue_drain()
             .returning(|_| Box::pin(async { false }));
+        // The dedicated upload session must be torn down on the queue-drain
+        // timeout error path (mirroring the body-length mismatch cleanup), so
+        // the mock expects `close` to be called exactly once.
+        c.expect_close().times(1).returning(|_| Box::pin(async {}));
         Arc::new(c)
     };
 

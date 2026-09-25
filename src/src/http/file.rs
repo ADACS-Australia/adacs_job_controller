@@ -765,6 +765,10 @@ pub async fn upload_file(
         );
         fu_state.error.store(true, Ordering::Release);
         *fu_state.error_details.lock().await = ERR_CLUSTER_TIMEOUT.to_string();
+        // Tear down the dedicated upload session so the file_upload_map entry
+        // is removed and the remote cluster is not left waiting, mirroring the
+        // body-length mismatch cleanup.
+        upload_cluster.close(false).await;
     }
 
     check_upload_error(&fu_state).await?;
@@ -793,6 +797,7 @@ pub async fn upload_file(
 
     while total_read < content_length {
         if !upload_cluster.wait_for_queue_drain(false).await {
+            upload_cluster.close(false).await;
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Timeout waiting for queue to drain during upload".to_string(),
@@ -814,6 +819,7 @@ pub async fn upload_file(
     }
 
     if !upload_cluster.wait_for_queue_drain(true).await {
+        upload_cluster.close(false).await;
         return Err((
             StatusCode::BAD_REQUEST,
             "Timeout waiting for queue to empty before sending completion".to_string(),
@@ -836,6 +842,7 @@ pub async fn upload_file(
     .await;
 
     if confirm.is_err() {
+        upload_cluster.close(false).await;
         return Err((
             StatusCode::BAD_REQUEST,
             "Upload completion confirmation timeout".to_string(),
