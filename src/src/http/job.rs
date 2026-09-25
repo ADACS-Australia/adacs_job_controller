@@ -372,36 +372,32 @@ pub async fn get_jobs(
     }
 
     // start_time_gt: job must have a SYSTEM_SOURCE history entry where MIN(timestamp) > cutoff
-    if let Some(ts) = params.start_time_gt
-        && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
-    {
+    if let Some(ts) = params.start_time_gt {
+        let dt = chrono::DateTime::from_timestamp(ts, 0).expect("timestamp validated above");
         let cutoff = dt.naive_utc();
         let subq = min_timestamp_job_subquery(cutoff, true);
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
     // start_time_lt: job must have a SYSTEM_SOURCE history entry where MIN(timestamp) < cutoff
-    if let Some(ts) = params.start_time_lt
-        && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
-    {
+    if let Some(ts) = params.start_time_lt {
+        let dt = chrono::DateTime::from_timestamp(ts, 0).expect("timestamp validated above");
         let cutoff = dt.naive_utc();
         let subq = min_timestamp_job_subquery(cutoff, false);
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
     // end_time_gt: job must have a completion history entry with timestamp > cutoff
-    if let Some(ts) = params.end_time_gt
-        && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
-    {
+    if let Some(ts) = params.end_time_gt {
+        let dt = chrono::DateTime::from_timestamp(ts, 0).expect("timestamp validated above");
         let cutoff = dt.naive_utc();
         let subq = completion_timestamp_job_subquery(cutoff, true);
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
     // end_time_lt: job must have a completion history entry with timestamp < cutoff
-    if let Some(ts) = params.end_time_lt
-        && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
-    {
+    if let Some(ts) = params.end_time_lt {
+        let dt = chrono::DateTime::from_timestamp(ts, 0).expect("timestamp validated above");
         let cutoff = dt.naive_utc();
         let subq = completion_timestamp_job_subquery(cutoff, false);
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
