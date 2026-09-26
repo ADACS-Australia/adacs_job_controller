@@ -2625,6 +2625,47 @@ mod tests {
         assert_eq!(state.received_bytes.load(Ordering::Relaxed), 3);
     }
 
+    /// Verifies that `handle_file_chunk` sets `client_paused` and queues a
+    /// `PAUSE_FILE_CHUNK_STREAM` message when the in-memory buffer
+    /// (`received_bytes - sent_bytes`) exceeds `MAX_FILE_BUFFER_SIZE`
+    /// (backpressure).
+    #[tokio::test]
+    async fn test_handle_file_chunk_pauses_when_buffer_full() {
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster = Cluster::new_file_download(
+            test_config(),
+            "uuid-chunk".into(),
+            state.clone(),
+            None,
+            lock,
+        );
+
+        state
+            .received_bytes
+            .store(*MAX_FILE_BUFFER_SIZE, Ordering::Relaxed);
+
+        let chunk = vec![1u8];
+        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
+        msg.push_bytes(&chunk);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_chunk(&mut msg).await;
+
+        assert!(state.client_paused.load(Ordering::Relaxed));
+        let queue = cluster
+            .queue
+            .get(&Priority::Highest.as_u8())
+            .expect("Highest priority queue");
+        let map = queue.read().await;
+        let data = map
+            .get("")
+            .and_then(|q| q.front())
+            .expect("queued PAUSE message");
+        let msg = Message::from_bytes(data.clone());
+        assert_eq!(msg.id(), PAUSE_FILE_CHUNK_STREAM);
+    }
+
     // -----------------------------------------------------------------------
     // FILE_UPLOAD_COMPLETE handling
     // -----------------------------------------------------------------------
