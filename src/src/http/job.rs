@@ -361,8 +361,8 @@ pub async fn get_jobs(
     if let Some(ref ids_str) = params.job_ids {
         let trimmed = ids_str.trim();
         let all_numeric = trimmed.split(',').all(|v| v.trim().parse::<i64>().is_ok());
-        if !all_numeric {
-            // A malformed filter (e.g. any non-numeric token) must not widen the result set.
+        if trimmed.is_empty() || !all_numeric {
+            // A malformed or blank filter must not widen the result set.
             return Ok(Json(serde_json::json!([])));
         }
         let ids = parse_csv_i64(ids_str);
