@@ -1289,9 +1289,9 @@ async fn test_application_shutdown_triggers_every_registered_session() {
     assert!(mgr.get_cluster_by_connection(102).is_none());
 }
 
-/// Verifies that new dedicated `create_file_download` admission is
-/// rejected once application shutdown has begun, while master, LTK, and
-/// upload paths remain unchanged.
+/// Verifies that new dedicated `create_file_download` and
+/// `create_file_upload` admission is rejected once application shutdown
+/// has begun, while master and LTK paths remain unchanged.
 #[tokio::test]
 async fn test_application_shutdown_rejects_dedicated_admission_only() {
     let db = make_db().await;
@@ -1314,19 +1314,12 @@ async fn test_application_shutdown_rejects_dedicated_admission_only() {
         "cleanup trigger lookup during shutdown must return None"
     );
 
-    // Upload admission is unaffected.
-    let ul_cluster = mgr.create_file_upload(&cluster, "ul-ok").await;
+    // Upload admission is rejected too.
+    let ul_cluster = mgr.create_file_upload(&cluster, "ul-rejected").await;
     assert_eq!(ul_cluster.name(), CLUSTER1);
-    let upload_state = mgr
-        .get_file_upload("ul-ok")
-        .expect("upload session created during shutdown must be retrievable");
     assert!(
-        !upload_state.error.load(Ordering::Relaxed),
-        "fresh upload session must not be in error state"
-    );
-    assert!(
-        !upload_state.complete.load(Ordering::Relaxed),
-        "fresh upload session must not be marked complete"
+        mgr.get_file_upload("ul-rejected").is_none(),
+        "create_file_upload during shutdown must not publish state"
     );
 
     // LTK admission is unaffected.
