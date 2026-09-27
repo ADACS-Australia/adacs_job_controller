@@ -1299,6 +1299,7 @@ mod tests {
     const TEST_CLUSTER: &str = "test_cluster";
     const TEST_DOWNLOAD_FAILED_MSG: &str = "download failed";
     const TEST_UPLOAD_FAILED_MSG: &str = "upload failed";
+    const TEST_FILE_LIST_ERROR_DETAIL: &str = "permission denied";
 
     fn test_config() -> ClusterConfig {
         ClusterConfig {
@@ -2532,14 +2533,14 @@ mod tests {
 
         let mut msg = Message::new(FILE_LIST_ERROR, Priority::Lowest, TEST_CLUSTER);
         msg.push_string(uuid);
-        msg.push_string("permission denied");
+        msg.push_string(TEST_FILE_LIST_ERROR_DETAIL);
         let mut msg = Message::from_bytes(msg.into_data());
 
         cluster.handle_file_list_error(&mut msg).await;
 
         let locked = state.lock().await;
         assert!(locked.error);
-        assert_eq!(locked.error_details, "permission denied");
+        assert_eq!(locked.error_details, TEST_FILE_LIST_ERROR_DETAIL);
         assert!(locked.data_ready);
     }
 
@@ -2569,7 +2570,7 @@ mod tests {
 
         let mut msg = Message::new(FILE_LIST_ERROR, Priority::Lowest, TEST_CLUSTER);
         msg.push_string("unknown-file-list-uuid");
-        msg.push_string("permission denied");
+        msg.push_string(TEST_FILE_LIST_ERROR_DETAIL);
         let mut msg = Message::from_bytes(msg.into_data());
 
         cluster.handle_file_list_error(&mut msg).await;
