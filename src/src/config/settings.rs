@@ -24,10 +24,22 @@ where
     T: FromStr + Display,
     T::Err: Debug,
 {
-    let value = std::env::var(key)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default);
+    let value = match std::env::var(key) {
+        Ok(raw) => match raw.parse::<T>() {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                tracing::warn!(
+                    "Config: {} = {:?} is not a valid number; using default {} (parse error: {:?})",
+                    key,
+                    raw,
+                    default,
+                    err
+                );
+                default
+            }
+        },
+        Err(_) => default,
+    };
     log_config(key, &value.to_string());
     value
 }
@@ -263,6 +275,48 @@ mod tests {
             logs.contains("raw-plain-value"),
             "non-secret value should be logged in full"
         );
+    }
+
+    #[test]
+    fn test_env_or_uint_warns_on_invalid_value() {
+        struct CaptureWriter(Arc<Mutex<String>>);
+
+        impl io::Write for CaptureWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("capture buffer lock")
+                    .push_str(&String::from_utf8_lossy(buf));
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let buf = Arc::new(Mutex::new(String::new()));
+        let writer = Arc::clone(&buf);
+        let make_writer = move || CaptureWriter(Arc::clone(&writer));
+
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .with_writer(make_writer)
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            unsafe { std::env::set_var("__TEST_INVALID_NUMERIC__", "not-a-number") };
+            let value = env_or_uint::<u16>("__TEST_INVALID_NUMERIC__", 42);
+            assert_eq!(value, 42, "invalid value falls back to default");
+            unsafe { std::env::remove_var("__TEST_INVALID_NUMERIC__") };
+        });
+
+        let logs = buf.lock().expect("capture buffer lock");
+        assert!(
+            logs.contains("__TEST_INVALID_NUMERIC__"),
+            "warning should name the key"
+        );
+        assert!(logs.contains("42"), "warning should name the default");
     }
 
     #[test]
