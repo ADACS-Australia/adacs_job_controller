@@ -220,6 +220,21 @@ impl Message {
         String::from_utf8(bytes).unwrap_or_default()
     }
 
+    /// Pop a UTF-8 string from the message buffer, returning `None` if the
+    /// length prefix claims more bytes than remain (a truncated string).
+    ///
+    /// Unlike [`pop_string`], this does not advance past the length prefix and
+    /// return an empty string on underrun; callers can detect the truncation.
+    pub fn try_pop_string(&mut self) -> Option<String> {
+        let len = self.pop_ulong() as usize;
+        if !self.check_remaining(len) {
+            return None;
+        }
+        let result = self.data[self.index..self.index + len].to_vec();
+        self.index += len;
+        Some(String::from_utf8(result).unwrap_or_default())
+    }
+
     // --- Push / Pop: raw bytes ---
 
     pub fn push_bytes(&mut self, value: &[u8]) {
