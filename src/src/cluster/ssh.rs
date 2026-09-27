@@ -7,7 +7,7 @@ use russh::client;
 use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg};
 use russh::{ChannelMsg, Disconnect};
 
-use crate::config::clusters::ClusterConfig;
+use crate::config::clusters::{CONNECTION_TYPE_KERBEROS, CONNECTION_TYPE_SSH, ClusterConfig};
 
 /// SSH config options used for Kerberos-authenticated connections.
 const GSSAPI_AUTH_OPTION: &str = "GSSAPIAuthentication=yes";
@@ -99,14 +99,14 @@ pub async fn run_remote_client(config: &ClusterConfig, token: &str) -> Result<()
     );
 
     match config.connection_type.as_str() {
-        "kerberos" => {
+        CONNECTION_TYPE_KERBEROS => {
             tracing::debug!(
                 "SSH: Using Kerberos authentication for cluster '{}'",
                 config.name
             );
             run_via_kerberos(config, token).await
         }
-        "ssh" => {
+        CONNECTION_TYPE_SSH => {
             tracing::debug!(
                 "SSH: Using SSH key authentication for cluster '{}'",
                 config.name
