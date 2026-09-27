@@ -394,6 +394,44 @@ mod tests {
     }
 
     #[test]
+    fn complete_transitions_to_closed_on_matching_connection() {
+        let (session, _rx) = make_session();
+        assert!(session.bind_connection(7).is_ok());
+        assert!(
+            session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::Complete)
+        );
+        assert!(session.complete(Some(7)));
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closed {
+                connection_id: Some(7),
+                reason: DownloadShutdownReason::Complete,
+            }
+        );
+    }
+
+    #[test]
+    fn complete_ignores_mismatched_connection() {
+        let (session, _rx) = make_session();
+        assert!(session.bind_connection(8).is_ok());
+        assert!(
+            session
+                .cleanup_trigger()
+                .trigger(DownloadShutdownReason::Complete)
+        );
+        assert!(!session.complete(Some(7)));
+        assert_eq!(
+            session.state(),
+            DownloadSessionState::Closing {
+                connection_id: Some(8),
+                reason: DownloadShutdownReason::Complete,
+            }
+        );
+    }
+
+    #[test]
     fn trigger_transitions_to_closing_when_cleanup_receiver_dropped() {
         let (session, rx) = make_session();
         drop(rx);
