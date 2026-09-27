@@ -579,7 +579,7 @@ pub async fn download_file(
                     fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
                     yield Err(std::io::Error::new(
                         std::io::ErrorKind::TimedOut,
-                        "Remote cluster took too long to respond",
+                        ERR_CLUSTER_TIMEOUT,
                     ));
                     break;
                 }
