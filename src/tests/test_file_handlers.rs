@@ -1683,6 +1683,9 @@ async fn test_list_files_cluster_offline_returns_503() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1839,6 +1842,9 @@ async fn test_list_files_no_job_id_requires_cluster_and_bundle() {
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1880,6 +1886,9 @@ async fn test_list_files_no_job_id_wrong_cluster_access_returns_400() {
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -2743,6 +2752,9 @@ async fn test_list_files_app2_can_access_app1_job() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = create_router(make_test_state_with_secrets(db, manager, secrets.clone()));
     let token = encode_jwt_for_secret(&secrets[1], &serde_json::json!({"userId": 10}));
