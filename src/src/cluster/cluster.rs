@@ -500,6 +500,18 @@ impl Cluster {
 
         let job_id = message.pop_uint();
         let what = message.pop_string();
+        // A valid UPDATE_JOB needs at least 4 bytes for `status` after the
+        // variable-length `what`. If fewer remain, the message is truncated;
+        // drop it rather than recording a corrupted job-history row with a
+        // defaulted `state`/`details`.
+        if message.remaining() < 4 {
+            tracing::warn!(
+                "Cluster[{}]: Dropping truncated UPDATE_JOB for job {} (fewer than 4 bytes remain for status)",
+                self.name(),
+                job_id
+            );
+            return;
+        }
         let status = message.pop_uint();
         let details = message.pop_string();
 
