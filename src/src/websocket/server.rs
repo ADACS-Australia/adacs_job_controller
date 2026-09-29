@@ -68,13 +68,15 @@ fn extract_token_from_headers(headers: &HeaderMap) -> String {
     headers
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|header| {
+        .map(|header| {
             // Per RFC 6750 the auth scheme is case-insensitive, so accept any casing.
+            // Accept both "Bearer <token>" and bare "<token>" for backwards compatibility,
+            // mirroring the HTTP auth path.
             match header.get(..BEARER_PREFIX.len()) {
                 Some(prefix) if prefix.eq_ignore_ascii_case(BEARER_PREFIX) => {
-                    Some(&header[BEARER_PREFIX.len()..])
+                    &header[BEARER_PREFIX.len()..]
                 }
-                _ => None,
+                _ => header,
             }
         })
         .unwrap_or_default()
@@ -602,13 +604,23 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_token_from_headers_non_bearer_returns_empty() {
+    fn test_extract_token_from_headers_bare_token_accepted() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, TEST_TOKEN.parse().unwrap());
+        assert_eq!(extract_token_from_headers(&headers), TEST_TOKEN);
+    }
+
+    #[test]
+    fn test_extract_token_from_headers_non_bearer_passed_through() {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
             format!("Basic {TEST_TOKEN}").parse().unwrap(),
         );
-        assert_eq!(extract_token_from_headers(&headers), "");
+        assert_eq!(
+            extract_token_from_headers(&headers),
+            format!("Basic {TEST_TOKEN}")
+        );
     }
 
     #[test]
