@@ -239,7 +239,8 @@ async fn test_create_job_bundle_too_long_returns_400() {
 ///
 /// # Assert
 /// Verifies 400 Bad Request when the created job's ID exceeds the u32 wire
-/// range, and no `SUBMIT_JOB` WS message was sent.
+/// range, no `SUBMIT_JOB` WS message was sent, and the orphaned job row
+/// (and its Pending history) are removed so no never-submitted job remains.
 #[tokio::test]
 async fn test_create_job_job_id_exceeding_u32_returns_error() {
     let db = setup_test_db().await;
@@ -257,6 +258,21 @@ async fn test_create_job_job_id_exceeding_u32_returns_error() {
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert!(sent.lock().unwrap().is_empty());
+
+    // The auto-assigned job ID is u32::MAX + 1; it must have been cleaned up.
+    let orphaned_id = i64::from(u32::MAX) + 1;
+    let jobs = job::Entity::find_by_id(orphaned_id).one(&db).await.unwrap();
+    assert!(jobs.is_none(), "orphaned job row should be deleted");
+
+    let histories = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(orphaned_id))
+        .all(&db)
+        .await
+        .unwrap();
+    assert!(
+        histories.is_empty(),
+        "orphaned job history should be deleted"
+    );
 }
 
 /// Tests that `create_job` returns 503 when the application is shutting down.
