@@ -767,7 +767,10 @@ pub async fn upload_file(
         *fu_state.error_details.lock().await = ERR_CLUSTER_TIMEOUT.to_string();
     }
 
-    check_upload_error(&fu_state).await?;
+    if let Err(e) = check_upload_error(&fu_state).await {
+        state.cluster_manager.remove_file_upload(&uuid);
+        return Err(e);
+    }
 
     let chunk_size = (*settings::FILE_CHUNK_SIZE).max(1) as usize;
     let mut total_read: u64 = 0;
@@ -785,6 +788,7 @@ pub async fn upload_file(
             body_bytes.len(),
             content_length
         );
+        state.cluster_manager.remove_file_upload(&uuid);
         return Err((
             StatusCode::BAD_REQUEST,
             "Request body length does not match Content-Length header".to_string(),
@@ -793,13 +797,17 @@ pub async fn upload_file(
 
     while total_read < content_length {
         if !upload_cluster.wait_for_queue_drain(false).await {
+            state.cluster_manager.remove_file_upload(&uuid);
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Timeout waiting for queue to drain during upload".to_string(),
             ));
         }
 
-        check_upload_error(&fu_state).await?;
+        if let Err(e) = check_upload_error(&fu_state).await {
+            state.cluster_manager.remove_file_upload(&uuid);
+            return Err(e);
+        }
 
         let remaining = (content_length - total_read) as usize;
         let this_chunk = remaining.min(chunk_size);
@@ -814,13 +822,17 @@ pub async fn upload_file(
     }
 
     if !upload_cluster.wait_for_queue_drain(true).await {
+        state.cluster_manager.remove_file_upload(&uuid);
         return Err((
             StatusCode::BAD_REQUEST,
             "Timeout waiting for queue to empty before sending completion".to_string(),
         ));
     }
 
-    check_upload_error(&fu_state).await?;
+    if let Err(e) = check_upload_error(&fu_state).await {
+        state.cluster_manager.remove_file_upload(&uuid);
+        return Err(e);
+    }
 
     let complete_msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Highest, &uuid);
     upload_cluster.send_message(complete_msg).await;
@@ -836,13 +848,17 @@ pub async fn upload_file(
     .await;
 
     if confirm.is_err() {
+        state.cluster_manager.remove_file_upload(&uuid);
         return Err((
             StatusCode::BAD_REQUEST,
             "Upload completion confirmation timeout".to_string(),
         ));
     }
 
-    check_upload_error(&fu_state).await?;
+    if let Err(e) = check_upload_error(&fu_state).await {
+        state.cluster_manager.remove_file_upload(&uuid);
+        return Err(e);
+    }
 
     Ok(Json(serde_json::json!({
         UPLOAD_ID_KEY: uuid,
