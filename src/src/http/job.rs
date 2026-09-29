@@ -319,7 +319,7 @@ pub async fn get_jobs(
         tracing::info!("HTTP: Rejecting get_jobs - application shutdown in progress");
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
-            "Application is shutting down".to_string(),
+            ERR_APPLICATION_SHUTDOWN.to_string(),
         ));
     }
 
