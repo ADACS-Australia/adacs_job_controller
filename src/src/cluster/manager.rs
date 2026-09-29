@@ -1119,6 +1119,10 @@ impl ClusterManagerTrait for ClusterManager {
             .get(uuid)
             .map(|entry| Arc::clone(&entry.value().0))
     }
+
+    fn remove_file_upload(&self, uuid: &str) {
+        self.file_upload_map.remove(uuid);
+    }
 }
 impl ClusterManager {
     /// Test-only: clone every concrete `Arc<Cluster>` retained for

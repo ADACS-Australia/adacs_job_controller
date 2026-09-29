@@ -2272,6 +2272,7 @@ async fn test_upload_file_server_error_returns_400() {
     manager
         .expect_get_file_upload()
         .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    manager.expect_remove_file_upload().returning(|_| ());
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -3398,6 +3399,34 @@ mod download_session_cleanup {
         assert!(
             mgr.get_file_download(uuid).is_some(),
             "session must remain registered when no trigger fires"
+        );
+    }
+
+    /// Verifies that `remove_file_upload` drops the `file_upload_map` entry so a
+    /// failed upload does not leak a stale session on a long-lived `FileUpload`
+    /// connection.
+    ///
+    /// # Setup
+    /// Create a real `ClusterManager` and an upload session via `create_file_upload`.
+    ///
+    /// # Act
+    /// Call `remove_file_upload` with the session UUID.
+    ///
+    /// # Assert
+    /// `get_file_upload` returns `None` for the UUID afterwards.
+    #[tokio::test]
+    async fn real_manager_remove_file_upload_clears_map() {
+        let (_db, mgr, cluster) = real_manager().await;
+        let uuid = "ul-remove-test";
+        let _ul = mgr.create_file_upload(&cluster, uuid).await;
+        assert!(
+            mgr.get_file_upload(uuid).is_some(),
+            "upload session must exist after create_file_upload"
+        );
+        mgr.remove_file_upload(uuid);
+        assert!(
+            mgr.get_file_upload(uuid).is_none(),
+            "upload session must be gone after remove_file_upload"
         );
     }
 

@@ -101,6 +101,7 @@ fn manager_with_online_and_upload_clusters<T: ClusterTrait + 'static>(
     manager
         .expect_get_file_upload()
         .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    manager.expect_remove_file_upload().returning(|_| ());
     manager
 }
 
