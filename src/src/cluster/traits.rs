@@ -230,6 +230,16 @@ pub trait ClusterManagerTrait: Send + Sync {
         &self,
         uuid: &str,
     ) -> Option<Arc<crate::cluster::file_upload::FileUploadState>>;
+
+    /// Remove the file upload session for the given UUID.
+    ///
+    /// Called by the HTTP upload handler on terminal error paths after session
+    /// creation so a failed upload does not leave a stale entry in the
+    /// `file_upload_map` on a long-lived `FileUpload` connection. The default
+    /// implementation is a no-op so mocks continue to work.
+    fn remove_file_upload(&self, uuid: &str) {
+        let _ = uuid;
+    }
 }
 
 #[cfg(test)]
