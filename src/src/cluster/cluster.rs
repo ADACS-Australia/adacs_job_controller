@@ -1278,6 +1278,8 @@ mod tests {
     use super::*;
 
     const TEST_CLUSTER: &str = "test_cluster";
+    const TEST_DOWNLOAD_FAILED_MSG: &str = "download failed";
+    const TEST_UPLOAD_FAILED_MSG: &str = "upload failed";
 
     fn test_config() -> ClusterConfig {
         ClusterConfig {
@@ -1327,13 +1329,13 @@ mod tests {
         let cluster =
             Cluster::new_file_download(test_config(), "uuid-err".into(), state.clone(), None, lock);
 
-        let mut msg = Message::new(FILE_ERROR, Priority::Highest, "download failed");
+        let mut msg = Message::new(FILE_ERROR, Priority::Highest, TEST_DOWNLOAD_FAILED_MSG);
 
         cluster.handle_file_error(&mut msg).await;
 
         assert!(state.error.load(Ordering::Relaxed));
         assert!(state.data_ready.load(Ordering::Relaxed));
-        assert_eq!(*state.error_details.lock().await, "download failed");
+        assert_eq!(*state.error_details.lock().await, TEST_DOWNLOAD_FAILED_MSG);
     }
 
     /// Verifies that `handle_server_ready` sets `data_ready` on the FileUploadState.
@@ -1356,13 +1358,13 @@ mod tests {
         let cluster =
             Cluster::new_file_upload(test_config(), "uuid-uerr".into(), state.clone(), None);
 
-        let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Highest, "upload failed");
+        let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Highest, TEST_UPLOAD_FAILED_MSG);
 
         cluster.handle_file_upload_error(&mut msg).await;
 
         assert!(state.error.load(Ordering::Relaxed));
         assert!(state.data_ready.load(Ordering::Relaxed));
-        assert_eq!(*state.error_details.lock().await, "upload failed");
+        assert_eq!(*state.error_details.lock().await, TEST_UPLOAD_FAILED_MSG);
     }
 
     /// Verifies that `handle_server_ready` returns without panicking or mutating
@@ -1382,7 +1384,7 @@ mod tests {
     async fn test_handle_file_upload_error_no_state_returns() {
         let cluster = make_test_cluster();
 
-        let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Highest, "upload failed");
+        let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Highest, TEST_UPLOAD_FAILED_MSG);
 
         cluster.handle_file_upload_error(&mut msg).await;
 
@@ -1420,7 +1422,7 @@ mod tests {
     async fn test_handle_file_error_no_state_returns() {
         let cluster = make_test_cluster();
 
-        let mut msg = Message::new(FILE_ERROR, Priority::Highest, "download failed");
+        let mut msg = Message::new(FILE_ERROR, Priority::Highest, TEST_DOWNLOAD_FAILED_MSG);
         cluster.handle_file_error(&mut msg).await;
 
         assert!(cluster.file_download_state.is_none());
