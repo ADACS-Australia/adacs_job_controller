@@ -314,6 +314,16 @@ mod tests {
         assert_eq!(parse_csv_i64("abc,2,def"), vec![2]);
     }
 
+    /// Regression test: an out-of-range `i64` value (outside the `i64` range)
+    /// must be dropped rather than wrapping or panicking, consistent with the
+    /// `parse_job_steps` out-of-range behavior.
+    #[test]
+    fn test_parse_csv_i64_out_of_range_dropped() {
+        assert!(parse_csv_i64("99999999999999999999999").is_empty());
+        assert!(parse_csv_i64("-99999999999999999999999").is_empty());
+        assert_eq!(parse_csv_i64("1,99999999999999999999999,3"), vec![1, 3]);
+    }
+
     /// Verifies that a job ID within the `u32` range is converted successfully.
     #[test]
     fn test_job_id_to_u32_success() {
