@@ -1056,6 +1056,21 @@ impl ClusterManagerTrait for ClusterManager {
         cluster: &Arc<dyn ClusterTrait>,
         uuid: &str,
     ) -> Arc<dyn ClusterTrait> {
+        // Reject new dedicated admissions once application shutdown has
+        // begun, mirroring `create_file_download`. The HTTP layer treats
+        // the absent session as the existing `ResponseError` typed
+        // terminal reason and never reaches the session-creation branch,
+        // so no state is published. The original cluster is returned so
+        // the HTTP layer does not panic on its `Arc<dyn ClusterTrait>`
+        // argument; the subsequent `get_file_upload(...)` lookup returns
+        // `None` and the existing `SERVICE_UNAVAILABLE` path is taken
+        // when the layer also checks `is_application_shutting_down`.
+        if self.is_application_shutting_down() {
+            tracing::debug!(
+                "ClusterManager: Rejecting create_file_upload during application shutdown"
+            );
+            return Arc::clone(cluster);
+        }
         let details = cluster.cluster_details();
         let upload_state = Arc::new(FileUploadState::new());
         let ul_cluster = Cluster::new_file_upload(
