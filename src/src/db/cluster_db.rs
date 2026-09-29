@@ -351,6 +351,17 @@ async fn handle_job_save(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
+    // A valid DB_JOB_SAVE needs at least 48 bytes for the fixed-size fields
+    // plus the two variable-length string length prefixes (bundle_hash,
+    // working_directory). If fewer remain, the message is truncated; drop it
+    // rather than recording a corrupted row with defaulted string fields.
+    if message.remaining() < 48 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_JOB_SAVE (fewer than 48 bytes remain for job payload)",
+            cluster.name()
+        );
+        return;
+    }
     let job = ClusterJob::from_message(message);
     let cluster_name = cluster.name();
 
@@ -496,6 +507,17 @@ async fn handle_jobstatus_save(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
+    // A valid DB_JOBSTATUS_SAVE needs at least 28 bytes for the fixed-size
+    // fields plus the variable-length string length prefix (what). If fewer
+    // remain, the message is truncated; drop it rather than recording a
+    // corrupted row with a defaulted `what`.
+    if message.remaining() < 28 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_JOBSTATUS_SAVE (fewer than 28 bytes remain for status payload)",
+            cluster.name()
+        );
+        return;
+    }
     let status = ClusterJobStatus::from_message(message);
 
     if status.id == 0 {
@@ -601,6 +623,17 @@ async fn handle_bundle_create_or_update(
     db: &sea_orm::DatabaseConnection,
 ) {
     let db_request_id = message.pop_uint();
+    // A valid DB_BUNDLE_CREATE_OR_UPDATE_JOB needs at least 24 bytes for the
+    // fixed-size fields plus the variable-length string length prefixes
+    // (content, bundle_hash). If fewer remain, the message is truncated;
+    // drop it rather than recording a corrupted row with defaulted strings.
+    if message.remaining() < 24 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_BUNDLE_CREATE_OR_UPDATE_JOB (fewer than 24 bytes remain for bundle payload)",
+            cluster.name()
+        );
+        return;
+    }
     let bundle = BundleJob::from_message(message);
     let bundle_hash = message.pop_string();
     let cluster_name = cluster.name();

@@ -1595,3 +1595,112 @@ async fn test_handle_bundle_delete_nonexistent_is_noop() {
     let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 5005);
 }
+
+// ---------------------------------------------------------------------------
+// Truncated save messages — must record no row
+// ---------------------------------------------------------------------------
+
+/// Verifies that a truncated `DB_JOB_SAVE` message (one missing the
+/// variable-length `bundle_hash`/`working_directory` fields) is dropped and
+/// records no cluster job row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the cluster job schema is created.
+///
+/// # Act
+/// Dispatch a `DB_JOB_SAVE` message with `db_request_id=100` and only the
+/// fixed-size prefix of a `ClusterJob` payload (id + `job_id`), no string fields.
+///
+/// # Assert
+/// No row is inserted into `cluster_job`.
+#[tokio::test]
+async fn test_handle_job_save_truncated_records_no_row() {
+    let db = make_cluster_db().await;
+
+    let (mock, _sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(100);
+        m.push_ulong(0); // id
+        m.push_ulong(42); // job_id
+        // No scheduler_id, bools, or variable-length strings follow.
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOB_SAVE should be handled");
+
+    let count = cluster_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "Truncated DB_JOB_SAVE should record no cluster job row"
+    );
+}
+
+/// Verifies that a truncated `DB_JOBSTATUS_SAVE` message (one missing the
+/// variable-length `what` field) is dropped and records no job status row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the cluster job status schema is created.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=700` and only
+/// the fixed-size prefix of a `ClusterJobStatus` payload (id + `job_id`), no
+/// `what` string.
+///
+/// # Assert
+/// No row is inserted into `cluster_job_status`.
+#[tokio::test]
+async fn test_handle_jobstatus_save_truncated_records_no_row() {
+    let db = make_cluster_db().await;
+
+    let (mock, _sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(700);
+        m.push_ulong(0); // id
+        m.push_ulong(42); // job_id
+        // No `what` string or `state` follow.
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOBSTATUS_SAVE should be handled");
+
+    let count = cluster_job_status::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "Truncated DB_JOBSTATUS_SAVE should record no job status row"
+    );
+}
+
+/// Verifies that a truncated `DB_BUNDLE_CREATE_OR_UPDATE_JOB` message (one
+/// missing the variable-length `content`/`bundle_hash` fields) is dropped and
+/// records no bundle row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the bundle job schema is created.
+///
+/// # Act
+/// Dispatch a `DB_BUNDLE_CREATE_OR_UPDATE_JOB` message with `db_request_id=1100`
+/// and only the fixed-size prefix of a `BundleJob` payload (id), no `content`
+/// or `bundle_hash` strings.
+///
+/// # Assert
+/// No row is inserted into `bundle_job`.
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_truncated_records_no_row() {
+    let db = make_cluster_db().await;
+
+    let (mock, _sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(1100);
+        m.push_ulong(0); // id
+        // No `content` or `bundle_hash` strings follow.
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_BUNDLE_CREATE_OR_UPDATE_JOB should be handled");
+
+    let count = bundle_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "Truncated DB_BUNDLE_CREATE_OR_UPDATE_JOB should record no bundle row"
+    );
+}
