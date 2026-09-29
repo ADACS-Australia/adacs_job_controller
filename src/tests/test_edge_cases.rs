@@ -1495,6 +1495,59 @@ async fn test_download_sanitizes_backslash_in_disposition() {
     );
 }
 
+/// Verifies that a download path whose basename contains non-ASCII characters is sanitized to
+/// ASCII-only, so the `Content-Disposition` header value stays a valid ASCII quoted-string.
+///
+/// # Setup
+/// Inserts a download record for `/path/to/résumé.txt`; simulates a small 5-byte file stream.
+///
+/// # Act
+/// Sends a GET request for the download.
+///
+/// # Assert
+/// Response is 200 OK and `Content-Disposition` contains the ASCII-only sanitized filename
+/// (`r_sum_.txt`) with every non-ASCII byte replaced by `_`.
+#[tokio::test]
+async fn test_download_sanitizes_non_ascii_filename_in_disposition() {
+    let db = setup_test_db().await;
+
+    let uuid_val = "nonascii-dl-uuid".to_string();
+    insert_file_download(&db, &uuid_val, "/path/to/résumé.txt").await;
+
+    let fd_state = simulate_completed_download();
+
+    let manager = download_manager(Arc::clone(&fd_state));
+
+    let app = create_router(make_test_state(db, manager));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid_val}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let content_disp = resp
+        .headers()
+        .get(common::CONTENT_DISPOSITION_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    assert!(
+        content_disp.contains("r_sum_.txt"),
+        "Content-Disposition should contain the ASCII-only sanitized filename; got: {content_disp}"
+    );
+    assert!(
+        !content_disp.contains("résumé"),
+        "Content-Disposition must not contain non-ASCII bytes from the filename; got: {content_disp}"
+    );
+}
+
 // ===========================================================================
 // 15. FILE UPLOAD — LARGE BODY CHUNKING VERIFICATION
 //

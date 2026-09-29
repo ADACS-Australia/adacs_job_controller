@@ -477,7 +477,7 @@ pub async fn download_file(
             n.to_string_lossy()
                 .chars()
                 .map(|c| {
-                    if c == '"' || c == '\\' || c.is_control() {
+                    if c == '"' || c == '\\' || c.is_control() || (c as u32) > 0x7F {
                         '_'
                     } else {
                         c
