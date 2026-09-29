@@ -1193,6 +1193,40 @@ async fn test_get_jobs_conflicting_time_filters_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Tests that GET /job/ returns 400 Bad Request when both endTimeGt and
+/// endTimeLt are provided (conflicting time filters).
+///
+/// # Setup
+/// Empty database.
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?endTimeGt=100&endTimeLt=200.
+///
+/// # Assert
+/// Verifies 400 Bad Request (conflicting filters are rejected).
+#[tokio::test]
+async fn test_get_jobs_conflicting_end_time_filters_returns_400() {
+    let db = setup_test_db().await;
+    let manager = mock_cluster_manager_no_clusters();
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/job/apiv1/job/?endTimeGt=100&endTimeLt=200")
+                .header("authorization", &token)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 /// Tests that GET /job/ returns 503 Service Unavailable when the application
 /// is shutting down, before any DB query is performed.
 ///
