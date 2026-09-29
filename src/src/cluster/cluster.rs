@@ -27,6 +27,8 @@ use crate::protocol::types::{ClusterRole, FileInfo, FileListState, JobStatus, Pr
 use crate::utils::job_source_key;
 use crate::utils::uuid::generate_uuid;
 
+const ERR_DOWNLOAD_ABORTED_CLIENT_DISCONNECTED: &str = "Download aborted: HTTP client disconnected";
+
 fn warn_role_mismatch(name: &str, role: &ClusterRole, message_name: &str) {
     tracing::warn!(
         "Cluster[{}]: {} received but role is {}, expected file upload",
@@ -756,7 +758,7 @@ impl Cluster {
                 &state.error,
                 &state.data_ready,
                 &state.data_notify,
-                "Download aborted: HTTP client disconnected".to_string(),
+                ERR_DOWNLOAD_ABORTED_CLIENT_DISCONNECTED.to_string(),
             )
             .await;
             return;
@@ -2621,7 +2623,7 @@ mod tests {
         assert!(state.error.load(Ordering::Relaxed));
         assert_eq!(
             *state.error_details.lock().await,
-            "Download aborted: HTTP client disconnected"
+            ERR_DOWNLOAD_ABORTED_CLIENT_DISCONNECTED
         );
         assert!(state.data_ready.load(Ordering::Relaxed));
         assert_eq!(state.received_bytes.load(Ordering::Relaxed), 3);
