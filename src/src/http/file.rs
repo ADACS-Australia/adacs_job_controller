@@ -7,7 +7,9 @@ use axum::Json;
 use axum::body::Body;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
+};
 
 use crate::app::AppState;
 use crate::cluster::file_download::{DownloadCleanupTrigger, DownloadShutdownReason};
@@ -197,34 +199,46 @@ pub async fn create_file_download(
 
     let job_id = i64::from(job_id_u32);
 
-    let mut uuids = Vec::new();
-    for (i, path) in file_paths.iter().enumerate() {
-        let uuid = generate_uuid();
-        tracing::trace!(
-            "HTTP: Creating file download record #{} - path='{}', uuid={}",
-            i + 1,
-            path,
-            uuid
-        );
-        file_download::ActiveModel {
-            user: Set(user_id),
-            job: Set(job_id),
-            cluster: Set(s_cluster.clone()),
-            bundle: Set(s_bundle.clone()),
-            uuid: Set(uuid.clone()),
-            path: Set(path.clone()),
-            timestamp: Set(chrono::Utc::now().naive_utc()),
-            ..Default::default()
-        }
-        .insert(&state.db)
+    tracing::debug!("HTTP: Starting database transaction for file download creation");
+    let uuids: Vec<String> = state
+        .db
+        .transaction::<_, _, sea_orm::DbErr>(|txn| {
+            let s_cluster = s_cluster.clone();
+            let s_bundle = s_bundle.clone();
+            let file_paths = file_paths.clone();
+            Box::pin(async move {
+                let mut uuids = Vec::new();
+                for (i, path) in file_paths.iter().enumerate() {
+                    let uuid = generate_uuid();
+                    tracing::trace!(
+                        "HTTP: Creating file download record #{} - path='{}', uuid={}",
+                        i + 1,
+                        path,
+                        uuid
+                    );
+                    file_download::ActiveModel {
+                        user: Set(user_id),
+                        job: Set(job_id),
+                        cluster: Set(s_cluster.clone()),
+                        bundle: Set(s_bundle.clone()),
+                        uuid: Set(uuid.clone()),
+                        path: Set(path.clone()),
+                        timestamp: Set(chrono::Utc::now().naive_utc()),
+                        ..Default::default()
+                    }
+                    .insert(txn)
+                    .await?;
+
+                    uuids.push(uuid);
+                }
+                Ok(uuids)
+            })
+        })
         .await
         .map_err(|e| {
-            tracing::error!("HTTP: Database insert failed: {}", e);
+            tracing::error!("HTTP: Database transaction failed: {}", e);
             db_error(e)
         })?;
-
-        uuids.push(uuid);
-    }
 
     tracing::info!("HTTP: Created {} file download record(s)", uuids.len());
     if has_paths {
