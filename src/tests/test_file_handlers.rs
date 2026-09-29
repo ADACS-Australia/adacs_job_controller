@@ -2373,6 +2373,70 @@ async fn test_upload_file_server_error_returns_400() {
     assert!(String::from_utf8_lossy(&body).contains("Cluster rejected upload"));
 }
 
+/// Tests that PUT /file/upload/ returns 400 when the upload session is missing
+/// after the upload record resolves (cluster online, session not found).
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster and a file-upload cluster whose
+/// `get_file_upload` returns `None`.
+///
+/// # Act
+/// Sends PUT /job/apiv1/file/upload/ with valid parameters.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "File upload session not found".
+#[tokio::test]
+async fn test_upload_file_session_not_found_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let upload_cluster = Arc::new(upload_cluster());
+
+    let uc = Arc::clone(&upload_cluster);
+    let mut manager = MockClusterManagerTrait::new();
+    let cm = Arc::clone(&cluster_main);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(cm.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_create_file_upload().returning(move |_, _| {
+        let c = Arc::clone(&uc);
+        Box::pin(async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> })
+    });
+    manager.expect_get_file_upload().returning(|_| None);
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                ))
+                .header("authorization", &token)
+                .header("content-length", "5")
+                .body(Body::from("hello"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("File upload session not found"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Cross-app access tests
 // ---------------------------------------------------------------------------
