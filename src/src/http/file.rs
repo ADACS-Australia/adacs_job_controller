@@ -934,7 +934,7 @@ pub async fn list_files(
     };
 
     // Cache hit?
-    if job_id != 0 && job_complete {
+    if job_complete {
         let cached = file_list_cache::Entity::find()
             .filter(file_list_cache::Column::JobId.eq(job_id.cast_signed()))
             .all(&state.db)
