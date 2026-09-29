@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Connection settings for a single HPC cluster, loaded from `clusters.json`.
@@ -40,13 +41,22 @@ fn default_connection_type() -> String {
 /// Returns an error if:
 /// - The file cannot be read
 /// - The JSON is invalid
+/// - Two or more clusters share the same name
 pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
     let configs: Vec<ClusterConfig> = super::load_json_file!(
         path,
         "cluster configurations",
         "Cluster config file read ({} bytes)"
     );
+    let mut seen = HashSet::with_capacity(configs.len());
     for (i, config) in configs.iter().enumerate() {
+        if !seen.insert(config.name.as_str()) {
+            anyhow::bail!(
+                "duplicate cluster name '{}' in cluster config (entry #{})",
+                config.name,
+                i + 1
+            );
+        }
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
             i + 1,
@@ -122,6 +132,26 @@ mod tests {
     fn test_load_cluster_configs_missing_file() {
         let result = load_cluster_configs(Path::new("/nonexistent/path.json"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_cluster_configs_duplicate_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[
+                {"name": "ozstar", "host": "h1", "username": "u1", "path": "/p1"},
+                {"name": "ozstar", "host": "h2", "username": "u2", "path": "/p2"}
+            ]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate cluster name 'ozstar'"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
