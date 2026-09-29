@@ -129,7 +129,7 @@ pub fn parse_csv_i64(s: &str) -> Vec<i64> {
 #[must_use]
 pub fn parse_job_steps(s: &str) -> Vec<(String, i32)> {
     let parts: Vec<&str> = s.split(',').map(str::trim).collect();
-    if parts.is_empty() || parts.iter().any(|p| p.is_empty()) || !parts.len().is_multiple_of(2) {
+    if parts.iter().any(|p| p.is_empty()) || !parts.len().is_multiple_of(2) {
         return Vec::new();
     }
     let mut result = Vec::with_capacity(parts.len() / 2);
