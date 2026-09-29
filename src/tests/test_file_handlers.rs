@@ -2226,6 +2226,82 @@ async fn test_upload_file_success_full_flow() {
     assert!(uuid::Uuid::parse_str(upload_id).is_ok());
 }
 
+/// Tests that PUT /file/upload/ rejects a body whose length differs from the
+/// declared `Content-Length` header with a 400 before any chunk is queued.
+///
+/// # Setup
+/// Inserts a test job. A background task simulates `SERVER_READY` arriving in the
+/// `FileUploadState` so the handler proceeds to read the request body.
+///
+/// # Act
+/// Sends PUT /job/apiv1/file/upload/ with `Content-Length: 10` but a 5-byte body
+/// (fully delivered).
+///
+/// # Assert
+/// Verifies 400 Bad Request with the exact message
+/// `"Request body length does not match Content-Length header"`.
+#[tokio::test]
+async fn test_upload_file_body_length_mismatch_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let upload_cluster = Arc::new(upload_cluster());
+
+    let uc = Arc::clone(&upload_cluster);
+    let mut manager = MockClusterManagerTrait::new();
+    let cm = Arc::clone(&cluster_main);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(cm.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_create_file_upload().returning(move |_, _| {
+        let c = Arc::clone(&uc);
+        Box::pin(async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> })
+    });
+    manager
+        .expect_get_file_upload()
+        .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest/file.txt"
+                ))
+                .header("authorization", &token)
+                .header("content-length", "10")
+                .body(Body::from("hello"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&body),
+        "Request body length does not match Content-Length header"
+    );
+}
+
 /// Tests that a cluster error during upload propagates to a 400 response.
 ///
 /// # Setup
