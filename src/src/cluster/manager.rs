@@ -15,7 +15,9 @@ use crate::cluster::file_download::{
 use crate::cluster::file_upload::FileUploadState;
 use crate::cluster::ssh;
 use crate::cluster::traits::{ClusterManagerTrait, ClusterTrait, ConnectionId, WsConnectionSender};
-use crate::config::clusters::ClusterConfig;
+use crate::config::clusters::{
+    CONNECTION_TYPE_KERBEROS, CONNECTION_TYPE_MANUAL, CONNECTION_TYPE_SSH, ClusterConfig,
+};
 use crate::config::settings::{
     CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS, CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS,
     CLUSTER_MANAGER_PING_INTERVAL_SECONDS,
@@ -524,14 +526,14 @@ impl ClusterManager {
             );
 
             match details.connection_type.as_str() {
-                "manual" => {
+                CONNECTION_TYPE_MANUAL => {
                     tracing::info!(
                         "ClusterManager: Cluster '{}' requires manual connection. Token: {}",
                         name,
                         uuid
                     );
                 }
-                "ssh" | "kerberos" => {
+                CONNECTION_TYPE_SSH | CONNECTION_TYPE_KERBEROS => {
                     tracing::debug!(
                         "ClusterManager: Initiating {} connection for cluster '{}'",
                         details.connection_type,

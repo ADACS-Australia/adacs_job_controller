@@ -2,6 +2,13 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::Path;
 
+/// Connection type for SSH-key-authenticated clusters.
+pub const CONNECTION_TYPE_SSH: &str = "ssh";
+/// Connection type for Kerberos-authenticated clusters.
+pub const CONNECTION_TYPE_KERBEROS: &str = "kerberos";
+/// Connection type for manually-connected clusters.
+pub const CONNECTION_TYPE_MANUAL: &str = "manual";
+
 /// Connection settings for a single HPC cluster, loaded from `clusters.json`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ClusterConfig {
@@ -31,7 +38,7 @@ pub struct ClusterConfig {
 }
 
 fn default_connection_type() -> String {
-    "ssh".to_string()
+    CONNECTION_TYPE_SSH.to_string()
 }
 
 /// Load cluster configurations from a JSON file.
