@@ -2192,6 +2192,7 @@ async fn test_upload_file_success_full_flow() {
     manager
         .expect_get_file_upload()
         .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    manager.expect_remove_file_upload().returning(|_| ());
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
