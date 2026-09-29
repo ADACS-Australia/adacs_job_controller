@@ -667,7 +667,12 @@ impl Cluster {
             if message.remaining() < MIN_FILE_LIST_ENTRY_BYTES {
                 break;
             }
-            let file_name = message.pop_string();
+            // A filename whose length prefix claims more bytes than remain is a
+            // truncated entry; drop it rather than recording a corrupted entry
+            // with an empty filename.
+            let Some(file_name) = message.try_pop_string() else {
+                break;
+            };
             // A valid entry needs 1 byte for `is_directory` plus 8 bytes for
             // `file_size` after the variable-length `file_name`. If fewer
             // remain, the final entry is truncated; drop it rather than
