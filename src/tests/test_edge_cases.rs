@@ -101,6 +101,7 @@ fn manager_with_online_and_upload_clusters<T: ClusterTrait + 'static>(
     manager
         .expect_get_file_upload()
         .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    manager.expect_remove_file_upload().returning(|_| ());
     manager
 }
 
@@ -1569,6 +1570,7 @@ async fn test_upload_large_body_is_chunked() {
     manager
         .expect_get_file_upload()
         .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    manager.expect_remove_file_upload().returning(|_| ());
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -2031,6 +2033,7 @@ async fn test_continuous_file_uploads_sequential() {
     manager
         .expect_get_file_upload()
         .returning(move |_| states_for_mock.lock().unwrap().pop_front());
+    manager.expect_remove_file_upload().returning(|_| ());
 
     let state = make_test_state(db, manager);
     let (port, _handle) = common::repeated_download::start_server(create_router(state)).await;
@@ -2150,6 +2153,7 @@ async fn test_file_upload_with_cluster_bundle_no_job_id() {
     manager
         .expect_get_file_upload()
         .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    manager.expect_remove_file_upload().returning(|_| ());
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));

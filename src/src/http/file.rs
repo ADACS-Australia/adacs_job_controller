@@ -844,6 +844,12 @@ pub async fn upload_file(
 
     check_upload_error(&fu_state).await?;
 
+    // The transfer is complete: drop the session map entry so repeated
+    // uploads over a long-lived FileUpload connection do not grow the map
+    // unboundedly. The dedicated cluster remains owned by the WebSocket
+    // connection and is cleaned up when that connection closes.
+    state.cluster_manager.remove_file_upload(&uuid);
+
     Ok(Json(serde_json::json!({
         UPLOAD_ID_KEY: uuid,
         "status": "completed",

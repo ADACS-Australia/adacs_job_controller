@@ -1134,6 +1134,10 @@ impl ClusterManagerTrait for ClusterManager {
             .get(uuid)
             .map(|entry| Arc::clone(&entry.value().0))
     }
+
+    fn remove_file_upload(&self, uuid: &str) {
+        self.file_upload_map.remove(uuid);
+    }
 }
 impl ClusterManager {
     /// Test-only: clone every concrete `Arc<Cluster>` retained for
@@ -1384,6 +1388,25 @@ mod tests {
         mock.expect_get_file_upload().returning(|_| None);
 
         assert!(mock.get_file_upload("nonexistent-uuid").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remove_file_upload_drops_map_entry() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
+
+        let mut cluster = MockClusterTrait::new();
+        cluster
+            .expect_cluster_details()
+            .returning(|| test_configs().remove(0));
+        let cluster: Arc<dyn ClusterTrait> = Arc::new(cluster);
+
+        let uuid = "upload-uuid-remove";
+        manager.create_file_upload(&cluster, uuid).await;
+        assert!(manager.get_file_upload(uuid).is_some());
+
+        manager.remove_file_upload(uuid);
+        assert!(manager.get_file_upload(uuid).is_none());
     }
 
     #[tokio::test]
