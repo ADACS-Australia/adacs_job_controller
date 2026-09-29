@@ -872,6 +872,20 @@ pub async fn list_files(
     let job_id = body.job_id.unwrap_or(0);
     job_id_to_u32(job_id)?;
 
+    // Application shutdown: reject new file-list sessions via the same typed
+    // error / status code already returned for offline clusters. No session is
+    // created and no FILE_LIST message is sent to the cluster.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!(
+            "HTTP: Rejecting file list (cluster='{:?}') - application shutdown in progress",
+            body.cluster
+        );
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
+        ));
+    }
+
     let (s_cluster, s_bundle) = resolve_cluster_bundle(
         &state,
         &auth,
@@ -883,20 +897,6 @@ pub async fn list_files(
     .await?;
 
     let cluster = get_online_cluster(&state, &s_cluster)?;
-
-    // Application shutdown: reject new file-list sessions via the same typed
-    // error / status code already returned for offline clusters. No session is
-    // created and no FILE_LIST message is sent to the cluster.
-    if state.cluster_manager.is_application_shutting_down() {
-        tracing::info!(
-            "HTTP: Rejecting file list (cluster='{}') - application shutdown in progress",
-            s_cluster
-        );
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
-        ));
-    }
 
     // Check if job is complete (enables caching)
     let job_complete = if job_id != 0 {
