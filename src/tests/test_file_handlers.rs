@@ -902,6 +902,81 @@ async fn test_download_file_zero_length_returns_empty_body() {
     );
 }
 
+/// Tests that the download response stream truncates the final chunk when the
+/// cluster sends more bytes than the declared `FILE_DETAILS` `file_size`, so the
+/// response body never exceeds the declared `Content-Length`.
+///
+/// # Setup
+/// Inserts a download record. Wires a `FileDownloadState` whose `file_size` is
+/// `5` but pushes a single `10`-byte chunk via `chunk_sender`, simulating a
+/// cluster that overshoots the advertised size.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}.
+///
+/// # Assert
+/// Verifies 200 OK, `Content-Length: 5`, and a body of exactly the first 5
+/// bytes of the pushed chunk (the truncated prefix).
+#[tokio::test]
+async fn test_download_file_overshoot_truncates_to_declared_size() {
+    let db = setup_test_db().await;
+    let uuid = "overshoot-uuid".to_string();
+    insert_file_download(&db, &uuid, "").await;
+
+    let fd_state = Arc::new(FileDownloadState::new());
+    let declared_size: u64 = 5;
+    let pushed_chunk: Vec<u8> = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    fd_state.file_size.store(declared_size, Ordering::Release);
+    fd_state.received_data.store(true, Ordering::Release);
+    fd_state.data_ready.store(true, Ordering::Release);
+    fd_state.data_notify.notify_waiters();
+    let _ = fd_state.chunk_sender.send(pushed_chunk.clone());
+
+    let fd_for_manager = Arc::clone(&fd_state);
+    let mut manager = download_manager_with_online_cluster();
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd_for_manager)));
+
+    let app = make_app(db, manager);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok()),
+        Some(declared_size.to_string().as_str()),
+        "Content-Length should equal the declared file_size"
+    );
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        body_bytes.as_ref(),
+        &pushed_chunk[..declared_size as usize],
+        "Body should be the truncated prefix of the overshooting chunk"
+    );
+}
+
 /// Tests that the HTTP download stream sends a single `RESUME_FILE_CHUNK_STREAM`
 /// message and clears `client_paused` once the client has drained below
 /// `MIN_FILE_BUFFER_SIZE` after a pause.
