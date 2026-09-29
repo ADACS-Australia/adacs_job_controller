@@ -292,6 +292,15 @@ async fn test_create_job_app_shutting_down_returns_503() {
     .await;
 
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&body),
+        "Application is shutting down",
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
 
     // No job record should be created during shutdown
     let jobs = job::Entity::find().all(&db).await.unwrap();
