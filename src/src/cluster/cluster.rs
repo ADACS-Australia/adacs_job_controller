@@ -514,7 +514,17 @@ impl Cluster {
             return;
         }
         let status = message.pop_uint();
-        let details = message.pop_string();
+        // A valid UPDATE_JOB needs the trailing `details` string. If its length
+        // prefix claims more bytes than remain, the message is truncated; drop
+        // it rather than recording a corrupted job-history row with empty details.
+        let Some(details) = message.try_pop_string() else {
+            tracing::warn!(
+                "Cluster[{}]: Dropping truncated UPDATE_JOB for job {} (truncated details field)",
+                self.name(),
+                job_id
+            );
+            return;
+        };
 
         tracing::trace!(
             "Cluster[{}]: Received UPDATE_JOB - job_id={}, what={}, status={}, details={}",
