@@ -28,6 +28,7 @@ use crate::utils::job_source_key;
 use crate::utils::uuid::generate_uuid;
 
 const ERR_DOWNLOAD_ABORTED_CLIENT_DISCONNECTED: &str = "Download aborted: HTTP client disconnected";
+const ERR_DOWNLOAD_INVALID: &str = "Download failed: invalid FILE_DETAILS message";
 
 fn warn_role_mismatch(name: &str, role: &ClusterRole, message_name: &str) {
     tracing::warn!(
@@ -817,10 +818,30 @@ impl Cluster {
     }
 
     /// Handles FILE_DETAILS messages by extracting the file size and notifying waiting readers.
-    fn handle_file_details(&self, message: &mut Message) {
+    async fn handle_file_details(&self, message: &mut Message) {
         let Some(state) = self.download_state("FILE_DETAILS") else {
             return;
         };
+
+        // A valid FILE_DETAILS needs at least 8 bytes for `file_size`. If
+        // fewer remain, the message is truncated; record a transfer error
+        // rather than storing file_size=0 and returning a silent zero-length
+        // download.
+        if message.remaining() < 8 {
+            tracing::warn!(
+                "Cluster[{}]: Truncated FILE_DETAILS (fewer than 8 bytes remain for file_size)",
+                self.name()
+            );
+            Self::record_transfer_error(
+                &state.error_details,
+                &state.error,
+                &state.data_ready,
+                &state.data_notify,
+                ERR_DOWNLOAD_INVALID.to_string(),
+            )
+            .await;
+            return;
+        }
 
         let file_size = message.pop_ulong();
         tracing::debug!(
@@ -1114,7 +1135,7 @@ impl ClusterTrait for Cluster {
 
             // FileDownload messages
             FILE_CHUNK => self.handle_file_chunk(&mut message).await,
-            FILE_DETAILS => self.handle_file_details(&mut message),
+            FILE_DETAILS => self.handle_file_details(&mut message).await,
             FILE_ERROR => self.handle_file_error(&mut message).await,
 
             // FileUpload messages
@@ -1427,8 +1448,8 @@ mod tests {
 
     /// Verifies that `handle_file_details` stores the advertised file size and sets
     /// received_data and data_ready on the FileDownloadState.
-    #[test]
-    fn test_handle_file_details_sets_download_state() {
+    #[tokio::test]
+    async fn test_handle_file_details_sets_download_state() {
         let state = Arc::new(FileDownloadState::new());
         let lock = Arc::new(tokio::sync::Mutex::new(()));
         let cluster = Cluster::new_file_download(
@@ -1443,11 +1464,43 @@ mod tests {
         msg.push_ulong(42);
         let mut msg = Message::from_bytes(msg.into_data());
 
-        cluster.handle_file_details(&mut msg);
+        cluster.handle_file_details(&mut msg).await;
 
         assert_eq!(state.file_size.load(Ordering::Relaxed), 42);
         assert!(state.received_data.load(Ordering::Relaxed));
         assert!(state.data_ready.load(Ordering::Relaxed));
+    }
+
+    /// Verifies that a truncated FILE_DETAILS (fewer than 8 bytes for
+    /// file_size) records a transfer error instead of a silent zero-length
+    /// download.
+    #[tokio::test]
+    async fn test_handle_file_details_truncated_sets_error() {
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster = Cluster::new_file_download(
+            test_config(),
+            "uuid-details-trunc".into(),
+            state.clone(),
+            None,
+            lock,
+        );
+
+        let mut msg = Message::new(FILE_DETAILS, Priority::Highest, "test_cluster");
+        msg.push_ulong(42);
+        let mut data = msg.into_data();
+        data.truncate(4);
+        let mut msg = Message::from_bytes(data);
+
+        cluster.handle_file_details(&mut msg).await;
+
+        assert!(state.error.load(Ordering::Relaxed));
+        assert!(state.data_ready.load(Ordering::Relaxed));
+        assert!(!state.received_data.load(Ordering::Relaxed));
+        assert_eq!(
+            *state.error_details.lock().await,
+            ERR_DOWNLOAD_INVALID.to_string()
+        );
     }
 
     /// Verifies that `handle_file_error` returns without panicking or mutating
@@ -1464,15 +1517,15 @@ mod tests {
 
     /// Verifies that `handle_file_details` returns without panicking or mutating
     /// state when there is no registered `FileDownloadState`.
-    #[test]
-    fn test_handle_file_details_no_state_returns() {
+    #[tokio::test]
+    async fn test_handle_file_details_no_state_returns() {
         let cluster = make_test_cluster();
 
         let mut msg = Message::new(FILE_DETAILS, Priority::Highest, TEST_CLUSTER);
         msg.push_ulong(42);
         let mut msg = Message::from_bytes(msg.into_data());
 
-        cluster.handle_file_details(&mut msg);
+        cluster.handle_file_details(&mut msg).await;
 
         assert!(cluster.file_download_state.is_none());
     }
