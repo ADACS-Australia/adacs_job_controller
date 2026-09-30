@@ -159,13 +159,6 @@ pub trait ClusterManagerTrait: Send + Sync {
         uuid: &str,
     ) -> Arc<dyn ClusterTrait>;
 
-    /// Remove a file upload session for the given UUID once its transfer has
-    /// reached a terminal path (e.g. successful completion), so the session
-    /// map does not grow with each completed upload on a long-lived
-    /// connection. Default is a no-op so mocks continue to work.
-    #[allow(clippy::used_underscore_binding)]
-    fn remove_file_upload(&self, _uuid: &str) {}
-
     /// Check if a cluster is currently connected.
     #[allow(dead_code)]
     fn is_cluster_online(&self, cluster: &dyn ClusterTrait) -> bool;
