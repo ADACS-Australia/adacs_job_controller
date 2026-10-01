@@ -271,7 +271,7 @@ fn test_cluster_job_status_full_roundtrip_via_message() {
         888,
         |m| original.to_message(m),
         |parsed| {
-            let restored = ClusterJobStatus::from_message(parsed);
+            let restored = ClusterJobStatus::from_message(parsed).unwrap();
             assert_eq!(restored.id, original.id);
             assert_eq!(restored.job_id, original.job_id);
             assert_eq!(restored.what, original.what);
@@ -303,7 +303,7 @@ fn test_bundle_job_full_roundtrip_via_message() {
         999,
         |m| original.to_message(m),
         |parsed| {
-            let restored = BundleJob::from_message(parsed);
+            let restored = BundleJob::from_message(parsed).unwrap();
             assert_eq!(restored.id, original.id);
             assert_eq!(restored.content, original.content);
         },
