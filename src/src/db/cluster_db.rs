@@ -362,7 +362,13 @@ async fn handle_job_save(
         );
         return;
     }
-    let job = ClusterJob::from_message(message);
+    let Some(job) = ClusterJob::from_message(message) else {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_JOB_SAVE (variable-length string length prefix exceeds remaining bytes)",
+            cluster.name()
+        );
+        return;
+    };
     let cluster_name = cluster.name();
 
     if job.id == 0 {

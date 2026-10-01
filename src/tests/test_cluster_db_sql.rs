@@ -465,7 +465,7 @@ async fn test_handle_job_get_by_id_found() {
     let count = body.pop_uint();
     assert_eq!(count, 1, "Expected exactly 1 row");
 
-    let restored = ClusterJob::from_message(&mut body);
+    let restored = ClusterJob::from_message(&mut body).unwrap();
     assert_eq!(restored.id, row_id);
     assert_eq!(restored.job_id, 55);
     assert_eq!(restored.scheduler_id, 7);
@@ -530,7 +530,7 @@ async fn test_handle_job_get_by_job_id_found() {
     assert_eq!(req_id, 400);
     let count = body.pop_uint();
     assert_eq!(count, 1);
-    let row = ClusterJob::from_message(&mut body);
+    let row = ClusterJob::from_message(&mut body).unwrap();
     assert_eq!(row.job_id, 77);
 }
 
@@ -577,7 +577,7 @@ async fn test_handle_job_get_by_job_id_cluster_scoping() {
     assert_eq!(req_id, 401);
     let count = body.pop_uint();
     assert_eq!(count, 1, "Only 1 row for 'ozstar' despite shared job_id=77");
-    let row = ClusterJob::from_message(&mut body);
+    let row = ClusterJob::from_message(&mut body).unwrap();
     assert_eq!(row.id, ozstar_id, "Returned row must be the ozstar row");
     assert_eq!(row.job_id, 77);
 }
@@ -623,7 +623,7 @@ async fn test_handle_job_get_running_jobs() {
     assert_eq!(req_id, 500);
     let count = body.pop_uint();
     assert_eq!(count, 1, "Only 1 running job for 'ozstar'");
-    let row = ClusterJob::from_message(&mut body);
+    let row = ClusterJob::from_message(&mut body).unwrap();
     assert!(row.running);
     assert_eq!(row.job_id, 1);
 }
@@ -1632,6 +1632,50 @@ async fn test_handle_job_save_truncated_records_no_row() {
     assert_eq!(
         count, 0,
         "Truncated DB_JOB_SAVE should record no cluster job row"
+    );
+}
+
+/// Verifies that a `DB_JOB_SAVE` message whose `bundle_hash` length prefix
+/// claims more bytes than remain is dropped and records no cluster job row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the cluster job schema is created.
+///
+/// # Act
+/// Dispatch a `DB_JOB_SAVE` message with `db_request_id=100` whose fixed-size
+/// prefix is long enough to pass the minimum-size guard (>= 48 bytes remain),
+/// but whose `bundle_hash` length prefix claims 100 bytes that do not exist.
+///
+/// # Assert
+/// No row is inserted into `cluster_job`.
+#[tokio::test]
+async fn test_handle_job_save_bogus_bundle_hash_length_is_dropped() {
+    let db = make_cluster_db().await;
+
+    let (mock, _sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(100); // db_request_id
+        m.push_ulong(0); // id
+        m.push_ulong(42); // job_id
+        m.push_ulong(0); // scheduler_id
+        m.push_bool(false); // submitting
+        m.push_uint(0); // submitting_count
+        m.push_ulong(100); // bundle_hash length prefix (claims 100 bytes)
+        m.push_ulong(100); // working_directory length prefix (claims 100 bytes)
+        // 3 more bytes so the fixed-size minimum (48) passes; the bundle_hash
+        // length prefix still exceeds the remaining bytes.
+        m.push_ubyte(0);
+        m.push_ubyte(0);
+        m.push_ubyte(0);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOB_SAVE should be handled");
+
+    let count = cluster_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "DB_JOB_SAVE with bogus bundle_hash length should record no cluster job row"
     );
 }
 
