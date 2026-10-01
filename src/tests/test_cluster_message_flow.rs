@@ -1477,6 +1477,77 @@ async fn test_handle_file_list_truncated_length_prefix_is_dropped() {
     }
 }
 
+/// Verifies that a `FILE_LIST` message whose final entry's filename length prefix
+/// claims more bytes than remain — while still leaving >= 9 bytes of filename
+/// content after the prefix — drops that truncated entry instead of recording a
+/// corrupted entry with an empty filename and garbage `is_directory`/`file_size`.
+///
+/// This is the case that the `remaining() < 9` tail guard alone cannot catch:
+/// after the length prefix is consumed there are still enough bytes for the
+/// `pop_bool`/`pop_ulong` fields, so only `try_pop_string` detecting the
+/// underrun drops the entry.
+///
+/// # Setup
+/// A UUID `"test-fl-truncated-name"` is pre-registered in the `file_list_map`.
+/// A `FILE_LIST` message is built claiming 2 entries: one complete entry and one
+/// whose filename length prefix (written as a raw 8-byte little-endian value)
+/// exceeds the remaining bytes but is followed by 12 filename bytes.
+///
+/// # Act
+/// The message is dispatched via `cluster.handle_message`.
+///
+/// # Assert
+/// The `FileListState` contains only the 1 complete entry and `data_ready` is set
+/// to `true`; no bogus entry with an empty filename is added.
+#[tokio::test]
+async fn test_handle_file_list_truncated_file_name_with_trailing_bytes_dropped() {
+    let (cluster, file_list_map) = make_file_list_cluster();
+
+    let uuid = "test-fl-truncated-name";
+
+    // Register UUID in the file list map
+    let fl_state = register_file_list_uuid(&file_list_map, uuid);
+
+    // Build a FILE_LIST message claiming 2 entries: one complete, one whose
+    // filename length prefix claims more bytes than remain but still leaves
+    // >= 9 bytes of filename content after the prefix.
+    //
+    // `push_string` encodes a string as an 8-byte length prefix followed by the
+    // bytes. For the final entry we write the length prefix directly (a large
+    // value) followed by 12 raw filename bytes, so at the start of the final
+    // loop iteration `remaining() == 8 + 12 = 20 >= MIN_FILE_LIST_ENTRY_BYTES`
+    // and the pre-existing guard passes. `try_pop_string` then sees the prefix
+    // claim 100 bytes while only 12 remain, returns `None`, and the entry is
+    // dropped. Without the fix, `pop_string` would return `""` with
+    // `remaining() == 12 >= 9`, so the tail guard would pass and the following
+    // `pop_bool`/`pop_ulong` would parse filename bytes as garbage fields.
+    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
+    msg.push_string(uuid);
+    msg.push_uint(2);
+    msg.push_string("/file1");
+    msg.push_bool(false);
+    msg.push_ulong(0x1234);
+    msg.push_ulong(100);
+    let mut data = msg.into_data();
+    data.extend_from_slice(b"abcdefghijkl");
+    let msg = Message::from_bytes(data);
+
+    cluster.handle_message(msg).await;
+
+    // Only the complete entry is populated; the truncated one is dropped.
+    {
+        let state = fl_state.lock().await;
+        assert_eq!(state.files.len(), 1);
+        assert!(!state.error);
+        assert!(state.error_details.is_empty());
+        assert!(state.data_ready);
+
+        assert_eq!(state.files[0].file_name, "/file1");
+        assert!(!state.files[0].is_directory);
+        assert_eq!(state.files[0].file_size, 0x1234);
+    }
+}
+
 /// Verifies that a `FILE_LIST` message with `num_files = 0` for a registered UUID
 /// clears the file list and sets `data_ready` (a job with no files).
 ///
