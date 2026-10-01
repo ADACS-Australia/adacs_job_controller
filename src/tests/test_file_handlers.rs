@@ -3488,6 +3488,7 @@ mod download_session_cleanup {
                 keytab: String::new(),
                 kerberos_principal: String::new(),
                 ltk: None,
+                known_host_key: String::new(),
             }],
             db.clone(),
             file_list_map,

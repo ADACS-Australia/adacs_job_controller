@@ -35,6 +35,11 @@ pub struct ClusterConfig {
     /// Long-term key for LTK-authenticated manual connections.
     #[serde(default)]
     pub ltk: Option<String>,
+    /// Expected SSH server host key fingerprint (e.g. `"ssh-ed25519 SHA256:..."`).
+    /// When set, the presented server host key is verified against it; when empty,
+    /// the host key is logged but accepted without verification.
+    #[serde(default)]
+    pub known_host_key: String,
 }
 
 fn default_connection_type() -> String {

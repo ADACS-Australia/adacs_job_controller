@@ -545,6 +545,7 @@ async fn test_cluster_get_cluster_details() {
         keytab: "/etc/krb5/test.keytab".to_string(),
         kerberos_principal: "testuser@EXAMPLE.COM".to_string(),
         ltk: Some("super-secret-ltk".to_string()),
+        known_host_key: String::new(),
     };
     let cluster = Cluster::new(config.clone(), None);
 

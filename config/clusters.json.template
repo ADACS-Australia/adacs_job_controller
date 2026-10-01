@@ -4,7 +4,8 @@
     "host": "cluster.example.com",
     "username": "jobclient",
     "path": "/path/to/gwcloud_job_client/",
-    "key": "-----BEGIN RSA PRIVATE KEY-----\n__CHANGEME__\n-----END RSA PRIVATE KEY-----"
+    "key": "-----BEGIN RSA PRIVATE KEY-----\n__CHANGEME__\n-----END RSA PRIVATE KEY-----",
+    "known_host_key": "ssh-ed25519 SHA256:__CHANGEME__"
   }
 ]
 

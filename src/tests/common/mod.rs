@@ -46,6 +46,7 @@ pub fn test_cluster_config(name: &str) -> ClusterConfig {
         keytab: String::new(),
         kerberos_principal: String::new(),
         ltk: None,
+        known_host_key: String::new(),
     }
 }
 

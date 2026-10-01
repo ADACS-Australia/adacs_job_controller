@@ -1183,6 +1183,7 @@ mod tests {
                 keytab: String::new(),
                 kerberos_principal: String::new(),
                 ltk: None,
+                known_host_key: String::new(),
             },
             ClusterConfig {
                 name: CLUSTER_B.to_string(),
@@ -1194,6 +1195,7 @@ mod tests {
                 keytab: String::new(),
                 kerberos_principal: String::new(),
                 ltk: None,
+                known_host_key: String::new(),
             },
         ]
     }

@@ -62,7 +62,15 @@ impl From<Option<Option<HashAlg>>> for PreferredRsaHash {
     }
 }
 
-struct SshHandler;
+struct SshHandler {
+    known_host_key: Option<String>,
+}
+
+impl SshHandler {
+    fn new(known_host_key: Option<String>) -> Self {
+        Self { known_host_key }
+    }
+}
 
 impl client::Handler for SshHandler {
     type Error = russh::Error;
@@ -71,11 +79,23 @@ impl client::Handler for SshHandler {
         &mut self,
         server_public_key: &russh::keys::PublicKey,
     ) -> Result<bool, Self::Error> {
-        tracing::info!(
-            "SSH: Accepted server host key ({})",
-            format_server_key(server_public_key)
-        );
-        Ok(true)
+        let fingerprint = format_server_key(server_public_key);
+        match &self.known_host_key {
+            Some(expected) if expected == &fingerprint => {
+                tracing::info!("SSH: Accepted server host key ({fingerprint})");
+                Ok(true)
+            }
+            Some(expected) => {
+                tracing::warn!(
+                    "SSH: Rejected server host key ({fingerprint}); expected {expected}"
+                );
+                Ok(false)
+            }
+            None => {
+                tracing::info!("SSH: Accepted server host key ({fingerprint})");
+                Ok(true)
+            }
+        }
     }
 }
 
@@ -149,7 +169,16 @@ async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError
     });
 
     tracing::debug!("SSH[{}]: Connecting to {}:22", config.name, config.host);
-    let mut session = client::connect(cfg, (&config.host[..], 22u16), SshHandler).await?;
+    let mut session = client::connect(
+        cfg,
+        (&config.host[..], 22u16),
+        SshHandler::new(if config.known_host_key.is_empty() {
+            None
+        } else {
+            Some(config.known_host_key.clone())
+        }),
+    )
+    .await?;
     tracing::trace!("SSH[{}]: TCP connection established", config.name);
 
     tracing::debug!(
@@ -391,6 +420,7 @@ async fn execute_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use russh::client::Handler;
     use russh::keys::Algorithm;
     use std::fs;
     use tempfile::TempDir;
@@ -410,6 +440,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
             keytab: String::new(),
             kerberos_principal: String::new(),
             ltk: None,
+            known_host_key: String::new(),
         }
     }
 
@@ -543,6 +574,32 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         let parsed = block_on(load_private_key(PKCS8_ED25519_KEY)).unwrap();
 
         assert_eq!(parsed.algorithm(), Algorithm::Ed25519);
+    }
+
+    fn check_server_key_for(key: &str, known_host_key: Option<&str>) -> bool {
+        let key = block_on(load_private_key(key)).unwrap();
+        let mut handler = SshHandler::new(known_host_key.map(str::to_string));
+        block_on(handler.check_server_key(key.public_key())).unwrap()
+    }
+
+    #[test]
+    fn check_server_key_accepts_when_configured_key_matches() {
+        let key = block_on(load_private_key(PKCS8_ED25519_KEY)).unwrap();
+        let expected = format_server_key(key.public_key());
+        assert!(check_server_key_for(PKCS8_ED25519_KEY, Some(&expected)));
+    }
+
+    #[test]
+    fn check_server_key_rejects_when_configured_key_mismatches() {
+        assert!(!check_server_key_for(
+            PKCS8_ED25519_KEY,
+            Some("ssh-ed25519 SHA256:different")
+        ));
+    }
+
+    #[test]
+    fn check_server_key_accepts_when_no_key_configured() {
+        assert!(check_server_key_for(PKCS8_ED25519_KEY, None));
     }
 
     #[test]
