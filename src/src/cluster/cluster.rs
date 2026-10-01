@@ -682,7 +682,16 @@ impl Cluster {
     async fn handle_file_list_response(&self, message: &mut Message) {
         const MIN_FILE_LIST_ENTRY_BYTES: usize = 18;
 
-        let uuid = message.pop_string();
+        // A uuid whose length prefix claims more bytes than remain is a truncated
+        // message; drop it rather than consulting the state map with an empty
+        // uuid (which would be misreported as an unknown uuid).
+        let Some(uuid) = message.try_pop_string() else {
+            tracing::warn!(
+                "Cluster[{}]: Dropping truncated FILE_LIST (uuid length prefix exceeds remaining bytes)",
+                self.name()
+            );
+            return;
+        };
         let num_files = message.pop_uint();
 
         let mut files = Vec::new();
@@ -2590,6 +2599,36 @@ mod tests {
         assert_eq!(locked.files[0].file_name, "file_a.txt");
         assert_eq!(locked.files[1].file_name, "dir_b");
         assert!(locked.data_ready);
+    }
+
+    /// Verifies that a `FILE_LIST` whose `uuid` length prefix claims more bytes
+    /// than remain is dropped without recording files or setting `data_ready`.
+    #[tokio::test]
+    async fn test_file_list_response_truncated_uuid_is_dropped() {
+        let db = sea_orm::Database::connect(crate::test_support::SQLITE_MEMORY)
+            .await
+            .expect(crate::test_support::SQLITE_IN_MEMORY_CONNECTION_FAILED);
+        let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+            Arc::new(DashMap::new());
+        let app_context = Arc::new(AppContext {
+            db,
+            file_list_map: Arc::clone(&file_list_map),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        let uuid = "file-list-uuid-1";
+        let state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+        file_list_map.insert(uuid.to_string(), Arc::clone(&state));
+
+        let mut msg = Message::new(FILE_LIST, Priority::Lowest, TEST_CLUSTER);
+        msg.push_ulong(1000);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_response(&mut msg).await;
+
+        let locked = state.lock().await;
+        assert!(locked.files.is_empty());
+        assert!(!locked.data_ready);
     }
 
     /// Verifies that a `FILE_LIST_ERROR` message records the error flag, the error
