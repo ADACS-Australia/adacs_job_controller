@@ -29,6 +29,7 @@ use crate::utils::uuid::generate_uuid;
 
 const ERR_DOWNLOAD_ABORTED_CLIENT_DISCONNECTED: &str = "Download aborted: HTTP client disconnected";
 const ERR_DOWNLOAD_INVALID: &str = "Download failed: invalid FILE_DETAILS message";
+const ERR_DOWNLOAD_INVALID_CHUNK: &str = "Download failed: truncated FILE_CHUNK message";
 
 fn warn_role_mismatch(name: &str, role: &ClusterRole, message_name: &str) {
     tracing::warn!(
@@ -766,7 +767,25 @@ impl Cluster {
             return;
         };
 
-        let chunk = message.pop_bytes();
+        // A valid FILE_CHUNK needs at least the declared chunk bytes to remain.
+        // If the length prefix claims more bytes than remain, the message is
+        // truncated; record a transfer error rather than forwarding an empty
+        // chunk that would stall the download until a generic chunk-timeout.
+        let Some(chunk) = message.try_pop_bytes() else {
+            tracing::warn!(
+                "Cluster[{}]: Truncated FILE_CHUNK (length prefix exceeds remaining bytes)",
+                self.name()
+            );
+            Self::record_transfer_error(
+                &state.error_details,
+                &state.error,
+                &state.data_ready,
+                &state.data_notify,
+                ERR_DOWNLOAD_INVALID_CHUNK.to_string(),
+            )
+            .await;
+            return;
+        };
         let chunk_len = chunk.len() as u64;
         tracing::trace!(
             "Cluster[{}]: FILE_CHUNK received - {} bytes",
@@ -2688,6 +2707,37 @@ mod tests {
         assert_eq!(state.received_bytes.load(Ordering::Relaxed), 4);
         assert!(state.data_ready.load(Ordering::Relaxed));
         assert!(!state.error.load(Ordering::Relaxed));
+    }
+
+    /// Verifies that `handle_file_chunk` records a transfer error and sets
+    /// `data_ready` when the chunk length prefix exceeds the remaining bytes
+    /// (a truncated chunk), rather than forwarding an empty chunk.
+    #[tokio::test]
+    async fn test_handle_file_chunk_truncated_sets_error() {
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster = Cluster::new_file_download(
+            test_config(),
+            "uuid-chunk-trunc".into(),
+            state.clone(),
+            None,
+            lock,
+        );
+
+        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
+        msg.push_ulong(16);
+        msg.push_bytes(&[1u8, 2, 3, 4]);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_chunk(&mut msg).await;
+
+        assert!(state.error.load(Ordering::Relaxed));
+        assert_eq!(
+            *state.error_details.lock().await,
+            ERR_DOWNLOAD_INVALID_CHUNK.to_string()
+        );
+        assert!(state.data_ready.load(Ordering::Relaxed));
+        assert_eq!(state.received_bytes.load(Ordering::Relaxed), 0);
     }
 
     /// Verifies that `handle_file_chunk` records an error and sets `data_ready`

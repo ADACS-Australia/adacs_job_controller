@@ -251,6 +251,21 @@ impl Message {
         self.index += len;
         result
     }
+
+    /// Pop a raw byte slice from the message buffer, returning `None` if the
+    /// length prefix claims more bytes than remain (a truncated payload).
+    ///
+    /// Unlike [`pop_bytes`], this does not advance past the length prefix and
+    /// return an empty slice on underrun; callers can detect the truncation.
+    pub fn try_pop_bytes(&mut self) -> Option<Vec<u8>> {
+        let len = self.pop_ulong() as usize;
+        if !self.check_remaining(len) {
+            return None;
+        }
+        let result = self.data[self.index..self.index + len].to_vec();
+        self.index += len;
+        Some(result)
+    }
 }
 
 #[cfg(test)]
