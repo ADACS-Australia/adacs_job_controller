@@ -571,6 +571,17 @@ pub async fn cancel_job(
     // TODO: Content-Type tolerance - remove when client sends proper headers
     LenientJson(body): LenientJson<JobIdRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // Application shutdown: reject new work once shutdown has begun, before any
+    // DB read or history row is written or wire message is sent, matching the
+    // guard used by every other HTTP handler.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!("HTTP: Rejecting job cancel - application shutdown in progress");
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            ERR_APPLICATION_SHUTDOWN.to_string(),
+        ));
+    }
+
     let invalid_states = [
         JobStatus::Cancelling as i32,
         JobStatus::Cancelled as i32,
@@ -584,16 +595,6 @@ pub async fn cancel_job(
 
     let (job, cluster_obj, current_state) =
         load_job_for_transition(&state, &auth, body.job_id, &invalid_states).await?;
-
-    // Application shutdown: reject new work once shutdown has begun, before any
-    // history row is written or wire message is sent (mirrors download_file).
-    if state.cluster_manager.is_application_shutting_down() {
-        tracing::info!("HTTP: Rejecting job cancel - application shutdown in progress");
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            ERR_APPLICATION_SHUTDOWN.to_string(),
-        ));
-    }
 
     record_job_transition(
         &state,
@@ -631,6 +632,17 @@ pub async fn delete_job(
     // TODO: Content-Type tolerance - remove when client sends proper headers
     LenientJson(body): LenientJson<JobIdRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // Application shutdown: reject new work once shutdown has begun, before any
+    // DB read or history row is written or wire message is sent, matching the
+    // guard used by every other HTTP handler.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!("HTTP: Rejecting job delete - application shutdown in progress");
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            ERR_APPLICATION_SHUTDOWN.to_string(),
+        ));
+    }
+
     let invalid_states = [
         JobStatus::Submitting as i32,
         JobStatus::Submitted as i32,
@@ -643,16 +655,6 @@ pub async fn delete_job(
 
     let (job, cluster_obj, current_state) =
         load_job_for_transition(&state, &auth, body.job_id, &invalid_states).await?;
-
-    // Application shutdown: reject new work once shutdown has begun, before any
-    // history row is written or wire message is sent (mirrors download_file).
-    if state.cluster_manager.is_application_shutting_down() {
-        tracing::info!("HTTP: Rejecting job delete - application shutdown in progress");
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            ERR_APPLICATION_SHUTDOWN.to_string(),
-        ));
-    }
 
     record_job_transition(
         &state,
