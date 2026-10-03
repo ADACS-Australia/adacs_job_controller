@@ -197,6 +197,9 @@ pub async fn create_file_download(
     let user_id = auth_user_id(&auth);
     tracing::trace!("HTTP: User ID: {}", user_id);
 
+    // Bound the file_download table regardless of download traffic.
+    purge_expired_file_downloads(&state.db).await;
+
     let job_id = i64::from(job_id_u32);
 
     tracing::debug!("HTTP: Starting database transaction for file download creation");
@@ -316,6 +319,22 @@ impl Drop for PreResponseGuard {
     }
 }
 
+/// Delete expired `file_download` rows using the configured expiry window.
+///
+/// Bounds the `file_download` table on both the create and download paths so
+/// records do not accumulate when downloads are infrequent. Failures are logged
+/// and ignored so cleanup never breaks the request path.
+async fn purge_expired_file_downloads(db: &sea_orm::DatabaseConnection) {
+    let expiry_secs = (*settings::FILE_DOWNLOAD_EXPIRY_TIME).cast_signed();
+    let expiry_dt = chrono::Utc::now().naive_utc()
+        - chrono::Duration::try_seconds(expiry_secs).unwrap_or_default();
+    tracing::trace!("HTTP: Expiring old download records (before {})", expiry_dt);
+    let _ = file_download::Entity::delete_many()
+        .filter(file_download::Column::Timestamp.lte(expiry_dt))
+        .exec(db)
+        .await;
+}
+
 /// Stream a file download from a remote cluster.
 ///
 /// # Errors
@@ -344,14 +363,7 @@ pub async fn download_file(
     tracing::trace!("HTTP: Force download flag: {}", force_download);
 
     // Expire old download records
-    let expiry_secs = (*settings::FILE_DOWNLOAD_EXPIRY_TIME).cast_signed();
-    let expiry_dt = chrono::Utc::now().naive_utc()
-        - chrono::Duration::try_seconds(expiry_secs).unwrap_or_default();
-    tracing::trace!("HTTP: Expiring old download records (before {})", expiry_dt);
-    let _ = file_download::Entity::delete_many()
-        .filter(file_download::Column::Timestamp.lte(expiry_dt))
-        .exec(&state.db)
-        .await;
+    purge_expired_file_downloads(&state.db).await;
 
     // Fetch the download record
     tracing::trace!("HTTP: Fetching download record for UUID: {}", original_uuid);
