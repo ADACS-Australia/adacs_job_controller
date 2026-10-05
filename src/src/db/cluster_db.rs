@@ -219,6 +219,17 @@ async fn handle_get_by_id_impl<E, T>(
 ) where
     E: sea_orm::EntityTrait,
 {
+    // A valid get-by-id request needs at least 12 bytes for the fixed-size
+    // fields (db_request_id + id). If fewer remain, the message is
+    // truncated; drop it rather than querying with defaulted 0 values and
+    // emitting an uncorrelatable DB_RESPONSE.
+    if message.remaining() < 12 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB get-by-id message (fewer than 12 bytes remain for request fields)",
+            cluster.name()
+        );
+        return;
+    }
     let db_request_id = message.pop_uint();
     let id = message.pop_ulong().cast_signed();
 
@@ -257,6 +268,17 @@ async fn handle_job_get_by_job_id(
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
+    // A valid DB_JOB_GET_BY_JOB_ID needs at least 12 bytes for the fixed-size
+    // fields (db_request_id + job_id). If fewer remain, the message is
+    // truncated; drop it rather than querying with defaulted 0 values and
+    // emitting an uncorrelatable DB_RESPONSE.
+    if message.remaining() < 12 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_JOB_GET_BY_JOB_ID (fewer than 12 bytes remain for request fields)",
+            cluster.name()
+        );
+        return;
+    }
     let db_request_id = message.pop_uint();
     let job_id = message.pop_ulong().cast_signed();
     let cluster_name = cluster.name();
@@ -303,6 +325,17 @@ async fn handle_job_get_running_jobs(
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
+    // A valid DB_JOB_GET_RUNNING_JOBS needs at least 4 bytes for the
+    // fixed-size db_request_id field. If fewer remain, the message is
+    // truncated; drop it rather than returning every running job with an
+    // uncorrelatable db_request_id of 0.
+    if message.remaining() < 4 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_JOB_GET_RUNNING_JOBS (fewer than 4 bytes remain for request fields)",
+            cluster.name()
+        );
+        return;
+    }
     let db_request_id = message.pop_uint();
     let cluster_name = cluster.name();
 
@@ -333,6 +366,17 @@ async fn handle_delete_by_id<E: EntityTrait>(
 ) where
     <E::PrimaryKey as sea_orm::PrimaryKeyTrait>::ValueType: From<i64>,
 {
+    // A valid delete-by-id request needs at least 12 bytes for the fixed-size
+    // fields (db_request_id + id). If fewer remain, the message is
+    // truncated; drop it rather than deleting with a defaulted 0 id and
+    // emitting an uncorrelatable DB_RESPONSE.
+    if message.remaining() < 12 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB delete-by-id message (fewer than 12 bytes remain for request fields)",
+            cluster.name()
+        );
+        return;
+    }
     let db_request_id = message.pop_uint();
     let id = message.pop_ulong().cast_signed();
 
@@ -427,6 +471,17 @@ async fn handle_jobstatus_get_by_job_id_impl(
     db: &sea_orm::DatabaseConnection,
     has_what: bool,
 ) {
+    // A valid jobstatus get-by-job-id request needs at least 12 bytes for the
+    // fixed-size fields (db_request_id + job_id). If fewer remain, the message
+    // is truncated; drop it rather than querying with defaulted 0 values and
+    // emitting an uncorrelatable DB_RESPONSE.
+    if message.remaining() < 12 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_JOBSTATUS_GET_BY_JOB_ID (fewer than 12 bytes remain for request fields)",
+            cluster.name()
+        );
+        return;
+    }
     let db_request_id = message.pop_uint();
     let job_id = message.pop_ulong().cast_signed();
     let what = if has_what {
@@ -789,5 +844,24 @@ mod tests {
             );
             assert!(!is_db, "ID {id} should not be a DB message");
         }
+    }
+
+    #[tokio::test]
+    async fn test_truncated_get_running_jobs_is_dropped() {
+        use crate::cluster::traits::MockClusterTrait;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let mut cluster = MockClusterTrait::new();
+        cluster.expect_name().returning(|| "test".to_string());
+        cluster.expect_send_message().never();
+
+        // A DB_JOB_GET_RUNNING_JOBS with fewer than 4 bytes of payload is
+        // truncated; the handler must drop it without sending a DB_RESPONSE.
+        let mut msg = Message::new(DB_JOB_GET_RUNNING_JOBS, Priority::Highest, SYSTEM_SOURCE);
+        msg.push_ubyte(0);
+        msg.push_ubyte(0);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        handle_job_get_running_jobs(&mut msg, &cluster, &db).await;
     }
 }
