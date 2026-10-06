@@ -179,7 +179,10 @@ pub async fn create_file_download(
 
     if file_paths.is_empty() {
         tracing::debug!("HTTP: Empty file paths list - returning empty response");
-        return Ok(Json(serde_json::json!({ (FILE_IDS_KEY): [] })));
+        if has_paths {
+            return Ok(Json(serde_json::json!({ (FILE_IDS_KEY): [] })));
+        }
+        return Ok(Json(serde_json::json!({ FILE_ID_KEY: "" })));
     }
 
     tracing::trace!("HTTP: Resolving cluster and bundle");
