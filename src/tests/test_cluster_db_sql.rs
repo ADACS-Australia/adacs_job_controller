@@ -862,8 +862,8 @@ async fn test_handle_jobstatus_get_by_job_id() {
     let count = body.pop_uint();
     assert_eq!(count, 2, "Should return only statuses for job 20");
 
-    let s1 = ClusterJobStatus::from_message(&mut body);
-    let s2 = ClusterJobStatus::from_message(&mut body);
+    let s1 = ClusterJobStatus::from_message(&mut body).unwrap();
+    let s2 = ClusterJobStatus::from_message(&mut body).unwrap();
     assert_eq!(s1.job_id, 20);
     assert_eq!(s2.job_id, 20);
     let mut whats: Vec<String> = vec![s1.what, s2.what];
@@ -914,7 +914,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
     assert_eq!(req_id, 900);
     let count = body.pop_uint();
     assert_eq!(count, 1, "Only job 30 with what='cpu_time'");
-    let s = ClusterJobStatus::from_message(&mut body);
+    let s = ClusterJobStatus::from_message(&mut body).unwrap();
     assert_eq!(s.job_id, 30);
     assert_eq!(s.what, "cpu_time");
     assert_eq!(s.state, 42);
@@ -1188,7 +1188,7 @@ async fn test_handle_bundle_get_by_id_found() {
     assert_eq!(req_id, 1200);
     let count = body.pop_uint();
     assert_eq!(count, 1);
-    let restored = BundleJob::from_message(&mut body);
+    let restored = BundleJob::from_message(&mut body).unwrap();
     assert_eq!(restored.id, bundle_id);
     assert_eq!(restored.content, "bundle_content");
 }
@@ -1702,5 +1702,78 @@ async fn test_handle_bundle_create_or_update_truncated_records_no_row() {
     assert_eq!(
         count, 0,
         "Truncated DB_BUNDLE_CREATE_OR_UPDATE_JOB should record no bundle row"
+    );
+}
+
+/// Verifies that a `DB_JOBSTATUS_SAVE` message whose `what` length prefix
+/// claims more bytes than remain is dropped and records no job status row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the cluster job status schema is created.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=701` whose
+/// fixed-size prefix is long enough to pass the minimum-size guard (>= 28 bytes
+/// remain), but whose `what` length prefix claims 100 bytes that do not exist.
+///
+/// # Assert
+/// No row is inserted into `cluster_job_status`.
+#[tokio::test]
+async fn test_handle_jobstatus_save_bogus_what_length_is_dropped() {
+    let db = make_cluster_db().await;
+
+    let (mock, _sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(701); // db_request_id
+        m.push_ulong(0); // id
+        m.push_ulong(42); // job_id
+        m.push_ulong(100); // what length prefix (claims 100 bytes)
+        m.push_uint(0); // state
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOBSTATUS_SAVE should be handled");
+
+    let count = cluster_job_status::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "DB_JOBSTATUS_SAVE with bogus what length should record no job status row"
+    );
+}
+
+/// Verifies that a `DB_BUNDLE_CREATE_OR_UPDATE_JOB` message whose `content`
+/// length prefix claims more bytes than remain is dropped and records no bundle
+/// row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the bundle job schema is created.
+///
+/// # Act
+/// Dispatch a `DB_BUNDLE_CREATE_OR_UPDATE_JOB` message with
+/// `db_request_id=1101` whose fixed-size prefix is long enough to pass the
+/// minimum-size guard (>= 24 bytes remain), but whose `content` length prefix
+/// claims 100 bytes that do not exist.
+///
+/// # Assert
+/// No row is inserted into `bundle_job`.
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_bogus_content_length_is_dropped() {
+    let db = make_cluster_db().await;
+
+    let (mock, _sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(1101); // db_request_id
+        m.push_ulong(0); // id
+        m.push_ulong(100); // content length prefix (claims 100 bytes)
+        m.push_ulong(100); // bundle_hash length prefix (claims 100 bytes)
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_BUNDLE_CREATE_OR_UPDATE_JOB should be handled");
+
+    let count = bundle_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "DB_BUNDLE_CREATE_OR_UPDATE_JOB with bogus content length should record no bundle row"
     );
 }

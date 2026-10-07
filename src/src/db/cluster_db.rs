@@ -573,7 +573,13 @@ async fn handle_jobstatus_save(
         );
         return;
     }
-    let status = ClusterJobStatus::from_message(message);
+    let Some(status) = ClusterJobStatus::from_message(message) else {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_JOBSTATUS_SAVE (variable-length string length prefix exceeds remaining bytes)",
+            cluster.name()
+        );
+        return;
+    };
 
     if status.id == 0 {
         // Insert
@@ -689,8 +695,20 @@ async fn handle_bundle_create_or_update(
         );
         return;
     }
-    let bundle = BundleJob::from_message(message);
-    let bundle_hash = message.pop_string();
+    let Some(bundle) = BundleJob::from_message(message) else {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_BUNDLE_CREATE_OR_UPDATE_JOB (variable-length string length prefix exceeds remaining bytes)",
+            cluster.name()
+        );
+        return;
+    };
+    let Some(bundle_hash) = message.try_pop_string() else {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_BUNDLE_CREATE_OR_UPDATE_JOB (bundle_hash length prefix exceeds remaining bytes)",
+            cluster.name()
+        );
+        return;
+    };
     let cluster_name = cluster.name();
 
     // If bundle has an ID, try to update existing bundle

@@ -107,7 +107,7 @@ fn test_db_jobstatus_save_message_construction() {
     };
 
     let mut parsed = roundtrip_save_message(DB_JOBSTATUS_SAVE, 200, |msg| status.to_message(msg));
-    let restored = ClusterJobStatus::from_message(&mut parsed);
+    let restored = ClusterJobStatus::from_message(&mut parsed).unwrap();
     assert_eq!(restored.job_id, 42);
     assert_eq!(restored.what, "scheduler_id");
     assert_eq!(restored.state, 500);
@@ -134,7 +134,7 @@ fn test_db_bundle_create_or_update_message_construction() {
     let mut parsed = roundtrip_save_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, 300, |msg| {
         bundle.to_message(msg);
     });
-    let restored = BundleJob::from_message(&mut parsed);
+    let restored = BundleJob::from_message(&mut parsed).unwrap();
     assert_eq!(restored.content, r#"{"key":"value"}"#);
 }
 
