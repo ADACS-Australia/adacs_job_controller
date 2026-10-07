@@ -70,7 +70,7 @@ where
         // Try each secret with HS256
         let mut validation = Validation::new(Algorithm::HS256);
         validation.required_spec_claims.clear();
-        validation.validate_exp = false;
+        validation.validate_exp = true;
 
         for (i, secret) in secrets.iter().enumerate() {
             tracing::trace!("AUTH: Trying secret #{} ('{}')", i + 1, secret.name);
@@ -248,6 +248,36 @@ mod tests {
         let secrets = make_test_secrets();
         let token = encode_jwt(&serde_json::json!({"userId": 99}), &secrets[1].secret);
         assert_valid_auth(secrets, token, "app2", 99).await;
+    }
+
+    #[tokio::test]
+    async fn test_auth_expired_token() {
+        let secrets = make_test_secrets();
+        let expired = (jsonwebtoken::get_current_timestamp() - 100) as i64;
+        let token = encode_jwt(
+            &serde_json::json!({"userId": 5, "exp": expired}),
+            &secrets[0].secret,
+        );
+
+        let app = test_router(secrets);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/test")
+                    .header(AUTHORIZATION_HEADER, &token)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn test_auth_token_without_exp() {
+        let secrets = make_test_secrets();
+        let token = encode_jwt(&serde_json::json!({"userId": 21}), &secrets[0].secret);
+        assert_valid_auth(secrets, token, "app1", 21).await;
     }
 
     #[tokio::test]
