@@ -358,6 +358,22 @@ pub async fn download_file(
         (StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string())
     })?;
 
+    // Application shutdown: reject new dedicated admission via the same
+    // typed error / status code already returned for offline clusters. No
+    // session is created and no transport owner is published. Checked
+    // before any DB work so no expiry write or download-record read is
+    // performed during shutdown.
+    if state.cluster_manager.is_application_shutting_down() {
+        tracing::info!(
+            "HTTP: Rejecting download (cluster='{}') - application shutdown in progress",
+            original_uuid
+        );
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
+        ));
+    }
+
     tracing::debug!("HTTP: File download request for UUID: {}", original_uuid);
     let force_download = params
         .force_download
@@ -400,20 +416,6 @@ pub async fn download_file(
     );
 
     let cluster = get_online_cluster(&state, &s_cluster)?;
-
-    // Application shutdown: reject new dedicated admission via the same
-    // typed error / status code already returned for offline clusters. No
-    // session is created and no transport owner is published.
-    if state.cluster_manager.is_application_shutting_down() {
-        tracing::info!(
-            "HTTP: Rejecting download (cluster='{}') - application shutdown in progress",
-            s_cluster
-        );
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
-        ));
-    }
 
     let uuid = generate_uuid();
     tracing::trace!("HTTP: Generated download session UUID: {}", uuid);

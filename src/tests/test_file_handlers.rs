@@ -675,6 +675,9 @@ async fn test_download_file_no_file_id_returns_400() {
 async fn test_download_file_unknown_uuid_returns_400() {
     let db = setup_test_db().await;
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     manager.expect_get_cluster_by_name().returning(|_| None);
     manager.expect_get_file_download().returning(|_| None);
     let app = make_app(db, manager);
@@ -712,6 +715,9 @@ async fn test_download_file_cluster_offline_returns_503() {
 
     let cluster = Arc::new(offline_cluster());
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     let c = Arc::clone(&cluster);
     manager
         .expect_get_cluster_by_name()
@@ -753,6 +759,9 @@ async fn test_download_file_cluster_not_found_returns_400() {
     insert_file_download(&db, &uuid, "").await;
 
     let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
     manager.expect_get_cluster_by_name().returning(|_| None);
     manager.expect_get_file_download().returning(|_| None);
 
