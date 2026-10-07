@@ -51,10 +51,11 @@ async fn wait_until_data_ready(
 ) -> Result<(), ()> {
     tokio::time::timeout(timeout, async {
         loop {
+            let notified = data_notify.notified();
             if data_ready.load(Ordering::Acquire) {
                 return;
             }
-            data_notify.notified().await;
+            notified.await;
         }
     })
     .await
@@ -860,10 +861,11 @@ pub async fn upload_file(
 
     let confirm = tokio::time::timeout(timeout, async {
         loop {
+            let notified = fu_state.data_notify.notified();
             if fu_state.complete.load(Ordering::Acquire) || fu_state.error.load(Ordering::Acquire) {
                 return;
             }
-            fu_state.data_notify.notified().await;
+            notified.await;
         }
     })
     .await;
@@ -1286,5 +1288,33 @@ mod tests {
             session.state(),
             closing_state(DownloadShutdownReason::Complete)
         );
+    }
+
+    #[tokio::test]
+    async fn wait_until_data_ready_returns_immediately_when_already_set() {
+        let data_ready = std::sync::atomic::AtomicBool::new(true);
+        let data_notify = tokio::sync::Notify::new();
+        let result =
+            wait_until_data_ready(&data_ready, &data_notify, std::time::Duration::from_secs(1))
+                .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn wait_until_data_ready_captures_notify_after_wait_begins() {
+        let data_ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let data_notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let producer_ready = std::sync::Arc::clone(&data_ready);
+        let producer = std::sync::Arc::clone(&data_notify);
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            producer_ready.store(true, Ordering::Release);
+            producer.notify_one();
+        });
+        let result =
+            wait_until_data_ready(&data_ready, &data_notify, std::time::Duration::from_secs(2))
+                .await;
+        assert!(result.is_ok());
+        handle.await.unwrap();
     }
 }

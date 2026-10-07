@@ -208,14 +208,12 @@ impl FileListState {
     ) -> Result<(), ()> {
         tokio::time::timeout(timeout, async {
             loop {
-                let notify = {
-                    let locked = fl_state.lock().await;
-                    if locked.data_ready {
-                        return;
-                    }
-                    std::sync::Arc::clone(&locked.notify)
-                };
-                notify.notified().await;
+                let notify = std::sync::Arc::clone(&fl_state.lock().await.notify);
+                let notified = notify.notified();
+                if fl_state.lock().await.data_ready {
+                    return;
+                }
+                notified.await;
             }
         })
         .await
@@ -357,5 +355,30 @@ mod tests {
         assert!(!state.error);
         assert!(!state.data_ready);
         assert!(state.error_details.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_file_list_wait_returns_immediately_when_data_ready() {
+        let state = std::sync::Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+        state.lock().await.data_ready = true;
+        let result =
+            FileListState::wait_until_data_ready(&state, std::time::Duration::from_secs(1)).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_file_list_wait_captures_notify_after_wait_begins() {
+        let state = std::sync::Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+        let producer = std::sync::Arc::clone(&state);
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let mut locked = producer.lock().await;
+            locked.data_ready = true;
+            locked.notify.notify_one();
+        });
+        let result =
+            FileListState::wait_until_data_ready(&state, std::time::Duration::from_secs(2)).await;
+        assert!(result.is_ok());
+        handle.await.unwrap();
     }
 }
