@@ -715,6 +715,9 @@ async fn test_cancel_job_wrong_cluster_access_returns_400() {
     let mut manager = MockClusterManagerTrait::new();
     // Cluster "nci" not found by manager
     manager.expect_get_cluster_by_name().returning(|_| None);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = create_router(make_test_state(db.clone(), manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
