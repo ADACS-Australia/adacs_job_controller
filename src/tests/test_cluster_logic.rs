@@ -215,6 +215,49 @@ async fn test_handle_update_job_truncated_message_records_no_history() {
     );
 }
 
+/// Verifies that `handle_update_job` drops an `UPDATE_JOB` whose trailing
+/// `details` length prefix claims more bytes than remain (a truncated message)
+/// without inserting a history row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the required tables is created. A `Cluster`
+/// is initialized with an `AppContext`. An `UPDATE_JOB` message is built with
+/// valid `job_id`, `what`, and `status`, but the trailing `details` length
+/// prefix claims 100 bytes that do not exist.
+///
+/// # Act
+/// `cluster.handle_message(msg).await` is called.
+///
+/// # Assert
+/// No row is inserted into `JobserverJobhistory` for `jobId=98`.
+#[tokio::test]
+async fn test_handle_update_job_truncated_details_records_no_history() {
+    let db = setup_test_db().await;
+
+    let cluster = make_offline_cluster(&db);
+
+    let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
+    msg.push_uint(98);
+    msg.push_string("job_submission");
+    msg.push_uint(10);
+    // Write the `details` length prefix directly (a large value) with no
+    // following string bytes, so `try_pop_string` returns `None`.
+    msg.push_ulong(100);
+    let msg = Message::from_bytes(msg.into_data());
+
+    cluster.handle_message(msg).await;
+
+    let count = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(98i64))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "UPDATE_JOB with truncated details should record no history row"
+    );
+}
+
 /// Verifies that `handle_message` with an `UPDATE_JOB` message returns early without panicking
 /// when no `AppContext` is provided.
 ///
