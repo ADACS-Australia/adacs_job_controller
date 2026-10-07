@@ -152,6 +152,10 @@ impl Message {
         self.push_ubyte(u8::from(value));
     }
 
+    /// Pop a boolean from the message buffer.
+    ///
+    /// If there are fewer than 1 byte remaining in the buffer, a warning is
+    /// logged and `false` is returned.
     pub fn pop_bool(&mut self) -> bool {
         self.pop_ubyte() == 1
     }
@@ -162,6 +166,10 @@ impl Message {
         self.data.push(value);
     }
 
+    /// Pop an unsigned byte from the message buffer.
+    ///
+    /// If there are fewer than 1 byte remaining in the buffer, a warning is
+    /// logged and `0` is returned.
     pub fn pop_ubyte(&mut self) -> u8 {
         if !self.check_remaining(1) {
             return 0;
@@ -223,8 +231,8 @@ impl Message {
     /// Pop a UTF-8 string from the message buffer, returning `None` if the
     /// length prefix claims more bytes than remain (a truncated string).
     ///
-    /// Unlike [`pop_string`], this does not advance past the length prefix and
-    /// return an empty string on underrun; callers can detect the truncation.
+    /// Unlike [`pop_string`], this advances past the length prefix and returns
+    /// `None` on truncation, so callers can detect the truncation.
     pub fn try_pop_string(&mut self) -> Option<String> {
         let start = self.index;
         let len = self.pop_ulong() as usize;
@@ -244,6 +252,10 @@ impl Message {
         self.data.extend_from_slice(value);
     }
 
+    /// Pop a raw byte slice from the message buffer.
+    ///
+    /// If the length prefix claims more bytes than remain in the buffer, a
+    /// warning is logged and an empty `Vec` is returned.
     pub fn pop_bytes(&mut self) -> Vec<u8> {
         let len = self.pop_ulong() as usize;
         if !self.check_remaining(len) {
