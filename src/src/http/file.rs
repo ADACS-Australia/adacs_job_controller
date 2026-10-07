@@ -599,6 +599,15 @@ pub async fn download_file(
                 }
             }
         }
+
+        // If the loop exited early because the cluster flagged an error
+        // (sent < file_size) without firing a terminal reason, close the
+        // dedicated session so the file_download_map entry and FileDownload
+        // WebSocket are cleaned up. Idempotent: a no-op if a reason was
+        // already fired above.
+        if sent < file_size {
+            fire_stream_trigger(&stream_trigger, DownloadShutdownReason::FileError);
+        }
     };
 
     let body = Body::from_stream(stream);
