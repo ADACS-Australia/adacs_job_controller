@@ -725,14 +725,32 @@ impl Cluster {
 
     /// Handles a `FILE_LIST_ERROR` response by recording the error details and waking waiters.
     async fn handle_file_list_error(&self, message: &mut Message) {
-        let uuid = message.pop_string();
-        let detail = message.pop_string();
+        // A FILE_LIST_ERROR whose `uuid` length prefix claims more bytes than
+        // remain is truncated; without the uuid we cannot match the waiting
+        // request, so drop it cleanly rather than recording an error against
+        // an empty uuid.
+        let Some(uuid) = message.try_pop_string() else {
+            tracing::warn!(
+                "Cluster[{}]: Truncated FILE_LIST_ERROR (uuid length prefix exceeds remaining bytes)",
+                self.name()
+            );
+            return;
+        };
 
         let Some(fl_state) = self.file_list_state_for_uuid("FILE_LIST_ERROR", &uuid) else {
             return;
         };
 
         let mut state = fl_state.lock().await;
+        // A truncated `detail` should still surface as an error rather than
+        // silently returning an empty message.
+        let detail = message.try_pop_string().unwrap_or_else(|| {
+            tracing::warn!(
+                "Cluster[{}]: Truncated FILE_LIST_ERROR (detail length prefix exceeds remaining bytes)",
+                self.name()
+            );
+            "truncated FILE_LIST_ERROR detail".to_string()
+        });
         state.error = true;
         state.error_details = detail;
         state.data_ready = true;
@@ -2622,6 +2640,40 @@ mod tests {
         assert!(locked.error);
         assert_eq!(locked.error_details, "permission denied");
         assert!(locked.data_ready);
+    }
+
+    /// Verifies that a truncated `FILE_LIST_ERROR` (whose `detail` length prefix
+    /// claims more bytes than remain) still records an error and sets
+    /// `data_ready` rather than silently surfacing an empty detail message.
+    #[tokio::test]
+    async fn test_file_list_error_truncated_detail_still_sets_error() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect(crate::test_support::SQLITE_IN_MEMORY_CONNECTION_FAILED);
+        let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+            Arc::new(DashMap::new());
+        let app_context = Arc::new(AppContext {
+            db,
+            file_list_map: Arc::clone(&file_list_map),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        let uuid = "file-list-error-uuid-truncated";
+        let state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+        file_list_map.insert(uuid.to_string(), Arc::clone(&state));
+
+        let mut msg = Message::new(FILE_LIST_ERROR, Priority::Lowest, TEST_CLUSTER);
+        msg.push_string(uuid);
+        // Claim more detail bytes than remain in the message.
+        msg.push_ulong(64);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_error(&mut msg).await;
+
+        let locked = state.lock().await;
+        assert!(locked.error);
+        assert!(locked.data_ready);
+        assert!(!locked.error_details.is_empty());
     }
 
     /// Verifies that `handle_file_list_response` returns without panicking or
