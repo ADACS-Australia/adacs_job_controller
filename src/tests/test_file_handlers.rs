@@ -366,8 +366,9 @@ async fn test_create_file_download_no_path_returns_400() {
 /// `{"jobId": ..., "paths": ["", "   ", "/valid.txt"]}`.
 ///
 /// # Assert
-/// Verifies 200 OK with an empty `fileIds` array for the all-empty request, and
-/// that only the non-empty path yields a download record (no empty-path rows).
+/// Verifies 200 OK with an empty `fileId` for the all-empty single-path
+/// request, and that only the non-empty path yields a download record
+/// (no empty-path rows).
 #[tokio::test]
 async fn test_create_file_download_rejects_empty_paths() {
     let db = setup_test_db().await;
@@ -385,7 +386,7 @@ async fn test_create_file_download_rejects_empty_paths() {
     let app = make_app(db.clone(), manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
 
-    // Single empty path — must not create a record.
+    // Single empty path — must not create a record, returns single-path shape.
     let resp = app
         .clone()
         .oneshot(
@@ -409,11 +410,8 @@ async fn test_create_file_download_rejects_empty_paths() {
     )
     .unwrap();
     assert!(
-        body["fileIds"]
-            .as_array()
-            .expect("fileIds should be array")
-            .is_empty(),
-        "empty path must not create a download record"
+        body["fileId"].as_str().is_some_and(str::is_empty),
+        "single empty path must return the single-path fileId shape"
     );
 
     // Mixed list — empty/whitespace entries are filtered out, valid path kept.
