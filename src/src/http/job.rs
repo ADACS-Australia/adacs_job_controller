@@ -17,8 +17,7 @@ use crate::app::AppState;
 use crate::db::entities::{job, job_history};
 use crate::http::auth::{AuthResult, auth_user_id, get_applications};
 use crate::http::utils::{
-    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, job_id_to_u32, parse_csv_i64,
-    parse_job_steps,
+    INVALID_CLUSTER_MSG, app_no_cluster_access_msg, db_error, job_id_to_u32, parse_job_steps,
 };
 use crate::protocol::constants::{
     CANCEL_JOB, DELETE_JOB, JOB_COMPLETION_SOURCE, SUBMIT_JOB, SYSTEM_SOURCE,
@@ -378,13 +377,20 @@ pub async fn get_jobs(
     // Filter by explicit job_ids
     if let Some(ref ids_str) = params.job_ids {
         let trimmed = ids_str.trim();
-        let all_numeric = trimmed.split(',').all(|v| v.trim().parse::<i64>().is_ok());
-        if !all_numeric {
-            // A malformed filter (e.g. any non-numeric token) must not widen the result set.
-            return Ok(Json(serde_json::json!([])));
+        let ids = match trimmed
+            .split(',')
+            .map(|v| v.trim().parse::<i64>())
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(ids) => ids,
+            Err(_) => {
+                // A malformed filter (e.g. any non-numeric token) must not widen the result set.
+                return Ok(Json(serde_json::json!([])));
+            }
+        };
+        if !ids.is_empty() {
+            job_query = job_query.filter(job::Column::Id.is_in(ids));
         }
-        let ids = parse_csv_i64(ids_str);
-        job_query = job_query.filter(job::Column::Id.is_in(ids));
     }
 
     // start_time_gt: job must have a SYSTEM_SOURCE history entry where MIN(timestamp) > cutoff

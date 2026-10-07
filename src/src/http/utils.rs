@@ -109,14 +109,6 @@ pub fn db_error(e: impl std::fmt::Display) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, format!("DB error: {e}"))
 }
 
-/// Parse a comma-separated list of i64 values from a query parameter string.
-#[must_use]
-pub fn parse_csv_i64(s: &str) -> Vec<i64> {
-    s.split(',')
-        .filter_map(|v| v.trim().parse::<i64>().ok())
-        .collect()
-}
-
 /// Parse a CSV-encoded job steps string into (what, state) pairs.
 /// Format: "what1,state1,what2,state2,..."
 /// Returns a Vec to preserve duplicate `what` values (e.g. same source, different states).
@@ -303,27 +295,6 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    /// Verifies that `parse_csv_i64` correctly splits a comma-separated string into a vector of
-    /// i64 values, ignoring empty segments and non-numeric tokens.
-    #[test]
-    fn test_parse_csv_i64() {
-        assert_eq!(parse_csv_i64("1,2,3"), vec![1, 2, 3]);
-        assert_eq!(parse_csv_i64("42"), vec![42]);
-        assert!(parse_csv_i64("").is_empty());
-        assert_eq!(parse_csv_i64("1,,3"), vec![1, 3]);
-        assert_eq!(parse_csv_i64("abc,2,def"), vec![2]);
-    }
-
-    /// Regression test: an out-of-range `i64` value (outside the `i64` range)
-    /// must be dropped rather than wrapping or panicking, consistent with the
-    /// `parse_job_steps` out-of-range behavior.
-    #[test]
-    fn test_parse_csv_i64_out_of_range_dropped() {
-        assert!(parse_csv_i64("99999999999999999999999").is_empty());
-        assert!(parse_csv_i64("-99999999999999999999999").is_empty());
-        assert_eq!(parse_csv_i64("1,99999999999999999999999,3"), vec![1, 3]);
-    }
-
     /// Verifies that a job ID within the `u32` range is converted successfully.
     #[test]
     fn test_job_id_to_u32_success() {
@@ -419,8 +390,7 @@ mod tests {
     }
 
     /// Verifies that an empty `what` token is dropped rather than producing a
-    /// bogus ("", state) pair, consistent with `parse_csv_i64` skipping empty
-    /// segments.
+    /// bogus ("", state) pair.
     #[test]
     fn test_parse_job_steps_skips_empty_what_token() {
         let steps = parse_job_steps(",500");
