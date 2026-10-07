@@ -1414,6 +1414,99 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     assert_eq!(files.len(), 2, "should return 2 cached files");
 }
 
+/// Tests that a completed job with a pre-populated cache is served from cache
+/// even when the cluster is offline.
+///
+/// # Setup
+/// Inserts a completed job and pre-populates the `file_list_cache` table with 2
+/// entries. Wires an offline cluster.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/file/ with the job ID.
+///
+/// # Assert
+/// Verifies 200 OK with a `files` array containing the 2 cached entries,
+/// without requiring the cluster to be online.
+#[tokio::test]
+async fn test_list_files_cache_hit_returns_cached_files_when_cluster_offline() {
+    let db = setup_test_db().await;
+
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    // Mark as complete
+    insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+    insert_job_history(
+        &db,
+        job_id,
+        JobStatus::Completed as i32,
+        JOB_COMPLETION_SOURCE,
+    )
+    .await;
+
+    // Pre-populate cache
+    for (name, is_dir) in [("/out/results.txt", false), ("/out/", true)] {
+        file_list_cache::ActiveModel {
+            job_id: Set(job_id),
+            path: Set(name.to_string()),
+            is_dir: Set(is_dir),
+            file_size: Set(1024),
+            permissions: Set(0o644),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+    }
+
+    // Cluster is offline
+    let cluster = Arc::new(offline_cluster());
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "path": "",
+                        "recursive": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let files = body["files"].as_array().unwrap();
+    assert_eq!(
+        files.len(),
+        2,
+        "should return 2 cached files despite offline cluster"
+    );
+}
+
 /// Tests the WS-driven file list flow: cluster receives `FILE_LIST`, populates state, HTTP returns result.
 ///
 /// # Setup
