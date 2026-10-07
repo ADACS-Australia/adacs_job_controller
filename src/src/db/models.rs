@@ -48,19 +48,23 @@ impl ClusterJob {
     }
 
     /// Deserialize a cluster job record from a binary protocol message body.
-    pub fn from_message(msg: &mut Message) -> Self {
-        Self {
+    ///
+    /// Returns `None` if either variable-length string (`bundle_hash` or
+    /// `working_directory`) is truncated — i.e. its length prefix claims more
+    /// bytes than remain in the message.
+    pub fn from_message(msg: &mut Message) -> Option<Self> {
+        Some(Self {
             id: msg.pop_ulong().cast_signed(),
             job_id: msg.pop_ulong().cast_signed(),
             scheduler_id: msg.pop_ulong().cast_signed(),
             submitting: msg.pop_bool(),
             submitting_count: msg.pop_uint().cast_signed(),
-            bundle_hash: msg.pop_string(),
-            working_directory: msg.pop_string(),
+            bundle_hash: msg.try_pop_string()?,
+            working_directory: msg.try_pop_string()?,
             running: msg.pop_bool(),
             deleting: msg.pop_bool(),
             deleted: msg.pop_bool(),
-        }
+        })
     }
 }
 
@@ -156,7 +160,7 @@ mod tests {
         job.to_message(&mut msg);
 
         let mut read_msg = Message::from_bytes(msg.into_data());
-        let restored = ClusterJob::from_message(&mut read_msg);
+        let restored = ClusterJob::from_message(&mut read_msg).unwrap();
 
         assert_eq!(job.id, restored.id);
         assert_eq!(job.job_id, restored.job_id);

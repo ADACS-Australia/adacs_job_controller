@@ -79,7 +79,7 @@ fn test_db_job_save_message_construction() {
     };
 
     let mut parsed = roundtrip_save_message(DB_JOB_SAVE, 100, |msg| job.to_message(msg));
-    let restored = ClusterJob::from_message(&mut parsed);
+    let restored = ClusterJob::from_message(&mut parsed).unwrap();
     assert_eq!(restored.job_id, 42);
     assert!(restored.submitting);
     assert_eq!(restored.bundle_hash, "hash123");
@@ -194,12 +194,12 @@ fn test_db_response_format_with_result_count() {
     let count = parsed.pop_uint();
     assert_eq!(count, 2);
 
-    let r1 = ClusterJob::from_message(&mut parsed);
+    let r1 = ClusterJob::from_message(&mut parsed).unwrap();
     assert_eq!(r1.id, 10);
     assert_eq!(r1.job_id, 100);
     assert!(r1.running);
 
-    let r2 = ClusterJob::from_message(&mut parsed);
+    let r2 = ClusterJob::from_message(&mut parsed).unwrap();
     assert_eq!(r2.id, 20);
     assert_eq!(r2.job_id, 200);
     assert!(r2.submitting);

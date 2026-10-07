@@ -231,7 +231,7 @@ fn test_cluster_job_full_roundtrip_via_message() {
         777,
         |m| original.to_message(m),
         |parsed| {
-            let restored = ClusterJob::from_message(parsed);
+            let restored = ClusterJob::from_message(parsed).unwrap();
             assert_eq!(restored.id, original.id);
             assert_eq!(restored.job_id, original.job_id);
             assert_eq!(restored.scheduler_id, original.scheduler_id);
