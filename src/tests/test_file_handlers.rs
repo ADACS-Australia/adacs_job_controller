@@ -2241,6 +2241,9 @@ async fn test_upload_file_no_target_path_returns_400() {
     manager
         .expect_get_cluster_by_name()
         .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -2346,6 +2349,9 @@ async fn test_upload_file_cluster_offline_returns_503() {
     manager
         .expect_get_cluster_by_name()
         .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
 
     let app = make_app(db, manager);
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -2405,6 +2411,39 @@ async fn test_upload_file_application_shutdown_returns_503() {
                 .uri(format!(
                     "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
                 ))
+                .header("authorization", &token)
+                .header("content-length", "5")
+                .body(Body::from("hello"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+/// Tests that PUT /file/upload/ during application shutdown returns 503 even when
+/// the requested job does not exist, proving the shutdown guard fires before the
+/// job lookup (which would otherwise fail with 400).
+#[tokio::test]
+async fn test_upload_file_shutdown_returns_503_before_job_lookup() {
+    let db = setup_test_db().await;
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| true);
+    manager.expect_create_file_upload().never();
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(
+                    "/job/apiv1/file/upload/?jobId=999999&cluster=ozstar&bundle=b&targetPath=/dest.txt",
+                )
                 .header("authorization", &token)
                 .header("content-length", "5")
                 .body(Body::from("hello"))
