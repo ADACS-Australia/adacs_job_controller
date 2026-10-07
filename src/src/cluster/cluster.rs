@@ -680,7 +680,7 @@ impl Cluster {
 
     /// Parses a `FILE_LIST` response payload into file entries and updates the matching [`FileListState`].
     async fn handle_file_list_response(&self, message: &mut Message) {
-        const MIN_FILE_LIST_ENTRY_BYTES: usize = 18;
+        const MIN_FILE_LIST_ENTRY_BYTES: usize = 17;
 
         let uuid = message.pop_string();
         let num_files = message.pop_uint();

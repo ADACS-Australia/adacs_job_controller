@@ -1477,6 +1477,58 @@ async fn test_handle_file_list_truncated_length_prefix_is_dropped() {
     }
 }
 
+/// Verifies that a `FILE_LIST` entry with an empty filename and exactly 17 bytes
+/// of payload (the minimum valid entry size) is parsed into `FileListState`
+/// rather than dropped as truncated.
+///
+/// # Setup
+/// A UUID `"test-fl-empty-filename"` is pre-registered in the `file_list_map`.
+/// A `FILE_LIST` message is built with one entry whose filename is empty:
+/// an 8-byte string length prefix of 0, a 1-byte `is_directory`, and an
+/// 8-byte `file_size` — exactly 17 bytes total.
+///
+/// # Act
+/// The message is dispatched via `cluster.handle_message`.
+///
+/// # Assert
+/// The `FileListState` contains the single entry with an empty filename and the
+/// provided `is_directory`/`file_size`, and `data_ready` is set to `true`.
+#[tokio::test]
+async fn test_handle_file_list_empty_filename_minimum_entry_is_parsed() {
+    let (cluster, file_list_map) = make_file_list_cluster();
+
+    let uuid = "test-fl-empty-filename";
+
+    // Register UUID in the file list map
+    let fl_state = register_file_list_uuid(&file_list_map, uuid);
+
+    // Build a FILE_LIST message with one entry whose filename is empty. The entry
+    // is exactly 17 bytes: 8-byte length prefix (0) + 1-byte is_directory +
+    // 8-byte file_size. This is the minimum valid entry size and must be parsed.
+    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
+    msg.push_string(uuid);
+    msg.push_uint(1);
+    msg.push_string("");
+    msg.push_bool(true);
+    msg.push_ulong(0xABCD);
+    let msg = Message::from_bytes(msg.into_data());
+
+    cluster.handle_message(msg).await;
+
+    // The minimal empty-filename entry is recorded, not dropped.
+    {
+        let state = fl_state.lock().await;
+        assert_eq!(state.files.len(), 1);
+        assert!(!state.error);
+        assert!(state.error_details.is_empty());
+        assert!(state.data_ready);
+
+        assert_eq!(state.files[0].file_name, "");
+        assert!(state.files[0].is_directory);
+        assert_eq!(state.files[0].file_size, 0xABCD);
+    }
+}
+
 /// Verifies that a `FILE_LIST` message with `num_files = 0` for a registered UUID
 /// clears the file list and sets `data_ready` (a job with no files).
 ///
