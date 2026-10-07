@@ -197,6 +197,73 @@ async fn test_create_file_download_single_path_returns_file_id() {
     assert_eq!(record.job, job_id);
 }
 
+/// Tests that POST /file/ purges expired download records on the create path.
+///
+/// # Setup
+/// Inserts a test job and a 25-hour-old expired download record
+/// (`FILE_DOWNLOAD_EXPIRY_TIME` defaults to 86400s/24h).
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with `{"jobId": ..., "path": "/result/output.txt"}`.
+///
+/// # Assert
+/// Verifies 200 OK and that the expired record was removed from the DB.
+#[tokio::test]
+async fn test_create_file_download_purges_expired_records() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let old_timestamp = chrono::Utc::now().naive_utc() - chrono::Duration::try_hours(25).unwrap();
+    file_download::ActiveModel {
+        user: Set(1),
+        job: Set(0),
+        cluster: Set("ozstar".to_string()),
+        bundle: Set("b".to_string()),
+        uuid: Set("old-expired-create-uuid".to_string()),
+        path: Set("/old.txt".to_string()),
+        timestamp: Set(old_timestamp),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let manager = manager_with_online_cluster_no_messages();
+    let app = make_app(db.clone(), manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 10}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": job_id,
+                        "path": "/result/output.txt"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let old = file_download::Entity::find()
+        .filter(file_download::Column::Uuid.eq("old-expired-create-uuid"))
+        .one(&db)
+        .await
+        .unwrap();
+    assert!(
+        old.is_none(),
+        "Expired download record should have been purged on the create path"
+    );
+}
+
 /// Tests that POST /file/ with a paths array creates multiple download records.
 ///
 /// # Setup
