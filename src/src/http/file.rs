@@ -941,8 +941,6 @@ pub async fn list_files(
     )
     .await?;
 
-    let cluster = get_online_cluster(&state, &s_cluster)?;
-
     // Check if job is complete (enables caching)
     let job_complete = if job_id != 0 {
         job_history::Entity::find()
@@ -979,6 +977,8 @@ pub async fn list_files(
             return Ok(Json(serde_json::json!({ FILES_KEY: filtered })));
         }
     }
+
+    let cluster = get_online_cluster(&state, &s_cluster)?;
 
     // Request file list from cluster via WebSocket
     let files = request_file_list(
