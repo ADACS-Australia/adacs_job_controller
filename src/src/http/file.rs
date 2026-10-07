@@ -824,6 +824,10 @@ pub async fn upload_file(
 
         if let Err(e) = check_upload_error(&fu_state).await {
             state.cluster_manager.remove_file_upload(&uuid);
+            // Tear down the dedicated upload session so the file_upload_map
+            // entry is removed and the remote cluster is not left waiting,
+            // mirroring the body-length mismatch cleanup.
+            upload_cluster.close(false).await;
             return Err(e);
         }
 
@@ -849,6 +853,10 @@ pub async fn upload_file(
 
     if let Err(e) = check_upload_error(&fu_state).await {
         state.cluster_manager.remove_file_upload(&uuid);
+        // Tear down the dedicated upload session so the file_upload_map
+        // entry is removed and the remote cluster is not left waiting,
+        // mirroring the body-length mismatch cleanup.
+        upload_cluster.close(false).await;
         return Err(e);
     }
 
@@ -875,6 +883,10 @@ pub async fn upload_file(
 
     if let Err(e) = check_upload_error(&fu_state).await {
         state.cluster_manager.remove_file_upload(&uuid);
+        // Tear down the dedicated upload session so the file_upload_map
+        // entry is removed and the remote cluster is not left waiting,
+        // mirroring the body-length mismatch cleanup.
+        upload_cluster.close(false).await;
         return Err(e);
     }
 
