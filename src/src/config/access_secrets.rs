@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::path::Path;
 
 /// JWT access configuration for an application or group of applications.
@@ -24,13 +25,22 @@ pub struct AccessSecret {
 /// Returns an error if:
 /// - The file cannot be read
 /// - The JSON is invalid
+/// - Two or more secrets share the same name
 pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
     let secrets: Vec<AccessSecret> = super::load_json_file!(
         path,
         "access secrets",
         "Access secrets file read ({} bytes)"
     );
+    let mut seen = HashSet::with_capacity(secrets.len());
     for (i, secret) in secrets.iter().enumerate() {
+        if !seen.insert(secret.name.as_str()) {
+            anyhow::bail!(
+                "duplicate secret name '{}' in access secrets (entry #{})",
+                secret.name,
+                i + 1
+            );
+        }
         tracing::trace!(
             "Secret #{}: name='{}', clusters={:?}, applications={:?}",
             i + 1,
@@ -94,6 +104,26 @@ mod tests {
     fn test_load_access_secrets_missing_file() {
         let result = load_access_secrets(Path::new("/nonexistent/path.json"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_access_secrets_duplicate_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("access_secrets.json");
+        std::fs::write(
+            &config_path,
+            r#"[
+                {"name": "app1", "secret": "s1", "applications": ["a"], "clusters": ["c1"]},
+                {"name": "app1", "secret": "s2", "applications": ["b"], "clusters": ["c2"]}
+            ]"#,
+        )
+        .unwrap();
+
+        let err = load_access_secrets(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate secret name 'app1'"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
