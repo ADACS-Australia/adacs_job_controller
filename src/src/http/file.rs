@@ -832,6 +832,10 @@ pub async fn upload_file(
             content_length
         );
         state.cluster_manager.remove_file_upload(&uuid);
+        // Tear down the dedicated upload session so the remote cluster is not
+        // left waiting for FILE_UPLOAD_CHUNK messages, mirroring the download
+        // path's cleanup.
+        upload_cluster.close(false).await;
         return Err((
             StatusCode::BAD_REQUEST,
             "Request body length does not match Content-Length header".to_string(),
