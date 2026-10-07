@@ -934,10 +934,6 @@ pub async fn list_files(
     // TODO: Content-Type tolerance - remove when client sends proper headers
     LenientJson(body): LenientJson<FileListRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let applications = get_applications(&auth.secret);
-    let job_id = body.job_id.unwrap_or(0);
-    job_id_to_u32(job_id)?;
-
     // Application shutdown: reject new file-list sessions via the same typed
     // error / status code already returned for offline clusters. No session is
     // created and no FILE_LIST message is sent to the cluster.
@@ -951,6 +947,10 @@ pub async fn list_files(
             REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
         ));
     }
+
+    let applications = get_applications(&auth.secret);
+    let job_id = body.job_id.unwrap_or(0);
+    job_id_to_u32(job_id)?;
 
     let (s_cluster, s_bundle) = resolve_cluster_bundle(
         &state,

@@ -2016,14 +2016,15 @@ async fn test_list_files_cluster_offline_returns_503() {
 /// message to the cluster.
 ///
 /// # Setup
-/// Inserts a Running job (no cache). Wires an online cluster. Mocks the
-/// cluster manager as shutting down.
+/// Inserts a Running job (no cache). Mocks the cluster manager as shutting
+/// down. No `get_cluster_by_name` expectation is set, so any cluster lookup
+/// would fail the test.
 ///
 /// # Act
 /// Sends PATCH /job/apiv1/file/ with the job ID.
 ///
 /// # Assert
-/// Verifies 503 Service Unavailable.
+/// Verifies 503 Service Unavailable and that no cluster lookup occurs.
 #[tokio::test]
 async fn test_list_files_shutdown_returns_503() {
     let db = setup_test_db().await;
@@ -2031,9 +2032,7 @@ async fn test_list_files_shutdown_returns_503() {
     insert_job_history(&db, job_id, JobStatus::Running as i32, "system").await;
 
     let mut manager = MockClusterManagerTrait::new();
-    manager
-        .expect_get_cluster_by_name()
-        .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager.expect_get_cluster_by_name().never();
     manager
         .expect_is_application_shutting_down()
         .returning(|| true);
