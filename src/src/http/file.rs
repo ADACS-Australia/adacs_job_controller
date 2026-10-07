@@ -841,6 +841,7 @@ pub async fn upload_file(
     while total_read < content_length {
         if !upload_cluster.wait_for_queue_drain(false).await {
             upload_cluster.close(false).await;
+            state.cluster_manager.remove_file_upload(&uuid);
             return Err((
                 StatusCode::BAD_REQUEST,
                 "Timeout waiting for queue to drain during upload".to_string(),
@@ -866,6 +867,7 @@ pub async fn upload_file(
 
     if !upload_cluster.wait_for_queue_drain(true).await {
         upload_cluster.close(false).await;
+        state.cluster_manager.remove_file_upload(&uuid);
         return Err((
             StatusCode::BAD_REQUEST,
             "Timeout waiting for queue to empty before sending completion".to_string(),
@@ -893,6 +895,7 @@ pub async fn upload_file(
 
     if confirm.is_err() {
         upload_cluster.close(false).await;
+        state.cluster_manager.remove_file_upload(&uuid);
         return Err((
             StatusCode::BAD_REQUEST,
             "Upload completion confirmation timeout".to_string(),
