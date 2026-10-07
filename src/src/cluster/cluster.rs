@@ -899,7 +899,16 @@ impl Cluster {
         data_ready: &AtomicBool,
         data_notify: &Notify,
     ) {
-        let details = message.pop_string();
+        // A truncated `details` should still surface as an error rather than
+        // silently returning an empty message.
+        let details = message.try_pop_string().unwrap_or_else(|| {
+            tracing::warn!(
+                "Cluster[{}]: Truncated {} (detail length prefix exceeds remaining bytes)",
+                self.name(),
+                message_name
+            );
+            format!("truncated {message_name} detail")
+        });
         tracing::warn!(
             "Cluster[{}]: {} received - {}",
             self.name(),
@@ -1391,6 +1400,33 @@ mod tests {
         assert!(state.error.load(Ordering::Relaxed));
         assert!(state.data_ready.load(Ordering::Relaxed));
         assert_eq!(*state.error_details.lock().await, TEST_DOWNLOAD_FAILED_MSG);
+    }
+
+    /// Verifies that a truncated `FILE_ERROR` (whose `details` length prefix
+    /// claims more bytes than remain) still records a non-empty error and sets
+    /// `error` and `data_ready` rather than silently surfacing an empty detail.
+    #[tokio::test]
+    async fn test_handle_file_error_truncated_detail_sets_error() {
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster = Cluster::new_file_download(
+            test_config(),
+            "uuid-err-trunc".into(),
+            state.clone(),
+            None,
+            lock,
+        );
+
+        let mut msg = Message::new(FILE_ERROR, Priority::Highest, TEST_CLUSTER);
+        // Claim more detail bytes than remain in the message.
+        msg.push_ulong(64);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_error(&mut msg).await;
+
+        assert!(state.error.load(Ordering::Relaxed));
+        assert!(state.data_ready.load(Ordering::Relaxed));
+        assert!(!state.error_details.lock().await.is_empty());
     }
 
     /// Verifies that `handle_server_ready` sets `data_ready` on the FileUploadState.
