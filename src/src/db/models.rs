@@ -88,13 +88,17 @@ impl ClusterJobStatus {
         msg.push_uint(self.state.cast_unsigned());
     }
 
-    pub fn from_message(msg: &mut Message) -> Self {
-        Self {
+    /// Deserialize a cluster job status record from a binary protocol message body.
+    ///
+    /// Returns `None` if the variable-length string (`what`) is truncated —
+    /// i.e. its length prefix claims more bytes than remain in the message.
+    pub fn from_message(msg: &mut Message) -> Option<Self> {
+        Some(Self {
             id: msg.pop_ulong().cast_signed(),
             job_id: msg.pop_ulong().cast_signed(),
-            what: msg.pop_string(),
+            what: msg.try_pop_string()?,
             state: msg.pop_uint().cast_signed(),
-        }
+        })
     }
 }
 
@@ -118,11 +122,14 @@ impl BundleJob {
     }
 
     /// Deserialize a bundle from a binary message body (id + content).
-    pub fn from_message(msg: &mut Message) -> Self {
-        Self {
+    ///
+    /// Returns `None` if the variable-length string (`content`) is truncated —
+    /// i.e. its length prefix claims more bytes than remain in the message.
+    pub fn from_message(msg: &mut Message) -> Option<Self> {
+        Some(Self {
             id: msg.pop_ulong().cast_signed(),
-            content: msg.pop_string(),
-        }
+            content: msg.try_pop_string()?,
+        })
     }
 }
 
@@ -176,7 +183,7 @@ mod tests {
         status.to_message(&mut msg);
 
         let mut read_msg = Message::from_bytes(msg.into_data());
-        let restored = ClusterJobStatus::from_message(&mut read_msg);
+        let restored = ClusterJobStatus::from_message(&mut read_msg).unwrap();
 
         assert_eq!(status.id, restored.id);
         assert_eq!(status.job_id, restored.job_id);
@@ -195,7 +202,7 @@ mod tests {
         bundle.to_message(&mut msg);
 
         let mut read_msg = Message::from_bytes(msg.into_data());
-        let restored = BundleJob::from_message(&mut read_msg);
+        let restored = BundleJob::from_message(&mut read_msg).unwrap();
 
         assert_eq!(bundle.id, restored.id);
         assert_eq!(bundle.content, restored.content);
