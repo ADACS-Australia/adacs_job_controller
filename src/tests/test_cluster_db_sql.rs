@@ -963,6 +963,49 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_drops_truncated_what() {
     );
 }
 
+/// Verifies that a `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` whose `what` length
+/// prefix is present but claims more bytes than remain is dropped rather than
+/// running the query with an empty `what` and returning an empty result.
+///
+/// # Setup
+/// In-memory DB with a status row for `job_id=31` (`what="cpu_time"`).
+///
+/// # Act
+/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` with `db_request_id=901`,
+/// `job_id=31`, and a full 8-byte `what` length prefix that claims more bytes
+/// than remain (a truncated string content).
+///
+/// # Assert
+/// The handler is recognized but sends no `DB_RESPONSE`: the message is dropped
+/// instead of filtering by `what == ""` and returning an empty result.
+#[tokio::test]
+async fn test_handle_jobstatus_get_by_job_id_and_what_drops_what_with_truncated_content() {
+    let db = make_cluster_db().await;
+    insert_cluster_job_status(&db, 31, "cpu_time", 42).await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+
+    // Build a raw message whose `what` length prefix is present (8 bytes) but
+    // claims more bytes than remain (no content bytes follow).
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&(SYSTEM_SOURCE.len() as u64).to_le_bytes());
+    raw.extend_from_slice(SYSTEM_SOURCE.as_bytes());
+    raw.extend_from_slice(&DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT.to_le_bytes());
+    raw.extend_from_slice(&901u32.to_le_bytes()); // db_request_id
+    raw.extend_from_slice(&31u64.to_le_bytes()); // job_id
+    raw.extend_from_slice(&100u64.to_le_bytes()); // `what` length prefix claims 100 bytes, but none remain
+
+    let mut msg = Message::from_bytes(raw);
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "message with truncated what content should be dropped without sending a response"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOBSTATUS_DELETE_BY_ID_LIST
 // ---------------------------------------------------------------------------
