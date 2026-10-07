@@ -430,6 +430,17 @@ async fn handle_jobstatus_get_by_job_id_impl(
     let db_request_id = message.pop_uint();
     let job_id = message.pop_ulong().cast_signed();
     let what = if has_what {
+        // A valid DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT needs at least 8 bytes
+        // for the `what` string length prefix. If fewer remain, the message
+        // is truncated; drop it rather than running the query with an empty
+        // `what` and returning an empty result to the cluster client.
+        if message.remaining() < 8 {
+            tracing::warn!(
+                "Cluster[{}]: Dropping truncated DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT (fewer than 8 bytes remain for what string length prefix)",
+                cluster.name()
+            );
+            return;
+        }
         Some(message.pop_string())
     } else {
         None

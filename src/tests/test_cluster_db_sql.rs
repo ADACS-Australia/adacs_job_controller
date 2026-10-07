@@ -920,6 +920,49 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
     assert_eq!(s.state, 42);
 }
 
+/// Verifies that a truncated `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` whose `what`
+/// length prefix claims more bytes than remain is dropped rather than returning
+/// an empty filtered result.
+///
+/// # Setup
+/// In-memory DB with a status row for `job_id=30` (`what="cpu_time"`).
+///
+/// # Act
+/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT` with `db_request_id=900`,
+/// `job_id=30`, and a `what` length prefix that leaves fewer than 8 bytes
+/// remaining (a truncated message).
+///
+/// # Assert
+/// The handler is recognized but sends no `DB_RESPONSE`: the truncated message
+/// is dropped instead of filtering by `what == ""` and returning an empty result.
+#[tokio::test]
+async fn test_handle_jobstatus_get_by_job_id_and_what_drops_truncated_what() {
+    let db = make_cluster_db().await;
+    insert_cluster_job_status(&db, 30, "cpu_time", 42).await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+
+    // Build a raw message whose `what` length prefix has fewer than 8 bytes
+    // remaining (only 4 bytes of the length prefix are present).
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&(SYSTEM_SOURCE.len() as u64).to_le_bytes());
+    raw.extend_from_slice(SYSTEM_SOURCE.as_bytes());
+    raw.extend_from_slice(&DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT.to_le_bytes());
+    raw.extend_from_slice(&900u32.to_le_bytes()); // db_request_id
+    raw.extend_from_slice(&30u64.to_le_bytes()); // job_id
+    raw.extend_from_slice(&[0u8; 4]); // truncated `what` length prefix (should be 8)
+
+    let mut msg = Message::from_bytes(raw);
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "truncated message should be dropped without sending a response"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOBSTATUS_DELETE_BY_ID_LIST
 // ---------------------------------------------------------------------------
