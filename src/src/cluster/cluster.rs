@@ -501,6 +501,18 @@ impl Cluster {
         use crate::db::entities::job_history;
         use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
+        // A valid UPDATE_JOB needs at least 24 bytes for the fixed-size
+        // fields plus the variable-length string length prefixes
+        // (job_id, what, status, details). If fewer remain, the message is
+        // truncated; drop it rather than recording a corrupted job-history
+        // row with defaulted/garbage fields.
+        if message.remaining() < 24 {
+            tracing::warn!(
+                "Cluster[{}]: Dropping truncated UPDATE_JOB (fewer than 24 bytes remain for job payload)",
+                self.name()
+            );
+            return;
+        }
         let job_id = message.pop_uint();
         // A `what` whose length prefix claims more bytes than remain is a
         // truncated string; drop the message rather than recording a
@@ -3381,6 +3393,60 @@ mod tests {
         assert!(
             captured.lock().unwrap().contains("unknown status 999"),
             "expected a warning about the unknown status"
+        );
+    }
+
+    /// Verifies that a truncated `UPDATE_JOB` (a valid `job_id` followed by a
+    /// partial `what` length prefix, fewer than the 24 fixed bytes) is dropped
+    /// without recording a corrupted `job_history` row.
+    #[tokio::test]
+    async fn test_handle_update_job_truncated_records_no_history() {
+        use crate::db::entities::job_history;
+        use sea_orm::{
+            ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
+            Schema,
+        };
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        db.execute(builder.build(&schema.create_table_from_entity(job_history::Entity)))
+            .await
+            .expect("create table failed");
+
+        let app_context = Arc::new(AppContext {
+            db: db.clone(),
+            file_list_map: Arc::new(DashMap::new()),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        // Build an UPDATE_JOB with a valid job_id (4 bytes) and a `what`
+        // length prefix (8 bytes), then truncate the trailing 4 bytes of the
+        // prefix so the payload is exactly 8 bytes: valid job_id + partial
+        // `what` length prefix. The partial prefix decodes as 50 (a valid
+        // `JobStatus::Running`), so without the fixed-size guard the handler
+        // would read it as `status` and insert a corrupted row.
+        let mut msg = Message::new(UPDATE_JOB, Priority::Highest, TEST_CLUSTER);
+        msg.push_uint(42);
+        msg.push_ulong(50);
+        let mut data = msg.into_data();
+        data.truncate(data.len() - 4);
+        let mut msg = Message::from_bytes(data);
+
+        cluster.handle_update_job(&mut msg).await;
+
+        // No job_history row should be inserted for the truncated message.
+        let count = job_history::Entity::find()
+            .filter(job_history::Column::JobId.eq(42i64))
+            .count(&db)
+            .await
+            .expect("query failed");
+        assert_eq!(
+            count, 0,
+            "Truncated UPDATE_JOB should record no job_history row"
         );
     }
 }
