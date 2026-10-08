@@ -502,7 +502,14 @@ async fn handle_jobstatus_get_by_job_id_impl(
             );
             return;
         }
-        Some(message.pop_string())
+        let Some(what) = message.try_pop_string() else {
+            tracing::warn!(
+                "Cluster[{}]: Dropping truncated DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT (what string length prefix exceeds remaining bytes)",
+                cluster.name()
+            );
+            return;
+        };
+        Some(what)
     } else {
         None
     };
