@@ -704,6 +704,27 @@ impl Cluster {
             );
             return;
         };
+
+        let Some(fl_state) = self.file_list_state_for_uuid("FILE_LIST", &uuid) else {
+            return;
+        };
+        let mut state = fl_state.lock().await;
+
+        // A valid FILE_LIST needs at least 4 bytes for `num_files`. If fewer
+        // remain, the message is truncated; record an error rather than
+        // returning a silent empty file list.
+        if message.remaining() < 4 {
+            tracing::warn!(
+                "Cluster[{}]: Truncated FILE_LIST (fewer than 4 bytes remain for num_files)",
+                self.name()
+            );
+            state.error = true;
+            state.error_details = "Truncated FILE_LIST response (missing num_files)".to_string();
+            state.data_ready = true;
+            state.notify.notify_one();
+            return;
+        }
+
         let num_files = message.pop_uint();
 
         let mut files = Vec::new();
@@ -734,11 +755,6 @@ impl Cluster {
             });
         }
 
-        let Some(fl_state) = self.file_list_state_for_uuid("FILE_LIST", &uuid) else {
-            return;
-        };
-
-        let mut state = fl_state.lock().await;
         state.files = files;
         state.data_ready = true;
         state.notify.notify_one();
@@ -2830,6 +2846,40 @@ mod tests {
         let locked = state.lock().await;
         assert!(locked.files.is_empty());
         assert!(!locked.data_ready);
+    }
+
+    /// Verifies that a truncated `FILE_LIST` (fewer than 4 bytes for
+    /// `num_files`) records an error on the matching `FileListState` rather
+    /// than returning a silent empty file list.
+    #[tokio::test]
+    async fn test_file_list_response_truncated_num_files_sets_error() {
+        let db = sea_orm::Database::connect(crate::test_support::SQLITE_MEMORY)
+            .await
+            .expect(crate::test_support::SQLITE_IN_MEMORY_CONNECTION_FAILED);
+        let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+            Arc::new(DashMap::new());
+        let app_context = Arc::new(AppContext {
+            db,
+            file_list_map: Arc::clone(&file_list_map),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        let uuid = "file-list-truncated-uuid";
+        let state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+        file_list_map.insert(uuid.to_string(), Arc::clone(&state));
+
+        let mut msg = Message::new(FILE_LIST, Priority::Lowest, TEST_CLUSTER);
+        msg.push_string(uuid);
+        msg.push_bool(false);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_response(&mut msg).await;
+
+        let locked = state.lock().await;
+        assert!(locked.error);
+        assert!(!locked.error_details.is_empty());
+        assert!(locked.data_ready);
+        assert!(locked.files.is_empty());
     }
 
     /// Verifies that a `FILE_LIST_ERROR` message records the error flag, the error
