@@ -502,7 +502,17 @@ impl Cluster {
         use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
         let job_id = message.pop_uint();
-        let what = message.pop_string();
+        // A `what` whose length prefix claims more bytes than remain is a
+        // truncated string; drop the message rather than recording a
+        // corrupted job-history row with an empty `what`.
+        let Some(what) = message.try_pop_string() else {
+            tracing::warn!(
+                "Cluster[{}]: Dropping truncated UPDATE_JOB for job {} (truncated `what` string)",
+                self.name(),
+                job_id
+            );
+            return;
+        };
         // A valid UPDATE_JOB needs at least 4 bytes for `status` after the
         // variable-length `what`. If fewer remain, the message is truncated;
         // drop it rather than recording a corrupted job-history row with a
