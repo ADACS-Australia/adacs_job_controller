@@ -231,8 +231,10 @@ impl Message {
     /// Pop a UTF-8 string from the message buffer, returning `None` if the
     /// length prefix claims more bytes than remain (a truncated string).
     ///
-    /// Unlike [`pop_string`], this advances past the length prefix and returns
-    /// `None` on truncation, so callers can detect the truncation.
+    /// Unlike [`pop_string`], this returns `None` on truncation so callers can
+    /// detect it. On truncation the length prefix is consumed then the read
+    /// cursor is restored, so the read position is unchanged and the buffer is
+    /// not consumed.
     pub fn try_pop_string(&mut self) -> Option<String> {
         let start = self.index;
         let len = self.pop_ulong() as usize;
