@@ -1215,9 +1215,24 @@ impl ClusterTrait for Cluster {
             }
 
             // FileDownload messages
-            FILE_CHUNK => self.handle_file_chunk(&mut message).await,
-            FILE_DETAILS => self.handle_file_details(&mut message).await,
-            FILE_ERROR => self.handle_file_error(&mut message).await,
+            FILE_CHUNK if self.role == ClusterRole::FileDownload => {
+                self.handle_file_chunk(&mut message).await;
+            }
+            FILE_CHUNK => {
+                warn_role_mismatch(&self.name(), &self.role, "FILE_CHUNK", "file download");
+            }
+            FILE_DETAILS if self.role == ClusterRole::FileDownload => {
+                self.handle_file_details(&mut message).await;
+            }
+            FILE_DETAILS => {
+                warn_role_mismatch(&self.name(), &self.role, "FILE_DETAILS", "file download");
+            }
+            FILE_ERROR if self.role == ClusterRole::FileDownload => {
+                self.handle_file_error(&mut message).await;
+            }
+            FILE_ERROR => {
+                warn_role_mismatch(&self.name(), &self.role, "FILE_ERROR", "file download");
+            }
 
             // FileUpload messages
             SERVER_READY if self.role == ClusterRole::FileUpload => {
@@ -1801,6 +1816,63 @@ mod tests {
                 .iter()
                 .any(|l| l.contains("FILE_LIST_ERROR") && l.contains("expected master")),
             "expected role-mismatch warning for FILE_LIST_ERROR, got: {lines:?}"
+        );
+    }
+
+    /// Verifies that `handle_message` routes `FILE_CHUNK` on a non-FileDownload
+    /// cluster through the role-mismatch guard instead of the handler.
+    #[tokio::test]
+    async fn test_handle_message_file_chunk_guards_non_file_download() {
+        let (_guard, lines) = capture_warn_lines();
+        let cluster = make_test_cluster();
+        let msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        let lines = lines.lock().unwrap();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("FILE_CHUNK") && l.contains("expected file download")),
+            "expected role-mismatch warning for FILE_CHUNK, got: {lines:?}"
+        );
+    }
+
+    /// Verifies that `handle_message` routes `FILE_DETAILS` on a non-FileDownload
+    /// cluster through the role-mismatch guard instead of the handler.
+    #[tokio::test]
+    async fn test_handle_message_file_details_guards_non_file_download() {
+        let (_guard, lines) = capture_warn_lines();
+        let cluster = make_test_cluster();
+        let msg = Message::new(FILE_DETAILS, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        let lines = lines.lock().unwrap();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("FILE_DETAILS") && l.contains("expected file download")),
+            "expected role-mismatch warning for FILE_DETAILS, got: {lines:?}"
+        );
+    }
+
+    /// Verifies that `handle_message` routes `FILE_ERROR` on a non-FileDownload
+    /// cluster through the role-mismatch guard instead of the handler.
+    #[tokio::test]
+    async fn test_handle_message_file_error_guards_non_file_download() {
+        let (_guard, lines) = capture_warn_lines();
+        let cluster = make_test_cluster();
+        let msg = Message::new(FILE_ERROR, Priority::Highest, TEST_CLUSTER);
+
+        cluster.handle_message(msg).await;
+
+        let lines = lines.lock().unwrap();
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("FILE_ERROR") && l.contains("expected file download")),
+            "expected role-mismatch warning for FILE_ERROR, got: {lines:?}"
         );
     }
 
