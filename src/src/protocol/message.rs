@@ -272,8 +272,10 @@ impl Message {
     /// Unlike [`pop_bytes`], this does not advance past the length prefix and
     /// return an empty slice on underrun; callers can detect the truncation.
     pub fn try_pop_bytes(&mut self) -> Option<Vec<u8>> {
+        let start = self.index;
         let len = self.pop_ulong() as usize;
         if !self.check_remaining(len) {
+            self.index = start;
             return None;
         }
         let result = self.data[self.index..self.index + len].to_vec();
@@ -869,6 +871,36 @@ mod tests {
         };
         let before = msg.remaining();
         assert_eq!(msg.try_pop_string(), None);
+        assert_eq!(msg.remaining(), before);
+    }
+
+    /// Verifies that `try_pop_bytes` returns `None` on underrun without
+    /// advancing the message cursor, so a `None` return leaves the buffer
+    /// unchanged and a caller can retry or continue parsing from the same point.
+    ///
+    /// # Setup
+    /// Build a message whose raw buffer holds a valid u64 length prefix of 10
+    /// followed by only 3 payload bytes.
+    ///
+    /// # Act
+    /// Call `try_pop_bytes` on the buffer.
+    ///
+    /// # Assert
+    /// `try_pop_bytes` returns `None` and `remaining()` is unchanged.
+    #[test]
+    fn test_try_pop_bytes_underrun_leaves_cursor_unchanged() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&10u64.to_le_bytes());
+        raw.extend_from_slice(b"abc");
+        let mut msg = Message {
+            data: raw,
+            index: 0,
+            id: 0,
+            source: String::new(),
+            priority: Priority::Lowest,
+        };
+        let before = msg.remaining();
+        assert_eq!(msg.try_pop_bytes(), None);
         assert_eq!(msg.remaining(), before);
     }
 
