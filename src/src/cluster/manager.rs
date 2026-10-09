@@ -978,6 +978,13 @@ impl ClusterManagerTrait for ClusterManager {
                 && let Some(uuid) = cluster.uuid()
             {
                 self.file_upload_map.remove(uuid);
+                // The dedicated upload cluster's background tasks (scheduler +
+                // prune) are started in `create_file_upload` but, unlike the
+                // download path, their handles are never retained. Stop the
+                // cluster now that its connection has closed so `running`
+                // flips to false and those tasks observe it and exit, rather
+                // than leaking for the process lifetime.
+                cluster.stop();
             }
         }
     }
@@ -1151,6 +1158,16 @@ impl ClusterManager {
         self.file_download_clusters
             .iter()
             .map(|entry| Arc::clone(entry.value()))
+            .collect()
+    }
+
+    /// Test-only: clone every concrete `Arc<Cluster>` retained for a
+    /// dedicated file-upload session.
+    #[allow(dead_code)]
+    pub fn dedicated_upload_clusters_concrete(&self) -> Vec<Arc<crate::cluster::cluster::Cluster>> {
+        self.file_upload_map
+            .iter()
+            .map(|entry| Arc::clone(&entry.value().1))
             .collect()
     }
 }
