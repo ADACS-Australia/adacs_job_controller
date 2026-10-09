@@ -818,12 +818,26 @@ pub async fn upload_file(
     let chunk_size = (*settings::FILE_CHUNK_SIZE).max(1) as usize;
     let mut total_read: u64 = 0;
 
-    let body_bytes = to_bytes(
+    let body_bytes = match to_bytes(
         request.into_body(),
         (content_length as usize).saturating_add(1),
     )
     .await
-    .map_err(failed_to_read_body_msg)?;
+    {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(
+                "HTTP: File upload rejected - failed to read request body (uuid={})",
+                uuid
+            );
+            state.cluster_manager.remove_file_upload(&uuid);
+            // Tear down the dedicated upload session so the remote cluster is
+            // not left waiting for FILE_UPLOAD_CHUNK messages, mirroring the
+            // body-length mismatch cleanup.
+            upload_cluster.close(false).await;
+            return Err(failed_to_read_body_msg(e));
+        }
+    };
 
     if body_bytes.len() as u64 != content_length {
         tracing::warn!(
