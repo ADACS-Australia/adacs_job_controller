@@ -946,6 +946,46 @@ async fn test_remove_connection_file_upload_cleanup() {
     assert!(mgr.get_file_upload("ul-cleanup").is_none());
 }
 
+/// Verifies that removing a file-upload connection stops the dedicated
+/// upload cluster's background tasks (scheduler + prune).
+///
+/// # Setup
+/// Create and connect a file upload session.
+///
+/// # Act
+/// Call `remove_connection(conn_id, true)`.
+///
+/// # Assert
+/// The dedicated upload cluster's `running` flag flips to `false` so its
+/// scheduler and prune tasks observe it and exit, rather than leaking for
+/// the process lifetime.
+#[tokio::test]
+async fn test_remove_connection_file_upload_stops_background_tasks() {
+    let db = make_db().await;
+    let mgr = make_manager_with_three_clusters(&db).await;
+
+    // Create and connect a file upload session.
+    let result = connect_file_upload(&mgr, "ul-stop", 81).await;
+    assert_eq!(result.as_ref().unwrap().name(), CLUSTER1);
+
+    // Before removal the dedicated upload cluster is running.
+    let upload_clusters = mgr.dedicated_upload_clusters_concrete();
+    assert_eq!(upload_clusters.len(), 1);
+    let upload_cluster = Arc::clone(&upload_clusters[0]);
+    assert!(upload_cluster.running());
+
+    // Remove the connection.
+    mgr.remove_connection(81, true).await;
+
+    // The dedicated upload cluster's background tasks must be stopped.
+    assert!(mgr.get_cluster_by_connection(81).is_none());
+    assert!(mgr.get_file_upload("ul-stop").is_none());
+    assert!(
+        !upload_cluster.running(),
+        "dedicated upload cluster must be stopped after connection removal"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Ping/pong health monitoring tests
 // ---------------------------------------------------------------------------
