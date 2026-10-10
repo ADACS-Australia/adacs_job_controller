@@ -1255,7 +1255,8 @@ async fn test_handle_file_list_populates_file_entries() {
 }
 
 /// Verifies that a `FILE_LIST` message whose `num_files` count exceeds the entries actually present
-/// populates the entries that are present and sets `data_ready` without panicking.
+/// populates the entries that are present, sets `data_ready`, and records an error (the payload is
+/// truncated/malformed, so the partial list must not be presented as complete).
 ///
 /// # Setup
 /// A UUID `"test-fl-truncated"` is pre-registered in the `file_list_map`.
@@ -1266,7 +1267,8 @@ async fn test_handle_file_list_populates_file_entries() {
 /// The message is dispatched via `cluster.handle_message`.
 ///
 /// # Assert
-/// The `FileListState` contains the 2 entries that were present and `data_ready` is set to `true`.
+/// The `FileListState` contains the 2 entries that were present, `data_ready` is set to `true`,
+/// and `error` is set with a descriptive `error_details`.
 #[tokio::test]
 async fn test_handle_file_list_truncated_message_graceful() {
     let (cluster, file_list_map) = make_file_list_cluster();
@@ -1285,12 +1287,13 @@ async fn test_handle_file_list_truncated_message_graceful() {
 
     cluster.handle_message(msg).await;
 
-    // Entries that were present are populated and data_ready is set
+    // Entries that were present are populated, data_ready is set, and the
+    // truncated payload is recorded as an error.
     {
         let state = fl_state.lock().await;
         assert_eq!(state.files.len(), 2);
-        assert!(!state.error);
-        assert!(state.error_details.is_empty());
+        assert!(state.error);
+        assert!(state.error_details.contains("Truncated FILE_LIST"));
         assert!(state.data_ready);
 
         assert_eq!(state.files[0].file_name, "/file1");
@@ -1305,7 +1308,7 @@ async fn test_handle_file_list_truncated_message_graceful() {
 
 /// Verifies that a `FILE_LIST` message whose final entry is truncated to exactly 17 bytes
 /// (one byte short of the 18-byte minimum entry size) is dropped cleanly rather than
-/// parsed into a corrupted entry with `file_size = 0`.
+/// parsed into a corrupted entry with `file_size = 0`, and is recorded as an error.
 ///
 /// # Setup
 /// A UUID `"test-fl-boundary"` is pre-registered in the `file_list_map`.
@@ -1317,7 +1320,7 @@ async fn test_handle_file_list_truncated_message_graceful() {
 ///
 /// # Assert
 /// Only the complete first entry is populated; the truncated final entry is not emitted
-/// with `file_size = 0`, and `data_ready` is set to `true`.
+/// with `file_size = 0`, `data_ready` is set to `true`, and `error` is set.
 #[tokio::test]
 async fn test_handle_file_list_truncated_last_entry_17_bytes_graceful() {
     let (cluster, file_list_map) = make_file_list_cluster();
@@ -1349,8 +1352,8 @@ async fn test_handle_file_list_truncated_last_entry_17_bytes_graceful() {
     {
         let state = fl_state.lock().await;
         assert_eq!(state.files.len(), 1);
-        assert!(!state.error);
-        assert!(state.error_details.is_empty());
+        assert!(state.error);
+        assert!(state.error_details.contains("Truncated FILE_LIST"));
         assert!(state.data_ready);
 
         assert_eq!(state.files[0].file_name, "/file1");
@@ -1372,8 +1375,8 @@ async fn test_handle_file_list_truncated_last_entry_17_bytes_graceful() {
 /// The message is dispatched via `cluster.handle_message`.
 ///
 /// # Assert
-/// The `FileListState` contains only the 1 complete entry and `data_ready` is set
-/// to `true`; no bogus `file_size = 0` entry is added.
+/// The `FileListState` contains only the 1 complete entry, `data_ready` is set
+/// to `true`, and `error` is set; no bogus `file_size = 0` entry is added.
 #[tokio::test]
 async fn test_handle_file_list_truncated_final_entry_is_dropped() {
     let (cluster, file_list_map) = make_file_list_cluster();
@@ -1408,8 +1411,8 @@ async fn test_handle_file_list_truncated_final_entry_is_dropped() {
     {
         let state = fl_state.lock().await;
         assert_eq!(state.files.len(), 1);
-        assert!(!state.error);
-        assert!(state.error_details.is_empty());
+        assert!(state.error);
+        assert!(state.error_details.contains("Truncated FILE_LIST"));
         assert!(state.data_ready);
 
         assert_eq!(state.files[0].file_name, "/file1");
@@ -1432,8 +1435,8 @@ async fn test_handle_file_list_truncated_final_entry_is_dropped() {
 /// The message is dispatched via `cluster.handle_message`.
 ///
 /// # Assert
-/// The `FileListState` contains only the 1 complete entry and `data_ready` is set
-/// to `true`; no bogus entry with an empty filename is added.
+/// The `FileListState` contains only the 1 complete entry, `data_ready` is set
+/// to `true`, and `error` is set; no bogus entry with an empty filename is added.
 #[tokio::test]
 async fn test_handle_file_list_truncated_length_prefix_is_dropped() {
     let (cluster, file_list_map) = make_file_list_cluster();
@@ -1467,8 +1470,8 @@ async fn test_handle_file_list_truncated_length_prefix_is_dropped() {
     {
         let state = fl_state.lock().await;
         assert_eq!(state.files.len(), 1);
-        assert!(!state.error);
-        assert!(state.error_details.is_empty());
+        assert!(state.error);
+        assert!(state.error_details.contains("Truncated FILE_LIST"));
         assert!(state.data_ready);
 
         assert_eq!(state.files[0].file_name, "/file1");
@@ -1549,8 +1552,8 @@ async fn test_handle_file_list_empty_filename_minimum_entry_is_parsed() {
 /// The message is dispatched via `cluster.handle_message`.
 ///
 /// # Assert
-/// The `FileListState` contains only the 1 complete entry and `data_ready` is set
-/// to `true`; no bogus entry with an empty filename is added.
+/// The `FileListState` contains only the 1 complete entry, `data_ready` is set
+/// to `true`, and `error` is set; no bogus entry with an empty filename is added.
 #[tokio::test]
 async fn test_handle_file_list_truncated_file_name_with_trailing_bytes_dropped() {
     let (cluster, file_list_map) = make_file_list_cluster();
@@ -1590,8 +1593,8 @@ async fn test_handle_file_list_truncated_file_name_with_trailing_bytes_dropped()
     {
         let state = fl_state.lock().await;
         assert_eq!(state.files.len(), 1);
-        assert!(!state.error);
-        assert!(state.error_details.is_empty());
+        assert!(state.error);
+        assert!(state.error_details.contains("Truncated FILE_LIST"));
         assert!(state.data_ready);
 
         assert_eq!(state.files[0].file_name, "/file1");
