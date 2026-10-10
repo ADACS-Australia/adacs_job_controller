@@ -272,8 +272,9 @@ pub async fn create_file_download(
 // ---------------------------------------------------------------------------
 
 /// RAII guard covering the interval from dedicated session creation until the
-/// response body has been constructed successfully. On `Drop`, fires the
-/// configured typed reason unless the guard was disarmed by `trigger()`.
+/// response body has been constructed successfully, and — when moved into the
+/// response stream — the body's lifetime. On `Drop`, fires the configured
+/// typed reason unless the guard was disarmed by `trigger()`.
 pub struct PreResponseGuard {
     trigger: Option<DownloadCleanupTrigger>,
     reason: DownloadShutdownReason,
@@ -540,15 +541,31 @@ pub async fn download_file(
     }
 
     // The stream owns a clone of the trigger so it can fire typed terminal
-    // reasons. The body guard below owns another clone. All clones share the
-    // same session transition, so the first notification wins. The clone is
-    // taken from the guard itself, avoiding a manager re-lookup that could
-    // race with concurrent cleanup.
+    // reasons. The pre-response guard's trigger is re-armed as a body
+    // guard that lives with the response body: its Drop fires the
+    // ResponseError fallback when the body is dropped without a terminal
+    // reason having been fired (client disconnect mid-download, or
+    // response-construction failure). All clones share the same session
+    // transition, so the first notification wins and later calls are
+    // idempotent no-ops. The clone is taken from the guard itself, avoiding
+    // a manager re-lookup that could race with concurrent cleanup.
     let stream_trigger = pre_response_guard
         .as_ref()
         .and_then(PreResponseGuard::trigger_clone);
 
+    // Take the trigger out of the pre-response guard (disarming its Drop)
+    // and re-arm it as a body-lifetime guard. `None` when the session was
+    // already completed (e.g. zero-length file) or the mock-only path.
+    let body_guard = pre_response_guard
+        .take()
+        .and_then(PreResponseGuard::into_trigger)
+        .map(|trigger| PreResponseGuard::new(trigger, DownloadShutdownReason::ResponseError));
+
     let stream = async_stream::stream! {
+        // Hold the body guard for the stream's lifetime. Its Drop fires
+        // ResponseError if this stream is dropped without reaching a terminal
+        // state, closing the dedicated session and removing the map entry.
+        let _body_guard = body_guard;
         let mut receiver = fd_state_stream.chunk_receiver.lock().await;
         let mut sent: u64 = 0;
 
@@ -630,25 +647,12 @@ pub async fn download_file(
 
     let body = Body::from_stream(stream);
 
-    // The pre-response guard only covers failures before the HTTP response is
-    // successfully constructed. Once streaming owns the trigger, consume the
-    // guard without firing its ResponseError fallback; otherwise the guard is
-    // dropped at the end of this block and closes the dedicated WebSocket
-    // before the client can send the file chunks.
-    let body_for_response = match pre_response_guard.take() {
-        Some(guard) => {
-            let _streaming_owner = guard.into_trigger();
-            body
-        }
-        None => body,
-    };
-
     let response = axum::response::Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/octet-stream")
         .header("Content-Length", file_size.to_string())
         .header("Content-Disposition", content_disposition)
-        .body(body_for_response)
+        .body(body)
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
