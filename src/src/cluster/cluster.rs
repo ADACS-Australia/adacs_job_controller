@@ -738,18 +738,17 @@ impl Cluster {
         let num_files = message.pop_uint();
 
         let mut files = Vec::new();
+        let mut truncated = false;
         for _ in 0..num_files {
             if message.remaining() < MIN_FILE_LIST_ENTRY_BYTES {
+                truncated = true;
                 break;
             }
             // A filename whose length prefix claims more bytes than remain is a
             // truncated entry; drop it rather than recording a corrupted entry
             // with an empty filename.
             let Some(file_name) = message.try_pop_string() else {
-                tracing::warn!(
-                    "Cluster[{}]: Truncated FILE_LIST entry (file_name length prefix exceeds remaining bytes)",
-                    self.name()
-                );
+                truncated = true;
                 break;
             };
             // A valid entry needs 1 byte for `is_directory` plus 8 bytes for
@@ -757,10 +756,7 @@ impl Cluster {
             // remain, the final entry is truncated; drop it rather than
             // recording a corrupted entry with defaulted `is_directory`/`file_size`.
             if message.remaining() < 9 {
-                tracing::warn!(
-                    "Cluster[{}]: Truncated FILE_LIST entry (fewer than 9 bytes remain for is_directory and file_size)",
-                    self.name()
-                );
+                truncated = true;
                 break;
             }
             let is_directory = message.pop_bool();
@@ -774,6 +770,16 @@ impl Cluster {
         }
 
         state.files = files;
+        // A mid-entry truncation means the payload was malformed; surface it as
+        // an error rather than presenting the partial list as complete.
+        if truncated {
+            tracing::warn!(
+                "Cluster[{}]: Truncated FILE_LIST (mid-entry truncation)",
+                self.name()
+            );
+            state.error = true;
+            state.error_details = "Truncated FILE_LIST response (mid-entry truncation)".to_string();
+        }
         state.data_ready = true;
         state.notify.notify_one();
     }
