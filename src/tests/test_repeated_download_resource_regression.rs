@@ -452,6 +452,125 @@ async fn download_error_mid_stream_closes_session_and_cleans_up() {
 }
 
 // ---------------------------------------------------------------------------
+// Response-body drop mid-stream: session must be closed and cleaned up
+// ---------------------------------------------------------------------------
+
+/// Dropping the response body without polling the stream to a terminal state
+/// (an HTTP client disconnect mid-download) must close the dedicated
+/// download session and return every observable resource to baseline, even
+/// though no typed terminal reason was fired by the stream itself.
+#[tokio::test]
+async fn download_body_dropped_mid_stream_closes_session_and_cleans_up() {
+    const CHUNK_SIZE: usize = 64 * 1024;
+    const FILE_SIZE: u64 = (CHUNK_SIZE * 2) as u64;
+
+    let db = setup_test_db().await;
+    let manager = fresh_manager(&db).await;
+    let _job_id = insert_regression_job(&db).await;
+
+    let file_list_map = Arc::new(DashMap::new());
+    let http_timeout = 5u64;
+    let app = build_test_app(
+        db.clone(),
+        Arc::clone(&manager),
+        Arc::clone(&file_list_map),
+        Some(http_timeout),
+    );
+    let (port, server_handle) = start_server(app).await;
+
+    let file_id = "body-dropped-mid-stream";
+    insert_regression_file_download(&db, file_id).await;
+
+    // WS task: connect with the session UUID, send FILE_DETAILS so the HTTP
+    // handler can build its response, then hold the connection open until the
+    // main test has dropped the response body.
+    let (hold_tx, hold_rx) = tokio::sync::oneshot::channel::<()>();
+    let ws_port = port;
+    let ws_manager = Arc::clone(&manager);
+    let ws_handle = tokio::spawn(async move {
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        let session_uuid: String = loop {
+            if let Some(cluster) = ws_manager.dedicated_download_clusters_concrete().first()
+                && let Some(uuid) = cluster.uuid()
+            {
+                break uuid.to_string();
+            }
+            assert!(
+                std::time::Instant::now() <= deadline,
+                "WS task timed out waiting for dedicated cluster to appear"
+            );
+            tokio::task::yield_now().await;
+        };
+
+        let (mut sink, _stream) = connect_ws(ws_port, &session_uuid).await;
+        send_msg(&mut sink, build_file_details(FILE_SIZE)).await;
+        let _ = hold_rx.await;
+        drop(sink);
+    });
+
+    // HTTP GET. `download_file` returns the Response (with the stream as the
+    // body) as soon as FILE_DETAILS is received; the stream itself runs only
+    // when the body is consumed.
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1, "application": "testapp"}));
+    let app = build_test_app(
+        db.clone(),
+        Arc::clone(&manager),
+        Arc::clone(&file_list_map),
+        Some(http_timeout),
+    );
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={file_id}"))
+                .header("Authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // The response is built but the stream has not run yet. Extract the
+    // session UUID, then drop the response body mid-stream (simulating an
+    // HTTP client disconnect) without polling the stream to a terminal state.
+    let session_uuid = manager
+        .dedicated_download_clusters_concrete()
+        .first()
+        .and_then(|c| c.uuid())
+        .expect("dedicated download cluster must exist")
+        .to_string();
+
+    drop(resp);
+
+    // Wait for cleanup to drain the maps *while the WS is still open*. The
+    // WS is the only other owner of terminal cleanup, so if the session is
+    // cleaned up here it must have been driven by the body-drop guard, not
+    // by a WS close.
+    let cleanup_deadline = Duration::from_secs(
+        adacs_job_controller::websocket::server::WS_CLOSE_HANDSHAKE_GRACE_SECONDS + 5,
+    );
+    let cleaned = wait_for_cleanup(&manager, cleanup_deadline).await;
+    assert!(
+        cleaned,
+        "cleanup did not drain within {cleanup_deadline:?} while WS open: dedicated_clusters={}",
+        manager.dedicated_download_clusters().len(),
+    );
+    assert!(
+        manager.dedicated_download_clusters().is_empty(),
+        "dedicated_download_clusters must be empty after body-drop cleanup"
+    );
+    assert!(
+        manager.get_file_download(&session_uuid).is_none(),
+        "file_download_map must not retain session for {session_uuid}"
+    );
+
+    let _ = hold_tx.send(());
+    let _ = ws_handle.await;
+    server_handle.abort();
+    let _ = server_handle.await;
+}
+
+// ---------------------------------------------------------------------------
 // Repeated-download regression: unresponsive peer (#[ignore])
 // ---------------------------------------------------------------------------
 
