@@ -871,6 +871,48 @@ async fn test_handle_jobstatus_get_by_job_id() {
     assert_eq!(whats, vec!["a", "b"]);
 }
 
+/// Verifies that a truncated `DB_JOBSTATUS_GET_BY_JOB_ID` with fewer than 12
+/// bytes of payload (fewer than `db_request_id` + `job_id`) is dropped rather
+/// than querying with defaulted `0` values and emitting an uncorrelatable
+/// `DB_RESPONSE`.
+///
+/// # Setup
+/// In-memory DB with a status row for `job_id=22` (`what="cpu_time"`).
+///
+/// # Act
+/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID` with `db_request_id=802` but no
+/// `job_id` (only 4 bytes of payload, fewer than the 12 required).
+///
+/// # Assert
+/// The handler is recognized but sends no `DB_RESPONSE`: the truncated message
+/// is dropped instead of querying with defaulted `0` values.
+#[tokio::test]
+async fn test_handle_jobstatus_get_by_job_id_drops_truncated_header() {
+    let db = make_cluster_db().await;
+    insert_cluster_job_status(&db, 22, "cpu_time", 42).await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+
+    // Build a raw message whose payload has only the `db_request_id` (4 bytes)
+    // and is missing the `job_id`, leaving fewer than 12 bytes for the
+    // fixed-size request fields.
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&(SYSTEM_SOURCE.len() as u64).to_le_bytes());
+    raw.extend_from_slice(SYSTEM_SOURCE.as_bytes());
+    raw.extend_from_slice(&DB_JOBSTATUS_GET_BY_JOB_ID.to_le_bytes());
+    raw.extend_from_slice(&802u32.to_le_bytes()); // db_request_id (missing job_id)
+
+    let mut msg = Message::from_bytes(raw);
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "truncated message should be dropped without sending a response"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT
 // ---------------------------------------------------------------------------
