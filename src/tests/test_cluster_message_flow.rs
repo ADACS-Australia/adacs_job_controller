@@ -1645,6 +1645,37 @@ async fn test_handle_file_list_empty_file_list_sets_data_ready() {
     }
 }
 
+/// Verifies that a `FILE_LIST` message whose uuid length prefix exceeds the
+/// remaining bytes is dropped without consulting or mutating the file list map.
+///
+/// # Setup
+/// A `Cluster` with an `AppContext` containing an empty `file_list_map` is created.
+/// A `FILE_LIST` message is built whose uuid length prefix claims more bytes than
+/// remain (a truncated uuid): the length prefix is written directly with no
+/// following uuid bytes.
+///
+/// # Act
+/// The message is dispatched via `cluster.handle_message`.
+///
+/// # Assert
+/// The handler returns early: the `file_list_map` remains empty and no panic occurs.
+#[tokio::test]
+async fn test_handle_file_list_truncated_uuid_is_dropped() {
+    let (cluster, file_list_map) = make_file_list_cluster();
+
+    // Build a FILE_LIST message whose uuid length prefix claims more bytes than
+    // remain (a truncated uuid): write the length prefix directly as a large
+    // value with no following uuid bytes.
+    let mut msg = Message::new(FILE_LIST, Priority::Medium, "test");
+    msg.push_ulong(u64::MAX);
+    let msg = Message::from_bytes(msg.into_data());
+
+    cluster.handle_message(msg).await;
+
+    // The truncated uuid is dropped before consulting the file list map.
+    assert!(file_list_map.is_empty());
+}
+
 // ---------------------------------------------------------------------------
 // File list error handling
 // ---------------------------------------------------------------------------
