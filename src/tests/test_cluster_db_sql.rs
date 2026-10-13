@@ -628,6 +628,46 @@ async fn test_handle_job_get_running_jobs() {
     assert_eq!(row.job_id, 1);
 }
 
+/// Verifies that a truncated `DB_JOB_GET_RUNNING_JOBS` message with fewer than
+/// 4 bytes of payload after the header is dropped rather than returning every
+/// running job with an uncorrelatable `db_request_id` of 0.
+///
+/// # Setup
+/// In-memory DB with one running job for "ozstar".
+///
+/// # Act
+/// Dispatch a raw `DB_JOB_GET_RUNNING_JOBS` message whose payload (the fixed-size
+/// `db_request_id` field) has fewer than 4 bytes remaining.
+///
+/// # Assert
+/// The handler is recognized but sends no `DB_RESPONSE`: the truncated message
+/// is dropped instead of querying and returning running jobs.
+#[tokio::test]
+async fn test_handle_job_get_running_jobs_drops_truncated() {
+    let db = make_cluster_db().await;
+    insert_cluster_job_row(&db, 1, 0, false, 0, "", "", true, "ozstar").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+
+    // Build a raw message whose payload (db_request_id) has fewer than 4 bytes
+    // remaining (only 2 bytes are present).
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&(SYSTEM_SOURCE.len() as u64).to_le_bytes());
+    raw.extend_from_slice(SYSTEM_SOURCE.as_bytes());
+    raw.extend_from_slice(&DB_JOB_GET_RUNNING_JOBS.to_le_bytes());
+    raw.extend_from_slice(&[0u8; 2]); // truncated db_request_id (should be 4)
+
+    let mut msg = Message::from_bytes(raw);
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "truncated message should be dropped without sending a response"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_DELETE
 // ---------------------------------------------------------------------------
