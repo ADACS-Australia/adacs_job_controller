@@ -87,6 +87,14 @@ fn make_file_upload_error_message(detail: &str) -> Message {
     Message::from_bytes(msg.into_data())
 }
 
+/// Build a `FILE_UPLOAD_ERROR` message whose `detail` length prefix claims more
+/// bytes than remain (a truncated detail).
+fn make_file_upload_error_message_truncated_detail() -> Message {
+    let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Medium, "test");
+    msg.push_ulong(64);
+    Message::from_bytes(msg.into_data())
+}
+
 /// Build a `FILE_UPLOAD_COMPLETE` message.
 fn make_file_upload_complete_message() -> Message {
     let msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Medium, "test");
@@ -353,6 +361,33 @@ async fn test_file_upload_error_flow() {
     assert!(upload_state.error.load(Ordering::Relaxed));
     assert!(upload_state.data_ready.load(Ordering::Relaxed));
     assert_eq!(*upload_state.error_details.lock().await, "Disk full");
+}
+
+/// Verifies that a `FILE_UPLOAD_ERROR` whose `detail` length prefix claims more
+/// bytes than remain still surfaces as an error with the documented fallback detail.
+///
+/// # Setup
+/// A `FileUploadState` and a `Cluster` created via `new_file_upload` with uuid `"ul-uuid-err-trunc"` are prepared.
+///
+/// # Act
+/// A `FILE_UPLOAD_ERROR` message with a truncated `detail` is dispatched.
+///
+/// # Assert
+/// The `error` flag is set, `data_ready` is set, and `error_details` equals
+/// `"truncated FILE_UPLOAD_ERROR detail"`.
+#[tokio::test]
+async fn test_file_upload_error_truncated_detail_flow() {
+    let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-err-trunc");
+
+    let err_msg = make_file_upload_error_message_truncated_detail();
+    cluster.handle_message(err_msg).await;
+
+    assert!(upload_state.error.load(Ordering::Relaxed));
+    assert!(upload_state.data_ready.load(Ordering::Relaxed));
+    assert_eq!(
+        *upload_state.error_details.lock().await,
+        "truncated FILE_UPLOAD_ERROR detail"
+    );
 }
 
 /// Verifies the file upload state transitions when a `FILE_UPLOAD_COMPLETE` message is received.
