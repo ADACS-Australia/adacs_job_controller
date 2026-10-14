@@ -87,6 +87,22 @@ fn make_file_upload_error_message(detail: &str) -> Message {
     Message::from_bytes(msg.into_data())
 }
 
+/// Build a `FILE_ERROR` message whose detail length prefix claims more bytes than remain.
+fn make_truncated_file_error_message() -> Message {
+    let mut msg = Message::new(FILE_ERROR, Priority::Medium, "test");
+    msg.push_ulong(100);
+    msg.push_bytes(b"short");
+    Message::from_bytes(msg.into_data())
+}
+
+/// Build a `FILE_UPLOAD_ERROR` message whose detail length prefix claims more bytes than remain.
+fn make_truncated_file_upload_error_message() -> Message {
+    let mut msg = Message::new(FILE_UPLOAD_ERROR, Priority::Medium, "test");
+    msg.push_ulong(100);
+    msg.push_bytes(b"short");
+    Message::from_bytes(msg.into_data())
+}
+
 /// Build a `FILE_UPLOAD_COMPLETE` message.
 fn make_file_upload_complete_message() -> Message {
     let msg = Message::new(FILE_UPLOAD_COMPLETE, Priority::Medium, "test");
@@ -278,6 +294,32 @@ async fn test_file_download_error_flow() {
     );
 }
 
+/// Verifies that a `FILE_ERROR` with a truncated detail still surfaces as an error.
+///
+/// # Setup
+/// A `FileDownloadState` and a `Cluster` created via `new_file_download` with uuid `"dl-uuid-trunc"` are prepared.
+///
+/// # Act
+/// A `FILE_ERROR` message whose detail length prefix claims more bytes than remain is dispatched.
+///
+/// # Assert
+/// The `error` flag is set, `data_ready` is set, and `error_details` equals the fallback string
+/// `"truncated FILE_ERROR detail"`.
+#[tokio::test]
+async fn test_file_download_error_truncated_detail_flow() {
+    let (download_state, cluster) = make_file_download_cluster("dl-uuid-trunc");
+
+    let err_msg = make_truncated_file_error_message();
+    cluster.handle_message(err_msg).await;
+
+    assert!(download_state.error.load(Ordering::Relaxed));
+    assert!(download_state.data_ready.load(Ordering::Relaxed));
+    assert_eq!(
+        *download_state.error_details.lock().await,
+        "truncated FILE_ERROR detail"
+    );
+}
+
 /// Verifies that `FILE_DETAILS`, `FILE_CHUNK`, and `FILE_ERROR` messages dispatched to a
 /// master cluster (no `file_download_state`) hit the no-state warn branches without
 /// panicking or mutating download state.
@@ -353,6 +395,32 @@ async fn test_file_upload_error_flow() {
     assert!(upload_state.error.load(Ordering::Relaxed));
     assert!(upload_state.data_ready.load(Ordering::Relaxed));
     assert_eq!(*upload_state.error_details.lock().await, "Disk full");
+}
+
+/// Verifies that a `FILE_UPLOAD_ERROR` with a truncated detail still surfaces as an error.
+///
+/// # Setup
+/// A `FileUploadState` and a `Cluster` created via `new_file_upload` with uuid `"ul-uuid-trunc"` are prepared.
+///
+/// # Act
+/// A `FILE_UPLOAD_ERROR` message whose detail length prefix claims more bytes than remain is dispatched.
+///
+/// # Assert
+/// The `error` flag is set, `data_ready` is set, and `error_details` equals the fallback string
+/// `"truncated FILE_UPLOAD_ERROR detail"`.
+#[tokio::test]
+async fn test_file_upload_error_truncated_detail_flow() {
+    let (upload_state, cluster) = make_file_upload_cluster("ul-uuid-trunc");
+
+    let err_msg = make_truncated_file_upload_error_message();
+    cluster.handle_message(err_msg).await;
+
+    assert!(upload_state.error.load(Ordering::Relaxed));
+    assert!(upload_state.data_ready.load(Ordering::Relaxed));
+    assert_eq!(
+        *upload_state.error_details.lock().await,
+        "truncated FILE_UPLOAD_ERROR detail"
+    );
 }
 
 /// Verifies the file upload state transitions when a `FILE_UPLOAD_COMPLETE` message is received.
