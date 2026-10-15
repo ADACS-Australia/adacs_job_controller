@@ -1301,6 +1301,46 @@ async fn test_handle_bundle_get_by_id_not_found() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_BUNDLE_GET_JOB_BY_ID — truncated
+// ---------------------------------------------------------------------------
+
+/// Verifies that a truncated `DB_BUNDLE_GET_JOB_BY_ID` (fewer than 12 bytes of
+/// payload for the fixed-size `db_request_id` + `id` fields) is dropped rather
+/// than querying with defaulted 0 values and emitting an uncorrelatable
+/// `DB_RESPONSE`.
+///
+/// # Setup
+/// In-memory DB with bundle job schema.
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_GET_JOB_BY_ID` with only a `db_request_id` and no `id`
+/// field, leaving fewer than 12 bytes remaining.
+///
+/// # Assert
+/// The handler is recognized but sends no `DB_RESPONSE`: the truncated message
+/// is dropped.
+#[tokio::test]
+async fn test_handle_bundle_get_by_id_drops_truncated() {
+    let db = make_cluster_db().await;
+    let (mock, sent) = ozstar_capturing_cluster();
+
+    // A valid get-by-id request needs 12 bytes (db_request_id + id); only the
+    // 4-byte db_request_id is present, so the message is truncated.
+    let mut msg = dispatch_message(DB_BUNDLE_GET_JOB_BY_ID, |m| {
+        m.push_uint(1202);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "truncated message should be dropped without sending a response"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // DB_BUNDLE_DELETE_JOB
 // ---------------------------------------------------------------------------
 
