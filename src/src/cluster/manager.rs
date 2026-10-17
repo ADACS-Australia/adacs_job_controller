@@ -955,6 +955,15 @@ impl ClusterManagerTrait for ClusterManager {
                         .await;
                     }
                 }
+                // A dedicated download connection never populates `ping_times`
+                // (it is not pinged), but `register_connection` always inserts
+                // a `pong_times` entry (and `handle_pong` a `missed_pongs`
+                // entry). When the session is already terminal the branch above
+                // is skipped, so drop those entries here to avoid leaking one
+                // per completed download.
+                self.pong_times.remove(&conn_id);
+                self.ping_times.remove(&conn_id);
+                self.missed_pongs.remove(&conn_id);
                 return;
             }
 
@@ -1390,6 +1399,60 @@ mod tests {
         mock.expect_get_file_upload().returning(|_| None);
 
         assert!(mock.get_file_upload("nonexistent-uuid").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remove_connection_cleans_ping_maps_for_terminal_download() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
+
+        let uuid = "download-uuid-terminal";
+        let dl_cluster = Cluster::new_file_download(
+            test_configs().remove(0),
+            uuid.to_string(),
+            Arc::new(FileDownloadState::new()),
+            Some(Arc::clone(&manager.app_context)),
+            Arc::new(tokio::sync::Mutex::new(())),
+        );
+
+        let conn_id: ConnectionId = 99;
+        manager
+            .connection_map
+            .insert(conn_id, Arc::clone(&dl_cluster));
+        manager
+            .pong_times
+            .insert(conn_id, std::time::Instant::now());
+        manager
+            .ping_times
+            .insert(conn_id, std::time::Instant::now());
+        manager.missed_pongs.insert(conn_id, 0);
+
+        // The session is bound to a dead cleanup channel so no worker races
+        // the assertion, then driven to a terminal state. A terminal
+        // session means `remove_connection`'s FileDownload branch skips
+        // `cleanup_file_download` and returns early, reproducing the leak
+        // where the `pong_times` entry was never removed.
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        drop(rx);
+        let session =
+            DownloadSession::new(uuid.to_string(), Arc::new(FileDownloadState::new()), tx);
+        let _ = session
+            .cleanup_trigger()
+            .trigger(DownloadShutdownReason::WebSocketClosed);
+        assert!(matches!(
+            session.state(),
+            DownloadSessionState::Closing { .. }
+        ));
+        manager.file_download_map.insert(uuid.to_string(), session);
+
+        manager.remove_connection(conn_id, true).await;
+
+        assert!(
+            !manager.pong_times.contains_key(&conn_id),
+            "pong_times entry should be removed for a terminal FileDownload connection"
+        );
+        assert!(!manager.ping_times.contains_key(&conn_id));
+        assert!(!manager.missed_pongs.contains_key(&conn_id));
     }
 
     #[tokio::test]
