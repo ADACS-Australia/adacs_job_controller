@@ -49,6 +49,7 @@ fn default_connection_type() -> String {
 /// - The file cannot be read
 /// - The JSON is invalid
 /// - Two or more clusters share the same name
+/// - A cluster has an empty `name`, `host`, `username`, or `path`
 pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
     let configs: Vec<ClusterConfig> = super::load_json_file!(
         path,
@@ -63,6 +64,16 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
                 config.name,
                 i + 1
             );
+        }
+        for (field, value) in [
+            ("name", config.name.as_str()),
+            ("host", config.host.as_str()),
+            ("username", config.username.as_str()),
+            ("path", config.path.as_str()),
+        ] {
+            if value.is_empty() {
+                anyhow::bail!("cluster config entry #{} has empty '{}'", i + 1, field);
+            }
         }
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
@@ -159,6 +170,38 @@ mod tests {
             err.to_string().contains("duplicate cluster name 'ozstar'"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_field() {
+        for (field, json) in [
+            (
+                "name",
+                r#"[{"name": "", "host": "h1", "username": "u1", "path": "/p1"}]"#,
+            ),
+            (
+                "host",
+                r#"[{"name": "c1", "host": "", "username": "u1", "path": "/p1"}]"#,
+            ),
+            (
+                "username",
+                r#"[{"name": "c1", "host": "h1", "username": "", "path": "/p1"}]"#,
+            ),
+            (
+                "path",
+                r#"[{"name": "c1", "host": "h1", "username": "u1", "path": ""}]"#,
+            ),
+        ] {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let config_path = tmp.path().join("clusters.json");
+            std::fs::write(&config_path, json).unwrap();
+
+            let err = load_cluster_configs(&config_path).unwrap_err();
+            assert!(
+                err.to_string().contains(&format!("empty '{field}'")),
+                "field {field}: unexpected error: {err}"
+            );
+        }
     }
 
     #[test]
