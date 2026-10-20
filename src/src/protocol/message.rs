@@ -38,14 +38,8 @@ macro_rules! impl_from_le_bytes {
     };
 }
 
-impl_from_le_bytes!(u16, 2);
-impl_from_le_bytes!(i16, 2);
 impl_from_le_bytes!(u32, 4);
-impl_from_le_bytes!(i32, 4);
 impl_from_le_bytes!(u64, 8);
-impl_from_le_bytes!(i64, 8);
-impl_from_le_bytes!(f32, 4);
-impl_from_le_bytes!(f64, 8);
 
 impl Message {
     /// Create a new outgoing message with source and ID in the header.
