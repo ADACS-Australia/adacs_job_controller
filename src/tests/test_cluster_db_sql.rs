@@ -1106,6 +1106,43 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
     assert_eq!(req_id, 1000);
 }
 
+/// Verifies that a truncated `DB_JOBSTATUS_DELETE_BY_ID_LIST` (fewer than 8
+/// bytes for the fixed-size request fields) is dropped rather than emitting an
+/// uncorrelatable `DB_RESPONSE` with a defaulted `db_request_id`.
+///
+/// # Setup
+/// In-memory DB with four status rows (what: "a", "b", "c", "d") all for `job_id=1`.
+///
+/// # Act
+/// Dispatch `DB_JOBSTATUS_DELETE_BY_ID_LIST` with only `db_request_id=1000`
+/// present and no `count` field (a truncated message with fewer than 8 bytes).
+///
+/// # Assert
+/// The handler is recognized but sends no `DB_RESPONSE`: the truncated message
+/// is dropped instead of deleting with defaulted 0 values.
+#[tokio::test]
+async fn test_handle_jobstatus_delete_by_id_list_truncated_sends_no_response() {
+    let db = make_cluster_db().await;
+
+    for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
+        insert_cluster_job_status(&db, 1, what, state).await;
+    }
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_DELETE_BY_ID_LIST, |m| {
+        m.push_uint(1000); // db_request_id only — no count follows
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "truncated message should be dropped without sending a response"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // DB_BUNDLE_CREATE_OR_UPDATE_JOB — new bundle
 // ---------------------------------------------------------------------------
