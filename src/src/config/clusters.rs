@@ -50,6 +50,7 @@ fn default_connection_type() -> String {
 /// - The JSON is invalid
 /// - Two or more clusters share the same name
 /// - A cluster has an empty `ltk`
+/// - A cluster has an unknown `connection_type`
 pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
     let configs: Vec<ClusterConfig> = super::load_json_file!(
         path,
@@ -69,6 +70,17 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
             && ltk.is_empty()
         {
             anyhow::bail!("cluster config entry #{} has empty 'ltk'", i + 1);
+        }
+        if !matches!(
+            config.connection_type.as_str(),
+            CONNECTION_TYPE_SSH | CONNECTION_TYPE_KERBEROS | CONNECTION_TYPE_MANUAL | "ltk"
+        ) {
+            anyhow::bail!(
+                "invalid connection_type '{}' for cluster '{}' in cluster config (entry #{})",
+                config.connection_type,
+                config.name,
+                i + 1
+            );
         }
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
@@ -186,6 +198,29 @@ mod tests {
         let err = load_cluster_configs(&config_path).unwrap_err();
         assert!(
             err.to_string().contains("empty 'ltk'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_invalid_connection_type() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "ozstar",
+                "host": "ozstar.swin.edu.au",
+                "username": "admin",
+                "path": "/home/admin/jobcontroller",
+                "connection_type": "sshx"
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid connection_type 'sshx'"),
             "unexpected error: {err}"
         );
     }
