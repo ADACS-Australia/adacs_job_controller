@@ -667,6 +667,80 @@ async fn test_upload_queue_drain_timeout_returns_400() {
     );
 }
 
+/// Verifies the handler returns 400 and tears down the dedicated upload session
+/// when the cluster never sends `SERVER_READY` (the `wait_until_data_ready`
+/// timeout path).
+///
+/// # Setup
+/// Creates a `FileUploadState` that is never signalled. Uses a 1-second
+/// `client_timeout_seconds` so the timeout fires quickly.
+///
+/// # Act
+/// Sends a PUT upload request with 100 bytes of body.
+///
+/// # Assert
+/// Response is 400 Bad Request with body "Remote cluster took too long to
+/// respond." and the upload cluster's `close` was called exactly once.
+#[tokio::test]
+async fn test_upload_server_ready_timeout_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    // FileUploadState that is NEVER signalled (no SERVER_READY), so the
+    // wait_until_data_ready timeout branch is driven.
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    // The dedicated upload session must be torn down on the SERVER_READY
+    // timeout path (mirroring the body-length mismatch cleanup), so the mock
+    // expects `close` to be called exactly once.
+    let mut upload_cluster = upload_cluster();
+    upload_cluster
+        .expect_close()
+        .times(1)
+        .returning(|_| Box::pin(async {}));
+    let upload_cluster = Arc::new(upload_cluster);
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let http_state = AppState {
+        db,
+        cluster_manager: Arc::new(manager),
+        file_list_map: Arc::new(dashmap::DashMap::new()),
+        jwt_secrets: std::sync::Arc::new(common::test_jwt_secrets()),
+        client_timeout_seconds: Some(1),
+    };
+    let app = create_router(http_state);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.bin"
+                ))
+                .header("authorization", &token)
+                .header("content-length", "100")
+                .body(Body::from(vec![0u8; 100]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&body),
+        "Remote cluster took too long to respond.",
+        "Timeout body should match expected error message"
+    );
+}
+
 // ===========================================================================
 // 7. FILE DOWNLOAD ERROR — cluster sends FILE_ERROR message
 //
