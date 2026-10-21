@@ -49,6 +49,7 @@ fn default_connection_type() -> String {
 /// - The file cannot be read
 /// - The JSON is invalid
 /// - Two or more clusters share the same name
+/// - A cluster has an empty `ltk`
 pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
     let configs: Vec<ClusterConfig> = super::load_json_file!(
         path,
@@ -63,6 +64,11 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
                 config.name,
                 i + 1
             );
+        }
+        if let Some(ltk) = config.ltk.as_deref()
+            && ltk.is_empty()
+        {
+            anyhow::bail!("cluster config entry #{} has empty 'ltk'", i + 1);
         }
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
@@ -157,6 +163,29 @@ mod tests {
         let err = load_cluster_configs(&config_path).unwrap_err();
         assert!(
             err.to_string().contains("duplicate cluster name 'ozstar'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_ltk() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "ltk-cluster",
+                "host": "cluster.example.com",
+                "username": "jobclient",
+                "path": "/path/to/client",
+                "ltk": ""
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'ltk'"),
             "unexpected error: {err}"
         );
     }
