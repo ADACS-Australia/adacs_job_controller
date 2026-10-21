@@ -746,6 +746,10 @@ impl Cluster {
             // truncated entry; drop it rather than recording a corrupted entry
             // with an empty filename.
             let Some(file_name) = message.try_pop_string() else {
+                tracing::warn!(
+                    "Cluster[{}]: Truncated FILE_LIST entry (file_name length prefix exceeds remaining bytes)",
+                    self.name()
+                );
                 break;
             };
             // A valid entry needs 1 byte for `is_directory` plus 8 bytes for
@@ -753,6 +757,10 @@ impl Cluster {
             // remain, the final entry is truncated; drop it rather than
             // recording a corrupted entry with defaulted `is_directory`/`file_size`.
             if message.remaining() < 9 {
+                tracing::warn!(
+                    "Cluster[{}]: Truncated FILE_LIST entry (fewer than 9 bytes remain for is_directory and file_size)",
+                    self.name()
+                );
                 break;
             }
             let is_directory = message.pop_bool();
