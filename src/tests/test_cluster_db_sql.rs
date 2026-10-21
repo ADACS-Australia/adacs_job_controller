@@ -583,6 +583,51 @@ async fn test_handle_job_get_by_job_id_cluster_scoping() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_JOB_GET_BY_JOB_ID — truncated request dropped
+// ---------------------------------------------------------------------------
+
+/// Verifies that a truncated `DB_JOB_GET_BY_JOB_ID` (fewer than 12 bytes of
+/// fixed-size request fields) is dropped rather than querying with defaulted 0
+/// values and emitting an uncorrelatable `DB_RESPONSE`.
+///
+/// # Setup
+/// In-memory DB with one cluster job row with `job_id=77`.
+///
+/// # Act
+/// Dispatch a `DB_JOB_GET_BY_JOB_ID` message with only `db_request_id` present
+/// (4 bytes) but no `job_id` (fewer than the 12 bytes required for
+/// `db_request_id` + `job_id`).
+///
+/// # Assert
+/// The handler is recognized but sends no `DB_RESPONSE`: the message is dropped.
+#[tokio::test]
+async fn test_handle_job_get_by_job_id_drops_truncated() {
+    let db = make_cluster_db().await;
+
+    insert_cluster_job_row(&db, 77, 0, false, 0, "h1", "/d1", false, "ozstar").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+
+    // Build a raw message with only 4 bytes of the fixed-size request fields
+    // (db_request_id) — fewer than the 12 bytes required for db_request_id + job_id.
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&(SYSTEM_SOURCE.len() as u64).to_le_bytes());
+    raw.extend_from_slice(SYSTEM_SOURCE.as_bytes());
+    raw.extend_from_slice(&DB_JOB_GET_BY_JOB_ID.to_le_bytes());
+    raw.extend_from_slice(&900u32.to_le_bytes()); // db_request_id
+
+    let mut msg = Message::from_bytes(raw);
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "truncated message should be dropped without sending a response"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // DB_JOB_GET_RUNNING_JOBS — mixed running/non-running
 // ---------------------------------------------------------------------------
 
@@ -667,6 +712,50 @@ async fn test_handle_job_delete() {
 
     let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 600);
+}
+
+// ---------------------------------------------------------------------------
+// DB_JOB_DELETE — truncated request dropped
+// ---------------------------------------------------------------------------
+
+/// Verifies that a truncated `DB_JOB_DELETE` (fewer than 12 bytes of fixed-size
+/// request fields) is dropped rather than deleting with a defaulted 0 id and
+/// emitting an uncorrelatable `DB_RESPONSE`.
+///
+/// # Setup
+/// In-memory DB with one pre-inserted cluster job row (`job_id=88`).
+///
+/// # Act
+/// Dispatch a `DB_JOB_DELETE` message with only `db_request_id` present (4 bytes)
+/// but no id (fewer than the 12 bytes required for `db_request_id` + id).
+///
+/// # Assert
+/// The handler is recognized but sends no `DB_RESPONSE`: the message is dropped.
+#[tokio::test]
+async fn test_handle_job_delete_drops_truncated() {
+    let db = make_cluster_db().await;
+
+    insert_cluster_job_row(&db, 88, 0, false, 0, "", "", false, "ozstar").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+
+    // Build a raw message with only 4 bytes of the fixed-size request fields
+    // (db_request_id) — fewer than the 12 bytes required for db_request_id + id.
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&(SYSTEM_SOURCE.len() as u64).to_le_bytes());
+    raw.extend_from_slice(SYSTEM_SOURCE.as_bytes());
+    raw.extend_from_slice(&DB_JOB_DELETE.to_le_bytes());
+    raw.extend_from_slice(&600u32.to_le_bytes()); // db_request_id
+
+    let mut msg = Message::from_bytes(raw);
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "truncated message should be dropped without sending a response"
+    );
 }
 
 // ---------------------------------------------------------------------------
