@@ -804,10 +804,10 @@ pub async fn upload_file(
         );
         fu_state.error.store(true, Ordering::Release);
         *fu_state.error_details.lock().await = ERR_CLUSTER_TIMEOUT.to_string();
-        // Tear down the dedicated upload session so the file_upload_map entry
-        // is removed and the remote cluster is not left waiting, mirroring the
-        // body-length mismatch cleanup.
-        upload_cluster.close(false).await;
+        // Teardown (map removal + session close) is performed by the
+        // `check_upload_error` guard immediately below, which is guaranteed to
+        // observe the error recorded here. Closing the session here as well
+        // would call `close()` twice on the same dedicated upload session.
     }
 
     if let Err(e) = check_upload_error(&fu_state).await {
