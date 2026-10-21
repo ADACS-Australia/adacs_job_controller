@@ -129,7 +129,17 @@ pub async fn run_remote_client(config: &ClusterConfig, token: &str) -> Result<()
 /// Shared by the SSH and Kerberos connection paths so the command string
 /// (working directory, environment setup, binary name, token) stays in one place.
 fn build_remote_client_command(path: &str, token: &str) -> String {
-    format!("cd {path} && source env.sh && ./adacs_job_client {token}")
+    format!(
+        "cd {} && source env.sh && ./adacs_job_client {}",
+        shell_quote(path),
+        shell_quote(token)
+    )
+}
+
+/// Wrap a value in single quotes so it is passed literally to the remote shell,
+/// escaping any embedded single quote as `'\''`.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError> {
@@ -606,7 +616,15 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
     fn build_remote_client_command_constructs_expected_string() {
         assert_eq!(
             build_remote_client_command("/srv/adacs", "secret-token"),
-            "cd /srv/adacs && source env.sh && ./adacs_job_client secret-token"
+            "cd '/srv/adacs' && source env.sh && ./adacs_job_client 'secret-token'"
+        );
+    }
+
+    #[test]
+    fn build_remote_client_command_quotes_path_with_spaces() {
+        assert_eq!(
+            build_remote_client_command("/srv/adacs cluster", "secret-token"),
+            "cd '/srv/adacs cluster' && source env.sh && ./adacs_job_client 'secret-token'"
         );
     }
 
