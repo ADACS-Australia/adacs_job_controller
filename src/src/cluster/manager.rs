@@ -1007,6 +1007,14 @@ impl ClusterManagerTrait for ClusterManager {
     }
 
     fn handle_pong(&self, conn_id: ConnectionId) {
+        // Ignore pongs for connections no longer present in `connection_map`
+        // (e.g. evicted by `check_pings`). Re-creating tracking entries here
+        // for a dead conn_id would leak them, since `check_pings` only ever
+        // revisits entries that have a `ping_times` entry.
+        if !self.connection_map.contains_key(&conn_id) {
+            return;
+        }
+
         let now = std::time::Instant::now();
         self.pong_times.insert(conn_id, now);
         self.missed_pongs.insert(conn_id, 0);
@@ -1527,5 +1535,19 @@ mod tests {
     fn test_constant_time_eq_differing_at_last_byte() {
         assert!(!constant_time_eq("secret-ltk", "secret-lta"));
         assert!(!constant_time_eq("abc", "abd"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_pong_ignores_unknown_conn_id() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
+
+        let unknown_conn_id = 9999;
+        assert!(manager.connection_map.get(&unknown_conn_id).is_none());
+
+        manager.handle_pong(unknown_conn_id);
+
+        assert!(manager.pong_times.get(&unknown_conn_id).is_none());
+        assert!(manager.missed_pongs.get(&unknown_conn_id).is_none());
     }
 }
