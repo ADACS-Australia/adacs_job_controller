@@ -906,4 +906,23 @@ mod tests {
 
         handle_job_get_running_jobs(&mut msg, &cluster, &db).await;
     }
+
+    #[tokio::test]
+    async fn test_truncated_get_by_id_is_dropped() {
+        use crate::cluster::traits::MockClusterTrait;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let mut cluster = MockClusterTrait::new();
+        cluster.expect_name().returning(|| "test".to_string());
+        cluster.expect_send_message().never();
+
+        // A DB_JOB_GET_BY_ID with fewer than 12 bytes of payload is
+        // truncated; the handler must drop it without sending a DB_RESPONSE.
+        let mut msg = Message::new(DB_JOB_GET_BY_ID, Priority::Highest, SYSTEM_SOURCE);
+        msg.push_ubyte(0);
+        msg.push_ubyte(0);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        handle_job_get_by_id(&mut msg, &cluster, &db).await;
+    }
 }
