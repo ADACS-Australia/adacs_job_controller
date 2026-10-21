@@ -32,6 +32,21 @@ type FileDownloadAdmissionContext = (
     Arc<Cluster>,
 );
 
+/// Constant-time string equality for comparing secrets (e.g. the LTK bearer
+/// credential). Accumulates the XOR of every byte over the shorter length,
+/// then folds the length difference into the result, so the time taken does
+/// not reveal the length of the matching prefix.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    let len = a.len().min(b.len());
+    let mut diff = a.len() ^ b.len();
+    for i in 0..len {
+        diff |= usize::from(a[i] ^ b[i]);
+    }
+    diff == 0
+}
+
 /// `ClusterManager` manages the lifecycle of all cluster connections.
 ///
 /// It handles:
@@ -838,7 +853,7 @@ impl ClusterManagerTrait for ClusterManager {
         let clusters = self.clusters.read().await;
         for (cluster_name, cluster) in clusters.iter() {
             if let Some(configured_ltk) = &cluster.cluster_details().ltk
-                && configured_ltk == token
+                && constant_time_eq(configured_ltk, token)
             {
                 // LTK match found - check for duplicate connection (security)
                 if cluster.is_online() {
@@ -1430,5 +1445,24 @@ mod tests {
         // Should not panic
         mock.handle_pong(1);
         mock.handle_pong(2);
+    }
+
+    #[test]
+    fn test_constant_time_eq_equal_strings() {
+        assert!(constant_time_eq("secret-ltk", "secret-ltk"));
+        assert!(constant_time_eq("", ""));
+    }
+
+    #[test]
+    fn test_constant_time_eq_different_lengths() {
+        assert!(!constant_time_eq("secret-ltk", "secret-ltk-longer"));
+        assert!(!constant_time_eq("longer-secret", "secret"));
+        assert!(!constant_time_eq("", "a"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_differing_at_last_byte() {
+        assert!(!constant_time_eq("secret-ltk", "secret-lta"));
+        assert!(!constant_time_eq("abc", "abd"));
     }
 }
