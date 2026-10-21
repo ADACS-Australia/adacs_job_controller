@@ -561,6 +561,17 @@ async fn handle_jobstatus_delete_by_id_list(
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
+    // A valid delete-by-id-list request needs at least 8 bytes for the
+    // fixed-size fields (db_request_id + count). If fewer remain, the message
+    // is truncated; drop it rather than emitting an uncorrelatable
+    // DB_RESPONSE with a defaulted 0 request id.
+    if message.remaining() < 8 {
+        tracing::warn!(
+            "Cluster[{}]: Dropping truncated DB_JOBSTATUS_DELETE_BY_ID_LIST (fewer than 8 bytes remain for request fields)",
+            cluster.name()
+        );
+        return;
+    }
     let db_request_id = message.pop_uint();
     let count = message.pop_uint();
 

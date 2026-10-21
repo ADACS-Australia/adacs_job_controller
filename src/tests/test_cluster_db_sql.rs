@@ -1106,6 +1106,39 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
     assert_eq!(req_id, 1000);
 }
 
+/// Verifies that a truncated `DB_JOBSTATUS_DELETE_BY_ID_LIST` with fewer than 8
+/// payload bytes (the fixed-size header fields `db_request_id` + `count`) is
+/// dropped rather than emitting an uncorrelatable `DB_RESPONSE` with a
+/// defaulted `db_request_id=0`.
+///
+/// # Setup
+/// In-memory DB with no rows required.
+///
+/// # Act
+/// Dispatch `DB_JOBSTATUS_DELETE_BY_ID_LIST` with only 4 payload bytes
+/// (a single `db_request_id`), leaving fewer than 8 bytes for the header.
+///
+/// # Assert
+/// The message is handled but no `DB_RESPONSE` is sent.
+#[tokio::test]
+async fn test_handle_jobstatus_delete_by_id_list_truncated_header_drops() {
+    let db = make_cluster_db().await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_DELETE_BY_ID_LIST, |m| {
+        m.push_uint(1000); // only 4 bytes — truncated header
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let captured = sent.lock().unwrap();
+    assert!(
+        captured.is_empty(),
+        "no DB_RESPONSE should be sent for a truncated DB_JOBSTATUS_DELETE_BY_ID_LIST"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // DB_BUNDLE_CREATE_OR_UPDATE_JOB — new bundle
 // ---------------------------------------------------------------------------
