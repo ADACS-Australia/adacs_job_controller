@@ -41,6 +41,16 @@ pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
                 i + 1
             );
         }
+        if secret.secret.is_empty() {
+            anyhow::bail!(
+                "empty secret for access secret '{}' (entry #{})",
+                secret.name,
+                i + 1
+            );
+        }
+        if secret.name.is_empty() {
+            anyhow::bail!("empty name in access secrets (entry #{})", i + 1);
+        }
         tracing::trace!(
             "Secret #{}: name='{}', clusters={:?}, applications={:?}",
             i + 1,
@@ -122,6 +132,45 @@ mod tests {
         let err = load_access_secrets(&config_path).unwrap_err();
         assert!(
             err.to_string().contains("duplicate secret name 'app1'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_access_secrets_empty_secret() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("access_secrets.json");
+        std::fs::write(
+            &config_path,
+            r#"[
+                {"name": "app1", "secret": "", "applications": ["a"], "clusters": ["c1"]}
+            ]"#,
+        )
+        .unwrap();
+
+        let err = load_access_secrets(&config_path).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("empty secret for access secret 'app1'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_access_secrets_empty_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("access_secrets.json");
+        std::fs::write(
+            &config_path,
+            r#"[
+                {"name": "", "secret": "s1", "applications": ["a"], "clusters": ["c1"]}
+            ]"#,
+        )
+        .unwrap();
+
+        let err = load_access_secrets(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty name in access secrets"),
             "unexpected error: {err}"
         );
     }
