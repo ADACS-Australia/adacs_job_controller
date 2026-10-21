@@ -3030,6 +3030,38 @@ mod tests {
         assert!(!locked.error_details.is_empty());
     }
 
+    /// Verifies that a `FILE_LIST_ERROR` whose `uuid` length prefix claims more
+    /// bytes than remain is dropped without recording an error or setting
+    /// `data_ready` on any `FileListState`.
+    #[tokio::test]
+    async fn test_file_list_error_truncated_uuid_is_dropped() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect(crate::test_support::SQLITE_IN_MEMORY_CONNECTION_FAILED);
+        let file_list_map: Arc<DashMap<String, Arc<tokio::sync::Mutex<FileListState>>>> =
+            Arc::new(DashMap::new());
+        let app_context = Arc::new(AppContext {
+            db,
+            file_list_map: Arc::clone(&file_list_map),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        let uuid = "file-list-error-uuid-truncated";
+        let state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
+        file_list_map.insert(uuid.to_string(), Arc::clone(&state));
+
+        let mut msg = Message::new(FILE_LIST_ERROR, Priority::Lowest, TEST_CLUSTER);
+        // Claim more uuid bytes than remain in the message.
+        msg.push_ulong(1000);
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_file_list_error(&mut msg).await;
+
+        let locked = state.lock().await;
+        assert!(!locked.error);
+        assert!(!locked.data_ready);
+    }
+
     /// Verifies that `handle_file_list_response` returns without panicking or
     /// mutating state when there is no matching `FileListState` (unknown UUID or
     /// missing app context).
