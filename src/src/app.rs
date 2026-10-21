@@ -238,8 +238,14 @@ async fn wait_for_shutdown_signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let mut sigint = signal(SignalKind::interrupt()).expect("install SIGINT handler");
-        let mut sigterm = signal(SignalKind::terminate()).expect("install SIGTERM handler");
+        let Ok(mut sigint) = signal(SignalKind::interrupt()) else {
+            tracing::warn!("Failed to install SIGINT handler; proceeding with shutdown");
+            return;
+        };
+        let Ok(mut sigterm) = signal(SignalKind::terminate()) else {
+            tracing::warn!("Failed to install SIGTERM handler; proceeding with shutdown");
+            return;
+        };
         tokio::select! {
             _ = sigint.recv() => tracing::info!("Received SIGINT, beginning bounded shutdown"),
             _ = sigterm.recv() => tracing::info!("Received SIGTERM, beginning bounded shutdown"),
