@@ -659,6 +659,30 @@ async fn test_cancel_job_not_found_returns_400() {
     assert!(body.contains("did not exist"), "body: {body}");
 }
 
+/// Tests that cancelling a job that exists but has no history rows returns 400
+/// with `"No history for job"`, exercising the `get_latest_job_history`
+/// error branch that no other cancel test drives (all others insert history).
+///
+/// # Setup
+/// Inserts a job via `insert_test_job` (no history row). Wires an online cluster.
+///
+/// # Act
+/// Sends PATCH /job/apiv1/job/ (cancel) with the job ID.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "No history for job".
+#[tokio::test]
+async fn test_cancel_job_no_history_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let (manager, _) = manager_with_online_cluster();
+    let (status, body) = run_cancel(job_id, &db, manager).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("No history for job"), "body: {body}");
+}
+
 /// Tests that cancelling a job whose ID exceeds `u32::MAX` returns 400 instead of
 /// silently truncating the job ID in the `CANCEL_JOB` message.
 ///
@@ -1058,6 +1082,30 @@ async fn test_delete_job_job_id_exceeding_u32_returns_400() {
         body.contains("exceeds maximum supported value"),
         "body: {body}"
     );
+}
+
+/// Tests that deleting a job that exists but has no history rows returns 400
+/// with `"No history for job"`, exercising the `get_latest_job_history`
+/// error branch that no other delete test drives (all others insert history).
+///
+/// # Setup
+/// Inserts a job via `insert_test_job` (no history row). Wires an online cluster.
+///
+/// # Act
+/// Sends DELETE /job/apiv1/job/ with the job ID.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "No history for job".
+#[tokio::test]
+async fn test_delete_job_no_history_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let (manager, _) = manager_with_online_cluster();
+    let (status, body) = run_delete(job_id, &db, manager).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body.contains("No history for job"), "body: {body}");
 }
 
 /// Tests that deleting a job during application shutdown returns 503 without
