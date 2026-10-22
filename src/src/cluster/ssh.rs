@@ -629,6 +629,14 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
     }
 
     #[test]
+    fn build_remote_client_command_escapes_single_quote_in_path() {
+        assert_eq!(
+            build_remote_client_command("/srv/adacs user's_dir", "secret-token"),
+            "cd '/srv/adacs user'\\''s_dir' && source env.sh && ./adacs_job_client 'secret-token'"
+        );
+    }
+
+    #[test]
     fn kerberos_keytab_env_is_scoped_to_child_command() {
         // SAFETY: Test-only cleanup to guarantee a clean baseline; the test
         // process is single-threaded at this point.
