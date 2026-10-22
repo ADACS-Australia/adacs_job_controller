@@ -65,6 +65,18 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
                 i + 1
             );
         }
+        if config.name.is_empty() {
+            anyhow::bail!("cluster config entry #{} has empty 'name'", i + 1);
+        }
+        if config.host.is_empty() {
+            anyhow::bail!("cluster config entry #{} has empty 'host'", i + 1);
+        }
+        if config.username.is_empty() {
+            anyhow::bail!("cluster config entry #{} has empty 'username'", i + 1);
+        }
+        if config.path.is_empty() {
+            anyhow::bail!("cluster config entry #{} has empty 'path'", i + 1);
+        }
         if let Some(ltk) = config.ltk.as_deref()
             && ltk.is_empty()
         {
@@ -186,6 +198,94 @@ mod tests {
         let err = load_cluster_configs(&config_path).unwrap_err();
         assert!(
             err.to_string().contains("empty 'ltk'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "",
+                "host": "cluster.example.com",
+                "username": "jobclient",
+                "path": "/path/to/client"
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'name'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_host() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "cluster1",
+                "host": "",
+                "username": "jobclient",
+                "path": "/path/to/client"
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'host'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_username() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "cluster1",
+                "host": "cluster.example.com",
+                "username": "",
+                "path": "/path/to/client"
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'username'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "cluster1",
+                "host": "cluster.example.com",
+                "username": "jobclient",
+                "path": ""
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'path'"),
             "unexpected error: {err}"
         );
     }
