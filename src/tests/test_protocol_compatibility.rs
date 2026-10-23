@@ -36,7 +36,7 @@ fn test_submit_job_message_exact_bytes() {
     msg.push_string("my_bundle");
     msg.push_string("--param1 value1");
 
-    let data = msg.data().to_vec();
+    let data = msg.into_data();
     // Parse it back and verify every field
     let mut parsed = Message::from_bytes(data);
     assert_eq!(parsed.source(), source);
@@ -61,7 +61,7 @@ fn test_submit_job_message_exact_bytes() {
 fn test_submit_job_header_byte_layout() {
     let source = SUBMIT_JOB_SOURCE;
     let msg = Message::new(SUBMIT_JOB, Priority::Medium, source);
-    let data = msg.data();
+    let data = msg.into_data();
 
     // Byte layout of source string: 8-byte LE length prefix + UTF-8 bytes
     let expected_source_len = source.len() as u64;
