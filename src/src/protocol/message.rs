@@ -98,12 +98,6 @@ impl Message {
     }
 
     #[must_use]
-    #[allow(dead_code)]
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-
-    #[must_use]
     pub fn into_data(self) -> Vec<u8> {
         self.data
     }
@@ -538,9 +532,9 @@ mod tests {
     fn test_uint_byte_layout_little_endian() {
         let mut msg = Message::new(1, Priority::Lowest, "");
         // After header: empty-string length (8 bytes of 0) + msg_id (1 as LE u32)
-        let header_len = msg.data().len();
+        let header_len = msg.data.len();
         msg.push_uint(0x1234_5678);
-        let data = msg.data();
+        let data = &msg.data;
         // The 4 bytes after the header should be [0x78, 0x56, 0x34, 0x12]
         assert_eq!(data[header_len], 0x78);
         assert_eq!(data[header_len + 1], 0x56);
@@ -561,9 +555,9 @@ mod tests {
     #[test]
     fn test_ulong_byte_layout_little_endian() {
         let mut msg = Message::new(1, Priority::Lowest, "");
-        let header_len = msg.data().len();
+        let header_len = msg.data.len();
         msg.push_ulong(0x0102_0304_0506_0708);
-        let data = msg.data();
+        let data = &msg.data;
         assert_eq!(data[header_len], 0x08);
         assert_eq!(data[header_len + 1], 0x07);
         assert_eq!(data[header_len + 2], 0x06);
@@ -587,9 +581,9 @@ mod tests {
     #[test]
     fn test_string_byte_layout() {
         let mut msg = Message::new(1, Priority::Lowest, "");
-        let header_len = msg.data().len();
+        let header_len = msg.data.len();
         msg.push_string("AB");
-        let data = msg.data();
+        let data = &msg.data;
         // Length prefix: 2 as u64 LE = [0x02, 0, 0, 0, 0, 0, 0, 0]
         assert_eq!(data[header_len], 0x02);
         for i in 1..8 {
@@ -620,14 +614,14 @@ mod tests {
         assert_eq!(msg.priority(), Priority::Medium);
 
         // Verify the raw data starts with the source string and then msg_id
-        let data = msg.data();
+        let data = msg.into_data();
         // Source: length prefix (8 bytes) + "system" (6 bytes) = 14 bytes
         // Then msg_id: 4 bytes LE
         // Total header: 18 bytes
         assert!(data.len() >= 18);
 
         // Parse back to verify
-        let msg2 = Message::from_bytes(data.to_vec());
+        let msg2 = Message::from_bytes(data);
         assert_eq!(msg2.source(), SYSTEM_SOURCE);
         assert_eq!(msg2.id(), 2000);
     }
