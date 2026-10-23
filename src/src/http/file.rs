@@ -32,6 +32,11 @@ use crate::utils::uuid::generate_uuid;
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
 const BAD_REQUEST_MSG: &str = "Bad Request";
 
+/// Maximum number of file paths accepted in a single `create_file_download`
+/// request, bounding the number of `file_download` rows created in one
+/// transaction and the size of the response body.
+pub const MAX_FILE_PATHS: usize = 1000;
+
 pub const UPLOAD_ID_KEY: &str = "uploadId";
 const FILE_IDS_KEY: &str = "fileIds";
 
@@ -177,6 +182,15 @@ pub async fn create_file_download(
         .into_iter()
         .filter(|p| !p.trim().is_empty())
         .collect();
+
+    if file_paths.len() > MAX_FILE_PATHS {
+        tracing::warn!(
+            "HTTP: File download rejected - too many paths ({} > {})",
+            file_paths.len(),
+            MAX_FILE_PATHS
+        );
+        return Err((StatusCode::BAD_REQUEST, "too many paths".to_string()));
+    }
 
     if file_paths.is_empty() {
         tracing::debug!("HTTP: Empty file paths list - returning empty response");
