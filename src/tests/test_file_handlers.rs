@@ -19,7 +19,7 @@ use adacs_job_controller::cluster::file_download::{DownloadSession, FileDownload
 use adacs_job_controller::cluster::file_upload::FileUploadState;
 use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::db::entities::{file_download, file_list_cache};
-use adacs_job_controller::http::file::{FILE_ID_KEY, UPLOAD_ID_KEY};
+use adacs_job_controller::http::file::{FILE_ID_KEY, MAX_FILE_PATHS, UPLOAD_ID_KEY};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::http::utils::CONTENT_TYPE_HEADER;
 use adacs_job_controller::protocol::constants::*;
@@ -513,6 +513,56 @@ async fn test_create_file_download_rejects_empty_paths() {
     let records = file_download::Entity::find().all(&db).await.unwrap();
     assert_eq!(records.len(), 1, "no empty-path records should exist");
     assert_eq!(records[0].path, "/valid.txt");
+}
+
+/// Tests that POST /file/ rejects a `paths` array larger than the configured
+/// bound with 400, bounding the number of `file_download` rows created in a
+/// single transaction and the size of the response body.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with a `paths` array of `MAX_FILE_PATHS + 1`
+/// entries.
+///
+/// # Assert
+/// Verifies 400 Bad Request and that no `file_download` row was created.
+#[tokio::test]
+async fn test_create_file_download_too_many_paths_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let manager = manager_with_online_cluster_no_messages();
+    let app = make_app(db.clone(), manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let paths: Vec<String> = (0..=MAX_FILE_PATHS)
+        .map(|i| format!("/file-{i}.txt"))
+        .collect();
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({ "jobId": job_id, "paths": paths }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let records = file_download::Entity::find().all(&db).await.unwrap();
+    assert!(
+        records.is_empty(),
+        "no file_download row should be created when the path bound is exceeded"
+    );
 }
 
 /// Tests that POST /file/ with a job ID exceeding `u32::MAX` returns 400 and
