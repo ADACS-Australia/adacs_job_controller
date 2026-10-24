@@ -730,6 +730,8 @@ pub async fn upload_file(
         ));
     }
 
+    const MAX_TARGET_PATH_LEN: usize = 10_000;
+
     let target_path = params.target_path.ok_or_else(|| {
         tracing::warn!("HTTP: File upload rejected - missing targetPath parameter");
         (
@@ -737,6 +739,14 @@ pub async fn upload_file(
             "targetPath parameter is required".to_string(),
         )
     })?;
+    if target_path.len() > MAX_TARGET_PATH_LEN {
+        tracing::warn!(
+            "HTTP: File upload rejected - targetPath too long ({} > {})",
+            target_path.len(),
+            MAX_TARGET_PATH_LEN
+        );
+        return Err((StatusCode::BAD_REQUEST, "targetPath too long".to_string()));
+    }
     tracing::trace!("HTTP: Target path: {}", target_path);
 
     let content_length: u64 = request
