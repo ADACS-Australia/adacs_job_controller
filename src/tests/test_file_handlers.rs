@@ -3179,6 +3179,47 @@ async fn test_create_download_no_jobid_missing_bundle_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Tests that the no-jobId path with a bundle longer than `MAX_BUNDLE_LEN` (10,000) returns 400.
+///
+/// # Setup
+/// Empty DB. Uses multi-secret config. Wires an online cluster.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with `{"cluster": "ozstar", "bundle": "<10001 chars>", "path": "/test/path"}`.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "bundle too long".
+#[tokio::test]
+async fn test_create_download_no_jobid_bundle_too_long_returns_400() {
+    let (app, _db, token) = no_jobid_download_app(true, 0).await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header("authorization", &token)
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .body(Body::from(
+                    serde_json::json!({
+                        "cluster": "ozstar",
+                        "bundle": "b".repeat(10_001),
+                        "path": "/test/path"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body.contains("bundle too long"));
+}
+
 /// Tests that app4 (no clusters) gets 400 on the no-jobId path.
 ///
 /// # Setup
