@@ -330,6 +330,10 @@ pub async fn get_jobs(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<JobQueryParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // Cap the number of (what, state) pairs accepted by the jobSteps filter so an
+    // arbitrarily long value cannot force an unbounded OR-condition query.
+    const MAX_JOB_STEPS: usize = 1000;
+
     // Application shutdown: reject new reads with 503 before touching the DB,
     // matching the guard used by every other HTTP handler.
     if state.cluster_manager.is_application_shutting_down() {
@@ -435,6 +439,17 @@ pub async fn get_jobs(
         if steps.is_empty() {
             // A malformed or blank filter (e.g. no valid (what, state) pairs) must not widen the result set.
             return Ok(Json(serde_json::json!([])));
+        }
+        if steps.len() > MAX_JOB_STEPS {
+            tracing::warn!(
+                "HTTP: get_jobs rejected - jobSteps filter too long ({} > {})",
+                steps.len(),
+                MAX_JOB_STEPS
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("jobSteps filter exceeds maximum of {MAX_JOB_STEPS} pairs"),
+            ));
         }
         let mut step_cond = Condition::any();
         for (what, sv) in &steps {
