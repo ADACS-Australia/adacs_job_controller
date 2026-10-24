@@ -2279,6 +2279,59 @@ async fn test_upload_file_no_target_path_returns_400() {
     assert!(String::from_utf8_lossy(&body).contains("targetPath"));
 }
 
+/// Tests that PUT /file/upload/ with an oversized `targetPath` returns 400 before
+/// any cluster resolution or wire message is built.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster.
+///
+/// # Act
+/// Sends PUT /job/apiv1/file/upload/ with a `targetPath` longer than the maximum
+/// allowed length.
+///
+/// # Assert
+/// Verifies 400 Bad Request and that no cluster is resolved and no upload
+/// session is created.
+#[tokio::test]
+async fn test_upload_file_oversized_target_path_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let mut manager = MockClusterManagerTrait::new();
+    // The targetPath bound is enforced before cluster resolution, so no cluster
+    // lookup or upload session should ever be performed.
+    manager.expect_get_cluster_by_name().never();
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_create_file_upload().never();
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let oversized = "a".repeat(10_001);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath={oversized}"
+                ))
+                .header("authorization", &token)
+                .header("content-length", "10")
+                .body(Body::from("0123456789"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("targetPath"));
+}
+
 /// Tests that PUT /file/upload/ for a job whose ID exceeds `u32::MAX` returns 400
 /// instead of silently truncating the job ID in the `UPLOAD_FILE` message.
 ///
