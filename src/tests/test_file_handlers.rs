@@ -2830,6 +2830,108 @@ async fn test_upload_file_server_error_returns_400() {
     assert!(String::from_utf8_lossy(&body).contains("Cluster rejected upload"));
 }
 
+/// Verifies the handler returns 400 and tears down the dedicated upload session
+/// when the cluster never confirms upload completion (the post-`FILE_UPLOAD_COMPLETE`
+/// confirm-timeout branch).
+///
+/// # Setup
+/// Signals `SERVER_READY` (`data_ready=true`) so the handler proceeds past the
+/// first wait, but never sets `complete` or `error`. Uses a 1-second
+/// `client_timeout_seconds` so the confirm timeout fires quickly.
+///
+/// # Act
+/// Sends a PUT upload request with 100 bytes of body.
+///
+/// # Assert
+/// Response is 400 Bad Request with body containing "Upload completion
+/// confirmation timeout", and the upload cluster's `close` was called exactly
+/// once and `remove_file_upload` was called.
+#[tokio::test]
+async fn test_upload_completion_confirm_timeout_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    // FileUploadState that signals SERVER_READY but NEVER sets complete or
+    // error, so the post-FILE_UPLOAD_COMPLETE confirm timeout branch is driven.
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+
+    // The dedicated upload session must be torn down on the confirm-timeout
+    // path (mirroring the body-length mismatch cleanup), so the mock expects
+    // `close` to be called exactly once.
+    let mut upload_cluster = upload_cluster();
+    upload_cluster
+        .expect_close()
+        .times(1)
+        .returning(|_| Box::pin(async {}));
+    let upload_cluster = Arc::new(upload_cluster);
+
+    let uc = Arc::clone(&upload_cluster);
+    let mut manager = MockClusterManagerTrait::new();
+    let cm = Arc::clone(&cluster_main);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(cm.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    manager.expect_create_file_upload().returning(move |_, _| {
+        let c = Arc::clone(&uc);
+        Box::pin(async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> })
+    });
+    manager
+        .expect_get_file_upload()
+        .returning(move |_| Some(Arc::clone(&fu_for_manager)));
+    manager
+        .expect_remove_file_upload()
+        .times(1)
+        .returning(|_| ());
+
+    let http_state = adacs_job_controller::app::AppState {
+        db,
+        cluster_manager: Arc::new(manager),
+        file_list_map: Arc::new(dashmap::DashMap::new()),
+        jwt_secrets: std::sync::Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: Some(1),
+    };
+    let app = create_router(http_state);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                ))
+                .header("authorization", &token)
+                .header("content-length", "100")
+                .body(Body::from(vec![0u8; 100]))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("Upload completion confirmation timeout"),
+        "Error should mention the completion confirmation timeout: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
 /// Tests that PUT /file/upload/ returns 400 when the upload session is missing
 /// after the upload record resolves (cluster online, session not found).
 ///
