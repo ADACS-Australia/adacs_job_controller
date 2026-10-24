@@ -330,6 +330,7 @@ pub async fn get_jobs(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<JobQueryParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    const MAX_JOB_IDS_FILTER: usize = 1000;
     // Application shutdown: reject new reads with 503 before touching the DB,
     // matching the guard used by every other HTTP handler.
     if state.cluster_manager.is_application_shutting_down() {
@@ -388,6 +389,17 @@ pub async fn get_jobs(
                 return Ok(Json(serde_json::json!([])));
             }
         };
+        if ids.len() > MAX_JOB_IDS_FILTER {
+            tracing::warn!(
+                "HTTP: get_jobs rejected - too many jobIds ({} > {})",
+                ids.len(),
+                MAX_JOB_IDS_FILTER
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("too many jobIds (max {MAX_JOB_IDS_FILTER})"),
+            ));
+        }
         if !ids.is_empty() {
             job_query = job_query.filter(job::Column::Id.is_in(ids));
         }

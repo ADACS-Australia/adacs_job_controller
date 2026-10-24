@@ -1211,6 +1211,64 @@ async fn test_get_jobs_with_job_ids_filter() {
     assert_eq!(jobs[0]["id"].as_i64().unwrap(), job1);
 }
 
+/// Tests that an over-limit jobIds list is rejected with 400 Bad Request.
+///
+/// # Setup
+/// Empty database.
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?jobIds=1,2,...,1001 (more than the bound).
+///
+/// # Assert
+/// Verifies 400 Bad Request (the unbounded IN clause is bounded).
+#[tokio::test]
+async fn test_get_jobs_too_many_job_ids_returns_400() {
+    let db = setup_test_db().await;
+    let manager = mock_cluster_manager_no_clusters();
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let ids: Vec<String> = (1..=1001).map(|i| i.to_string()).collect();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/job/?jobIds={}", ids.join(",")))
+                .header("authorization", &token)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Tests that a normal multi-ID jobIds list still returns the matching jobs.
+///
+/// # Setup
+/// Inserts two jobs (job1=Pending, job2=Running).
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?jobIds={job1},{job2}.
+///
+/// # Assert
+/// Verifies both jobs are returned.
+#[tokio::test]
+async fn test_get_jobs_with_multiple_job_ids_still_works() {
+    let db = setup_test_db().await;
+    let job1 = insert_test_job(&db, "ozstar", "b1", "testapp").await;
+    insert_job_history(&db, job1, JobStatus::Pending as i32, "system").await;
+    let job2 = insert_test_job(&db, "ozstar", "b2", "testapp").await;
+    insert_job_history(&db, job2, JobStatus::Running as i32, "system").await;
+
+    let body = get_jobs_with_query(db, &format!("?jobIds={job1},{job2}")).await;
+
+    let jobs = body.as_array().unwrap();
+    assert_eq!(jobs.len(), 2);
+}
+
 /// Tests that providing both startTimeGt and startTimeLt together returns 400.
 ///
 /// # Setup
