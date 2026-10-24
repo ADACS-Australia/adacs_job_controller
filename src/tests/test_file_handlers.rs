@@ -2279,6 +2279,65 @@ async fn test_upload_file_no_target_path_returns_400() {
     assert!(String::from_utf8_lossy(&body).contains("targetPath"));
 }
 
+/// Tests that PUT /file/upload/ with a `Content-Length` above the max upload
+/// size is rejected with 413 before an upload session is created.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster.
+///
+/// # Act
+/// Sends PUT /job/apiv1/file/upload/ with a `Content-Length` of 1 GiB + 1.
+///
+/// # Assert
+/// Verifies 413 Payload Too Large with a body mentioning the max upload size,
+/// and that no upload session is created.
+#[tokio::test]
+async fn test_upload_file_content_length_too_large_returns_413() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_cluster_by_name()
+        .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    // The size is validated before the upload session is created, so this path
+    // must never create (and thus never leak) an upload session.
+    manager.expect_create_file_upload().never();
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let too_large: u64 = 1_073_741_825; // 1 GiB + 1
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                ))
+                .header("authorization", &token)
+                .header("content-length", too_large.to_string())
+                .body(Body::from("hello"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("maximum upload size"),
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
 /// Tests that PUT /file/upload/ for a job whose ID exceeds `u32::MAX` returns 400
 /// instead of silently truncating the job ID in the `UPLOAD_FILE` message.
 ///

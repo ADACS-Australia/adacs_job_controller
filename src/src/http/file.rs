@@ -753,6 +753,22 @@ pub async fn upload_file(
         })?;
     tracing::trace!("HTTP: Content-Length: {} bytes", content_length);
 
+    const MAX_UPLOAD_SIZE: u64 = 1_073_741_824; // 1 GiB
+    if content_length > MAX_UPLOAD_SIZE {
+        tracing::warn!(
+            "HTTP: File upload rejected - Content-Length {} exceeds max upload size {}",
+            content_length,
+            MAX_UPLOAD_SIZE
+        );
+        return Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!(
+                "Request body exceeds maximum upload size of {} bytes",
+                MAX_UPLOAD_SIZE
+            ),
+        ));
+    }
+
     let job_id_u32 = job_id_to_u32(params.job_id.unwrap_or(0))?;
 
     let applications = get_applications(&auth.secret);
