@@ -1211,6 +1211,117 @@ async fn test_get_jobs_with_job_ids_filter() {
     assert_eq!(jobs[0]["id"].as_i64().unwrap(), job1);
 }
 
+/// Tests that the `limit` query parameter caps the number of jobs returned.
+///
+/// # Setup
+/// Inserts 5 jobs for "testapp".
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?limit=2.
+///
+/// # Assert
+/// Verifies at most 2 jobs are returned.
+#[tokio::test]
+async fn test_get_jobs_limit_caps_results() {
+    let db = setup_test_db().await;
+
+    for i in 0..5 {
+        let job_id = insert_test_job(&db, "ozstar", &format!("b{i}"), "testapp").await;
+        insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+    }
+
+    let body = get_jobs_with_query(db, "?limit=2").await;
+
+    let jobs = body.as_array().unwrap();
+    assert_eq!(jobs.len(), 2, "limit must cap the number of returned jobs");
+}
+
+/// Tests that an explicit `limit` still respects the other filters (they narrow
+/// the result set before the cap is applied).
+///
+/// # Setup
+/// Inserts 5 jobs for "testapp".
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?limit=10&jobIds={job1},{job2}.
+///
+/// # Assert
+/// Verifies only the 2 requested jobs are returned (filter still narrows).
+#[tokio::test]
+async fn test_get_jobs_limit_still_applies_filters() {
+    let db = setup_test_db().await;
+
+    let mut ids = Vec::new();
+    for i in 0..5 {
+        let job_id = insert_test_job(&db, "ozstar", &format!("b{i}"), "testapp").await;
+        insert_job_history(&db, job_id, JobStatus::Pending as i32, "system").await;
+        ids.push(job_id);
+    }
+
+    let body = get_jobs_with_query(db, &format!("?limit=10&jobIds={},{}", ids[0], ids[1])).await;
+
+    let jobs = body.as_array().unwrap();
+    assert_eq!(jobs.len(), 2, "filters must still narrow the result set");
+}
+
+/// Tests that the default cap applies when `limit` is absent, so an unbounded
+/// result set is still bounded.
+///
+/// # Setup
+/// Inserts more jobs than the default cap (1000).
+///
+/// # Act
+/// Sends GET /job/apiv1/job/ with no `limit`.
+///
+/// # Assert
+/// Verifies at most the default cap (1000) jobs are returned.
+#[tokio::test]
+async fn test_get_jobs_default_limit_applies() {
+    let db = setup_test_db().await;
+
+    for i in 0..1001 {
+        insert_test_job(&db, "ozstar", &format!("b{i}"), "testapp").await;
+    }
+
+    let body = get_jobs_with_query(db, "").await;
+
+    let jobs = body.as_array().unwrap();
+    assert!(jobs.len() <= 1000, "default cap must bound the result set");
+}
+
+/// Tests that a non-positive `limit` is rejected with 400 Bad Request.
+///
+/// # Setup
+/// Empty database.
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?limit=0.
+///
+/// # Assert
+/// Verifies 400 Bad Request.
+#[tokio::test]
+async fn test_get_jobs_limit_zero_returns_400() {
+    let db = setup_test_db().await;
+    let manager = mock_cluster_manager_no_clusters();
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/job/apiv1/job/?limit=0")
+                .header("authorization", &token)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 /// Tests that providing both startTimeGt and startTimeLt together returns 400.
 ///
 /// # Setup

@@ -10,7 +10,7 @@ use axum::http::StatusCode;
 use sea_orm::sea_query::{Condition, Expr, Func, Query, SelectStatement};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
-    TransactionTrait,
+    QuerySelect, TransactionTrait,
 };
 
 use crate::app::AppState;
@@ -75,6 +75,8 @@ pub struct JobQueryParams {
     /// CSV-encoded job-step filter: `what1,state1,what2,state2,...`.
     #[serde(rename = "jobSteps")]
     pub job_steps: Option<String>,
+    /// Maximum number of jobs to return. Defaults to a bounded cap.
+    pub limit: Option<u64>,
 }
 
 // ---- POST /job/apiv1/job/ ----
@@ -330,6 +332,24 @@ pub async fn get_jobs(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<JobQueryParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // Cap the number of jobs returned so an unbounded result set cannot force an
+    // unbounded response body or an unbounded job_history read. An explicit
+    // `limit` above the cap is clamped; a non-positive limit is rejected.
+    const MAX_JOBS: u64 = 1000;
+    const DEFAULT_JOBS_LIMIT: u64 = 1000;
+
+    let limit = match params.limit {
+        Some(0) => {
+            tracing::warn!("HTTP: get_jobs rejected - limit must be positive");
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "limit must be positive".to_string(),
+            ));
+        }
+        Some(n) => n.min(MAX_JOBS),
+        None => DEFAULT_JOBS_LIMIT,
+    };
+
     // Application shutdown: reject new reads with 503 before touching the DB,
     // matching the guard used by every other HTTP handler.
     if state.cluster_manager.is_application_shutting_down() {
@@ -453,7 +473,11 @@ pub async fn get_jobs(
         job_query = job_query.filter(job::Column::Id.in_subquery(subq));
     }
 
-    let filtered_jobs = job_query.all(&state.db).await.map_err(db_error)?;
+    let filtered_jobs = job_query
+        .limit(limit)
+        .all(&state.db)
+        .await
+        .map_err(db_error)?;
 
     if filtered_jobs.is_empty() {
         return Ok(Json(serde_json::json!([])));
