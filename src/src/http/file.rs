@@ -186,6 +186,19 @@ pub async fn create_file_download(
         return Ok(Json(serde_json::json!({ FILE_ID_KEY: "" })));
     }
 
+    const MAX_FILE_PATH_LEN: usize = 4096;
+    if let Some(too_long) = file_paths.iter().find(|p| p.len() > MAX_FILE_PATH_LEN) {
+        tracing::warn!(
+            "HTTP: File download rejected - path too long ({} > {})",
+            too_long.len(),
+            MAX_FILE_PATH_LEN
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("path too long (max {} characters)", MAX_FILE_PATH_LEN),
+        ));
+    }
+
     tracing::trace!("HTTP: Resolving cluster and bundle");
     let (s_cluster, s_bundle) = resolve_cluster_bundle(
         &state,

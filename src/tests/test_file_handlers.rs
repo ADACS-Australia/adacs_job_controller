@@ -515,6 +515,82 @@ async fn test_create_file_download_rejects_empty_paths() {
     assert_eq!(records[0].path, "/valid.txt");
 }
 
+/// Tests that POST /file/ rejects a path longer than the per-path length cap
+/// with 400 and writes no `file_download` record, while a path at the cap
+/// boundary is accepted.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with a single path of `MAX_FILE_PATH_LEN + 1`
+/// characters, then with a path of exactly `MAX_FILE_PATH_LEN` characters.
+///
+/// # Assert
+/// Verifies 400 Bad Request (and no DB row) for the over-long path, and 200 OK
+/// with a `fileId` for the boundary-length path.
+#[tokio::test]
+async fn test_create_file_download_rejects_overlong_path() {
+    const MAX_FILE_PATH_LEN: usize = 4096;
+
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let manager = manager_with_online_cluster_no_messages();
+    let app = make_app(db.clone(), manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let overlong = "a".repeat(MAX_FILE_PATH_LEN + 1);
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({ "jobId": job_id, "path": overlong }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let records = file_download::Entity::find().all(&db).await.unwrap();
+    assert!(
+        records.is_empty(),
+        "no file_download record should be created for an over-long path"
+    );
+
+    let boundary = "a".repeat(MAX_FILE_PATH_LEN);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({ "jobId": job_id, "path": boundary }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        body[FILE_ID_KEY].as_str().is_some_and(|s| !s.is_empty()),
+        "boundary-length path should yield a fileId"
+    );
+}
+
 /// Tests that POST /file/ with a job ID exceeding `u32::MAX` returns 400 and
 /// writes no `file_download` record.
 ///
