@@ -971,6 +971,20 @@ pub async fn list_files(
     // TODO: Content-Type tolerance - remove when client sends proper headers
     LenientJson(body): LenientJson<FileListRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    const MAX_FILE_LIST_PATH_LEN: usize = 4096;
+
+    // Bound the path length before any cluster resolution or wire-message
+    // construction so an oversized path cannot be forwarded verbatim into the
+    // FILE_LIST message.
+    if body.path.len() > MAX_FILE_LIST_PATH_LEN {
+        tracing::warn!(
+            "HTTP: File list rejected - path too long ({} > {})",
+            body.path.len(),
+            MAX_FILE_LIST_PATH_LEN
+        );
+        return Err((StatusCode::BAD_REQUEST, "path too long".to_string()));
+    }
+
     // Application shutdown: reject new file-list sessions via the same typed
     // error / status code already returned for offline clusters. No session is
     // created and no FILE_LIST message is sent to the cluster.

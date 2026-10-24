@@ -1488,6 +1488,58 @@ async fn test_list_files_cache_hit_returns_cached_files() {
     assert_eq!(files.len(), 2, "should return 2 cached files");
 }
 
+/// Tests that PATCH /file/ rejects a path longer than `MAX_FILE_LIST_PATH_LEN`.
+///
+/// # Setup
+/// Wires a manager that returns no clusters (never reached — length validation
+/// runs first, before cluster resolution or wire-message construction).
+///
+/// # Act
+/// Sends PATCH /job/apiv1/file/ with a `path` of 4097 characters.
+///
+/// # Assert
+/// Verifies 400 Bad Request and that no `FILE_LIST` wire message is sent.
+#[tokio::test]
+async fn test_list_files_path_too_long_returns_400() {
+    let db = setup_test_db().await;
+
+    // Cluster manager should NOT be asked to send a FILE_LIST message
+    let manager = manager_with_online_cluster_no_messages();
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/job/apiv1/file/")
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .header("authorization", &token)
+                .body(Body::from(
+                    serde_json::json!({
+                        "jobId": 1,
+                        "path": "a".repeat(4097),
+                        "recursive": true
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("path too long"),
+        "body should mention the oversized path, got: {text}"
+    );
+}
+
 /// Tests that a completed job with a pre-populated cache is served from cache
 /// even when the cluster is offline.
 ///
