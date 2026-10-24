@@ -984,50 +984,40 @@ async fn test_upload_missing_content_length_returns_400() {
 // 10b. FILE UPLOAD ERROR — oversized Content-Length
 //
 // Verifies the handler rejects an oversized Content-Length (u64::MAX) with
-// 400 instead of panicking on an out-of-bounds body slice.
+// 413 instead of panicking on an out-of-bounds body slice.
 // ===========================================================================
 
-/// Verifies the upload handler rejects `Content-Length: u64::MAX` with 400
-/// instead of panicking on an out-of-bounds body slice.
+/// Verifies the upload handler rejects `Content-Length: u64::MAX` with 413
+/// (above the max upload size) instead of panicking on an out-of-bounds body
+/// slice.
 ///
 /// # Setup
-/// Inserts a test job; mocks the cluster manager to return an online cluster
-/// and an upload session whose `data_ready` flag is set shortly after start.
+/// Inserts a test job; mocks the cluster manager to return an online cluster.
 ///
 /// # Act
 /// Sends a PUT upload request with `Content-Length: 18446744073709551615`
 /// (`u64::MAX`) and a small body.
 ///
 /// # Assert
-/// Response is 400 Bad Request; the server does not panic.
+/// Response is 413 Payload Too Large; the server does not panic and no upload
+/// session is created (the size is rejected before session creation).
 #[tokio::test]
 async fn test_upload_oversized_content_length_returns_400() {
     let db = setup_test_db().await;
     let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
 
-    let fu_state = Arc::new(FileUploadState::new());
-    let fu_sim = Arc::clone(&fu_state);
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        fu_sim.data_ready.store(true, Ordering::Release);
-        fu_sim.data_notify.notify_waiters();
-    });
-
-    let fu_for_manager = Arc::clone(&fu_state);
-
-    // The dedicated upload session must be torn down on the body-length
-    // mismatch error path (mirroring the download path's cleanup), so the
-    // mock expects `close` to be called exactly once.
-    let mut upload_cluster = upload_cluster();
-    upload_cluster
-        .expect_close()
-        .times(1)
-        .returning(|_| Box::pin(async {}));
-    let upload_cluster = Arc::new(upload_cluster);
-
     let cluster_main = Arc::new(online_cluster_no_messages());
-    let manager =
-        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+    let mut manager = MockClusterManagerTrait::new();
+    let cm = Arc::clone(&cluster_main);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(cm.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+    // The size is validated before the upload session is created, so this path
+    // must never create (and thus never leak) an upload session.
+    manager.expect_create_file_upload().never();
 
     let app = create_router(make_test_state(db, manager));
     let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
@@ -1047,7 +1037,7 @@ async fn test_upload_oversized_content_length_returns_400() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 // ===========================================================================
