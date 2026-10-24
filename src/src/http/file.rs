@@ -1212,6 +1212,16 @@ async fn resolve_cluster_bundle(
             .filter(|s| !s.is_empty())
             .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
 
+        const MAX_BUNDLE_LEN: usize = 10_000;
+        if bundle.len() > MAX_BUNDLE_LEN {
+            tracing::warn!(
+                "HTTP: File request rejected - bundle too long ({} > {})",
+                bundle.len(),
+                MAX_BUNDLE_LEN
+            );
+            return Err((StatusCode::BAD_REQUEST, "bundle too long".to_string()));
+        }
+
         if !auth.secret.clusters.iter().any(|c| c == cluster) {
             return Err((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()));
         }
