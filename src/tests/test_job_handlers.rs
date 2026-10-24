@@ -1767,6 +1767,51 @@ async fn test_get_jobs_job_steps_filter_multiple_steps_matches_any() {
     assert!(!ids.contains(&job3));
 }
 
+/// Tests that GET /job/ returns 400 Bad Request when the jobSteps filter
+/// contains more (what, state) pairs than the accepted maximum.
+///
+/// # Setup
+/// Empty database.
+///
+/// # Act
+/// Sends GET /job/apiv1/job/?jobSteps= with 1001 pairs (over the cap of 1000).
+///
+/// # Assert
+/// Verifies 400 Bad Request (oversized jobSteps filter is rejected).
+#[tokio::test]
+async fn test_get_jobs_too_many_job_steps_returns_400() {
+    use std::fmt::Write as _;
+
+    let db = setup_test_db().await;
+    let manager = mock_cluster_manager_no_clusters();
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let running_val = JobStatus::Running as u32;
+    let mut steps = String::new();
+    for i in 0..1001 {
+        if i > 0 {
+            steps.push(',');
+        }
+        let _ = write!(steps, "what{i},{running_val}");
+    }
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/job/?jobSteps={steps}"))
+                .header("authorization", &token)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 /// Tests that startTimeGt and jobSteps filters are AND'd together at the DB level.
 ///
 /// # Setup
