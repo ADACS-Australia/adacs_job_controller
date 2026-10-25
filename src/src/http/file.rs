@@ -32,6 +32,11 @@ use crate::utils::uuid::generate_uuid;
 const REMOTE_CLUSTER_OFFLINE_MSG: &str = "Remote Cluster Offline";
 const BAD_REQUEST_MSG: &str = "Bad Request";
 
+/// Maximum accepted length (bytes) for the user-supplied `cluster` parameter in
+/// the file endpoints. All configured cluster names are short; this guards
+/// against arbitrarily large values being hashed, compared, and traced.
+const MAX_CLUSTER_LEN: usize = 256;
+
 pub const UPLOAD_ID_KEY: &str = "uploadId";
 const FILE_IDS_KEY: &str = "fileIds";
 
@@ -1208,6 +1213,16 @@ async fn resolve_cluster_bundle(
         let cluster = cluster_param
             .filter(|s| !s.is_empty())
             .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
+
+        if cluster.len() > MAX_CLUSTER_LEN {
+            tracing::warn!(
+                "HTTP: File request rejected - cluster too long ({} > {})",
+                cluster.len(),
+                MAX_CLUSTER_LEN
+            );
+            return Err((StatusCode::BAD_REQUEST, "cluster too long".to_string()));
+        }
+
         let bundle = bundle_param
             .filter(|s| !s.is_empty())
             .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;

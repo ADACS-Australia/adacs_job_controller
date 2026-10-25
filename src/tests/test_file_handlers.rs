@@ -3254,6 +3254,43 @@ async fn test_create_download_no_jobid_invalid_cluster_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Tests that an oversized `cluster` parameter (exceeding the length bound) is
+/// rejected with 400 Bad Request before any cluster lookup or config compare.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with `{"cluster": "<257 chars>", "bundle": "...", "path": "..."}`.
+///
+/// # Assert
+/// Verifies 400 Bad Request.
+#[tokio::test]
+async fn test_create_download_oversized_cluster_returns_400() {
+    let (app, _db, token) = no_jobid_download_app(false, 3).await;
+
+    let oversized_cluster = "c".repeat(257);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header("authorization", &token)
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .body(Body::from(
+                    serde_json::json!({
+                        "cluster": oversized_cluster,
+                        "bundle": "test_bundle",
+                        "path": "/test/path"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 // ---------------------------------------------------------------------------
 // POST /job/apiv1/file/ — empty paths list
 // ---------------------------------------------------------------------------
