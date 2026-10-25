@@ -19,8 +19,8 @@ use crate::config::clusters::{
     CONNECTION_TYPE_KERBEROS, CONNECTION_TYPE_MANUAL, CONNECTION_TYPE_SSH, ClusterConfig,
 };
 use crate::config::settings::{
-    CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS, CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS,
-    CLUSTER_MANAGER_PING_INTERVAL_SECONDS,
+    CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS, CLUSTER_MANAGER_MAX_RECONNECT_BACKOFF_SECONDS,
+    CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS, CLUSTER_MANAGER_PING_INTERVAL_SECONDS,
 };
 use crate::protocol::constants::UNKNOWN;
 use crate::protocol::types::ClusterRole;
@@ -463,7 +463,8 @@ impl ClusterManager {
             let attempt = self.reconnect_attempts.get(name).map_or(0, |r| *r);
             if attempt > 0 {
                 let backoff_secs = (*CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS)
-                    .saturating_mul(2u64.saturating_pow(attempt - 1));
+                    .saturating_mul(2u64.saturating_pow(attempt - 1))
+                    .min(*CLUSTER_MANAGER_MAX_RECONNECT_BACKOFF_SECONDS);
                 if let Some(last_attempt) = self.last_reconnect_attempt.get(name) {
                     let elapsed = last_attempt.elapsed().as_secs();
                     if elapsed < backoff_secs {
@@ -1375,6 +1376,41 @@ mod tests {
         assert_eq!(
             manager.reconnect_attempts.get(CLUSTER_B).map(|v| *v),
             Some(3)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reconnect_backoff_is_capped_at_max() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
+
+        // Simulate a cluster that has been offline for a very long time: a large
+        // attempt count whose uncapped exponential backoff would be enormous.
+        let large_attempt = 40u32;
+        manager
+            .reconnect_attempts
+            .insert(CLUSTER_B.to_string(), large_attempt);
+        // Elapsed time just past the cap (3600s) but far below the uncapped backoff.
+        manager.last_reconnect_attempt.insert(
+            CLUSTER_B.to_string(),
+            std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(
+                    *CLUSTER_MANAGER_MAX_RECONNECT_BACKOFF_SECONDS + 100,
+                ))
+                .unwrap(),
+        );
+
+        manager.reconnect_clusters().await;
+
+        // The capped backoff has elapsed, so the cluster should be reconnected
+        // immediately rather than waiting out the huge uncapped backoff.
+        assert_eq!(
+            manager.reconnect_attempts.get(CLUSTER_B).map(|v| *v),
+            Some(large_attempt + 1)
+        );
+        assert!(
+            get_uuid_for_cluster(&db, CLUSTER_B).await.is_some(),
+            "cluster should reconnect once the capped backoff has elapsed"
         );
     }
 
