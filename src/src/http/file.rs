@@ -353,6 +353,33 @@ pub async fn download_file(
     State(state): State<AppState>,
     Query(params): Query<FileDownloadQuery>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
+    const MAX_FILE_ID_LEN: usize = 64;
+    const MAX_FORCE_DOWNLOAD_LEN: usize = 16;
+
+    if let Some(file_id) = params.file_id.as_deref()
+        && file_id.len() > MAX_FILE_ID_LEN
+    {
+        tracing::warn!(
+            "HTTP: File download rejected - fileId too long ({} > {})",
+            file_id.len(),
+            MAX_FILE_ID_LEN
+        );
+        return Err((StatusCode::BAD_REQUEST, "fileId too long".to_string()));
+    }
+    if let Some(force_download) = params.force_download.as_deref()
+        && force_download.len() > MAX_FORCE_DOWNLOAD_LEN
+    {
+        tracing::warn!(
+            "HTTP: File download rejected - forceDownload too long ({} > {})",
+            force_download.len(),
+            MAX_FORCE_DOWNLOAD_LEN
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "forceDownload too long".to_string(),
+        ));
+    }
+
     let original_uuid = params.file_id.filter(|s| !s.is_empty()).ok_or_else(|| {
         tracing::debug!("HTTP: File download rejected - missing fileId parameter");
         (StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string())
