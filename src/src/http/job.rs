@@ -97,6 +97,7 @@ pub async fn create_job(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     const MAX_PARAMETERS_LEN: usize = 100_000;
     const MAX_BUNDLE_LEN: usize = 10_000;
+    const MAX_CLUSTER_LEN: usize = 256;
 
     tracing::debug!(
         "HTTP: Create job request received for cluster '{}'",
@@ -123,6 +124,14 @@ pub async fn create_job(
             MAX_BUNDLE_LEN
         );
         return Err((StatusCode::BAD_REQUEST, "bundle too long".to_string()));
+    }
+    if body.cluster.len() > MAX_CLUSTER_LEN {
+        tracing::warn!(
+            "HTTP: Job creation rejected - cluster too long ({} > {})",
+            body.cluster.len(),
+            MAX_CLUSTER_LEN
+        );
+        return Err((StatusCode::BAD_REQUEST, "cluster too long".to_string()));
     }
 
     if !auth.secret.clusters.contains(&body.cluster) {

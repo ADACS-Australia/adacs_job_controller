@@ -227,6 +227,26 @@ async fn test_create_job_bundle_too_long_returns_400() {
     assert_create_job_rejected(body, "bundle too long").await;
 }
 
+/// Tests that `create_job` rejects a cluster longer than `MAX_CLUSTER_LEN` (256).
+///
+/// # Setup
+/// Wires a manager that returns no clusters (never reached — length validation runs first).
+///
+/// # Act
+/// Sends POST /job/apiv1/job/ with a cluster string of 257 characters.
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "cluster too long".
+#[tokio::test]
+async fn test_create_job_cluster_too_long_returns_400() {
+    let body = serde_json::json!({
+        "cluster": "c".repeat(257),
+        "parameters": "{}",
+        "bundle": "b"
+    });
+    assert_create_job_rejected(body, "cluster too long").await;
+}
+
 /// Tests that creating a job whose auto-assigned ID exceeds `u32::MAX` returns 400
 /// instead of silently truncating the job ID in the `SUBMIT_JOB` message.
 ///
