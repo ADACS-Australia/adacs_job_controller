@@ -130,6 +130,9 @@ pub static CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS: LazyLock<u64> =
 /// Seconds between SSH reconnect attempts for offline clusters (`CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS`).
 pub static CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_uint("CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS", 60));
+/// Upper cap on the exponential reconnect backoff for offline clusters (`CLUSTER_MANAGER_MAX_RECONNECT_BACKOFF_SECONDS`).
+pub static CLUSTER_MANAGER_MAX_RECONNECT_BACKOFF_SECONDS: LazyLock<u64> =
+    LazyLock::new(|| env_or_uint("CLUSTER_MANAGER_MAX_RECONNECT_BACKOFF_SECONDS", 3600));
 /// Seconds between WebSocket keep-alive pings to connected clusters (`CLUSTER_MANAGER_PING_INTERVAL_SECONDS`).
 pub static CLUSTER_MANAGER_PING_INTERVAL_SECONDS: LazyLock<u64> =
     LazyLock::new(|| env_or_uint("CLUSTER_MANAGER_PING_INTERVAL_SECONDS", 10));
@@ -196,6 +199,7 @@ mod tests {
     fn test_cluster_defaults() {
         assert_eq!(*CLUSTER_RECENT_STATE_JOB_IGNORE_SECONDS, 60);
         assert_eq!(*CLUSTER_MANAGER_CLUSTER_RECONNECT_SECONDS, 60);
+        assert_eq!(*CLUSTER_MANAGER_MAX_RECONNECT_BACKOFF_SECONDS, 3600);
         assert_eq!(*CLUSTER_MANAGER_PING_INTERVAL_SECONDS, 10);
         assert_eq!(*CLUSTER_MANAGER_MAX_TOKEN_EXPIRY_SECONDS, 600);
     }
