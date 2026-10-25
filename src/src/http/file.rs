@@ -737,6 +737,13 @@ pub async fn upload_file(
             "targetPath parameter is required".to_string(),
         )
     })?;
+    if target_path.is_empty() {
+        tracing::warn!("HTTP: File upload rejected - empty targetPath parameter");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "targetPath parameter is required".to_string(),
+        ));
+    }
     tracing::trace!("HTTP: Target path: {}", target_path);
 
     let content_length: u64 = request

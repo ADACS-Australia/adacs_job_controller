@@ -2279,6 +2279,55 @@ async fn test_upload_file_no_target_path_returns_400() {
     assert!(String::from_utf8_lossy(&body).contains("targetPath"));
 }
 
+/// Tests that PUT /file/upload/ with an empty targetPath query parameter returns 400
+/// and does not create an upload session.
+///
+/// # Setup
+/// Inserts a test job. Wires an online cluster.
+///
+/// # Act
+/// Sends PUT /job/apiv1/file/upload/ with `targetPath=` (present but empty).
+///
+/// # Assert
+/// Verifies 400 Bad Request with body mentioning "targetPath".
+#[tokio::test]
+async fn test_upload_file_empty_target_path_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let mut manager = MockClusterManagerTrait::new();
+    manager
+        .expect_get_cluster_by_name()
+        .returning(|_| Some(Arc::new(online_cluster_no_messages())));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath="
+                ))
+                .header("authorization", &token)
+                .header("content-length", "10")
+                .body(Body::from("0123456789"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("targetPath"));
+}
+
 /// Tests that PUT /file/upload/ for a job whose ID exceeds `u32::MAX` returns 400
 /// instead of silently truncating the job ID in the `UPLOAD_FILE` message.
 ///
