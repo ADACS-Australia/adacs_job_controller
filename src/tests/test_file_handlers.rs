@@ -661,6 +661,57 @@ async fn test_download_file_no_file_id_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// Tests that GET /file/ with an oversized fileId or forceDownload returns 400.
+///
+/// # Setup
+/// Empty DB. Wires a manager that returns nothing.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={65 chars} and
+/// GET /job/apiv1/file/?fileId=abc&forceDownload={17 chars}.
+///
+/// # Assert
+/// Verifies 400 Bad Request for both, because the query parameters are
+/// length-bounded before any DB access.
+#[tokio::test]
+async fn test_download_file_oversized_query_params_return_400() {
+    let db = setup_test_db().await;
+    let mut manager = MockClusterManagerTrait::new();
+    manager.expect_get_cluster_by_name().returning(|_| None);
+    manager.expect_get_file_download().returning(|_| None);
+
+    let app = make_app(db, manager);
+
+    let oversized_file_id = "a".repeat(65);
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={oversized_file_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let oversized_force_download = "a".repeat(17);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/job/apiv1/file/?fileId=abc&forceDownload={oversized_force_download}"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 /// Tests that GET /file/ with an unknown UUID returns 400.
 ///
 /// # Setup
