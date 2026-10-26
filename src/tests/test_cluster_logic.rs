@@ -319,6 +319,42 @@ async fn test_handle_update_job_no_app_context_does_not_panic() {
     cluster.handle_message(msg).await; // must not panic
 }
 
+/// Verifies that `handle_update_job` ignores an `UPDATE_JOB` message carrying a
+/// well-formed but unknown `JobStatus` value (e.g. `999`) without inserting a
+/// history row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the required tables is created. A `Cluster`
+/// is initialized with an `AppContext`. An `UPDATE_JOB` message is built with
+/// valid `job_id`, `what`, and `details`, but `status=999` (not a valid
+/// `JobStatus`).
+///
+/// # Act
+/// `cluster.handle_message(msg).await` is called.
+///
+/// # Assert
+/// No row is inserted into `JobserverJobhistory` for `jobId=97`.
+#[tokio::test]
+async fn test_handle_update_job_unknown_status_records_no_history() {
+    let db = setup_test_db().await;
+
+    let cluster = make_offline_cluster(&db);
+
+    let msg = make_update_job_message(97, "job_submission", 999, "unknown status");
+
+    cluster.handle_message(msg).await;
+
+    let count = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(97i64))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "UPDATE_JOB with unknown status should record no history row"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // check_unsubmitted_jobs: old PENDING state → SUBMIT_JOB resent
 // ---------------------------------------------------------------------------
