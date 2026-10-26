@@ -441,7 +441,7 @@ impl Cluster {
     async fn has_higher_priority_data(&self, max_priority: u8) -> bool {
         for (&priority_val, rw_map) in &self.queue {
             if priority_val >= max_priority {
-                return false;
+                continue;
             }
             let map = rw_map.read().await;
             for queue in map.values() {
@@ -2453,6 +2453,38 @@ mod tests {
         assert!(
             !cluster
                 .has_higher_priority_data(Priority::Lowest.as_u8() + 1)
+                .await
+        );
+    }
+
+    /// Regression test: `has_higher_priority_data` must detect higher-priority data even when a
+    /// lower-priority queue is also non-empty, regardless of `DashMap` iteration order. Previously
+    /// it returned `false` on the first entry whose priority was not strictly higher, so iteration
+    /// order could hide higher-priority data.
+    #[tokio::test]
+    async fn test_has_higher_priority_data_detects_high_priority_amid_low() {
+        let cluster = make_test_cluster();
+        cluster.stop();
+
+        // Queue data at both a lower-priority and a higher-priority level relative to Medium.
+        cluster
+            .queue_message("low".into(), vec![1], Priority::Lowest)
+            .await;
+        cluster
+            .queue_message("high".into(), vec![2], Priority::Highest)
+            .await;
+
+        // Checking at Medium, the Highest data must be detected regardless of iteration order.
+        assert!(
+            cluster
+                .has_higher_priority_data(Priority::Medium.as_u8())
+                .await
+        );
+
+        // Checking at Highest, no strictly-higher priority exists.
+        assert!(
+            !cluster
+                .has_higher_priority_data(Priority::Highest.as_u8())
                 .await
         );
     }
