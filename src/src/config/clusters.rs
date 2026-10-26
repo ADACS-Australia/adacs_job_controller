@@ -8,6 +8,8 @@ pub const CONNECTION_TYPE_SSH: &str = "ssh";
 pub const CONNECTION_TYPE_KERBEROS: &str = "kerberos";
 /// Connection type for manually-connected clusters.
 pub const CONNECTION_TYPE_MANUAL: &str = "manual";
+/// Connection type for LTK-authenticated manual connections.
+pub const CONNECTION_TYPE_LTK: &str = "ltk";
 
 /// Connection settings for a single HPC cluster, loaded from `clusters.json`.
 #[derive(Debug, Clone, Deserialize)]
@@ -73,7 +75,10 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
         }
         if !matches!(
             config.connection_type.as_str(),
-            CONNECTION_TYPE_SSH | CONNECTION_TYPE_KERBEROS | CONNECTION_TYPE_MANUAL | "ltk"
+            CONNECTION_TYPE_SSH
+                | CONNECTION_TYPE_KERBEROS
+                | CONNECTION_TYPE_MANUAL
+                | CONNECTION_TYPE_LTK
         ) {
             anyhow::bail!(
                 "invalid connection_type '{}' for cluster '{}' in cluster config (entry #{})",
