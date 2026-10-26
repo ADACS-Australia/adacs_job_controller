@@ -70,6 +70,9 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
         {
             anyhow::bail!("cluster config entry #{} has empty 'ltk'", i + 1);
         }
+        if config.connection_type == CONNECTION_TYPE_SSH && config.key.is_empty() {
+            anyhow::bail!("cluster config entry #{} has empty 'key'", i + 1);
+        }
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
             i + 1,
@@ -154,8 +157,8 @@ mod tests {
         std::fs::write(
             &config_path,
             r#"[
-                {"name": "ozstar", "host": "h1", "username": "u1", "path": "/p1"},
-                {"name": "ozstar", "host": "h2", "username": "u2", "path": "/p2"}
+                {"name": "ozstar", "host": "h1", "username": "u1", "path": "/p1", "key": "/k1"},
+                {"name": "ozstar", "host": "h2", "username": "u2", "path": "/p2", "key": "/k2"}
             ]"#,
         )
         .unwrap();
@@ -191,6 +194,30 @@ mod tests {
     }
 
     #[test]
+    fn test_load_cluster_configs_rejects_empty_ssh_key() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "ssh-cluster",
+                "host": "cluster.example.com",
+                "username": "jobclient",
+                "path": "/path/to/client",
+                "connection_type": "ssh",
+                "key": ""
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'key'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn test_load_cluster_configs_success() {
         let tmp = tempfile::TempDir::new().unwrap();
         let config_path = tmp.path().join("clusters.json");
@@ -200,7 +227,8 @@ mod tests {
                 "name": "ozstar",
                 "host": "ozstar.swin.edu.au",
                 "username": "admin",
-                "path": "/home/admin/jobcontroller"
+                "path": "/home/admin/jobcontroller",
+                "key": "/home/admin/.ssh/id_rsa"
             }]"#,
         )
         .unwrap();
