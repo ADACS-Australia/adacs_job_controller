@@ -70,6 +70,12 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
         {
             anyhow::bail!("cluster config entry #{} has empty 'ltk'", i + 1);
         }
+        if config.connection_type == CONNECTION_TYPE_KERBEROS && config.keytab.is_empty() {
+            anyhow::bail!(
+                "cluster config entry #{} has empty 'keytab' for kerberos connection type",
+                i + 1
+            );
+        }
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
             i + 1,
@@ -186,6 +192,30 @@ mod tests {
         let err = load_cluster_configs(&config_path).unwrap_err();
         assert!(
             err.to_string().contains("empty 'ltk'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_kerberos_keytab() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "kerberos-cluster",
+                "host": "cluster.example.com",
+                "username": "jobclient",
+                "path": "/path/to/client",
+                "connection_type": "kerberos",
+                "keytab": ""
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'keytab'"),
             "unexpected error: {err}"
         );
     }
