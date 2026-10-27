@@ -95,7 +95,7 @@ pub async fn create_job(
     // TODO: Content-Type tolerance - remove when client sends proper headers
     LenientJson(body): LenientJson<CreateJobRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    const MAX_PARAMETERS_LEN: usize = 100_000;
+    const MAX_PARAMETERS_LEN: usize = 65_535;
     const MAX_BUNDLE_LEN: usize = 10_000;
 
     tracing::debug!(
