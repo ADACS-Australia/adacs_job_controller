@@ -187,13 +187,14 @@ async fn assert_create_job_rejected(body: serde_json::Value, expected_error: &st
     assert!(String::from_utf8_lossy(&body).contains(expected_error));
 }
 
-/// Tests that `create_job` rejects parameters longer than `MAX_PARAMETERS_LEN` (100,000).
+/// Tests that `create_job` rejects parameters longer than `MAX_PARAMETERS_LEN` (65,535,
+/// the `MySQL` `TEXT` column capacity).
 ///
 /// # Setup
 /// Wires a manager that returns no clusters (never reached — length validation runs first).
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with a parameters string of 100,001 characters.
+/// Sends POST /job/apiv1/job/ with a parameters string of 65,536 characters.
 ///
 /// # Assert
 /// Verifies 400 Bad Request with body containing "parameters too long".
@@ -201,7 +202,7 @@ async fn assert_create_job_rejected(body: serde_json::Value, expected_error: &st
 async fn test_create_job_parameters_too_long_returns_400() {
     let body = serde_json::json!({
         "cluster": "ozstar",
-        "parameters": "a".repeat(100_001),
+        "parameters": "a".repeat(65_536),
         "bundle": "b"
     });
     assert_create_job_rejected(body, "parameters too long").await;
