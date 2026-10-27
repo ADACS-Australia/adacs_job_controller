@@ -96,7 +96,9 @@ pub async fn create_job(
     LenientJson(body): LenientJson<CreateJobRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     const MAX_PARAMETERS_LEN: usize = 100_000;
-    const MAX_BUNDLE_LEN: usize = 10_000;
+    // The `jobserver_job.bundle` column is `VARCHAR(255)` on MySQL (sea-orm maps a
+    // plain `String` to that), so the HTTP bound must match the column capacity.
+    const MAX_BUNDLE_LEN: usize = 255;
 
     tracing::debug!(
         "HTTP: Create job request received for cluster '{}'",
