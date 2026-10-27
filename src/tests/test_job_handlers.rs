@@ -207,13 +207,13 @@ async fn test_create_job_parameters_too_long_returns_400() {
     assert_create_job_rejected(body, "parameters too long").await;
 }
 
-/// Tests that `create_job` rejects a bundle longer than `MAX_BUNDLE_LEN` (10,000).
+/// Tests that `create_job` rejects a bundle longer than `MAX_BUNDLE_LEN` (255).
 ///
 /// # Setup
 /// Wires a manager that returns no clusters (never reached — length validation runs first).
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with a bundle string of 10,001 characters.
+/// Sends POST /job/apiv1/job/ with a bundle string of 256 characters.
 ///
 /// # Assert
 /// Verifies 400 Bad Request with body containing "bundle too long".
@@ -222,9 +222,51 @@ async fn test_create_job_bundle_too_long_returns_400() {
     let body = serde_json::json!({
         "cluster": "ozstar",
         "parameters": "{}",
-        "bundle": "b".repeat(10_001)
+        "bundle": "b".repeat(256)
     });
     assert_create_job_rejected(body, "bundle too long").await;
+}
+
+/// Tests that `create_job` accepts a bundle of exactly `MAX_BUNDLE_LEN` (255) chars,
+/// matching the `jobserver_job.bundle` `VARCHAR(255)` column capacity on `MySQL`.
+///
+/// # Setup
+/// Wires an online cluster that captures sent WS messages.
+///
+/// # Act
+/// Sends POST /job/apiv1/job/ with a bundle string of 255 characters.
+///
+/// # Assert
+/// Verifies 200 OK and the job row is persisted with the full bundle.
+#[tokio::test]
+async fn test_create_job_bundle_at_max_len_is_accepted() {
+    let db = setup_test_db().await;
+    let (manager, _) = manager_with_online_cluster();
+    let bundle = "b".repeat(255);
+
+    let resp = post_create_job(
+        &db,
+        manager,
+        42,
+        serde_json::json!({"cluster":"ozstar","parameters":"{}","bundle": bundle}),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let job_id = body["jobId"].as_i64().expect("jobId should be present");
+
+    let j = job::Entity::find_by_id(job_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("job should be in DB");
+    assert_eq!(j.bundle.len(), 255);
 }
 
 /// Tests that creating a job whose auto-assigned ID exceeds `u32::MAX` returns 400
