@@ -278,6 +278,34 @@ async fn test_file_download_error_flow() {
     );
 }
 
+/// Verifies that a payload-less `FILE_ERROR` (no `details` string after the
+/// header) records the meaningful truncated-detail string rather than an empty
+/// one.
+///
+/// # Setup
+/// A `FileDownloadState` and a `Cluster` created via `new_file_download` with uuid `"dl-uuid-err-empty"` are prepared.
+///
+/// # Act
+/// A `FILE_ERROR` message with no pushed fields is dispatched.
+///
+/// # Assert
+/// The `error` flag is set, `data_ready` is set, and `error_details` equals `"truncated FILE_ERROR detail"`.
+#[tokio::test]
+async fn test_file_download_error_no_payload_records_truncated_detail() {
+    let (download_state, cluster) = make_file_download_cluster("dl-uuid-err-empty");
+
+    let err_msg = Message::new(FILE_ERROR, Priority::Medium, "test");
+    let err_msg = Message::from_bytes(err_msg.into_data());
+    cluster.handle_message(err_msg).await;
+
+    assert!(download_state.error.load(Ordering::Relaxed));
+    assert!(download_state.data_ready.load(Ordering::Relaxed));
+    assert_eq!(
+        *download_state.error_details.lock().await,
+        "truncated FILE_ERROR detail"
+    );
+}
+
 /// Verifies that `FILE_DETAILS`, `FILE_CHUNK`, and `FILE_ERROR` messages dispatched to a
 /// master cluster (no `file_download_state`) hit the no-state warn branches without
 /// panicking or mutating download state.
