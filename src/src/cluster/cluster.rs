@@ -798,14 +798,24 @@ impl Cluster {
 
         let mut state = fl_state.lock().await;
         // A truncated `detail` should still surface as an error rather than
-        // silently returning an empty message.
-        let detail = message.try_pop_string().unwrap_or_else(|| {
+        // silently returning an empty message. With fewer than 8 bytes
+        // remaining there is no length prefix at all, so `try_pop_string`
+        // would return `Some("")`; treat it as truncated instead.
+        let detail = if message.remaining() < 8 {
             tracing::warn!(
-                "Cluster[{}]: Truncated FILE_LIST_ERROR (detail length prefix exceeds remaining bytes)",
+                "Cluster[{}]: Truncated FILE_LIST_ERROR (fewer than 8 bytes remain for detail length prefix)",
                 self.name()
             );
             "truncated FILE_LIST_ERROR detail".to_string()
-        });
+        } else {
+            message.try_pop_string().unwrap_or_else(|| {
+                tracing::warn!(
+                    "Cluster[{}]: Truncated FILE_LIST_ERROR (detail length prefix exceeds remaining bytes)",
+                    self.name()
+                );
+                "truncated FILE_LIST_ERROR detail".to_string()
+            })
+        };
         state.error = true;
         state.error_details = detail;
         state.data_ready = true;
@@ -991,15 +1001,26 @@ impl Cluster {
         data_notify: &Notify,
     ) {
         // A truncated `details` should still surface as an error rather than
-        // silently returning an empty message.
-        let details = message.try_pop_string().unwrap_or_else(|| {
+        // silently returning an empty message. With fewer than 8 bytes
+        // remaining there is no length prefix at all, so `try_pop_string`
+        // would return `Some("")`; treat it as truncated instead.
+        let details = if message.remaining() < 8 {
             tracing::warn!(
-                "Cluster[{}]: Truncated {} (detail length prefix exceeds remaining bytes)",
+                "Cluster[{}]: Truncated {} (fewer than 8 bytes remain for detail length prefix)",
                 self.name(),
                 message_name
             );
             format!("truncated {message_name} detail")
-        });
+        } else {
+            message.try_pop_string().unwrap_or_else(|| {
+                tracing::warn!(
+                    "Cluster[{}]: Truncated {} (detail length prefix exceeds remaining bytes)",
+                    self.name(),
+                    message_name
+                );
+                format!("truncated {message_name} detail")
+            })
+        };
         tracing::warn!(
             "Cluster[{}]: {} received - {}",
             self.name(),
