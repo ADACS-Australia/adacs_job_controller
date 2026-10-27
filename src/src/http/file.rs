@@ -1213,7 +1213,10 @@ async fn resolve_cluster_bundle(
             .ok_or((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()))?;
 
         if !auth.secret.clusters.iter().any(|c| c == cluster) {
-            return Err((StatusCode::BAD_REQUEST, BAD_REQUEST_MSG.to_string()));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                app_no_cluster_access_msg(&auth.secret.name, cluster),
+            ));
         }
 
         // Verify the cluster actually exists
