@@ -76,10 +76,6 @@ pub trait ClusterTrait: Send + Sync {
     /// Close the WebSocket connection.
     async fn close(&self, force: bool);
 
-    /// Stop all background tasks (scheduler, prune, resend).
-    #[allow(dead_code)]
-    fn stop(&self);
-
     /// Idempotent conclusive termination for retained background tasks.
     /// Dedicated file-download clusters override this to drain scheduler,
     /// prune, and resend handles within the existing five-second close

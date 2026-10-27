@@ -1188,6 +1188,13 @@ impl Cluster {
         let source = String::new();
         self.queue_message(source, data, priority).await;
     }
+
+    /// Stop all background tasks (scheduler, prune, resend).
+    pub fn stop(&self) {
+        self.running.store(false, Ordering::Relaxed);
+        self.data_notify.notify_waiters();
+        self.queue_size_notify.notify_waiters();
+    }
 }
 
 #[async_trait]
@@ -1410,12 +1417,6 @@ impl ClusterTrait for Cluster {
             );
         }
         let _ = self.connection_tx.send(None);
-    }
-
-    fn stop(&self) {
-        self.running.store(false, Ordering::Relaxed);
-        self.data_notify.notify_waiters();
-        self.queue_size_notify.notify_waiters();
     }
 
     async fn terminate_download_tasks(&self) {
