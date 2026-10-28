@@ -744,6 +744,24 @@ async fn handle_bundle_create_or_update(
         );
         return;
     };
+    // The `bundle_hash` field maps to a DB `VARCHAR(255)` column; bound it to
+    // that capacity so an over-long wire value is truncated rather than
+    // failing the whole bundle insert/update.
+    const MAX_BUNDLE_HASH_LEN: usize = 255;
+    let bundle_hash = if bundle_hash.len() > MAX_BUNDLE_HASH_LEN {
+        tracing::warn!(
+            "Cluster[{}]: Truncating over-long `bundle_hash` for DB_BUNDLE_CREATE_OR_UPDATE_JOB ({} > {} chars)",
+            cluster.name(),
+            bundle_hash.len(),
+            MAX_BUNDLE_HASH_LEN
+        );
+        bundle_hash
+            .chars()
+            .take(MAX_BUNDLE_HASH_LEN)
+            .collect::<String>()
+    } else {
+        bundle_hash
+    };
     let cluster_name = cluster.name();
 
     // If bundle has an ID, try to update existing bundle
@@ -935,5 +953,55 @@ mod tests {
         let mut msg = Message::from_bytes(msg.into_data());
 
         handle_job_get_by_id(&mut msg, &cluster, &db).await;
+    }
+
+    /// Verifies that `handle_bundle_create_or_update` truncates an over-long
+    /// `bundle_hash` to the DB `VARCHAR(255)` column capacity rather than
+    /// failing the insert, so the bundle row is still saved.
+    #[tokio::test]
+    async fn test_bundle_create_or_update_truncates_overlong_hash() {
+        use crate::cluster::traits::MockClusterTrait;
+        use sea_orm::{ConnectionTrait, DbBackend, Schema};
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        db.execute(builder.build(&schema.create_table_from_entity(bundle_job::Entity)))
+            .await
+            .expect("create table failed");
+
+        let mut cluster = MockClusterTrait::new();
+        cluster.expect_name().returning(|| "test".to_string());
+        cluster
+            .expect_send_message()
+            .returning(|_| Box::pin(async {}));
+
+        // Build a DB_BUNDLE_CREATE_OR_UPDATE_JOB whose bundle_hash exceeds 255 chars.
+        let mut msg = Message::new(
+            DB_BUNDLE_CREATE_OR_UPDATE_JOB,
+            Priority::Highest,
+            SYSTEM_SOURCE,
+        );
+        msg.push_uint(42); // db_request_id
+        msg.push_ulong(0); // bundle id (0 => insert by hash)
+        msg.push_string("content");
+        msg.push_string(&"h".repeat(300));
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        handle_bundle_create_or_update(&mut msg, &cluster, &db).await;
+
+        // The bundle row is still inserted, with bundle_hash truncated to 255.
+        let row = bundle_job::Entity::find()
+            .filter(bundle_job::Column::BundleHash.eq("h".repeat(255)))
+            .one(&db)
+            .await
+            .expect("query failed")
+            .expect("expected a bundle_job row");
+        assert_eq!(row.bundle_hash, "h".repeat(255));
+        assert_eq!(row.content, "content");
+        assert_eq!(row.cluster, "test");
     }
 }
