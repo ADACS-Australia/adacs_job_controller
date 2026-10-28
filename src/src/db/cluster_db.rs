@@ -616,12 +616,28 @@ async fn handle_jobstatus_save(
         return;
     };
 
+    // The `what` field maps to a DB `VARCHAR(255)` column; bound it to that
+    // capacity so an over-long wire value is truncated rather than failing
+    // the whole status insert/update.
+    const MAX_WHAT_LEN: usize = 255;
+    let what = if status.what.len() > MAX_WHAT_LEN {
+        tracing::warn!(
+            "Cluster[{}]: Truncating over-long `what` for DB_JOBSTATUS_SAVE ({} > {} chars)",
+            cluster.name(),
+            status.what.len(),
+            MAX_WHAT_LEN
+        );
+        status.what.chars().take(MAX_WHAT_LEN).collect::<String>()
+    } else {
+        status.what.clone()
+    };
+
     if status.id == 0 {
         // Insert
         let result = cluster_job_status::ActiveModel {
             id: NotSet,
             job_id: Set(status.job_id),
-            what: Set(status.what.clone()),
+            what: Set(what.clone()),
             state: Set(status.state),
         }
         .insert(db)
@@ -640,7 +656,7 @@ async fn handle_jobstatus_save(
         let active = cluster_job_status::ActiveModel {
             id: Unchanged(status.id),
             job_id: Set(status.job_id),
-            what: Set(status.what.clone()),
+            what: Set(what.clone()),
             state: Set(status.state),
         };
         let saved_id = match active.update(db).await {
