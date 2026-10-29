@@ -413,6 +413,18 @@ async fn handle_job_save(
         );
         return;
     };
+    // A `bundle_hash` or `working_directory` longer than the `Text` column
+    // capacity (65535 bytes) would fail the INSERT/UPDATE and lose the job
+    // record; drop the message rather than recording nothing.
+    const TEXT_COLUMN_CAP: usize = 65535;
+    if job.bundle_hash.len() > TEXT_COLUMN_CAP || job.working_directory.len() > TEXT_COLUMN_CAP {
+        tracing::warn!(
+            "Cluster[{}]: Dropping DB_JOB_SAVE (bundle_hash or working_directory exceeds {} bytes)",
+            cluster.name(),
+            TEXT_COLUMN_CAP
+        );
+        return;
+    }
     let cluster_name = cluster.name();
 
     if job.id == 0 {
