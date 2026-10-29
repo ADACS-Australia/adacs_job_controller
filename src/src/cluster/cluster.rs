@@ -537,6 +537,26 @@ impl Cluster {
             );
             return;
         };
+        // The `details` field maps to a DB `TEXT` column (65535-byte cap); bound
+        // it to that capacity so an over-long wire value is truncated rather than
+        // failing the whole job-history insert.
+        const MAX_DETAILS_BYTES: usize = 65535;
+        let details = if details.len() > MAX_DETAILS_BYTES {
+            tracing::warn!(
+                "Cluster[{}]: Truncating over-long `details` for UPDATE_JOB job {} ({} > {} bytes)",
+                self.name(),
+                job_id,
+                details.len(),
+                MAX_DETAILS_BYTES
+            );
+            let mut end = MAX_DETAILS_BYTES;
+            while !details.is_char_boundary(end) {
+                end -= 1;
+            }
+            details[..end].to_string()
+        } else {
+            details
+        };
 
         tracing::trace!(
             "Cluster[{}]: Received UPDATE_JOB - job_id={}, what={}, status={}, details={}",
@@ -3422,5 +3442,53 @@ mod tests {
             captured.lock().unwrap().contains("unknown status 999"),
             "expected a warning about the unknown status"
         );
+    }
+
+    /// Verifies that `handle_update_job` truncates an over-long `details` to the
+    /// DB `TEXT` column capacity (65535 bytes) rather than failing the insert,
+    /// so the job-history row is still recorded.
+    #[tokio::test]
+    async fn test_handle_update_job_truncates_overlong_details() {
+        use crate::db::entities::job_history;
+        use sea_orm::{ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Schema};
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        db.execute(builder.build(&schema.create_table_from_entity(job_history::Entity)))
+            .await
+            .expect("create table failed");
+
+        let app_context = Arc::new(AppContext {
+            db: db.clone(),
+            file_list_map: Arc::new(DashMap::new()),
+        });
+        let cluster = Cluster::new(test_config(), Some(app_context));
+
+        // Build an UPDATE_JOB message whose `details` exceeds 65535 bytes.
+        let mut msg = Message::new(UPDATE_JOB, Priority::Highest, TEST_CLUSTER);
+        msg.push_uint(42);
+        msg.push_string("what");
+        msg.push_uint(JobStatus::Running as u32);
+        msg.push_string(&"x".repeat(70000));
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        cluster.handle_update_job(&mut msg).await;
+
+        // The job-history row is still inserted, with `details` truncated to
+        // the 65535-byte column capacity.
+        let row = job_history::Entity::find()
+            .filter(job_history::Column::JobId.eq(42i64))
+            .one(&db)
+            .await
+            .expect("query failed")
+            .expect("expected a job_history row");
+        assert_eq!(row.job_id, 42);
+        assert_eq!(row.what, "what");
+        assert_eq!(row.state, JobStatus::Running as i32);
+        assert_eq!(row.details, "x".repeat(65535));
     }
 }
