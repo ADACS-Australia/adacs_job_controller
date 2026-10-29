@@ -139,3 +139,25 @@ async fn test_replace_file_list_failed_insert_preserves_prior_cache() {
         vec!["/old/keep.txt".to_string()]
     );
 }
+
+/// An over-cap file name (exceeding the DB `TEXT` column capacity of 65535
+/// bytes) must be truncated to fit rather than failing and rolling back the
+/// whole cache replacement, so the other entries are still recorded.
+#[tokio::test]
+async fn test_replace_file_list_truncates_overlong_name() {
+    let db = setup_test_db().await;
+    let job_id = 55;
+
+    let overlong = "x".repeat(70_000);
+    replace_file_list(
+        &db,
+        job_id,
+        &[file(&overlong, false), file("/out/results.txt", false)],
+    )
+    .await;
+
+    assert_eq!(
+        cached_paths(&db, job_id).await,
+        vec!["/out/results.txt".to_string(), "x".repeat(65535)]
+    );
+}

@@ -22,9 +22,29 @@ pub async fn replace_file_list(db: &DatabaseConnection, job_id: i64, files: &[Fi
                     .exec(txn)
                     .await?;
                 for file in files {
+                    // The `path` field maps to a DB `TEXT` column (65535-byte
+                    // cap); bound it to that capacity so an over-long wire file
+                    // name is truncated rather than failing the whole cache
+                    // replacement.
+                    const MAX_PATH_BYTES: usize = 65535;
+                    let path = if file.file_name.len() > MAX_PATH_BYTES {
+                        tracing::warn!(
+                            "replace_file_list: Truncating over-long file name for job {} ({} > {} bytes)",
+                            job_id,
+                            file.file_name.len(),
+                            MAX_PATH_BYTES
+                        );
+                        let mut end = MAX_PATH_BYTES;
+                        while !file.file_name.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        file.file_name[..end].to_string()
+                    } else {
+                        file.file_name.clone()
+                    };
                     (file_list_cache::ActiveModel {
                         job_id: Set(job_id),
-                        path: Set(file.file_name.clone()),
+                        path: Set(path),
                         is_dir: Set(file.is_directory),
                         file_size: Set(file.file_size.cast_signed()),
                         permissions: Set(file.permissions.cast_signed()),
