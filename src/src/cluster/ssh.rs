@@ -12,6 +12,9 @@ use crate::config::clusters::{CONNECTION_TYPE_KERBEROS, CONNECTION_TYPE_SSH, Clu
 /// SSH config options used for Kerberos-authenticated connections.
 const GSSAPI_AUTH_OPTION: &str = "GSSAPIAuthentication=yes";
 const GSSAPI_KEYEXCHANGE_OPTION: &str = "GSSAPIKeyExchange=yes";
+/// The Kerberos path shells out to `ssh` and relies on the keytab-authenticated
+/// channel; it does not pin host keys from `known_hosts` (host-key pinning is
+/// applied on the russh SSH path via `SshHandler::check_server_key`).
 const STRICT_HOST_KEY_CHECKING_OPTION: &str = "StrictHostKeyChecking=no";
 const GSSAPI_DELEGATE_CREDENTIALS_OPTION: &str = "GSSAPIDelegateCredentials=no";
 
@@ -70,7 +73,10 @@ impl From<Option<Option<HashAlg>>> for PreferredRsaHash {
     }
 }
 
-struct SshHandler;
+struct SshHandler {
+    /// Accepted SSH host-key fingerprints. Empty accepts any host key.
+    known_hosts: Vec<String>,
+}
 
 impl client::Handler for SshHandler {
     type Error = russh::Error;
@@ -79,11 +85,15 @@ impl client::Handler for SshHandler {
         &mut self,
         server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        tracing::info!(
-            "SSH: Accepted server host key ({})",
-            format_server_key(&server_public_key.public_key())
-        );
-        Ok(true)
+        let fingerprint = format_server_key(&server_public_key.public_key());
+        if self.known_hosts.is_empty()
+            || self.known_hosts.iter().any(|pinned| pinned == &fingerprint)
+        {
+            tracing::info!("SSH: Accepted server host key ({fingerprint})");
+            return Ok(true);
+        }
+        tracing::warn!("SSH: Rejected server host key ({fingerprint}); not in known_hosts");
+        Ok(false)
     }
 }
 
@@ -167,7 +177,14 @@ async fn run_via_ssh(config: &ClusterConfig, token: &str) -> Result<(), SshError
     });
 
     tracing::debug!("SSH[{}]: Connecting to {}:22", config.name, config.host);
-    let mut session = client::connect(cfg, (&config.host[..], 22u16), SshHandler).await?;
+    let mut session = client::connect(
+        cfg,
+        (&config.host[..], 22u16),
+        SshHandler {
+            known_hosts: config.known_hosts.clone(),
+        },
+    )
+    .await?;
     tracing::trace!("SSH[{}]: TCP connection established", config.name);
 
     tracing::debug!(
@@ -525,6 +542,7 @@ async fn execute_command(
 mod tests {
     use super::*;
     use russh::MethodSet;
+    use russh::client::Handler;
     use russh::keys::Algorithm;
     use russh::server::Server as _;
     use std::borrow::Cow;
@@ -547,6 +565,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
             keytab: String::new(),
             kerberos_principal: String::new(),
             ltk: None,
+            known_hosts: Vec::new(),
         }
     }
 
@@ -757,6 +776,41 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
     /// Legacy PKCS#1 RSA private key, used to exercise the RSA code paths.
     const LEGACY_RSA_KEY: &str = "-----BEGIN RSA PRIVATE KEY-----
+
+    fn test_key() -> russh::keys::PublicKey {
+        block_on(load_private_key(PKCS8_ED25519_KEY))
+            .unwrap()
+            .public_key()
+            .clone()
+    }
+
+    #[test]
+    fn check_server_key_accepts_when_known_hosts_empty() {
+        let mut handler = SshHandler {
+            known_hosts: Vec::new(),
+        };
+        let accepted = block_on(handler.check_server_key(&test_key())).unwrap();
+        assert!(accepted);
+    }
+
+    #[test]
+    fn check_server_key_accepts_matching_fingerprint() {
+        let fingerprint = format_server_key(&test_key());
+        let mut handler = SshHandler {
+            known_hosts: vec![fingerprint],
+        };
+        let accepted = block_on(handler.check_server_key(&test_key())).unwrap();
+        assert!(accepted);
+    }
+
+    #[test]
+    fn check_server_key_rejects_non_matching_fingerprint() {
+        let mut handler = SshHandler {
+            known_hosts: vec!["ssh-ed25519 SHA256:other".to_string()],
+        };
+        let accepted = block_on(handler.check_server_key(&test_key())).unwrap();
+        assert!(!accepted);
+    }
 MIIEpQIBAAKCAQEAw/FG8YLVoXhsUVZcWaY7iZekMxQ2TAfSVh0LTnRuzsumeLhb
 0fh4scIt4C4MLwpGe/u3vj290C28jLkOtysqnIpB4iBUrFNRmEz2YuvjOzkFE8Ju
 0l1VrTZ9APhpLZvzT2N7YmTXcLz1yWopCe4KqTHczEP4lfkothxEoACXMaxezt5o
