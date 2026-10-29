@@ -115,6 +115,7 @@ fn three_cluster_configs() -> Vec<ClusterConfig> {
             keytab: String::new(),
             kerberos_principal: String::new(),
             ltk: None,
+            known_hosts: Vec::new(),
         },
         ClusterConfig {
             name: CLUSTER2.to_string(),
@@ -126,6 +127,7 @@ fn three_cluster_configs() -> Vec<ClusterConfig> {
             keytab: String::new(),
             kerberos_principal: String::new(),
             ltk: None,
+            known_hosts: Vec::new(),
         },
         ClusterConfig {
             name: "cluster3".to_string(),
@@ -137,6 +139,7 @@ fn three_cluster_configs() -> Vec<ClusterConfig> {
             keytab: String::new(),
             kerberos_principal: String::new(),
             ltk: None,
+            known_hosts: Vec::new(),
         },
     ]
 }
@@ -167,6 +170,7 @@ fn ltk_cluster_configs() -> Vec<ClusterConfig> {
         keytab: String::new(),
         kerberos_principal: String::new(),
         ltk: Some("super-secret-ltk".to_string()),
+        known_hosts: Vec::new(),
     }]
 }
 
@@ -577,6 +581,7 @@ async fn test_constructor_connection_types() {
             keytab: String::new(),
             kerberos_principal: String::new(),
             ltk: None,
+            known_hosts: Vec::new(),
         },
         ClusterConfig {
             name: "kerberos_cluster".to_string(),
@@ -588,6 +593,7 @@ async fn test_constructor_connection_types() {
             keytab: "/etc/krb5.keytab".to_string(),
             kerberos_principal: "krbuser@EXAMPLE.COM".to_string(),
             ltk: None,
+            known_hosts: Vec::new(),
         },
         ClusterConfig {
             name: "manual_cluster".to_string(),
@@ -599,6 +605,7 @@ async fn test_constructor_connection_types() {
             keytab: String::new(),
             kerberos_principal: String::new(),
             ltk: None,
+            known_hosts: Vec::new(),
         },
     ];
 

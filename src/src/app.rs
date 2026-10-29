@@ -306,6 +306,7 @@ mod tests {
                 keytab: String::new(),
                 kerberos_principal: String::new(),
                 ltk: None,
+                known_hosts: Vec::new(),
             }],
             db,
             file_list_map,

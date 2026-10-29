@@ -35,6 +35,11 @@ pub struct ClusterConfig {
     /// Long-term key for LTK-authenticated manual connections.
     #[serde(default)]
     pub ltk: Option<String>,
+    /// Accepted SSH host-key fingerprints (e.g. `"ssh-ed25519 SHA256:..."`).
+    /// Empty means accept any host key (current behaviour); non-empty pins the
+    /// presented key to one of these entries.
+    #[serde(default)]
+    pub known_hosts: Vec<String>,
 }
 
 fn default_connection_type() -> String {
@@ -209,6 +214,37 @@ mod tests {
         assert_eq!(configs.len(), 1);
         assert_eq!(configs[0].name, "ozstar");
         assert_eq!(configs[0].connection_type, "ssh");
+    }
+
+    #[test]
+    fn test_deserialize_cluster_with_known_hosts() {
+        let json = r#"[{
+            "name": "ozstar",
+            "host": "ozstar.swin.edu.au",
+            "username": "admin",
+            "path": "/home/admin/jobcontroller",
+            "known_hosts": ["ssh-ed25519 SHA256:abc123"]
+        }]"#;
+
+        let configs: Vec<ClusterConfig> = serde_json::from_str(json).unwrap();
+        assert_eq!(configs.len(), 1);
+        assert_eq!(
+            configs[0].known_hosts,
+            vec!["ssh-ed25519 SHA256:abc123".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_deserialize_cluster_known_hosts_defaults_empty() {
+        let json = r#"[{
+            "name": "ozstar",
+            "host": "ozstar.swin.edu.au",
+            "username": "admin",
+            "path": "/home/admin/jobcontroller"
+        }]"#;
+
+        let configs: Vec<ClusterConfig> = serde_json::from_str(json).unwrap();
+        assert!(configs[0].known_hosts.is_empty());
     }
 
     #[test]
