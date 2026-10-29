@@ -1929,6 +1929,57 @@ async fn test_handle_job_save_bogus_bundle_hash_length_is_dropped() {
     );
 }
 
+/// Verifies that a `DB_JOB_SAVE` whose `bundle_hash` or `working_directory`
+/// exceeds the `Text` column capacity (65535 bytes) is dropped and records no
+/// cluster job row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the cluster job schema is created.
+///
+/// # Act
+/// Dispatch a `DB_JOB_SAVE` message with `db_request_id=100` and a valid
+/// `ClusterJob` payload whose `working_directory` is 65536 bytes long.
+///
+/// # Assert
+/// No row is inserted into `cluster_job` and no `DB_RESPONSE` is sent.
+#[tokio::test]
+async fn test_handle_job_save_oversized_string_is_dropped() {
+    let db = make_cluster_db().await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+
+    let job = ClusterJob {
+        id: 0, // insert
+        job_id: 42,
+        scheduler_id: 0,
+        submitting: true,
+        submitting_count: 1,
+        bundle_hash: "hash_abc".to_string(),
+        working_directory: "x".repeat(65536),
+        running: false,
+        deleting: false,
+        deleted: false,
+    };
+
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(100);
+        job.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOB_SAVE should be handled");
+
+    let count = cluster_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "DB_JOB_SAVE with oversized string should record no cluster job row"
+    );
+    assert!(
+        sent.lock().unwrap().is_empty(),
+        "DB_JOB_SAVE with oversized string should send no DB_RESPONSE"
+    );
+}
+
 /// Verifies that a truncated `DB_JOBSTATUS_SAVE` message (one missing the
 /// variable-length `what` field) is dropped and records no job status row.
 ///
