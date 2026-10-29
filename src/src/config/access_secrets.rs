@@ -2,6 +2,14 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::Path;
 
+/// Maximum byte length of an access-secret `name`.
+///
+/// The name is written into the `jobserver_job.application` column, which `SeaORM`
+/// maps to `MySQL` `VARCHAR(255)` (a 255-byte cap). A name longer than this
+/// cannot fit the column, so reject it at config load with a clear error instead
+/// of failing every `create_job` insert with a server-side 500.
+const MAX_NAME_LEN: usize = 255;
+
 /// JWT access configuration for an application or group of applications.
 ///
 /// Loaded from `access_secrets.json` and used to validate HTTP `Authorization` tokens
@@ -50,6 +58,15 @@ pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
         }
         if secret.name.is_empty() {
             anyhow::bail!("empty name in access secrets (entry #{})", i + 1);
+        }
+        if secret.name.len() > MAX_NAME_LEN {
+            anyhow::bail!(
+                "name '{}' in access secrets is too long ({} bytes, max {}) (entry #{})",
+                secret.name,
+                secret.name.len(),
+                MAX_NAME_LEN,
+                i + 1
+            );
         }
         tracing::trace!(
             "Secret #{}: name='{}', clusters={:?}, applications={:?}",
@@ -173,6 +190,48 @@ mod tests {
             err.to_string().contains("empty name in access secrets"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_load_access_secrets_name_too_long() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("access_secrets.json");
+        let long_name = "a".repeat(256);
+        std::fs::write(
+            &config_path,
+            format!(
+                r#"[
+                    {{"name": "{long_name}", "secret": "s1", "applications": ["a"], "clusters": ["c1"]}}
+                ]"#
+            ),
+        )
+        .unwrap();
+
+        let err = load_access_secrets(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("is too long (256 bytes, max 255)"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_access_secrets_name_at_max_len() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("access_secrets.json");
+        let max_name = "a".repeat(255);
+        std::fs::write(
+            &config_path,
+            format!(
+                r#"[
+                    {{"name": "{max_name}", "secret": "s1", "applications": ["a"], "clusters": ["c1"]}}
+                ]"#
+            ),
+        )
+        .unwrap();
+
+        let secrets = load_access_secrets(&config_path).unwrap();
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0].name, max_name);
     }
 
     #[test]
