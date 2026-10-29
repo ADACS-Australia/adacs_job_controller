@@ -26,6 +26,8 @@ pub struct AccessSecret {
 /// - The file cannot be read
 /// - The JSON is invalid
 /// - Two or more secrets share the same name
+/// - A secret has an empty `secret` value
+/// - A secret has an empty `name` value
 pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
     let secrets: Vec<AccessSecret> = super::load_json_file!(
         path,
