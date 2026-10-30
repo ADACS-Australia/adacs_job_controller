@@ -744,6 +744,19 @@ async fn handle_bundle_create_or_update(
         );
         return;
     };
+    // The `content` field maps to a DB `Text` column (MySQL TEXT, 65,535
+    // bytes); bound it to that capacity so an over-long wire value is dropped
+    // rather than failing the whole bundle insert/update.
+    const MAX_BUNDLE_CONTENT_LEN: usize = 65_535;
+    if bundle.content.len() > MAX_BUNDLE_CONTENT_LEN {
+        tracing::warn!(
+            "Cluster[{}]: Dropping DB_BUNDLE_CREATE_OR_UPDATE_JOB (bundle content of {} bytes exceeds {} byte column capacity)",
+            cluster.name(),
+            bundle.content.len(),
+            MAX_BUNDLE_CONTENT_LEN
+        );
+        return;
+    }
     let cluster_name = cluster.name();
 
     // If bundle has an ID, try to update existing bundle
@@ -935,5 +948,98 @@ mod tests {
         let mut msg = Message::from_bytes(msg.into_data());
 
         handle_job_get_by_id(&mut msg, &cluster, &db).await;
+    }
+
+    /// Verifies that `handle_bundle_create_or_update` drops a message whose
+    /// `content` exceeds the DB `Text` column capacity (65,535 bytes) rather
+    /// than attempting a write that would fail, so no row is created and no
+    /// `DB_RESPONSE` is sent.
+    #[tokio::test]
+    async fn test_bundle_create_or_update_drops_overlong_content() {
+        use crate::cluster::traits::MockClusterTrait;
+        use sea_orm::{ConnectionTrait, DbBackend, PaginatorTrait, Schema};
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        db.execute(builder.build(&schema.create_table_from_entity(bundle_job::Entity)))
+            .await
+            .expect("create table failed");
+
+        let mut cluster = MockClusterTrait::new();
+        cluster.expect_name().returning(|| "test".to_string());
+        cluster.expect_send_message().never();
+
+        // Build a DB_BUNDLE_CREATE_OR_UPDATE_JOB whose content exceeds 65,535 bytes.
+        let mut msg = Message::new(
+            DB_BUNDLE_CREATE_OR_UPDATE_JOB,
+            Priority::Highest,
+            SYSTEM_SOURCE,
+        );
+        msg.push_uint(42); // db_request_id
+        msg.push_ulong(0); // bundle id (0 => insert by hash)
+        msg.push_string(&"c".repeat(65_536));
+        msg.push_string("hash");
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        handle_bundle_create_or_update(&mut msg, &cluster, &db).await;
+
+        // No bundle row is created for the dropped message.
+        let count = bundle_job::Entity::find()
+            .count(&db)
+            .await
+            .expect("count failed");
+        assert_eq!(count, 0);
+    }
+
+    /// Verifies that `handle_bundle_create_or_update` accepts a `content`
+    /// exactly at the 65,535-byte column capacity boundary and writes it.
+    #[tokio::test]
+    async fn test_bundle_create_or_update_accepts_content_at_boundary() {
+        use crate::cluster::traits::MockClusterTrait;
+        use sea_orm::{ConnectionTrait, DbBackend, Schema};
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory connection failed");
+
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        db.execute(builder.build(&schema.create_table_from_entity(bundle_job::Entity)))
+            .await
+            .expect("create table failed");
+
+        let mut cluster = MockClusterTrait::new();
+        cluster.expect_name().returning(|| "test".to_string());
+        cluster
+            .expect_send_message()
+            .returning(|_| Box::pin(async {}));
+
+        // Build a DB_BUNDLE_CREATE_OR_UPDATE_JOB whose content is exactly 65,535 bytes.
+        let mut msg = Message::new(
+            DB_BUNDLE_CREATE_OR_UPDATE_JOB,
+            Priority::Highest,
+            SYSTEM_SOURCE,
+        );
+        msg.push_uint(42); // db_request_id
+        msg.push_ulong(0); // bundle id (0 => insert by hash)
+        msg.push_string(&"c".repeat(65_535));
+        msg.push_string("hash");
+        let mut msg = Message::from_bytes(msg.into_data());
+
+        handle_bundle_create_or_update(&mut msg, &cluster, &db).await;
+
+        // The bundle row is inserted with the full boundary-length content.
+        let row = bundle_job::Entity::find()
+            .filter(bundle_job::Column::BundleHash.eq("hash"))
+            .one(&db)
+            .await
+            .expect("query failed")
+            .expect("expected a bundle_job row");
+        assert_eq!(row.content, "c".repeat(65_535));
+        assert_eq!(row.cluster, "test");
     }
 }
