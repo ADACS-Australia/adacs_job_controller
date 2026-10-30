@@ -65,6 +65,13 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
                 i + 1
             );
         }
+        if config.name.chars().count() > 255 {
+            anyhow::bail!(
+                "cluster name '{}' in cluster config (entry #{}) exceeds 255 characters",
+                config.name,
+                i + 1
+            );
+        }
         if let Some(ltk) = config.ltk.as_deref()
             && ltk.is_empty()
         {
@@ -188,6 +195,54 @@ mod tests {
             err.to_string().contains("empty 'ltk'"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_overlong_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        let long_name = "c".repeat(256);
+        std::fs::write(
+            &config_path,
+            format!(
+                r#"[{{
+                    "name": "{long_name}",
+                    "host": "h1",
+                    "username": "u1",
+                    "path": "/p1"
+                }}]"#
+            ),
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("exceeds 255 characters"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_accepts_max_length_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        let max_name = "c".repeat(255);
+        std::fs::write(
+            &config_path,
+            format!(
+                r#"[{{
+                    "name": "{max_name}",
+                    "host": "h1",
+                    "username": "u1",
+                    "path": "/p1"
+                }}]"#
+            ),
+        )
+        .unwrap();
+
+        let configs = load_cluster_configs(&config_path).unwrap();
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].name, max_name);
     }
 
     #[test]
