@@ -548,85 +548,15 @@ pub async fn download_file(
         .as_ref()
         .and_then(PreResponseGuard::trigger_clone);
 
-    let stream = async_stream::stream! {
-        let mut receiver = fd_state_stream.chunk_receiver.lock().await;
-        let mut sent: u64 = 0;
-
-        while sent < file_size && !fd_state_stream.error.load(Ordering::Acquire) {
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(chunk_timeout_secs),
-                receiver.recv()
-            ).await {
-                Ok(Some(mut chunk)) => {
-                    // Slice the final chunk so the response never exceeds the
-                    // declared file size. If the chunk overshoots, truncate
-                    // before yielding.
-                    if sent + (chunk.len() as u64) > file_size {
-                        let remaining = (file_size - sent) as usize;
-                        chunk.truncate(remaining);
-                        sent += chunk.len() as u64;
-                        fd_state_stream.sent_bytes.store(sent, Ordering::Release);
-                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
-                        yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
-                        break;
-                    }
-
-                    sent += chunk.len() as u64;
-                    fd_state_stream.sent_bytes.store(sent, Ordering::Release);
-
-                    // Backpressure: when buffer drains below MIN_FILE_BUFFER_SIZE, send RESUME
-                    // to the cluster so it resumes sending chunks. Synchronized via
-                    // compare_exchange to prevent races with the WS-side PAUSE logic.
-                    let received_bytes = fd_state_stream.received_bytes.load(Ordering::Acquire);
-                    if fd_state_stream.client_paused.load(Ordering::Acquire)
-                        && received_bytes.saturating_sub(sent) < min_buffer
-                        && fd_state_stream
-                            .client_paused
-                            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
-                            .is_ok()
-                    {
-                        let resume_msg = Message::new(
-                            RESUME_FILE_CHUNK_STREAM,
-                            Priority::Highest,
-                            &uuid_for_resume,
-                        );
-                        fd_cluster.send_message(resume_msg).await;
-                    }
-
-                    if sent == file_size {
-                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
-                    }
-
-                    yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
-                }
-                Ok(None) => {
-                    if sent == file_size {
-                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
-                    } else {
-                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
-                    }
-                    break;
-                }
-                Err(_) => {
-                    fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
-                    yield Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        ERR_CLUSTER_TIMEOUT,
-                    ));
-                    break;
-                }
-            }
-        }
-
-        // If the loop exited early because the cluster flagged an error
-        // (sent < file_size) without firing a terminal reason, close the
-        // dedicated session so the file_download_map entry and FileDownload
-        // WebSocket are cleaned up. Idempotent: a no-op if a reason was
-        // already fired above.
-        if sent < file_size {
-            fire_stream_trigger(&stream_trigger, DownloadShutdownReason::FileError);
-        }
-    };
+    let stream = build_download_stream(
+        fd_state_stream,
+        stream_trigger,
+        fd_cluster,
+        uuid_for_resume,
+        file_size,
+        min_buffer,
+        chunk_timeout_secs,
+    );
 
     let body = Body::from_stream(stream);
 
@@ -657,6 +587,111 @@ pub async fn download_file(
         })?;
 
     Ok(response)
+}
+
+/// Build the HTTP response body stream for a file download.
+///
+/// Reads chunks from the session's chunk channel and yields them to the
+/// client. If the channel closes (or a chunk timeout fires) before
+/// `file_size` bytes have been sent, the stream yields an `Err` so the
+/// client sees a failed download instead of a truncated body under a larger
+/// `Content-Length`.
+fn build_download_stream(
+    fd_state: Arc<crate::cluster::file_download::FileDownloadState>,
+    stream_trigger: Option<DownloadCleanupTrigger>,
+    fd_cluster: Arc<dyn crate::cluster::traits::ClusterTrait>,
+    uuid_for_resume: String,
+    file_size: u64,
+    min_buffer: u64,
+    chunk_timeout_secs: u64,
+) -> impl futures_util::Stream<Item = Result<bytes::Bytes, std::io::Error>> {
+    async_stream::stream! {
+        let mut receiver = fd_state.chunk_receiver.lock().await;
+        let mut sent: u64 = 0;
+
+        while sent < file_size && !fd_state.error.load(Ordering::Acquire) {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(chunk_timeout_secs),
+                receiver.recv()
+            ).await {
+                Ok(Some(mut chunk)) => {
+                    // Slice the final chunk so the response never exceeds the
+                    // declared file size. If the chunk overshoots, truncate
+                    // before yielding.
+                    if sent + (chunk.len() as u64) > file_size {
+                        let remaining = (file_size - sent) as usize;
+                        chunk.truncate(remaining);
+                        sent += chunk.len() as u64;
+                        fd_state.sent_bytes.store(sent, Ordering::Release);
+                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
+                        yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
+                        break;
+                    }
+
+                    sent += chunk.len() as u64;
+                    fd_state.sent_bytes.store(sent, Ordering::Release);
+
+                    // Backpressure: when buffer drains below MIN_FILE_BUFFER_SIZE, send RESUME
+                    // to the cluster so it resumes sending chunks. Synchronized via
+                    // compare_exchange to prevent races with the WS-side PAUSE logic.
+                    let received_bytes = fd_state.received_bytes.load(Ordering::Acquire);
+                    if fd_state.client_paused.load(Ordering::Acquire)
+                        && received_bytes.saturating_sub(sent) < min_buffer
+                        && fd_state
+                            .client_paused
+                            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
+                            .is_ok()
+                    {
+                        let resume_msg = Message::new(
+                            RESUME_FILE_CHUNK_STREAM,
+                            Priority::Highest,
+                            &uuid_for_resume,
+                        );
+                        fd_cluster.send_message(resume_msg).await;
+                    }
+
+                    if sent == file_size {
+                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
+                    }
+
+                    yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
+                }
+                Ok(None) => {
+                    if sent == file_size {
+                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
+                    } else {
+                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
+                        // The chunk channel closed before the full file was
+                        // sent (e.g. the session was dropped mid-transfer).
+                        // Surface the truncation as an error rather than a
+                        // short body under a larger Content-Length.
+                        yield Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            ERR_CLUSTER_TIMEOUT,
+                        ));
+                    }
+                    break;
+                }
+                Err(_) => {
+                    fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
+                    yield Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        ERR_CLUSTER_TIMEOUT,
+                    ));
+                    break;
+                }
+            }
+        }
+
+        // If the loop exited early because the cluster flagged an error
+        // (sent < file_size) without firing a terminal reason, close the
+        // dedicated session so the file_download_map entry and FileDownload
+        // WebSocket are cleaned up. Idempotent: a no-op if a reason was
+        // already fired above.
+        if sent < file_size {
+            fire_stream_trigger(&stream_trigger, DownloadShutdownReason::FileError);
+        }
+    }
 }
 
 /// Fire the pre-response cleanup guard for a terminal download path, if one is
@@ -1374,5 +1409,43 @@ mod tests {
                 .await;
         assert!(result.is_ok());
         handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_stream_yields_error_when_channel_closes_before_file_complete() {
+        use futures_util::StreamExt;
+
+        // A session with file_size=100 but only 50 bytes buffered before the
+        // chunk channel is closed (sender dropped). The stream must surface
+        // the truncation as an error rather than a short body.
+        let mut state = FileDownloadState::new();
+        state.file_size.store(100, Ordering::Release);
+        state.received_data.store(true, Ordering::Release);
+        state.chunk_sender.send(vec![0u8; 50]).unwrap();
+        // Close the channel by replacing the sender; the receiver held by the
+        // stream now has no live senders and returns None on recv.
+        let (replacement, _replacement_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let closed_sender = std::mem::replace(&mut state.chunk_sender, replacement);
+        drop(closed_sender);
+
+        let fd_state = Arc::new(state);
+        let mut mock = crate::cluster::traits::MockClusterTrait::new();
+        mock.expect_send_message().returning(|_| Box::pin(async {}));
+        let cluster: Arc<dyn crate::cluster::traits::ClusterTrait> = Arc::new(mock);
+
+        let stream =
+            build_download_stream(fd_state, None, cluster, "uuid".to_string(), 100, 4096, 5);
+
+        let items: Vec<_> = stream.collect().await;
+        assert_eq!(
+            items.len(),
+            2,
+            "stream should yield the buffered chunk then a terminal error"
+        );
+        assert!(items[0].is_ok(), "first item should be the buffered chunk");
+        assert!(
+            items[1].is_err(),
+            "a channel closed before the file completes must surface as an error"
+        );
     }
 }
