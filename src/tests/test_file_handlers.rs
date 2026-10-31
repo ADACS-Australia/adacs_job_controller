@@ -1116,6 +1116,108 @@ async fn test_download_file_overshoot_truncates_to_declared_size() {
     );
 }
 
+/// Tests that the `Content-Disposition` filename in the download response
+/// sanitizes `"`, backslashes, control characters, and non-ASCII characters
+/// to `_` (header-injection hardening).
+///
+/// # Setup
+/// Inserts a download record whose path contains a double quote and a control
+/// character. Wires a `FileDownloadState` that streams a small chunk.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}, and the `forceDownload=true`
+/// variant.
+///
+/// # Assert
+/// Verifies 200 OK and that the `Content-Disposition` header filename has the
+/// offending characters replaced with `_` (`inline; filename="a_b_c.txt"` for
+/// the normal variant, `attachment;` for the force-download variant).
+#[tokio::test]
+async fn test_download_file_sanitizes_content_disposition_filename() {
+    let db = setup_test_db().await;
+    let uuid = "sanitize-uuid".to_string();
+    insert_file_download(&db, &uuid, "/data/a\"b\nc.txt").await;
+
+    let fd_state = Arc::new(FileDownloadState::new());
+    let data: Vec<u8> = vec![1, 2, 3];
+    fd_state
+        .file_size
+        .store(data.len() as u64, Ordering::Release);
+    fd_state.received_data.store(true, Ordering::Release);
+    fd_state.data_ready.store(true, Ordering::Release);
+    fd_state.data_notify.notify_waiters();
+    let _ = fd_state.chunk_sender.send(data.clone());
+
+    let fd_for_manager = Arc::clone(&fd_state);
+    let mut manager = download_manager_with_online_cluster();
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd_for_manager)));
+
+    let app = make_app(db, manager);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers()
+            .get("content-disposition")
+            .and_then(|v| v.to_str().ok()),
+        Some("inline; filename=\"a_b_c.txt\""),
+        "Content-Disposition should sanitize the filename"
+    );
+
+    // Drain the body so the stream runs to completion.
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(body_bytes.as_ref(), &[1, 2, 3]);
+
+    // Force-download variant produces `attachment;`.
+    let _ = fd_state.chunk_sender.send(data.clone());
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}&forceDownload=true"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers()
+            .get("content-disposition")
+            .and_then(|v| v.to_str().ok()),
+        Some("attachment; filename=\"a_b_c.txt\""),
+        "Force-download Content-Disposition should be attachment"
+    );
+
+    let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(body_bytes.as_ref(), &[1, 2, 3]);
+}
+
 /// Tests that the HTTP download stream sends a single `RESUME_FILE_CHUNK_STREAM`
 /// message and clears `client_paused` once the client has drained below
 /// `MIN_FILE_BUFFER_SIZE` after a pause.
