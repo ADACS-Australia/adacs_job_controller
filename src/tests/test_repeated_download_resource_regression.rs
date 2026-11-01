@@ -122,8 +122,8 @@ async fn repeated_download_manager_level_returns_to_baseline() {
             "cycle {cycle}: cleanup trigger lookup must return None for {uuid}"
         );
         assert!(
-            manager.get_cluster_by_connection(1).is_none(),
-            "cycle {cycle}: connection_map must not retain entry for conn_id=1"
+            !dl_cluster.is_online(),
+            "cycle {cycle}: dedicated cluster must be offline after cleanup (conn_id=1 removed)"
         );
 
         closed += 1;
