@@ -263,7 +263,7 @@ async fn test_is_cluster_online_initially_offline() {
     for i in 1..=3 {
         let name = format!("cluster{i}");
         let cluster = mgr.get_cluster_by_name(&name).unwrap();
-        assert!(!mgr.is_cluster_online(cluster.as_ref()));
+        assert!(!cluster.is_online());
     }
 }
 
@@ -402,7 +402,7 @@ async fn test_handle_new_connection_valid_uuid() {
     // All clusters should be offline
     for i in 1..=3 {
         let cluster = mgr.get_cluster_by_name(&format!("cluster{i}")).unwrap();
-        assert!(!mgr.is_cluster_online(cluster.as_ref()));
+        assert!(!cluster.is_online());
     }
 
     // Try connecting with the last UUID (for a non-existent cluster)
@@ -417,7 +417,7 @@ async fn test_handle_new_connection_valid_uuid() {
     // No clusters should be connected
     for i in 1..=3 {
         let cluster = mgr.get_cluster_by_name(&format!("cluster{i}")).unwrap();
-        assert!(!mgr.is_cluster_online(cluster.as_ref()));
+        assert!(!cluster.is_online());
     }
 
     // Now insert UUIDs for a real cluster (cluster2)
@@ -441,7 +441,7 @@ async fn test_handle_new_connection_valid_uuid() {
 
     // cluster2 should now be online
     let cluster2 = mgr.get_cluster_by_name(CLUSTER2).unwrap();
-    assert!(mgr.is_cluster_online(cluster2.as_ref()));
+    assert!(cluster2.is_online());
 
     // cluster2 should be findable by connection ID
     let found = mgr.get_cluster_by_connection(10);
@@ -449,9 +449,9 @@ async fn test_handle_new_connection_valid_uuid() {
 
     // Other clusters should still be offline
     let cluster1 = mgr.get_cluster_by_name(CLUSTER1).unwrap();
-    assert!(!mgr.is_cluster_online(cluster1.as_ref()));
+    assert!(!cluster1.is_online());
     let cluster3 = mgr.get_cluster_by_name("cluster3").unwrap();
-    assert!(!mgr.is_cluster_online(cluster3.as_ref()));
+    assert!(!cluster3.is_online());
 }
 
 /// Verifies that `handle_new_connection` rejects a second connection attempt for an already-connected cluster.
@@ -478,7 +478,7 @@ async fn test_handle_new_connection_already_connected_rejected() {
 
     // cluster2 is now online
     let cluster2 = mgr.get_cluster_by_name(CLUSTER2).unwrap();
-    assert!(mgr.is_cluster_online(cluster2.as_ref()));
+    assert!(cluster2.is_online());
 
     // Insert another UUID for the same cluster and try to connect again
     insert_cluster_uuid(&db, CLUSTER2, "uuid-second", chrono::Utc::now().naive_utc()).await;
@@ -528,7 +528,7 @@ async fn test_remove_connection() {
     // Verify all clusters are online
     for i in 1..=3 {
         let cluster = mgr.get_cluster_by_name(&format!("cluster{i}")).unwrap();
-        assert!(mgr.is_cluster_online(cluster.as_ref()));
+        assert!(cluster.is_online());
     }
 
     // Remove cluster2's connection
@@ -536,7 +536,7 @@ async fn test_remove_connection() {
 
     // cluster2 should be offline
     let cluster2 = mgr.get_cluster_by_name(CLUSTER2).unwrap();
-    assert!(!mgr.is_cluster_online(cluster2.as_ref()));
+    assert!(!cluster2.is_online());
 
     // cluster2 should not be findable by connection
     assert!(mgr.get_cluster_by_connection(2).is_none());
@@ -1114,7 +1114,7 @@ async fn test_handle_new_connection_ltk_authenticates() {
 
     // Cluster is offline before connecting
     let cluster = mgr.get_cluster_by_name(LTK_CLUSTER).unwrap();
-    assert!(!mgr.is_cluster_online(cluster.as_ref()));
+    assert!(!cluster.is_online());
 
     // Connect using the LTK token
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1124,7 +1124,7 @@ async fn test_handle_new_connection_ltk_authenticates() {
 
     // Cluster should now be online and findable by connection ID
     let cluster = mgr.get_cluster_by_name(LTK_CLUSTER).unwrap();
-    assert!(mgr.is_cluster_online(cluster.as_ref()));
+    assert!(cluster.is_online());
     let found = mgr.get_cluster_by_connection(1);
     assert_eq!(found.unwrap().name(), LTK_CLUSTER);
 }
@@ -1150,7 +1150,7 @@ async fn test_handle_new_connection_ltk_duplicate_rejected() {
 
     // Cluster is now online
     let cluster = mgr.get_cluster_by_name(LTK_CLUSTER).unwrap();
-    assert!(mgr.is_cluster_online(cluster.as_ref()));
+    assert!(cluster.is_online());
 
     // Second LTK connection with the same token must be rejected
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
