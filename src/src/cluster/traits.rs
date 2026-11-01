@@ -101,10 +101,6 @@ pub trait ClusterManagerTrait: Send + Sync {
     /// Look up a cluster by name.
     fn get_cluster_by_name(&self, name: &str) -> Option<Arc<dyn ClusterTrait>>;
 
-    /// Look up a cluster by its WebSocket connection ID.
-    #[allow(dead_code)]
-    fn get_cluster_by_connection(&self, conn_id: ConnectionId) -> Option<Arc<dyn ClusterTrait>>;
-
     /// Exact admission context for an accepted dedicated file-download handler.
     ///
     /// Returns `Some((session, connection_id, cluster))` only when the

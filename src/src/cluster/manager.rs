@@ -725,12 +725,6 @@ impl ClusterManagerTrait for ClusterManager {
             .map(|c| Arc::clone(c) as Arc<dyn ClusterTrait>)
     }
 
-    fn get_cluster_by_connection(&self, conn_id: ConnectionId) -> Option<Arc<dyn ClusterTrait>> {
-        self.connection_map
-            .get(&conn_id)
-            .map(|c| Arc::clone(c.value()) as Arc<dyn ClusterTrait>)
-    }
-
     fn get_file_download_admission(
         &self,
         conn_id: ConnectionId,

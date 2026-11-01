@@ -226,25 +226,6 @@ async fn test_constructor_with_clusters() {
     assert!(mgr.get_cluster_by_name("not_a_real_cluster").is_none());
 }
 
-/// Verifies that looking up a cluster by an invalid connection ID returns `None`.
-///
-/// # Setup
-/// Create an in-memory `SQLite` database and UUID table, then instantiate `ClusterManager` with three cluster configs.
-///
-/// # Act
-/// Call `get_cluster_by_connection` with an invalid connection ID (999).
-///
-/// # Assert
-/// Returns `None` because no connection with that ID exists.
-#[tokio::test]
-async fn test_get_cluster_by_connection() {
-    let db = make_cluster_db().await;
-    let mgr = make_manager(three_cluster_configs(), db);
-
-    // Getting a cluster by invalid connection should return None
-    assert!(mgr.get_cluster_by_connection(999).is_none());
-}
-
 /// Verifies that all clusters are initially offline after `ClusterManager` construction.
 ///
 /// # Setup
@@ -443,10 +424,6 @@ async fn test_handle_new_connection_valid_uuid() {
     let cluster2 = mgr.get_cluster_by_name(CLUSTER2).unwrap();
     assert!(mgr.is_cluster_online(cluster2.as_ref()));
 
-    // cluster2 should be findable by connection ID
-    let found = mgr.get_cluster_by_connection(10);
-    assert_eq!(found.unwrap().name(), CLUSTER2);
-
     // Other clusters should still be offline
     let cluster1 = mgr.get_cluster_by_name(CLUSTER1).unwrap();
     assert!(!mgr.is_cluster_online(cluster1.as_ref()));
@@ -491,12 +468,9 @@ async fn test_handle_new_connection_already_connected_rejected() {
     // All UUIDs should still be deleted
     assert_eq!(count_uuids(&db).await, 0);
 
-    // The original connection should still be active
-    let found = mgr.get_cluster_by_connection(1);
-    assert_eq!(found.unwrap().name(), CLUSTER2);
-
-    // The new connection should NOT be in the map
-    assert!(mgr.get_cluster_by_connection(2).is_none());
+    // The original connection should still be active; the rejected second
+    // connection must not have been registered (cluster2 stays online).
+    assert!(mgr.is_cluster_online(cluster2.as_ref()));
 }
 
 /// Verifies that `remove_connection` marks a cluster offline and removes it from the connection map.
@@ -538,14 +512,11 @@ async fn test_remove_connection() {
     let cluster2 = mgr.get_cluster_by_name(CLUSTER2).unwrap();
     assert!(!mgr.is_cluster_online(cluster2.as_ref()));
 
-    // cluster2 should not be findable by connection
-    assert!(mgr.get_cluster_by_connection(2).is_none());
-
     // Other clusters should still be online
-    let found = mgr.get_cluster_by_connection(1);
-    assert_eq!(found.unwrap().name(), CLUSTER1);
-    let found = mgr.get_cluster_by_connection(3);
-    assert_eq!(found.unwrap().name(), "cluster3");
+    let cluster1 = mgr.get_cluster_by_name(CLUSTER1).unwrap();
+    assert!(mgr.is_cluster_online(cluster1.as_ref()));
+    let cluster3 = mgr.get_cluster_by_name("cluster3").unwrap();
+    assert!(mgr.is_cluster_online(cluster3.as_ref()));
 
     // Removing an invalid connection should not panic
     mgr.remove_connection(999, false).await;
@@ -789,7 +760,7 @@ async fn test_create_file_upload_session() {
 /// Call `handle_new_connection` with the file download token and connection ID 50.
 ///
 /// # Assert
-/// Returns `Some`, and the connection is findable via `get_cluster_by_connection(50)`.
+/// Returns `Some`, and the dedicated download cluster is online (connection registered).
 #[tokio::test]
 async fn test_handle_new_connection_file_download() {
     let db = make_db().await;
@@ -799,9 +770,8 @@ async fn test_handle_new_connection_file_download() {
     let result = connect_file_download(&mgr, "dl-token-1", 50).await;
     assert_eq!(result.as_ref().unwrap().name(), CLUSTER1);
 
-    // Should be trackable by connection
-    let found = mgr.get_cluster_by_connection(50);
-    assert_eq!(found.as_ref().unwrap().name(), CLUSTER1);
+    // The dedicated download cluster should be online (connection registered)
+    assert!(result.as_ref().unwrap().is_online());
 }
 
 /// Verifies that `handle_new_connection` rejects a second WebSocket connection to an already-bound file download session.
@@ -813,7 +783,7 @@ async fn test_handle_new_connection_file_download() {
 /// Call `handle_new_connection` a second time with the same file download token and a new connection ID 51.
 ///
 /// # Assert
-/// Returns `None`, and the new connection is not registered via `get_cluster_by_connection(51)`.
+/// Returns `None`, and the original connection remains online (the new one is not registered).
 #[tokio::test]
 async fn test_handle_new_connection_file_download_duplicate_rejected() {
     let db = make_db().await;
@@ -828,8 +798,8 @@ async fn test_handle_new_connection_file_download_duplicate_rejected() {
     let result2 = mgr.handle_new_connection(51, tx2, "dl-token-dup").await;
     assert!(result2.is_none());
 
-    // The rejected connection must not be registered
-    assert!(mgr.get_cluster_by_connection(51).is_none());
+    // The original connection remains online; the rejected one is not registered
+    assert!(result.as_ref().unwrap().is_online());
 }
 
 /// Verifies that `handle_new_connection` accepts a file upload session token and registers the connection.
@@ -841,7 +811,7 @@ async fn test_handle_new_connection_file_download_duplicate_rejected() {
 /// Call `handle_new_connection` with the file upload token and connection ID 60.
 ///
 /// # Assert
-/// Returns `Some`, and the connection is findable via `get_cluster_by_connection(60)`.
+/// Returns `Some`, and the dedicated upload cluster is online (connection registered).
 #[tokio::test]
 async fn test_handle_new_connection_file_upload() {
     let db = make_db().await;
@@ -851,9 +821,8 @@ async fn test_handle_new_connection_file_upload() {
     let result = connect_file_upload(&mgr, "ul-token-1", 60).await;
     assert_eq!(result.as_ref().unwrap().name(), CLUSTER1);
 
-    // Should be trackable by connection
-    let found = mgr.get_cluster_by_connection(60);
-    assert_eq!(found.as_ref().unwrap().name(), CLUSTER1);
+    // The dedicated upload cluster should be online (connection registered)
+    assert!(result.as_ref().unwrap().is_online());
 }
 
 /// Verifies that a duplicate file upload connection for an already-online upload session is rejected.
@@ -884,8 +853,7 @@ async fn test_handle_new_connection_file_upload_duplicate_rejected() {
     );
 
     // Original connection remains active; the new one is not registered
-    assert_eq!(mgr.get_cluster_by_connection(60).unwrap().name(), CLUSTER1);
-    assert!(mgr.get_cluster_by_connection(61).is_none());
+    assert!(result.as_ref().unwrap().is_online());
 }
 
 /// Verifies that `remove_connection` removes the connection and cleans up the associated file download session.
@@ -910,8 +878,8 @@ async fn test_remove_connection_file_download_cleanup() {
     // Remove the connection
     mgr.remove_connection(70, true).await;
 
-    // Connection should be gone
-    assert!(mgr.get_cluster_by_connection(70).is_none());
+    // Connection should be gone (dedicated cluster is offline)
+    assert!(!result.as_ref().unwrap().is_online());
 
     // File download entry should also be cleaned up
     assert!(mgr.get_file_download("dl-cleanup").is_none());
@@ -939,8 +907,8 @@ async fn test_remove_connection_file_upload_cleanup() {
     // Remove the connection
     mgr.remove_connection(80, true).await;
 
-    // Connection should be gone
-    assert!(mgr.get_cluster_by_connection(80).is_none());
+    // Connection should be gone (dedicated cluster is offline)
+    assert!(!result.as_ref().unwrap().is_online());
 
     // File upload entry should also be cleaned up
     assert!(mgr.get_file_upload("ul-cleanup").is_none());
@@ -1093,9 +1061,6 @@ async fn test_check_pings_evicts_dead_connection() {
         !cluster.is_online(),
         "cluster should be evicted after 2 consecutive missed pongs"
     );
-
-    // Connection map should be empty
-    assert!(mgr.get_cluster_by_connection(1).is_none());
 }
 
 /// Verifies that `handle_new_connection` authenticates a cluster via a matching LTK token.
@@ -1122,11 +1087,9 @@ async fn test_handle_new_connection_ltk_authenticates() {
     let result = result.expect("LTK token match should authenticate the cluster");
     assert_eq!(result.name(), LTK_CLUSTER);
 
-    // Cluster should now be online and findable by connection ID
+    // Cluster should now be online
     let cluster = mgr.get_cluster_by_name(LTK_CLUSTER).unwrap();
     assert!(mgr.is_cluster_online(cluster.as_ref()));
-    let found = mgr.get_cluster_by_connection(1);
-    assert_eq!(found.unwrap().name(), LTK_CLUSTER);
 }
 
 /// Verifies that a duplicate LTK connection for an already-online cluster is rejected.
@@ -1161,11 +1124,8 @@ async fn test_handle_new_connection_ltk_duplicate_rejected() {
     );
 
     // Original connection remains active; the new one is not registered
-    assert_eq!(
-        mgr.get_cluster_by_connection(1).unwrap().name(),
-        LTK_CLUSTER
-    );
-    assert!(mgr.get_cluster_by_connection(2).is_none());
+    let cluster = mgr.get_cluster_by_name(LTK_CLUSTER).unwrap();
+    assert!(mgr.is_cluster_online(cluster.as_ref()));
 }
 
 /// Verifies that `handle_new_connection` enforces the LTK rate-limiting sleep for a matching token.
@@ -1281,12 +1241,9 @@ async fn test_application_shutdown_triggers_every_registered_session() {
         mgr.get_file_download("dl-b").is_none(),
         "dl-b session state should be unavailable after worker drain"
     );
-    assert_eq!(mgr.dedicated_download_clusters().len(), 0);
-
     // The admitted connections must also be cleaned up because each
-    // session had a connected conn_id.
-    assert!(mgr.get_cluster_by_connection(101).is_none());
-    assert!(mgr.get_cluster_by_connection(102).is_none());
+    // session had a connected conn_id; no dedicated clusters remain.
+    assert_eq!(mgr.dedicated_download_clusters().len(), 0);
 }
 
 /// Verifies that new dedicated `create_file_download` and
@@ -1349,7 +1306,7 @@ async fn test_application_shutdown_rejects_file_download_ws_admission() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let first = mgr.handle_new_connection(201, tx, "dl-first").await;
     assert_eq!(first.as_ref().unwrap().name(), CLUSTER1);
-    assert_eq!(mgr.get_cluster_by_connection(201).unwrap().name(), CLUSTER1);
+    assert!(first.as_ref().unwrap().is_online());
 
     mgr.begin_application_shutdown();
 
@@ -1360,7 +1317,7 @@ async fn test_application_shutdown_rejects_file_download_ws_admission() {
         "WebSocket admission for a registered file-download session must be rejected during shutdown"
     );
     assert!(
-        mgr.get_cluster_by_connection(202).is_none(),
+        first.as_ref().unwrap().is_online(),
         "rejected admission must not register a connection"
     );
 }
