@@ -211,6 +211,26 @@ pub async fn create_job(
         })?;
     tracing::debug!("HTTP: Job {} created successfully", job_id);
 
+    let job_id_u32 = match job_id_to_u32(job_id as u64) {
+        Ok(v) => v,
+        Err(e) => {
+            // The job row and its Pending history were committed above, but
+            // the auto-assigned ID exceeds the u32 wire range so no
+            // SUBMIT_JOB message can be queued. Remove the orphaned rows to
+            // keep the DB consistent (no never-submitted job left behind).
+            tracing::warn!(
+                "HTTP: Job {} exceeds u32 wire range - deleting orphaned job and history",
+                job_id
+            );
+            let _ = job_history::Entity::delete_many()
+                .filter(job_history::Column::JobId.eq(job_id))
+                .exec(&state.db)
+                .await;
+            let _ = job::Entity::delete_by_id(job_id).exec(&state.db).await;
+            return Err(e);
+        }
+    };
+
     if cluster.is_online() {
         tracing::debug!(
             "HTTP: Cluster online - submitting job {} to cluster",
@@ -218,25 +238,6 @@ pub async fn create_job(
         );
         let source = job_source_key(job_id, &body.cluster);
         let mut msg = Message::new(SUBMIT_JOB, Priority::Medium, &source);
-        let job_id_u32 = match job_id_to_u32(job_id as u64) {
-            Ok(v) => v,
-            Err(e) => {
-                // The job row and its Pending history were committed above, but
-                // the auto-assigned ID exceeds the u32 wire range so no
-                // SUBMIT_JOB message can be queued. Remove the orphaned rows to
-                // keep the DB consistent (no never-submitted job left behind).
-                tracing::warn!(
-                    "HTTP: Job {} exceeds u32 wire range - deleting orphaned job and history",
-                    job_id
-                );
-                let _ = job_history::Entity::delete_many()
-                    .filter(job_history::Column::JobId.eq(job_id))
-                    .exec(&state.db)
-                    .await;
-                let _ = job::Entity::delete_by_id(job_id).exec(&state.db).await;
-                return Err(e);
-            }
-        };
         msg.push_uint(job_id_u32);
         msg.push_string(&body.bundle);
         msg.push_string(&body.parameters);
