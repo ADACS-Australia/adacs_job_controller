@@ -159,10 +159,6 @@ pub trait ClusterManagerTrait: Send + Sync {
         uuid: &str,
     ) -> Arc<dyn ClusterTrait>;
 
-    /// Check if a cluster is currently connected.
-    #[allow(dead_code)]
-    fn is_cluster_online(&self, cluster: &dyn ClusterTrait) -> bool;
-
     /// Log a WebSocket error for a cluster.
     fn report_websocket_error(&self, cluster_name: Option<String>, error: String);
 

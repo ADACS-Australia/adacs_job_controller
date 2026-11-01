@@ -1121,10 +1121,6 @@ impl ClusterManagerTrait for ClusterManager {
         ul_cluster as Arc<dyn ClusterTrait>
     }
 
-    fn is_cluster_online(&self, cluster: &dyn ClusterTrait) -> bool {
-        cluster.is_online()
-    }
-
     fn report_websocket_error(&self, cluster_name: Option<String>, error: String) {
         if let Some(name) = cluster_name {
             tracing::warn!("WebSocket error for cluster {}: {}", name, error);
@@ -1389,15 +1385,6 @@ mod tests {
             .returning(|_| None);
 
         assert!(mock.get_cluster_by_name("test").is_none());
-    }
-
-    #[test]
-    fn test_mock_cluster_manager_is_online() {
-        let mut mock = MockClusterManagerTrait::new();
-        mock.expect_is_cluster_online().returning(|_| false);
-
-        let cluster_mock = MockClusterTrait::new();
-        assert!(!mock.is_cluster_online(&cluster_mock));
     }
 
     #[test]
