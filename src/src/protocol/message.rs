@@ -75,6 +75,13 @@ impl Message {
             source: String::new(),
             priority: super::types::Priority::Lowest,
         };
+        if msg.remaining() < 12 {
+            tracing::warn!(
+                "truncated message header: expected at least 12 bytes, got {}",
+                msg.remaining()
+            );
+            return msg;
+        }
         msg.source = msg.pop_string();
         msg.id = msg.pop_uint();
         msg
@@ -923,6 +930,26 @@ mod tests {
         let mut raw = Vec::new();
         raw.extend_from_slice(&10u64.to_le_bytes());
         raw.extend_from_slice(&[1, 2, 3]);
+        let msg = Message::from_bytes(raw);
+        assert_eq!(msg.source(), "");
+        assert_eq!(msg.id(), 0);
+    }
+
+    /// Verifies that `from_bytes` yields an empty source and id 0 when the
+    /// header itself is truncated (fewer than the minimum 12 bytes: 8-byte
+    /// source length prefix plus 4-byte id), without panicking.
+    ///
+    /// # Setup
+    /// Construct a raw byte vector shorter than 12 bytes.
+    ///
+    /// # Act
+    /// Parse with `from_bytes`.
+    ///
+    /// # Assert
+    /// `source()` is `""` and `id()` is 0, with no panic on the truncated header.
+    #[test]
+    fn test_from_bytes_truncated_header() {
+        let raw = vec![0u8; 5];
         let msg = Message::from_bytes(raw);
         assert_eq!(msg.source(), "");
         assert_eq!(msg.id(), 0);
