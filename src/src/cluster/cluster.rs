@@ -1272,9 +1272,9 @@ impl ClusterTrait for Cluster {
             SERVER_READY if self.role == ClusterRole::FileUpload => {
                 self.handle_server_ready();
             }
-            SERVER_READY => {
-                warn_role_mismatch(&self.name(), &self.role, "SERVER_READY", "file upload");
-            }
+            // The server sends SERVER_READY to every connection regardless of
+            // role; non-FileUpload roles have no use for it, so ignore it.
+            SERVER_READY => {}
             FILE_UPLOAD_ERROR if self.role == ClusterRole::FileUpload => {
                 self.handle_file_upload_error(&mut message).await;
             }
@@ -1752,16 +1752,25 @@ mod tests {
         assert!(cluster.role_string().contains("file upload"));
     }
 
-    /// Verifies that `handle_message` routes `SERVER_READY` on a non-FileUpload
-    /// cluster through the role-mismatch guard without setting upload state.
+    /// Verifies that `handle_message` treats `SERVER_READY` on a non-FileUpload
+    /// cluster as a no-op: it does not set upload state and does not emit the
+    /// role-mismatch warning (the server sends `SERVER_READY` to every role).
     #[tokio::test]
-    async fn test_handle_message_server_ready_guards_non_file_upload() {
+    async fn test_handle_message_server_ready_noop_non_file_upload() {
+        let (_guard, lines) = capture_warn_lines();
         let cluster = make_test_cluster();
         let msg = Message::new(SERVER_READY, Priority::Highest, TEST_CLUSTER);
 
         cluster.handle_message(msg).await;
 
         assert!(cluster.file_upload_state.is_none());
+        let lines = lines.lock().unwrap();
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("SERVER_READY") && l.contains("expected file upload")),
+            "expected no role-mismatch warning for SERVER_READY, got: {lines:?}"
+        );
     }
 
     /// Verifies that `handle_message` routes `FILE_UPLOAD_COMPLETE` on a
