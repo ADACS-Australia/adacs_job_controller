@@ -150,6 +150,15 @@ pub static RATE_LIMIT_BURST_SIZE: LazyLock<u32> =
 // WebSocket settings
 /// TCP port for cluster WebSocket connections (`WEBSOCKET_PORT`).
 pub static WEBSOCKET_PORT: LazyLock<u16> = LazyLock::new(|| env_or_uint("WEBSOCKET_PORT", 8001));
+/// Maximum size of an incoming WebSocket message, in bytes (`MAX_WEBSOCKET_MESSAGE_SIZE`).
+///
+/// The largest legitimate protocol message is a file-upload chunk
+/// (`FILE_CHUNK_SIZE`, default 64 KiB) plus its header. The default is set
+/// comfortably above that to leave headroom for headers and any slightly
+/// larger legitimate message, while bounding per-message read-path memory far
+/// below the framework's 64 MiB default.
+pub static MAX_WEBSOCKET_MESSAGE_SIZE: LazyLock<u64> =
+    LazyLock::new(|| env_or_uint("MAX_WEBSOCKET_MESSAGE_SIZE", 1024 * 1024));
 
 #[cfg(test)]
 mod tests {
@@ -208,6 +217,7 @@ mod tests {
     #[test]
     fn test_websocket_defaults() {
         assert_eq!(*WEBSOCKET_PORT, 8001);
+        assert_eq!(*MAX_WEBSOCKET_MESSAGE_SIZE, 1024 * 1024);
     }
 
     #[test]

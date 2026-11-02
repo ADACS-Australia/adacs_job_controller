@@ -13,6 +13,7 @@ use tokio::sync::Notify;
 use crate::app::AppState;
 use crate::cluster::file_download::{DownloadSession, DownloadSessionState};
 use crate::cluster::traits::ConnectionId;
+use crate::config::settings;
 use crate::http::auth::BEARER_PREFIX;
 use crate::protocol::constants::{SERVER_READY, SYSTEM_SOURCE, UNKNOWN};
 use crate::protocol::message::Message;
@@ -57,10 +58,11 @@ pub async fn ws_handler(
     tracing::debug!("WS: Received upgrade request from {}", client_ip);
     tracing::trace!("WS: Token extracted (length: {})", token.len());
 
-    ws.on_upgrade(move |socket| {
-        tracing::debug!("WS: Upgrade successful, handling socket from {}", client_ip);
-        handle_socket(socket, token, state)
-    })
+    ws.max_message_size(*settings::MAX_WEBSOCKET_MESSAGE_SIZE as usize)
+        .on_upgrade(move |socket| {
+            tracing::debug!("WS: Upgrade successful, handling socket from {}", client_ip);
+            handle_socket(socket, token, state)
+        })
 }
 
 /// Extract token from Authorization: Bearer header.
