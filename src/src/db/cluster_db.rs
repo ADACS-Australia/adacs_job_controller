@@ -749,6 +749,7 @@ async fn handle_bundle_create_or_update(
     // If bundle has an ID, try to update existing bundle
     if bundle.id > 0 {
         let existing = bundle_job::Entity::find_by_id(bundle.id)
+            .filter(bundle_job::Column::Cluster.eq(&cluster_name))
             .one(db)
             .await
             .inspect_err(|e| {

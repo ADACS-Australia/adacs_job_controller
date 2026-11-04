@@ -1403,6 +1403,72 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_BUNDLE_CREATE_OR_UPDATE_JOB — id owned by a different cluster
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` does not update a `bundle_job` row
+/// owned by a different cluster when the message carries that row's id and a matching hash.
+///
+/// # Setup
+/// In-memory DB with one pre-inserted bundle row on cluster "ozstar" (content="old",
+/// `bundle_hash="samehash`"); the dispatching cluster is a different one ("othercluster").
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` from "othercluster" with `db_request_id=1103`,
+/// the "ozstar" row's id, `content="new_content"`, and `hash="samehash"`.
+///
+/// # Assert
+/// The "ozstar" row is unchanged; a new row is inserted for "othercluster"; the
+/// `DB_RESPONSE` contains `db_request_id=1103` and the id of the newly inserted row.
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_id_from_other_cluster_inserts_new() {
+    let db = make_cluster_db().await;
+
+    let inserted = insert_bundle_job(&db, "old", BUNDLE_HASH).await;
+    let existing_id = inserted.id;
+
+    let bundle = BundleJob {
+        id: existing_id,
+        content: "new_content".to_string(),
+    };
+
+    let (mock, sent) = mock_cluster_capturing("othercluster");
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(1103);
+        bundle.to_message(m);
+        m.push_string(BUNDLE_HASH);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    // The "ozstar" row is unchanged.
+    let ozstar = bundle_job::Entity::find_by_id(existing_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(ozstar.content, "old");
+    assert_eq!(ozstar.bundle_hash, "samehash");
+    assert_eq!(ozstar.cluster, "ozstar");
+
+    // A new row was inserted for the dispatching cluster.
+    let rows = bundle_job::Entity::find().all(&db).await.unwrap();
+    assert_eq!(rows.len(), 2);
+    let other = rows
+        .iter()
+        .find(|r| r.cluster == "othercluster")
+        .expect("expected a row for othercluster");
+    assert_eq!(other.content, "new_content");
+    assert_eq!(other.bundle_hash, "samehash");
+    assert_ne!(other.id, existing_id);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 1103);
+    assert_eq!(body.pop_ulong(), other.id.cast_unsigned());
+}
+
+// ---------------------------------------------------------------------------
 // DB_BUNDLE_GET_JOB_BY_ID — found
 // ---------------------------------------------------------------------------
 
