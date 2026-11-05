@@ -776,41 +776,6 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 
     /// Legacy PKCS#1 RSA private key, used to exercise the RSA code paths.
     const LEGACY_RSA_KEY: &str = "-----BEGIN RSA PRIVATE KEY-----
-
-    fn test_key() -> russh::keys::PublicKey {
-        block_on(load_private_key(PKCS8_ED25519_KEY))
-            .unwrap()
-            .public_key()
-            .clone()
-    }
-
-    #[test]
-    fn check_server_key_accepts_when_known_hosts_empty() {
-        let mut handler = SshHandler {
-            known_hosts: Vec::new(),
-        };
-        let accepted = block_on(handler.check_server_key(&test_key())).unwrap();
-        assert!(accepted);
-    }
-
-    #[test]
-    fn check_server_key_accepts_matching_fingerprint() {
-        let fingerprint = format_server_key(&test_key());
-        let mut handler = SshHandler {
-            known_hosts: vec![fingerprint],
-        };
-        let accepted = block_on(handler.check_server_key(&test_key())).unwrap();
-        assert!(accepted);
-    }
-
-    #[test]
-    fn check_server_key_rejects_non_matching_fingerprint() {
-        let mut handler = SshHandler {
-            known_hosts: vec!["ssh-ed25519 SHA256:other".to_string()],
-        };
-        let accepted = block_on(handler.check_server_key(&test_key())).unwrap();
-        assert!(!accepted);
-    }
 MIIEpQIBAAKCAQEAw/FG8YLVoXhsUVZcWaY7iZekMxQ2TAfSVh0LTnRuzsumeLhb
 0fh4scIt4C4MLwpGe/u3vj290C28jLkOtysqnIpB4iBUrFNRmEz2YuvjOzkFE8Ju
 0l1VrTZ9APhpLZvzT2N7YmTXcLz1yWopCe4KqTHczEP4lfkothxEoACXMaxezt5o
@@ -838,6 +803,41 @@ b9sblB+ssEUQD5IQkhTWcsXdslINQeL77WhIMZ2vBAH8Hcin4jgcLmwUZfpfnnFs
 QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
 -----END RSA PRIVATE KEY-----
 ";
+
+    fn test_key() -> russh::keys::PublicKey {
+        block_on(load_private_key(PKCS8_ED25519_KEY))
+            .unwrap()
+            .public_key()
+            .clone()
+    }
+
+    #[test]
+    fn check_server_key_accepts_when_known_hosts_empty() {
+        let mut handler = SshHandler {
+            known_hosts: Vec::new(),
+        };
+        let accepted = block_on(handler.check_server_key(&test_key().into())).unwrap();
+        assert!(accepted);
+    }
+
+    #[test]
+    fn check_server_key_accepts_matching_fingerprint() {
+        let fingerprint = format_server_key(&test_key());
+        let mut handler = SshHandler {
+            known_hosts: vec![fingerprint],
+        };
+        let accepted = block_on(handler.check_server_key(&test_key().into())).unwrap();
+        assert!(accepted);
+    }
+
+    #[test]
+    fn check_server_key_rejects_non_matching_fingerprint() {
+        let mut handler = SshHandler {
+            known_hosts: vec!["ssh-ed25519 SHA256:other".to_string()],
+        };
+        let accepted = block_on(handler.check_server_key(&test_key().into())).unwrap();
+        assert!(!accepted);
+    }
 
     #[test]
     fn load_private_key_parses_legacy_rsa_private_key() {
@@ -1161,7 +1161,13 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
 
         let mut session = tokio::time::timeout(
             AUTH_TEST_TIMEOUT,
-            client::connect(cfg, ("127.0.0.1", server.addr.port()), SshHandler),
+            client::connect(
+                cfg,
+                ("127.0.0.1", server.addr.port()),
+                SshHandler {
+                    known_hosts: Vec::new(),
+                },
+            ),
         )
         .await
         .expect("connection to the test server timed out")?;
