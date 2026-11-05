@@ -303,16 +303,25 @@ async fn handle_job_get_by_job_id(
 }
 
 /// Looks up a cluster job by its primary key and returns zero or one row.
+///
+/// The lookup is scoped to the originating cluster: `cluster_job.id` is a
+/// global auto-increment across all clusters, so without a cluster filter a
+/// cross-cluster request could return another cluster's job row. Matching the
+/// sibling `handle_job_get_by_job_id`, the query filters on `Cluster`.
 async fn handle_job_get_by_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
+    let cluster_name = cluster.name();
     handle_get_by_id_impl(
         message,
         cluster,
         db,
-        cluster_job::Entity::find_by_id,
+        |id| {
+            cluster_job::Entity::find_by_id(id)
+                .filter(cluster_job::Column::Cluster.eq(&cluster_name))
+        },
         ClusterJob::from,
         |r, msg| r.to_message(msg),
     )
@@ -935,5 +944,89 @@ mod tests {
         let mut msg = Message::from_bytes(msg.into_data());
 
         handle_job_get_by_id(&mut msg, &cluster, &db).await;
+    }
+
+    #[tokio::test]
+    async fn test_job_get_by_id_scopes_to_cluster() {
+        use crate::cluster::traits::MockClusterTrait;
+        use crate::db::entities::cluster_job;
+        use sea_orm::{ActiveModelTrait, ConnectionTrait, DbBackend, Schema, Set};
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let builder = DbBackend::Sqlite;
+        let schema = Schema::new(builder);
+        let stmt = builder.build(&schema.create_table_from_entity(cluster_job::Entity));
+        db.execute(stmt).await.unwrap();
+
+        // A job row owned by cluster "owner" with a global primary key.
+        cluster_job::ActiveModel {
+            id: Set(1),
+            job_id: Set(100),
+            scheduler_id: Set(0),
+            submitting: Set(false),
+            submitting_count: Set(0),
+            bundle_hash: Set("hash".to_string()),
+            working_directory: Set("/wd".to_string()),
+            running: Set(false),
+            deleting: Set(false),
+            deleted: Set(false),
+            cluster: Set("owner".to_string()),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+
+        // A cross-cluster lookup (requesting cluster "other") must return
+        // count=0 rather than leaking the owner's row.
+        let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sent_cross = std::sync::Arc::clone(&sent);
+        let mut cross = MockClusterTrait::new();
+        cross.expect_name().returning(|| "other".to_string());
+        cross.expect_send_message().returning(move |msg: Message| {
+            let sent = std::sync::Arc::clone(&sent_cross);
+            Box::pin(async move {
+                sent.lock().unwrap().push(msg);
+            })
+        });
+
+        let mut req = Message::new(DB_JOB_GET_BY_ID, Priority::Highest, SYSTEM_SOURCE);
+        req.push_uint(7); // db_request_id
+        req.push_ulong(1); // id
+        let mut req = Message::from_bytes(req.into_data());
+
+        handle_job_get_by_id(&mut req, &cross, &db).await;
+
+        {
+            let captured = sent.lock().unwrap();
+            let response = captured.first().expect("expected a DB_RESPONSE");
+            let mut parsed = Message::from_bytes(response.clone().into_data());
+            assert_eq!(parsed.pop_uint(), 7); // db_request_id
+            assert_eq!(parsed.pop_uint(), 0); // count=0
+        }
+
+        // The owning cluster must still receive the row (count=1).
+        let sent_own = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sent_own_clone = std::sync::Arc::clone(&sent_own);
+        let mut own = MockClusterTrait::new();
+        own.expect_name().returning(|| "owner".to_string());
+        own.expect_send_message().returning(move |msg: Message| {
+            let sent = std::sync::Arc::clone(&sent_own_clone);
+            Box::pin(async move {
+                sent.lock().unwrap().push(msg);
+            })
+        });
+
+        let mut req2 = Message::new(DB_JOB_GET_BY_ID, Priority::Highest, SYSTEM_SOURCE);
+        req2.push_uint(8); // db_request_id
+        req2.push_ulong(1); // id
+        let mut req2 = Message::from_bytes(req2.into_data());
+
+        handle_job_get_by_id(&mut req2, &own, &db).await;
+
+        let captured_own = sent_own.lock().unwrap();
+        let response_own = captured_own.first().expect("expected a DB_RESPONSE");
+        let mut parsed_own = Message::from_bytes(response_own.clone().into_data());
+        assert_eq!(parsed_own.pop_uint(), 8); // db_request_id
+        assert_eq!(parsed_own.pop_uint(), 1); // count=1
     }
 }
