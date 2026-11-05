@@ -715,6 +715,50 @@ async fn test_handle_job_delete() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_JOB_DELETE — cluster scoping
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_JOB_DELETE` only deletes rows belonging to the calling
+/// cluster, so a delete from one cluster leaves another cluster's row intact.
+///
+/// # Setup
+/// In-memory DB with one cluster job row belonging to "nci".
+///
+/// # Act
+/// Dispatch a `DB_JOB_DELETE` message with `db_request_id=601` and that row's
+/// id from cluster "ozstar".
+///
+/// # Assert
+/// The nci row survives (a delete from ozstar must not remove another cluster's
+/// row); the `DB_RESPONSE` echoes `db_request_id=601`.
+#[tokio::test]
+async fn test_handle_job_delete_cluster_scoping() {
+    let db = make_cluster_db().await;
+
+    let inserted = insert_cluster_job_row(&db, 1, 0, false, 0, "h", "/d", false, "nci").await;
+    let row_id = inserted.id;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_DELETE, |m| {
+        m.push_uint(601);
+        m.push_ulong(row_id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let count = cluster_job::Entity::find()
+        .filter(cluster_job::Column::Id.eq(row_id))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "nci row should survive a delete from ozstar");
+
+    let (req_id, _) = first_response(&sent);
+    assert_eq!(req_id, 601);
+}
+
+// ---------------------------------------------------------------------------
 // DB_JOB_DELETE — truncated request dropped
 // ---------------------------------------------------------------------------
 
@@ -1503,6 +1547,59 @@ async fn test_handle_bundle_delete() {
 
     let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 1300);
+}
+
+// ---------------------------------------------------------------------------
+// DB_BUNDLE_DELETE_JOB — cluster scoping
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_BUNDLE_DELETE_JOB` only deletes rows belonging to the
+/// calling cluster, so a delete from one cluster leaves another cluster's row
+/// intact.
+///
+/// # Setup
+/// In-memory DB with one bundle row belonging to "nci".
+///
+/// # Act
+/// Dispatch a `DB_BUNDLE_DELETE_JOB` message with `db_request_id=1301` and that
+/// row's id from cluster "ozstar".
+///
+/// # Assert
+/// The nci row survives (a delete from ozstar must not remove another cluster's
+/// row); the `DB_RESPONSE` echoes `db_request_id=1301`.
+#[tokio::test]
+async fn test_handle_bundle_delete_cluster_scoping() {
+    let db = make_cluster_db().await;
+
+    let inserted = bundle_job::ActiveModel {
+        content: Set("c".to_string()),
+        cluster: Set("nci".to_string()),
+        bundle_hash: Set("h".to_string()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    let bundle_id = inserted.id;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_DELETE_JOB, |m| {
+        m.push_uint(1301);
+        m.push_ulong(bundle_id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let count = bundle_job::Entity::find()
+        .filter(bundle_job::Column::Id.eq(bundle_id))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "nci bundle should survive a delete from ozstar");
+
+    let (req_id, _) = first_response(&sent);
+    assert_eq!(req_id, 1301);
 }
 
 // ---------------------------------------------------------------------------
