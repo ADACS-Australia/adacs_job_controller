@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use russh::client;
-use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg};
-use russh::{ChannelMsg, Disconnect};
+use russh::client::{self, AuthResult, KeyboardInteractiveAuthResponse, Prompt};
+use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
+use russh::{ChannelMsg, Disconnect, MethodKind};
 
 use crate::config::clusters::{CONNECTION_TYPE_KERBEROS, CONNECTION_TYPE_SSH, ClusterConfig};
 
@@ -14,6 +14,14 @@ const GSSAPI_AUTH_OPTION: &str = "GSSAPIAuthentication=yes";
 const GSSAPI_KEYEXCHANGE_OPTION: &str = "GSSAPIKeyExchange=yes";
 const STRICT_HOST_KEY_CHECKING_OPTION: &str = "StrictHostKeyChecking=no";
 const GSSAPI_DELEGATE_CREDENTIALS_OPTION: &str = "GSSAPIDelegateCredentials=no";
+
+/// Maximum number of keyboard-interactive rounds answered before giving up.
+///
+/// The initial `authenticate_keyboard_interactive_start` request is not a
+/// round: one round is one response sent to a set of server prompts. A real
+/// multi-factor login needs one or two rounds; the cap only guards against a
+/// misbehaving server that keeps prompting forever.
+const MAX_KEYBOARD_INTERACTIVE_ROUNDS: usize = 8;
 
 /// Errors from SSH or Kerberos remote-client connections to cluster hosts.
 #[derive(Debug, thiserror::Error)]
@@ -69,11 +77,11 @@ impl client::Handler for SshHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &russh::keys::PublicKey,
+        server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
         tracing::info!(
             "SSH: Accepted server host key ({})",
-            format_server_key(server_public_key)
+            format_server_key(&server_public_key.public_key())
         );
         Ok(true)
     }
@@ -216,6 +224,98 @@ async fn load_private_key(key_source: &str) -> Result<PrivateKey, SshError> {
         .map_err(|e| SshError::AuthenticationFailed(format!("Failed to parse key: {e}")))
 }
 
+/// True when the server accepted the public key as the *first* factor but still
+/// requires the keyboard-interactive round to finish the login.
+///
+/// Servers configured with
+/// `AuthenticationMethods publickey,keyboard-interactive:pam` answer the
+/// public-key attempt with `partial_success = true` and advertise
+/// keyboard-interactive as the remaining method. A TOTP exemption only removes
+/// the prompt *inside* that round, not the round itself.
+fn needs_keyboard_interactive(result: &AuthResult) -> bool {
+    matches!(
+        result,
+        AuthResult::Failure {
+            remaining_methods,
+            partial_success: true,
+        } if remaining_methods.contains(&MethodKind::KeyboardInteractive)
+    )
+}
+
+/// One empty response per prompt, as required by RFC 4256.
+///
+/// Every prompt must be answered, but an exempt key has nothing to type into
+/// the second-factor prompt, so the answers are intentionally empty.
+fn empty_responses(prompts: &[Prompt]) -> Vec<String> {
+    vec![String::new(); prompts.len()]
+}
+
+/// Complete the keyboard-interactive phase of a multi-factor login.
+///
+/// # Errors
+///
+/// Returns `SshError::AuthenticationFailed` when the round is rejected, when it
+/// keeps prompting past [`MAX_KEYBOARD_INTERACTIVE_ROUNDS`], or on a transport
+/// error while starting or answering the round.
+async fn complete_keyboard_interactive(
+    session: &mut client::Handle<SshHandler>,
+    username: &str,
+) -> Result<(), SshError> {
+    let mut response = session
+        .authenticate_keyboard_interactive_start(username, None)
+        .await
+        .map_err(|e| {
+            SshError::AuthenticationFailed(format!("keyboard-interactive start failed: {e}"))
+        })?;
+
+    let mut rounds = 0;
+    loop {
+        match response {
+            KeyboardInteractiveAuthResponse::Success => {
+                tracing::info!("SSH: keyboard-interactive authentication completed");
+                return Ok(());
+            }
+            KeyboardInteractiveAuthResponse::Failure {
+                remaining_methods,
+                partial_success,
+            } => {
+                return Err(SshError::AuthenticationFailed(format!(
+                    "keyboard-interactive rejected (partial success: {partial_success}, \
+                     server continues with: {remaining_methods:?})"
+                )));
+            }
+            KeyboardInteractiveAuthResponse::InfoRequest {
+                name,
+                instructions,
+                prompts,
+            } => {
+                rounds += 1;
+                if rounds > MAX_KEYBOARD_INTERACTIVE_ROUNDS {
+                    return Err(SshError::AuthenticationFailed(format!(
+                        "keyboard-interactive did not finish after \
+                         {MAX_KEYBOARD_INTERACTIVE_ROUNDS} rounds"
+                    )));
+                }
+                if !prompts.is_empty() {
+                    tracing::warn!(
+                        "SSH: keyboard-interactive prompts received ({name}: {instructions}); \
+                         answering {} prompt(s) with empty responses",
+                        prompts.len()
+                    );
+                }
+                response = session
+                    .authenticate_keyboard_interactive_respond(empty_responses(&prompts))
+                    .await
+                    .map_err(|e| {
+                        SshError::AuthenticationFailed(format!(
+                            "keyboard-interactive response failed: {e}"
+                        ))
+                    })?;
+            }
+        }
+    }
+}
+
 async fn authenticate_public_key(
     session: &mut client::Handle<SshHandler>,
     username: &str,
@@ -226,6 +326,7 @@ async fn authenticate_public_key(
         key_pair.algorithm().is_rsa(),
         session.best_supported_rsa_hash().await?.into(),
     );
+    let mut last_failure = None;
 
     for hash_alg in attempts {
         let auth_res = session
@@ -238,11 +339,33 @@ async fn authenticate_public_key(
         if auth_res.success() {
             return Ok(());
         }
+
+        // The key was accepted as the first factor: finish the multi-factor
+        // login now. This must happen inside the loop, otherwise an RSA key
+        // would retry the remaining hash algorithms before reaching the
+        // second factor.
+        if needs_keyboard_interactive(&auth_res) {
+            tracing::info!(
+                "SSH: public key accepted as first factor; completing keyboard-interactive second factor"
+            );
+            return complete_keyboard_interactive(session, username).await;
+        }
+
+        if let AuthResult::Failure {
+            remaining_methods,
+            partial_success,
+        } = &auth_res
+        {
+            last_failure = Some(format!(
+                "Public key authentication failed (partial success: {partial_success}, \
+                 server continues with: {remaining_methods:?})"
+            ));
+        }
     }
 
-    Err(SshError::AuthenticationFailed(
-        "Public key authentication failed".to_string(),
-    ))
+    Err(SshError::AuthenticationFailed(last_failure.unwrap_or_else(
+        || "Public key authentication failed".to_string(),
+    )))
 }
 
 fn authentication_hash_attempts(
@@ -401,8 +524,12 @@ async fn execute_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use russh::MethodSet;
     use russh::keys::Algorithm;
+    use russh::server::Server as _;
+    use std::borrow::Cow;
     use std::fs;
+    use std::time::Duration;
     use tempfile::TempDir;
 
     const PKCS8_ED25519_KEY: &str = "-----BEGIN PRIVATE KEY-----
@@ -549,6 +676,69 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
     }
 
     #[test]
+    fn needs_keyboard_interactive_true_for_partial_keyboard_interactive_failure() {
+        let result = AuthResult::Failure {
+            remaining_methods: MethodSet::from(&[MethodKind::KeyboardInteractive][..]),
+            partial_success: true,
+        };
+
+        assert!(needs_keyboard_interactive(&result));
+    }
+
+    #[test]
+    fn needs_keyboard_interactive_false_on_success() {
+        assert!(!needs_keyboard_interactive(&AuthResult::Success));
+    }
+
+    #[test]
+    fn needs_keyboard_interactive_false_for_outright_rejection() {
+        let result = AuthResult::Failure {
+            remaining_methods: MethodSet::from(&[MethodKind::PublicKey, MethodKind::Password][..]),
+            partial_success: false,
+        };
+
+        assert!(!needs_keyboard_interactive(&result));
+    }
+
+    #[test]
+    fn needs_keyboard_interactive_false_when_only_other_methods_remain() {
+        let result = AuthResult::Failure {
+            remaining_methods: MethodSet::from(&[MethodKind::Password][..]),
+            partial_success: true,
+        };
+
+        assert!(!needs_keyboard_interactive(&result));
+    }
+
+    #[test]
+    fn empty_responses_returns_one_empty_string_per_prompt() {
+        let prompts = [
+            Prompt {
+                prompt: "Password: ".to_string(),
+                echo: false,
+            },
+            Prompt {
+                prompt: "Verification code: ".to_string(),
+                echo: false,
+            },
+            Prompt {
+                prompt: "Token: ".to_string(),
+                echo: true,
+            },
+        ];
+
+        assert_eq!(
+            empty_responses(&prompts),
+            vec![String::new(), String::new(), String::new()]
+        );
+    }
+
+    #[test]
+    fn empty_responses_is_empty_without_prompts() {
+        assert!(empty_responses(&[]).is_empty());
+    }
+
+    #[test]
     fn load_private_key_parses_openssh_private_key() {
         let parsed = block_on(load_private_key(PKCS8_ED25519_KEY)).unwrap();
 
@@ -565,9 +755,8 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         );
     }
 
-    #[test]
-    fn load_private_key_parses_legacy_rsa_private_key() {
-        let legacy_rsa_key = "-----BEGIN RSA PRIVATE KEY-----
+    /// Legacy PKCS#1 RSA private key, used to exercise the RSA code paths.
+    const LEGACY_RSA_KEY: &str = "-----BEGIN RSA PRIVATE KEY-----
 MIIEpQIBAAKCAQEAw/FG8YLVoXhsUVZcWaY7iZekMxQ2TAfSVh0LTnRuzsumeLhb
 0fh4scIt4C4MLwpGe/u3vj290C28jLkOtysqnIpB4iBUrFNRmEz2YuvjOzkFE8Ju
 0l1VrTZ9APhpLZvzT2N7YmTXcLz1yWopCe4KqTHczEP4lfkothxEoACXMaxezt5o
@@ -596,7 +785,9 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
 -----END RSA PRIVATE KEY-----
 ";
 
-        let parsed = block_on(load_private_key(legacy_rsa_key)).unwrap();
+    #[test]
+    fn load_private_key_parses_legacy_rsa_private_key() {
+        let parsed = block_on(load_private_key(LEGACY_RSA_KEY)).unwrap();
 
         assert!(parsed.algorithm().is_rsa());
     }
@@ -687,5 +878,472 @@ QaChXiDsryJZwsRnruvMRX9nedtqHrgnIsJLTXjppIhGhq5Kg4RQfOU=
                 "expected {expected:?} in args {args:?}"
             );
         }
+    }
+
+    // ========================================================================
+    // Multi-factor authentication tests
+    //
+    // Login nodes enforce `AuthenticationMethods publickey,keyboard-interactive:pam`:
+    // the public key is only the *first* factor and the client must complete a
+    // keyboard-interactive round. These tests drive `authenticate_public_key`
+    // against an in-process russh server configured with the same policy.
+    // ========================================================================
+
+    /// Timeout applied to every client interaction so a harness bug fails fast
+    /// instead of hanging the suite.
+    const AUTH_TEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// What the test server observed during authentication.
+    #[derive(Debug, Default)]
+    struct AuthLog {
+        publickey_attempts: usize,
+        keyboard_interactive_attempts: usize,
+        keyboard_interactive_responses: Vec<String>,
+    }
+
+    /// How the test server answers the public-key step.
+    #[derive(Clone, Copy)]
+    enum PublicKeyOutcome {
+        /// Key rejected outright (not a multi-factor server).
+        Rejected,
+        /// Key accepted as the first factor; keyboard-interactive remains.
+        PartialKeyboardInteractive,
+        /// Key accepted as the first factor, but another method remains.
+        PartialPasswordOnly,
+    }
+
+    /// How the test server answers the keyboard-interactive round.
+    #[derive(Clone, Copy)]
+    enum KeyboardInteractiveOutcome {
+        /// Accept once the prompts have been answered (or none were asked).
+        Accept,
+        /// Keep prompting after every response (round-cap test).
+        RepeatPrompts,
+        /// Reject the answers, as a non-exempt key's failed second factor.
+        Reject,
+    }
+
+    /// Test server mirroring the login-node multi-factor policy.
+    #[derive(Clone)]
+    struct MfaTestServer {
+        log: Arc<std::sync::Mutex<AuthLog>>,
+        /// Prompts issued in the keyboard-interactive round. Empty means the
+        /// key is exempt and the round carries no questions.
+        prompts: Vec<String>,
+        outcome: PublicKeyOutcome,
+        keyboard_interactive_outcome: KeyboardInteractiveOutcome,
+    }
+
+    impl russh::server::Server for MfaTestServer {
+        type Handler = MfaTestHandler;
+
+        fn new_client(&mut self, _peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
+            MfaTestHandler {
+                log: Arc::clone(&self.log),
+                prompts: self.prompts.clone(),
+                outcome: self.outcome,
+                keyboard_interactive_outcome: self.keyboard_interactive_outcome,
+            }
+        }
+    }
+
+    struct MfaTestHandler {
+        log: Arc<std::sync::Mutex<AuthLog>>,
+        prompts: Vec<String>,
+        outcome: PublicKeyOutcome,
+        keyboard_interactive_outcome: KeyboardInteractiveOutcome,
+    }
+
+    impl russh::server::Handler for MfaTestHandler {
+        type Error = russh::Error;
+
+        async fn auth_publickey(
+            &mut self,
+            _user: &str,
+            _key: russh::server::VerifiedPublicKey<'_>,
+        ) -> Result<russh::server::Auth, Self::Error> {
+            if let Ok(mut log) = self.log.lock() {
+                log.publickey_attempts += 1;
+            }
+
+            let auth = match self.outcome {
+                PublicKeyOutcome::Rejected => russh::server::Auth::Reject {
+                    proceed_with_methods: Some(MethodSet::from(
+                        &[MethodKind::PublicKey, MethodKind::KeyboardInteractive][..],
+                    )),
+                    partial_success: false,
+                },
+                PublicKeyOutcome::PartialKeyboardInteractive => russh::server::Auth::Reject {
+                    proceed_with_methods: Some(MethodSet::from(
+                        &[MethodKind::KeyboardInteractive][..],
+                    )),
+                    partial_success: true,
+                },
+                PublicKeyOutcome::PartialPasswordOnly => russh::server::Auth::Reject {
+                    proceed_with_methods: Some(MethodSet::from(&[MethodKind::Password][..])),
+                    partial_success: true,
+                },
+            };
+
+            Ok(auth)
+        }
+
+        async fn auth_keyboard_interactive<'a>(
+            &'a mut self,
+            _user: &str,
+            _submethods: &str,
+            response: Option<russh::server::Response<'a>>,
+        ) -> Result<russh::server::Auth, Self::Error> {
+            let answers: Option<Vec<String>> = response.map(|responses| {
+                responses
+                    .map(|raw| String::from_utf8_lossy(&raw).into_owned())
+                    .collect()
+            });
+            let answered = answers.is_some();
+
+            if let Ok(mut log) = self.log.lock() {
+                log.keyboard_interactive_attempts += 1;
+                if let Some(answers) = answers {
+                    log.keyboard_interactive_responses = answers;
+                }
+            }
+
+            match self.keyboard_interactive_outcome {
+                KeyboardInteractiveOutcome::Reject if answered => {
+                    return Ok(russh::server::Auth::Reject {
+                        proceed_with_methods: Some(MethodSet::from(
+                            &[MethodKind::KeyboardInteractive][..],
+                        )),
+                        partial_success: false,
+                    });
+                }
+                KeyboardInteractiveOutcome::Accept if answered || self.prompts.is_empty() => {
+                    return Ok(russh::server::Auth::Accept);
+                }
+                _ => {}
+            }
+
+            let prompts: Vec<(Cow<'static, str>, bool)> = self
+                .prompts
+                .iter()
+                .cloned()
+                .map(|prompt| (Cow::Owned(prompt), false))
+                .collect();
+
+            Ok(russh::server::Auth::Partial {
+                name: Cow::Borrowed(""),
+                instructions: Cow::Borrowed(""),
+                prompts: Cow::Owned(prompts),
+            })
+        }
+    }
+
+    /// An in-process server bound to an ephemeral loopback port.
+    struct TestServer {
+        addr: std::net::SocketAddr,
+        log: Arc<std::sync::Mutex<AuthLog>>,
+        _task: tokio::task::JoinHandle<()>,
+    }
+
+    async fn start_mfa_test_server(
+        prompts: Vec<String>,
+        outcome: PublicKeyOutcome,
+        keyboard_interactive_outcome: KeyboardInteractiveOutcome,
+    ) -> TestServer {
+        let host_key = ed25519_test_key();
+
+        let config = Arc::new(russh::server::Config {
+            keys: vec![host_key],
+            methods: MethodSet::from(&[MethodKind::PublicKey, MethodKind::KeyboardInteractive][..]),
+            // Keep the constant-time rejection delay short so tests stay fast.
+            auth_rejection_time: Duration::from_millis(10),
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            inactivity_timeout: Some(AUTH_TEST_TIMEOUT),
+            ..Default::default()
+        });
+
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("test server address");
+
+        let log = Arc::new(std::sync::Mutex::new(AuthLog::default()));
+        let mut server = MfaTestServer {
+            log: Arc::clone(&log),
+            prompts,
+            outcome,
+            keyboard_interactive_outcome,
+        };
+
+        let task = tokio::spawn(async move {
+            let _ = server.run_on_socket(config, &listener).await;
+        });
+
+        TestServer {
+            addr,
+            log,
+            _task: task,
+        }
+    }
+
+    fn ed25519_test_key() -> PrivateKey {
+        russh::keys::decode_secret_key(PKCS8_ED25519_KEY, None).expect("committed ed25519 test key")
+    }
+
+    fn rsa_test_key() -> PrivateKey {
+        russh::keys::decode_secret_key(LEGACY_RSA_KEY, None).expect("committed RSA test key")
+    }
+
+    /// Connect to the test server and run the real public-key authentication
+    /// path against it, with a timeout on both steps.
+    async fn authenticate_against_test_server(
+        server: &TestServer,
+        key: PrivateKey,
+    ) -> Result<(), SshError> {
+        let cfg = Arc::new(client::Config {
+            inactivity_timeout: None,
+            ..<_>::default()
+        });
+
+        let mut session = tokio::time::timeout(
+            AUTH_TEST_TIMEOUT,
+            client::connect(cfg, ("127.0.0.1", server.addr.port()), SshHandler),
+        )
+        .await
+        .expect("connection to the test server timed out")?;
+
+        tokio::time::timeout(
+            AUTH_TEST_TIMEOUT,
+            authenticate_public_key(&mut session, "testuser", key),
+        )
+        .await
+        .expect("authentication against the test server timed out")
+    }
+
+    fn auth_log(server: &TestServer) -> std::sync::MutexGuard<'_, AuthLog> {
+        server.log.lock().expect("auth log mutex")
+    }
+
+    #[tokio::test]
+    async fn connect_completes_keyboard_interactive_after_partial_publickey() {
+        let server = start_mfa_test_server(
+            Vec::new(),
+            PublicKeyOutcome::PartialKeyboardInteractive,
+            KeyboardInteractiveOutcome::Accept,
+        )
+        .await;
+
+        let result = authenticate_against_test_server(&server, ed25519_test_key()).await;
+        assert!(
+            result.is_ok(),
+            "authentication should survive the keyboard-interactive round: {result:?}"
+        );
+
+        let log = auth_log(&server);
+        assert_eq!(
+            log.publickey_attempts, 1,
+            "public key should be offered once"
+        );
+        assert_eq!(
+            log.keyboard_interactive_attempts, 1,
+            "client must run the keyboard-interactive round"
+        );
+        assert!(
+            log.keyboard_interactive_responses.is_empty(),
+            "no prompts should mean no responses: {:?}",
+            log.keyboard_interactive_responses
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_answers_keyboard_interactive_prompts_with_empty_responses() {
+        let server = start_mfa_test_server(
+            vec!["Verification code: ".to_string()],
+            PublicKeyOutcome::PartialKeyboardInteractive,
+            KeyboardInteractiveOutcome::Accept,
+        )
+        .await;
+
+        let result = authenticate_against_test_server(&server, ed25519_test_key()).await;
+        assert!(
+            result.is_ok(),
+            "authentication should answer the prompt and finish: {result:?}"
+        );
+
+        let log = auth_log(&server);
+        assert_eq!(
+            log.keyboard_interactive_attempts, 2,
+            "one round to receive the prompt, one to answer it"
+        );
+        assert_eq!(
+            log.keyboard_interactive_responses,
+            vec![String::new()],
+            "prompts are answered with empty strings"
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_reports_partial_publickey_failure_when_keyboard_interactive_is_not_offered() {
+        let server = start_mfa_test_server(
+            Vec::new(),
+            PublicKeyOutcome::PartialPasswordOnly,
+            KeyboardInteractiveOutcome::Accept,
+        )
+        .await;
+
+        let result = authenticate_against_test_server(&server, ed25519_test_key()).await;
+        let error = result.expect_err("authentication should fail when another method remains");
+        let message = error.to_string();
+
+        assert!(
+            message.contains("partial success: true"),
+            "error should report the partial success: {message}"
+        );
+        assert!(
+            message.contains("Password"),
+            "error should name the advertised method: {message}"
+        );
+
+        let log = auth_log(&server);
+        assert_eq!(
+            log.keyboard_interactive_attempts, 0,
+            "keyboard-interactive should not run when it is not advertised"
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_fails_when_publickey_is_rejected_outright() {
+        let server = start_mfa_test_server(
+            Vec::new(),
+            PublicKeyOutcome::Rejected,
+            KeyboardInteractiveOutcome::Accept,
+        )
+        .await;
+
+        let result = authenticate_against_test_server(&server, ed25519_test_key()).await;
+        let error = result.expect_err("authentication should fail when the key is rejected");
+        let message = error.to_string();
+
+        assert!(
+            message.contains("Public key authentication failed"),
+            "error should explain the key was rejected: {message}"
+        );
+        assert!(
+            message.contains("partial success: false"),
+            "error should report that no factor was accepted: {message}"
+        );
+
+        let log = auth_log(&server);
+        assert_eq!(
+            log.keyboard_interactive_attempts, 0,
+            "keyboard-interactive should not run when the key is rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_stops_after_keyboard_interactive_round_cap() {
+        let server = start_mfa_test_server(
+            vec!["Verification code: ".to_string()],
+            PublicKeyOutcome::PartialKeyboardInteractive,
+            KeyboardInteractiveOutcome::RepeatPrompts,
+        )
+        .await;
+
+        let result = authenticate_against_test_server(&server, ed25519_test_key()).await;
+        let error = result.expect_err("authentication should fail after the round cap");
+        let message = error.to_string();
+
+        assert!(
+            message.contains(&format!(
+                "did not finish after {MAX_KEYBOARD_INTERACTIVE_ROUNDS} rounds"
+            )),
+            "error should name the round cap: {message}"
+        );
+
+        let log = auth_log(&server);
+        assert_eq!(
+            log.keyboard_interactive_attempts,
+            MAX_KEYBOARD_INTERACTIVE_ROUNDS + 1,
+            "one start plus exactly MAX_KEYBOARD_INTERACTIVE_ROUNDS answered rounds"
+        );
+
+        // The count the error reports must be the number of response rounds the
+        // server actually observed. The start request is not a round.
+        let reported_rounds: usize = message
+            .split("did not finish after ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .and_then(|count| count.parse().ok())
+            .expect("error should report the number of attempted rounds");
+        assert_eq!(
+            log.keyboard_interactive_attempts - 1,
+            reported_rounds,
+            "the reported round count must match the answered rounds"
+        );
+    }
+
+    /// The second factor was refused: the public key was accepted as the first
+    /// factor, but the keyboard-interactive answers were rejected. This must
+    /// surface as an authentication failure that names the phase, never as a
+    /// silent success.
+    #[tokio::test]
+    async fn connect_fails_when_keyboard_interactive_is_rejected() {
+        let server = start_mfa_test_server(
+            vec!["Verification code: ".to_string()],
+            PublicKeyOutcome::PartialKeyboardInteractive,
+            KeyboardInteractiveOutcome::Reject,
+        )
+        .await;
+
+        let result = authenticate_against_test_server(&server, ed25519_test_key()).await;
+        let error =
+            result.expect_err("authentication should fail when the second factor is rejected");
+        assert!(
+            matches!(&error, SshError::AuthenticationFailed(_)),
+            "the round should report an authentication failure: {error:?}"
+        );
+
+        let message = error.to_string();
+        assert!(
+            message.contains("keyboard-interactive rejected"),
+            "error should name the failing phase: {message}"
+        );
+        assert!(
+            message.contains("partial success: false"),
+            "error should report that the round did not complete: {message}"
+        );
+        assert!(
+            message.contains("KeyboardInteractive"),
+            "error should name the remaining method: {message}"
+        );
+
+        let log = auth_log(&server);
+        assert_eq!(
+            log.keyboard_interactive_attempts, 2,
+            "one round to receive the prompt, one to have the answers rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_completes_keyboard_interactive_for_rsa_key() {
+        let server = start_mfa_test_server(
+            Vec::new(),
+            PublicKeyOutcome::PartialKeyboardInteractive,
+            KeyboardInteractiveOutcome::Accept,
+        )
+        .await;
+
+        let result = authenticate_against_test_server(&server, rsa_test_key()).await;
+        assert!(
+            result.is_ok(),
+            "an RSA key should complete the keyboard-interactive round: {result:?}"
+        );
+
+        let log = auth_log(&server);
+        assert_eq!(
+            log.publickey_attempts, 1,
+            "the hash-algorithm fallback loop must not retry after a partial success"
+        );
+        assert_eq!(log.keyboard_interactive_attempts, 1);
     }
 }
