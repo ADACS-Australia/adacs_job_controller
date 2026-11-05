@@ -815,11 +815,14 @@ async fn handle_bundle_get_by_id(
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
+    let cluster_name = cluster.name();
     handle_get_by_id_impl(
         message,
         cluster,
         db,
-        bundle_job::Entity::find_by_id,
+        |id| {
+            bundle_job::Entity::find_by_id(id).filter(bundle_job::Column::Cluster.eq(&cluster_name))
+        },
         BundleJob::from,
         |r, msg| r.to_message(msg),
     )

@@ -59,9 +59,19 @@ async fn insert_bundle_job(
     content: &str,
     bundle_hash: &str,
 ) -> bundle_job::Model {
+    insert_bundle_job_on(db, content, bundle_hash, "ozstar").await
+}
+
+/// Insert a `bundle_job` row with the given content and hash on the given cluster.
+async fn insert_bundle_job_on(
+    db: &DatabaseConnection,
+    content: &str,
+    bundle_hash: &str,
+    cluster: &str,
+) -> bundle_job::Model {
     bundle_job::ActiveModel {
         content: Set(content.to_string()),
-        cluster: Set("ozstar".to_string()),
+        cluster: Set(cluster.to_string()),
         bundle_hash: Set(bundle_hash.to_string()),
         ..Default::default()
     }
@@ -1462,6 +1472,48 @@ async fn test_handle_bundle_get_by_id_not_found() {
     let db = make_cluster_db().await;
     let (mock, sent) = ozstar_capturing_cluster();
     assert_get_by_id_not_found(DB_BUNDLE_GET_JOB_BY_ID, 1201, &mock, &sent, &db).await;
+}
+
+// ---------------------------------------------------------------------------
+// DB_BUNDLE_GET_JOB_BY_ID — cluster scoping
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_BUNDLE_GET_JOB_BY_ID` returns count=0 when the bundle row
+/// belongs to a different cluster, even when the id matches.
+///
+/// # Setup
+/// In-memory DB with one bundle row on cluster "nci".
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_GET_JOB_BY_ID` with `db_request_id=1202` and the nci
+/// row's id from cluster "ozstar".
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=1202` and count=0 (no cross-cluster
+/// row returned).
+#[tokio::test]
+async fn test_handle_bundle_get_by_id_scopes_to_cluster() {
+    let db = make_cluster_db().await;
+
+    let inserted = insert_bundle_job_on(&db, "bundle_content", "xyz", "nci").await;
+    let bundle_id = inserted.id;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_GET_JOB_BY_ID, |m| {
+        m.push_uint(1202);
+        m.push_ulong(bundle_id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 1202);
+    let count = body.pop_uint();
+    assert_eq!(
+        count, 0,
+        "Bundle row owned by another cluster must not be returned"
+    );
 }
 
 // ---------------------------------------------------------------------------
