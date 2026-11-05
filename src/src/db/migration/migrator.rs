@@ -15,6 +15,9 @@ impl MigratorTrait for Migrator {
             Box::new(crate::db::migration::m20250514_000006_create_cluster_job_status::Migration),
             Box::new(crate::db::migration::m20250514_000007_create_bundle_job::Migration),
             Box::new(crate::db::migration::m20250514_000008_create_cluster_uuid::Migration),
+            Box::new(
+                crate::db::migration::m20250514_000009_add_cluster_to_cluster_job_status::Migration,
+            ),
         ]
     }
 }

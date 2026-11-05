@@ -12,3 +12,4 @@ pub mod m20250514_000005_create_cluster_job;
 pub mod m20250514_000006_create_cluster_job_status;
 pub mod m20250514_000007_create_bundle_job;
 pub mod m20250514_000008_create_cluster_uuid;
+pub mod m20250514_000009_add_cluster_to_cluster_job_status;

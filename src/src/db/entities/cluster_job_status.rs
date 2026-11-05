@@ -16,6 +16,8 @@ pub struct Model {
     pub what: String,
     /// Numeric state code representing the job's status at this point.
     pub state: i32,
+    /// Cluster name this status row belongs to (matches `ClusterConfig::name`).
+    pub cluster: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

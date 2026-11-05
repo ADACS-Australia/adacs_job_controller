@@ -490,6 +490,7 @@ async fn handle_jobstatus_get_by_job_id_impl(
     }
     let db_request_id = message.pop_uint();
     let job_id = message.pop_ulong().cast_signed();
+    let cluster_name = cluster.name();
     let what = if has_what {
         // A valid DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT needs at least 8 bytes
         // for the `what` string length prefix. If fewer remain, the message
@@ -514,8 +515,9 @@ async fn handle_jobstatus_get_by_job_id_impl(
         None
     };
 
-    let mut query =
-        cluster_job_status::Entity::find().filter(cluster_job_status::Column::JobId.eq(job_id));
+    let mut query = cluster_job_status::Entity::find()
+        .filter(cluster_job_status::Column::JobId.eq(job_id))
+        .filter(cluster_job_status::Column::Cluster.eq(&cluster_name));
     if let Some(what) = what {
         query = query.filter(cluster_job_status::Column::What.eq(what));
     }
@@ -615,6 +617,7 @@ async fn handle_jobstatus_save(
         );
         return;
     };
+    let cluster_name = cluster.name();
 
     if status.id == 0 {
         // Insert
@@ -623,6 +626,7 @@ async fn handle_jobstatus_save(
             job_id: Set(status.job_id),
             what: Set(status.what.clone()),
             state: Set(status.state),
+            cluster: Set(cluster_name),
         }
         .insert(db)
         .await;
@@ -636,12 +640,24 @@ async fn handle_jobstatus_save(
         };
         send_save_response(cluster, db_request_id, saved_id).await;
     } else {
-        // Update
+        // Update — only touch a row owned by this cluster.
+        let owned = cluster_job_status::Entity::find_by_id(status.id)
+            .filter(cluster_job_status::Column::Cluster.eq(&cluster_name))
+            .one(db)
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !owned {
+            send_save_response(cluster, db_request_id, 0).await;
+            return;
+        }
         let active = cluster_job_status::ActiveModel {
             id: Unchanged(status.id),
             job_id: Set(status.job_id),
             what: Set(status.what.clone()),
             state: Set(status.state),
+            cluster: NotSet,
         };
         let saved_id = match active.update(db).await {
             Ok(_) => status.id.cast_unsigned(),

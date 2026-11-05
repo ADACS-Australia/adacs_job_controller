@@ -190,17 +190,19 @@ async fn assert_bundle_create_or_update_inserts(
     (db, model, returned_id)
 }
 
-/// Insert a `cluster_job_status` row and return the created model.
+/// Insert a `cluster_job_status` row for the given cluster and return the created model.
 async fn insert_cluster_job_status(
     db: &DatabaseConnection,
     job_id: i64,
     what: &str,
     state: i32,
+    cluster: &str,
 ) -> cluster_job_status::Model {
     cluster_job_status::ActiveModel {
         job_id: Set(job_id),
         what: Set(what.to_string()),
         state: Set(state),
+        cluster: Set(cluster.to_string()),
         ..Default::default()
     }
     .insert(db)
@@ -843,7 +845,9 @@ async fn test_handle_jobstatus_save_insert() {
 async fn test_handle_jobstatus_save_update() {
     let db = make_cluster_db().await;
 
-    let existing_id = insert_cluster_job_status(&db, 10, "old_what", 1).await.id;
+    let existing_id = insert_cluster_job_status(&db, 10, "old_what", 1, "ozstar")
+        .await
+        .id;
 
     let status = ClusterJobStatus {
         id: existing_id,
@@ -934,7 +938,7 @@ async fn test_handle_jobstatus_get_by_job_id() {
     let db = make_cluster_db().await;
 
     for (jid, what, state) in [(20i64, "a", 1i32), (20i64, "b", 2i32), (21i64, "c", 3i32)] {
-        insert_cluster_job_status(&db, jid, what, state).await;
+        insert_cluster_job_status(&db, jid, what, state, "ozstar").await;
     }
 
     let (mock, sent) = ozstar_capturing_cluster();
@@ -960,6 +964,48 @@ async fn test_handle_jobstatus_get_by_job_id() {
     assert_eq!(whats, vec!["a", "b"]);
 }
 
+/// Verifies that `DB_JOBSTATUS_GET_BY_JOB_ID` returns only status rows belonging
+/// to the calling cluster when `job_id`s coincide across clusters.
+///
+/// # Setup
+/// In-memory DB with two status rows for the same `job_id=20`: one for "ozstar"
+/// (`what="a"`) and one for "nci" (`what="b"`).
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_GET_BY_JOB_ID` message with `db_request_id=801` and
+/// `job_id=20` from cluster "ozstar".
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=801`, count=1, and only the ozstar
+/// row (`what="a"`); the nci row is not returned.
+#[tokio::test]
+async fn test_handle_jobstatus_get_by_job_id_cluster_scoping() {
+    let db = make_cluster_db().await;
+
+    insert_cluster_job_status(&db, 20, "a", 1, "ozstar").await;
+    insert_cluster_job_status(&db, 20, "b", 2, "nci").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID, |m| {
+        m.push_uint(801);
+        m.push_ulong(20);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 801);
+    let count = body.pop_uint();
+    assert_eq!(
+        count, 1,
+        "Only 1 status row for 'ozstar' despite shared job_id=20"
+    );
+    let s = ClusterJobStatus::from_message(&mut body).unwrap();
+    assert_eq!(s.job_id, 20);
+    assert_eq!(s.what, "a", "Returned row must be the ozstar row");
+}
+
 /// Verifies that a truncated `DB_JOBSTATUS_GET_BY_JOB_ID` with fewer than 12
 /// bytes of payload (fewer than `db_request_id` + `job_id`) is dropped rather
 /// than querying with defaulted `0` values and emitting an uncorrelatable
@@ -978,7 +1024,7 @@ async fn test_handle_jobstatus_get_by_job_id() {
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_drops_truncated_header() {
     let db = make_cluster_db().await;
-    insert_cluster_job_status(&db, 22, "cpu_time", 42).await;
+    insert_cluster_job_status(&db, 22, "cpu_time", 42, "ozstar").await;
 
     let (mock, sent) = ozstar_capturing_cluster();
 
@@ -1028,7 +1074,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
         (30i64, "wall_time", 88i32),
         (31i64, "cpu_time", 99i32),
     ] {
-        insert_cluster_job_status(&db, jid, what, state).await;
+        insert_cluster_job_status(&db, jid, what, state, "ozstar").await;
     }
 
     let (mock, sent) = ozstar_capturing_cluster();
@@ -1069,7 +1115,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_and_what_drops_truncated_what() {
     let db = make_cluster_db().await;
-    insert_cluster_job_status(&db, 30, "cpu_time", 42).await;
+    insert_cluster_job_status(&db, 30, "cpu_time", 42, "ozstar").await;
 
     let (mock, sent) = ozstar_capturing_cluster();
 
@@ -1112,7 +1158,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_drops_truncated_what() {
 #[tokio::test]
 async fn test_handle_jobstatus_get_by_job_id_and_what_drops_what_with_truncated_content() {
     let db = make_cluster_db().await;
-    insert_cluster_job_status(&db, 31, "cpu_time", 42).await;
+    insert_cluster_job_status(&db, 31, "cpu_time", 42, "ozstar").await;
 
     let (mock, sent) = ozstar_capturing_cluster();
 
@@ -1160,7 +1206,7 @@ async fn test_handle_jobstatus_delete_by_id_list() {
     // Insert 4 statuses; we'll delete 2 of them
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
-        let inserted = insert_cluster_job_status(&db, 1, what, state).await;
+        let inserted = insert_cluster_job_status(&db, 1, what, state, "ozstar").await;
         ids.push(inserted.id.cast_unsigned());
     }
 
@@ -1208,7 +1254,7 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
 
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
-        let inserted = insert_cluster_job_status(&db, 1, what, state).await;
+        let inserted = insert_cluster_job_status(&db, 1, what, state, "ozstar").await;
         ids.push(inserted.id.cast_unsigned());
     }
 
@@ -1612,7 +1658,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_nonexistent_job() {
     let job_row_id = insert_cluster_job(&db).await;
 
     // Insert a real status for the existing job
-    insert_cluster_job_status(&db, job_row_id, "cpu_time", 100).await;
+    insert_cluster_job_status(&db, job_row_id, "cpu_time", 100, "ozstar").await;
 
     // Query with a non-existent job ID
     let invalid_job_id = (job_row_id + 100).cast_unsigned();
