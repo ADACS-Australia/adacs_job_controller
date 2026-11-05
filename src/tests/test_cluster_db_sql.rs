@@ -1157,6 +1157,10 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_drops_what_with_truncated_
 async fn test_handle_jobstatus_delete_by_id_list() {
     let db = make_cluster_db().await;
 
+    // The status rows must belong to a job owned by the originating cluster
+    // ("ozstar"); otherwise the cluster-scoped delete would leave them intact.
+    insert_cluster_job_row(&db, 1, 0, false, 0, "hash", "/work", false, "ozstar").await;
+
     // Insert 4 statuses; we'll delete 2 of them
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
@@ -1206,6 +1210,10 @@ async fn test_handle_jobstatus_delete_by_id_list() {
 async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
     let db = make_cluster_db().await;
 
+    // The status rows must belong to a job owned by the originating cluster
+    // ("ozstar"); otherwise the cluster-scoped delete would leave them intact.
+    insert_cluster_job_row(&db, 1, 0, false, 0, "hash", "/work", false, "ozstar").await;
+
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
         let inserted = insert_cluster_job_status(&db, 1, what, state).await;
@@ -1232,6 +1240,57 @@ async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
         .unwrap();
     let whats: Vec<String> = remaining.iter().map(|m| m.what.clone()).collect();
     assert_eq!(whats, vec!["b", "d"]);
+
+    let (req_id, _) = first_response(&sent);
+    assert_eq!(req_id, 1000);
+}
+
+/// Verifies that a `DB_JOBSTATUS_DELETE_BY_ID_LIST` from one cluster only
+/// deletes status rows owned by that cluster, leaving another cluster's rows
+/// intact even when the requesting cluster sends their primary key.
+///
+/// # Setup
+/// In-memory DB with a `cluster_job` row on the "ozstar" cluster (`job_id=1`)
+/// and a `cluster_job` row on the "other" cluster (`job_id=2`), each with one
+/// `cluster_job_status` row.
+///
+/// # Act
+/// Dispatch `DB_JOBSTATUS_DELETE_BY_ID_LIST` from the "ozstar" cluster for
+/// both status row ids.
+///
+/// # Assert
+/// The "ozstar"-owned status row is deleted; the "other"-owned status row
+/// survives; the `DB_RESPONSE` echoes `db_request_id=1000`.
+#[tokio::test]
+async fn test_handle_jobstatus_delete_by_id_list_scoped_to_originating_cluster() {
+    let db = make_cluster_db().await;
+
+    // Two jobs on different clusters; their status rows are owned by distinct clusters.
+    insert_cluster_job_row(&db, 1, 0, false, 0, "hash", "/work", false, "ozstar").await;
+    insert_cluster_job_row(&db, 2, 0, false, 0, "hash", "/work", false, "other").await;
+
+    let ozstar_status = insert_cluster_job_status(&db, 1, "a", 1).await;
+    let other_status = insert_cluster_job_status(&db, 2, "b", 2).await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_DELETE_BY_ID_LIST, |m| {
+        m.push_uint(1000);
+        m.push_uint(2);
+        m.push_ulong(ozstar_status.id.cast_unsigned());
+        m.push_ulong(other_status.id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    // The ozstar-owned row is gone; the other-cluster row survives.
+    let remaining = cluster_job_status::Entity::find()
+        .order_by_asc(cluster_job_status::Column::What)
+        .all(&db)
+        .await
+        .unwrap();
+    let whats: Vec<String> = remaining.iter().map(|m| m.what.clone()).collect();
+    assert_eq!(whats, vec!["b"]);
 
     let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 1000);
