@@ -426,6 +426,70 @@ async fn test_handle_job_save_update_missing_row_returns_zero() {
     assert_eq!(body.pop_ulong(), 0, "Failed update should return id=0");
 }
 
+/// Verifies that a `DB_JOB_SAVE` update carrying an id owned by a different
+/// cluster does not mutate that foreign row and reports a failed write (id=0).
+///
+/// # Setup
+/// In-memory DB with one pre-inserted cluster job row on "ozstar"; `ClusterJob`
+/// carries that row's id with updated fields but is dispatched from "othercluster".
+///
+/// # Act
+/// Dispatch a `DB_JOB_SAVE` message with `db_request_id=202` and the payload.
+///
+/// # Assert
+/// The "ozstar" row is unchanged; the `DB_RESPONSE` contains `db_request_id=202`
+/// and id=0 (signalling a failed write).
+#[tokio::test]
+async fn test_handle_job_save_update_foreign_cluster_id_returns_zero() {
+    let db = make_cluster_db().await;
+
+    // Pre-insert a row on "ozstar".
+    let inserted =
+        insert_cluster_job_row(&db, 10, 0, false, 0, "oldhash", "/old", false, "ozstar").await;
+    let existing_id = inserted.id;
+
+    let updated_job = ClusterJob {
+        id: existing_id,
+        job_id: 10,
+        scheduler_id: 99,
+        submitting: false,
+        submitting_count: 2,
+        bundle_hash: "newhash".to_string(),
+        working_directory: "/new/work".to_string(),
+        running: true,
+        deleting: false,
+        deleted: false,
+    };
+
+    let (mock, sent) = mock_cluster_capturing("othercluster");
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(202);
+        updated_job.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    // The "ozstar" row must be unchanged.
+    let model = cluster_job::Entity::find_by_id(existing_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.scheduler_id, 0);
+    assert_eq!(model.bundle_hash, "oldhash");
+    assert!(!model.running);
+
+    // Response: db_request_id=202, then 0 (failed write).
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 202);
+    assert_eq!(
+        body.pop_ulong(),
+        0,
+        "Foreign-cluster update should return id=0"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_GET_BY_ID — found
 // ---------------------------------------------------------------------------

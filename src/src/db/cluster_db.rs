@@ -456,8 +456,19 @@ async fn handle_job_save(
             deleted: Set(job.deleted),
             cluster: NotSet,
         };
-        let saved_id = match active.update(db).await {
-            Ok(_) => job.id.cast_unsigned(),
+        // Scope the update to the originating cluster: the primary key alone is
+        // globally unique, so without a cluster filter an id owned by a different
+        // cluster would be silently mutated. If no row matches (missing id or id
+        // owned by another cluster), report a failed write (id=0).
+        let result = cluster_job::Entity::update_many()
+            .set(active)
+            .filter(cluster_job::Column::Id.eq(job.id))
+            .filter(cluster_job::Column::Cluster.eq(&cluster_name))
+            .exec(db)
+            .await;
+        let saved_id = match result {
+            Ok(res) if res.rows_affected > 0 => job.id.cast_unsigned(),
+            Ok(_) => 0,
             Err(e) => {
                 log_update_failed(&cluster_name, &e);
                 0
