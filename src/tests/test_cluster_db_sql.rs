@@ -2071,3 +2071,178 @@ async fn test_handle_bundle_create_or_update_bogus_content_length_is_dropped() {
         "DB_BUNDLE_CREATE_OR_UPDATE_JOB with bogus content length should record no bundle row"
     );
 }
+
+// ---------------------------------------------------------------------------
+// DB query error indicator
+//
+// A DB query that fails must surface an explicit error indicator on the
+// `DB_RESPONSE` (appended after the rows) so the cluster client can
+// distinguish "query succeeded, no rows" from "query failed". These tests
+// force a query error by querying against a schema-less in-memory DB (the
+// tables do not exist, so the query errors) and assert the trailing error
+// flag is set; the success path must carry no error flag.
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_JOB_GET_BY_JOB_ID` sets the `DB_RESPONSE` error flag when the query fails.
+///
+/// # Setup
+/// Schema-less in-memory DB (no `cluster_job` table) so the query errors.
+///
+/// # Act
+/// Dispatch `DB_JOB_GET_BY_JOB_ID` with `db_request_id=400` and `job_id=77`.
+///
+/// # Assert
+/// The `DB_RESPONSE` echoes the request id, has count=0, and its trailing error flag is set.
+#[tokio::test]
+async fn test_handle_job_get_by_job_id_db_error_sets_error_flag() {
+    let db = make_db().await; // no schema -> query fails
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_GET_BY_JOB_ID, |m| {
+        m.push_uint(400);
+        m.push_ulong(77);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 400);
+    assert_eq!(body.pop_uint(), 0, "count is 0 on a failed query");
+    assert!(
+        body.pop_bool(),
+        "error flag should be set on DB query failure"
+    );
+}
+
+/// Verifies that `DB_JOB_GET_RUNNING_JOBS` sets the `DB_RESPONSE` error flag when the query fails.
+///
+/// # Setup
+/// Schema-less in-memory DB (no `cluster_job` table) so the query errors.
+///
+/// # Act
+/// Dispatch `DB_JOB_GET_RUNNING_JOBS` with `db_request_id=500`.
+///
+/// # Assert
+/// The `DB_RESPONSE` echoes the request id, has count=0, and its trailing error flag is set.
+#[tokio::test]
+async fn test_handle_job_get_running_jobs_db_error_sets_error_flag() {
+    let db = make_db().await; // no schema -> query fails
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_GET_RUNNING_JOBS, |m| {
+        m.push_uint(500);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 500);
+    assert_eq!(body.pop_uint(), 0, "count is 0 on a failed query");
+    assert!(
+        body.pop_bool(),
+        "error flag should be set on DB query failure"
+    );
+}
+
+/// Verifies that `DB_JOBSTATUS_GET_BY_JOB_ID` sets the `DB_RESPONSE` error flag when the query fails.
+///
+/// # Setup
+/// Schema-less in-memory DB (no `cluster_job_status` table) so the query errors.
+///
+/// # Act
+/// Dispatch `DB_JOBSTATUS_GET_BY_JOB_ID` with `db_request_id=800` and `job_id=20`.
+///
+/// # Assert
+/// The `DB_RESPONSE` echoes the request id, has count=0, and its trailing error flag is set.
+#[tokio::test]
+async fn test_handle_jobstatus_get_by_job_id_db_error_sets_error_flag() {
+    let db = make_db().await; // no schema -> query fails
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID, |m| {
+        m.push_uint(800);
+        m.push_ulong(20);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 800);
+    assert_eq!(body.pop_uint(), 0, "count is 0 on a failed query");
+    assert!(
+        body.pop_bool(),
+        "error flag should be set on DB query failure"
+    );
+}
+
+/// Verifies that `DB_JOB_GET_BY_ID` sets the `DB_RESPONSE` error flag when the query fails.
+///
+/// # Setup
+/// Schema-less in-memory DB (no `cluster_job` table) so the query errors.
+///
+/// # Act
+/// Dispatch `DB_JOB_GET_BY_ID` with `db_request_id=301` and id=1.
+///
+/// # Assert
+/// The `DB_RESPONSE` echoes the request id, has count=0, and its trailing error flag is set.
+#[tokio::test]
+async fn test_handle_job_get_by_id_db_error_sets_error_flag() {
+    let db = make_db().await; // no schema -> query fails
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_GET_BY_ID, |m| {
+        m.push_uint(301);
+        m.push_ulong(1);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 301);
+    assert_eq!(body.pop_uint(), 0, "count is 0 on a failed query");
+    assert!(
+        body.pop_bool(),
+        "error flag should be set on DB query failure"
+    );
+}
+
+/// Verifies that a successful query carries no `DB_RESPONSE` error flag.
+///
+/// # Setup
+/// In-memory DB with one cluster job row (`job_id=77`) for "ozstar".
+///
+/// # Act
+/// Dispatch `DB_JOB_GET_BY_JOB_ID` with `db_request_id=401` and `job_id=77`.
+///
+/// # Assert
+/// The `DB_RESPONSE` echoes the request id, has count=1, returns the row, and its
+/// trailing error flag is clear.
+#[tokio::test]
+async fn test_handle_job_get_by_job_id_success_clears_error_flag() {
+    let db = make_cluster_db().await;
+
+    insert_cluster_job_row(&db, 77, 0, false, 0, "h1", "/d1", false, "ozstar").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_GET_BY_JOB_ID, |m| {
+        m.push_uint(401);
+        m.push_ulong(77);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 401);
+    assert_eq!(body.pop_uint(), 1);
+    let row = ClusterJob::from_message(&mut body).unwrap();
+    assert_eq!(row.job_id, 77);
+    assert!(
+        !body.pop_bool(),
+        "error flag should be clear on a successful query"
+    );
+}
