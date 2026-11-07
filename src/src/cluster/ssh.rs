@@ -38,6 +38,9 @@ pub enum SshError {
     /// The remote `adacs_job_client` command exited with a non-zero status.
     #[error("Command exited with status {0}")]
     CommandFailed(i32),
+    /// The remote command was terminated by a signal rather than exiting.
+    #[error("Command terminated by signal {0}")]
+    CommandSignalled(String),
     /// Local I/O error while reading keys or streaming channel data.
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
@@ -509,16 +512,33 @@ async fn execute_command(
                 let text = String::from_utf8_lossy(&data);
                 tracing::warn!("{text}");
             }
-            ChannelMsg::ExitStatus { exit_status } => {
-                exit_code = Some(exit_status);
+            other => {
+                if let Some(code) = handle_channel_msg(other)? {
+                    exit_code = Some(code);
+                }
             }
-            _ => {}
         }
     }
 
     exit_code.ok_or_else(|| {
         SshError::ChannelFailed("SSH channel closed without providing an exit status".to_string())
     })
+}
+
+/// Process one message from the remote command's channel.
+///
+/// Returns `Ok(Some(exit_status))` when the command reported an exit status,
+/// `Ok(None)` for messages that carry no termination information, and `Err`
+/// when the command was terminated by a signal (RFC 4254) so the caller can
+/// report the signal instead of a misleading generic failure.
+fn handle_channel_msg(msg: ChannelMsg) -> Result<Option<u32>, SshError> {
+    match msg {
+        ChannelMsg::ExitStatus { exit_status } => Ok(Some(exit_status)),
+        ChannelMsg::ExitSignal { signal_name, .. } => {
+            Err(SshError::CommandSignalled(format!("{signal_name:?}")))
+        }
+        _ => Ok(None),
+    }
 }
 
 #[cfg(test)]
@@ -576,6 +596,42 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
     fn ssh_error_display_command_failed() {
         let e = SshError::CommandFailed(42);
         assert_eq!(e.to_string(), "Command exited with status 42");
+    }
+
+    #[test]
+    fn ssh_error_display_command_signalled() {
+        let e = SshError::CommandSignalled("KILL".to_string());
+        assert_eq!(e.to_string(), "Command terminated by signal KILL");
+    }
+
+    #[test]
+    fn handle_channel_msg_reports_exit_signal() {
+        let err = handle_channel_msg(ChannelMsg::ExitSignal {
+            signal_name: russh::Sig::KILL,
+            core_dumped: false,
+            error_message: String::new(),
+            lang_tag: String::new(),
+        })
+        .unwrap_err();
+
+        assert!(
+            matches!(&err, SshError::CommandSignalled(name) if name == "KILL"),
+            "signal should be reported by name: {err:?}"
+        );
+    }
+
+    #[test]
+    fn handle_channel_msg_returns_exit_status() {
+        let result = handle_channel_msg(ChannelMsg::ExitStatus { exit_status: 7 });
+        assert_eq!(result.unwrap(), Some(7));
+    }
+
+    #[test]
+    fn handle_channel_msg_ignores_data() {
+        let result = handle_channel_msg(ChannelMsg::Data {
+            data: bytes::Bytes::from_static(b"hello"),
+        });
+        assert_eq!(result.unwrap(), None);
     }
 
     #[test]
