@@ -37,7 +37,7 @@ use adacs_job_controller::protocol::types::JobStatus;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -818,6 +818,68 @@ async fn test_download_file_application_shutdown_returns_503() {
         .expect_is_application_shutting_down()
         .returning(|| true);
     manager.expect_create_file_download().times(0);
+
+    let app = make_app(db, manager);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&body),
+        "Remote Cluster Offline",
+        "body: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+/// Regression test for the shutdown race window in `download_file`: shutdown
+/// begins after the handler's pre-check but before `create_file_download`
+/// publishes a session. The session lookup then returns `None` and the
+/// handler must return 503 (matching the pre-check) rather than 400.
+#[tokio::test]
+async fn test_download_file_shutdown_race_returns_503_not_400() {
+    let db = setup_test_db().await;
+    let uuid = "shutdown-race-uuid".to_string();
+    insert_file_download(&db, &uuid, "").await;
+
+    let cluster = Arc::new(online_cluster("ozstar"));
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    // First call (pre-check) sees shutdown not begun; subsequent calls
+    // (create_file_download / get_file_download) see it begun.
+    let shutdown_calls = Arc::new(AtomicUsize::new(0));
+    let calls = Arc::clone(&shutdown_calls);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(move || calls.fetch_add(1, Ordering::SeqCst) > 0);
+    let c2 = Arc::clone(&cluster);
+    manager
+        .expect_create_file_download()
+        .returning(move |_, _| {
+            let c = Arc::clone(&c2);
+            Box::pin(
+                async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> },
+            )
+        });
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager.expect_get_file_download().returning(|_| None);
 
     let app = make_app(db, manager);
 
@@ -2453,6 +2515,55 @@ async fn test_upload_file_shutdown_returns_503_before_job_lookup() {
                 .uri(
                     "/job/apiv1/file/upload/?jobId=999999&cluster=ozstar&bundle=b&targetPath=/dest.txt",
                 )
+                .header("authorization", &token)
+                .header("content-length", "5")
+                .body(Body::from("hello"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+/// Regression test for the shutdown race window in `upload_file`: shutdown
+/// begins after the handler's pre-check but before `create_file_upload`
+/// publishes a session. The session lookup then returns `None` and the
+/// handler must return 503 (matching the pre-check) rather than 400.
+#[tokio::test]
+async fn test_upload_file_shutdown_race_returns_503_not_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+    let cluster = Arc::new(online_cluster("ozstar"));
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    // First call (pre-check) sees shutdown not begun; subsequent calls
+    // (create_file_upload / get_file_upload) see it begun.
+    let shutdown_calls = Arc::new(AtomicUsize::new(0));
+    let calls = Arc::clone(&shutdown_calls);
+    manager
+        .expect_is_application_shutting_down()
+        .returning(move || calls.fetch_add(1, Ordering::SeqCst) > 0);
+    let c2 = Arc::clone(&cluster);
+    manager.expect_create_file_upload().returning(move |_, _| {
+        let c = Arc::clone(&c2);
+        Box::pin(async move { c as Arc<dyn adacs_job_controller::cluster::traits::ClusterTrait> })
+    });
+    manager.expect_get_file_upload().returning(|_| None);
+
+    let app = make_app(db, manager);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/dest.txt"
+                ))
                 .header("authorization", &token)
                 .header("content-length", "5")
                 .body(Body::from("hello"))

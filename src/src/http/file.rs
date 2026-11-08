@@ -464,6 +464,15 @@ pub async fn download_file(
                 &mut pre_response_guard,
                 DownloadShutdownReason::ResponseError,
             );
+            // Shutdown may have begun after the pre-check above but before
+            // `create_file_download` published a session; route that race to
+            // the same 503 the pre-check returns rather than a misleading 400.
+            if state.cluster_manager.is_application_shutting_down() {
+                return Err((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
+                ));
+            }
             return Err((
                 StatusCode::BAD_REQUEST,
                 "File download session not found".to_string(),
@@ -788,10 +797,24 @@ pub async fn upload_file(
     msg.push_ulong(content_length);
     cluster.send_message(msg).await;
 
-    let fu_state = state.cluster_manager.get_file_upload(&uuid).ok_or((
-        StatusCode::BAD_REQUEST,
-        "File upload session not found".to_string(),
-    ))?;
+    let fu_state = match state.cluster_manager.get_file_upload(&uuid) {
+        Some(state) => state,
+        None => {
+            // Shutdown may have begun after the pre-check above but before
+            // `create_file_upload` published a session; route that race to
+            // the same 503 the pre-check returns rather than a misleading 400.
+            if state.cluster_manager.is_application_shutting_down() {
+                return Err((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    REMOTE_CLUSTER_OFFLINE_MSG.to_string(),
+                ));
+            }
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "File upload session not found".to_string(),
+            ));
+        }
+    };
 
     let timeout = std::time::Duration::from_secs(client_timeout_secs(&state));
     let ready = wait_until_data_ready(&fu_state.data_ready, &fu_state.data_notify, timeout).await;
