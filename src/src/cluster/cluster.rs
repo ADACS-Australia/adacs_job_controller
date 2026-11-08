@@ -740,6 +740,11 @@ impl Cluster {
         let mut files = Vec::new();
         for _ in 0..num_files {
             if message.remaining() < MIN_FILE_LIST_ENTRY_BYTES {
+                tracing::warn!(
+                    "Cluster[{}]: Truncated FILE_LIST entry (fewer than {} bytes remain for a complete entry)",
+                    self.name(),
+                    MIN_FILE_LIST_ENTRY_BYTES
+                );
                 break;
             }
             // A filename whose length prefix claims more bytes than remain is a
