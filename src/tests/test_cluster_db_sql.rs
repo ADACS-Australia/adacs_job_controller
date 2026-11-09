@@ -1801,6 +1801,80 @@ async fn test_handle_bundle_create_or_update_unknown_id_inserts() {
     );
 }
 
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with a bundle id owned by a *different*
+/// cluster does not overwrite that foreign row; instead a new row is inserted for the
+/// requesting cluster.
+///
+/// # Setup
+/// In-memory DB with one pre-inserted bundle row owned by cluster "other"
+/// (`content="foreign_old"`, `bundle_hash="foreign_hash"`).
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` from cluster "ozstar" with the foreign row's
+/// id, `content="new_content"`, and `hash="foreign_hash"`.
+///
+/// # Assert
+/// The foreign row's `content` is unchanged; a new row is inserted for "ozstar" with
+/// `content="new_content"`; the `DB_RESPONSE` returns the new row's id.
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_foreign_id_does_not_overwrite() {
+    let db = make_cluster_db().await;
+
+    let foreign = bundle_job::ActiveModel {
+        content: Set("foreign_old".to_string()),
+        cluster: Set("other".to_string()),
+        bundle_hash: Set("foreign_hash".to_string()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    let foreign_id = foreign.id;
+
+    let bundle = BundleJob {
+        id: foreign_id,
+        content: "new_content".to_string(),
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(5007);
+        bundle.to_message(m);
+        m.push_string("foreign_hash");
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    // Foreign row is unchanged
+    let foreign_row = bundle_job::Entity::find_by_id(foreign_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(foreign_row.content, "foreign_old");
+    assert_eq!(foreign_row.cluster, "other");
+
+    // A new row was inserted for the requesting cluster
+    let new_row = bundle_job::Entity::find()
+        .filter(bundle_job::Column::Cluster.eq("ozstar"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(new_row.content, "new_content");
+    assert_eq!(new_row.bundle_hash, "foreign_hash");
+
+    // Exactly two rows now exist
+    let count = bundle_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(count, 2);
+
+    // Response returns the new row's id
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 5007);
+    assert_eq!(body.pop_ulong(), new_row.id.cast_unsigned());
+}
+
 // ---------------------------------------------------------------------------
 // DB_BUNDLE_DELETE_JOB — delete non-existent ID is a no-op
 // Equivalent behavior: test_db_bundle_job_delete_error → returns success=false
