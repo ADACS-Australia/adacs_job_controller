@@ -6,6 +6,7 @@ use base64::engine::general_purpose::STANDARD;
 use russh::client::{self, AuthResult, KeyboardInteractiveAuthResponse, Prompt};
 use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use russh::{ChannelMsg, Disconnect, MethodKind};
+use tokio::io::AsyncBufReadExt;
 
 use crate::config::clusters::{CONNECTION_TYPE_KERBEROS, CONNECTION_TYPE_SSH, ClusterConfig};
 
@@ -421,26 +422,36 @@ async fn run_via_kerberos(config: &ClusterConfig, token: &str) -> Result<(), Ssh
 
     let remote_cmd = build_remote_client_command(&config.path, token);
 
-    let output = build_kerberos_ssh_command(principal, &config.host, &remote_cmd, &keytab_path)
-        .output()
-        .await?;
+    let mut child = build_kerberos_ssh_command(principal, &config.host, &remote_cmd, &keytab_path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
 
-    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = child.stdout.take().expect("piped stdout");
+    let stderr = child.stderr.take().expect("piped stderr");
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        tracing::error!("Kerberos SSH command failed (exit={exit_code}): {stderr}");
+    let stdout_task = tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            tracing::info!("{line}");
+        }
+    });
+
+    let stderr_task = tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            tracing::warn!("{line}");
+        }
+    });
+
+    let status = child.wait().await?;
+    let _ = stdout_task.await;
+    let _ = stderr_task.await;
+
+    let exit_code = status.code().unwrap_or(-1);
+
+    if !status.success() {
         return Err(SshError::CommandFailed(exit_code));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        tracing::info!("{line}");
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    for line in stderr.lines() {
-        tracing::warn!("{line}");
     }
 
     Ok(())
