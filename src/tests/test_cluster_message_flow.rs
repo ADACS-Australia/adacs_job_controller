@@ -30,13 +30,11 @@ async fn make_online_cluster() -> (
 /// and the cluster.
 fn make_file_download_cluster(uuid: &str) -> (Arc<FileDownloadState>, Arc<Cluster>) {
     let download_state = Arc::new(FileDownloadState::new());
-    let lock = Arc::new(tokio::sync::Mutex::new(()));
     let cluster = Cluster::new_file_download(
         common::test_cluster_config("test_cluster"),
         uuid.to_string(),
         Arc::clone(&download_state),
         None,
-        lock,
     );
     (download_state, cluster)
 }

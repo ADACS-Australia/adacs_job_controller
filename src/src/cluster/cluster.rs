@@ -102,9 +102,6 @@ pub struct Cluster {
     file_upload_state: Option<Arc<FileUploadState>>,
     /// Session UUID for the current file transfer, if any.
     uuid: Option<String>,
-
-    /// Mutex coordinating HTTP download backpressure with chunk streaming.
-    file_download_pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 type PriorityQueue = BTreeMap<u8, RwLock<HashMap<String, VecDeque<Vec<u8>>>>>;
@@ -129,7 +126,6 @@ impl Cluster {
             None,
             None,
             None,
-            Arc::new(tokio::sync::Mutex::new(())),
             app_context,
         )
     }
@@ -140,7 +136,6 @@ impl Cluster {
         uuid: String,
         download_state: Arc<FileDownloadState>,
         app_context: Option<Arc<AppContext>>,
-        pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
     ) -> Arc<Self> {
         Self::new_with_role(
             details,
@@ -149,7 +144,6 @@ impl Cluster {
             Some(download_state),
             None,
             Some(uuid),
-            pause_resume_lock,
             app_context,
         )
     }
@@ -168,13 +162,11 @@ impl Cluster {
             None,
             Some(upload_state),
             Some(uuid),
-            Arc::new(tokio::sync::Mutex::new(())),
             app_context,
         )
     }
 
     /// Shared constructor for all cluster roles.
-    #[allow(clippy::too_many_arguments)]
     fn new_with_role(
         details: ClusterConfig,
         role: ClusterRole,
@@ -182,7 +174,6 @@ impl Cluster {
         file_download_state: Option<Arc<FileDownloadState>>,
         file_upload_state: Option<Arc<FileUploadState>>,
         uuid: Option<String>,
-        file_download_pause_resume_lock: Arc<tokio::sync::Mutex<()>>,
         app_context: Option<Arc<AppContext>>,
     ) -> Arc<Self> {
         let queue = empty_priority_queues();
@@ -204,7 +195,6 @@ impl Cluster {
             file_download_state,
             file_upload_state,
             uuid,
-            file_download_pause_resume_lock,
         })
     }
 
@@ -884,7 +874,6 @@ impl Cluster {
         }
 
         // Backpressure: send PAUSE if buffer too big
-        let _lock = self.file_download_pause_resume_lock.lock().await;
         if !state.client_paused.load(Ordering::Relaxed) {
             let received = state.received_bytes.load(Ordering::Relaxed);
             let sent = state.sent_bytes.load(Ordering::Relaxed);
@@ -1536,9 +1525,7 @@ mod tests {
     #[test]
     fn test_cluster_file_download_creation() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
-        let cluster =
-            Cluster::new_file_download(test_config(), "uuid-123".into(), state, None, lock);
+        let cluster = Cluster::new_file_download(test_config(), "uuid-123".into(), state, None);
         assert_eq!(cluster.role(), ClusterRole::FileDownload);
         assert_eq!(cluster.uuid(), Some("uuid-123"));
         assert!(cluster.role_string().contains("file download"));
@@ -1549,9 +1536,8 @@ mod tests {
     #[tokio::test]
     async fn test_handle_file_error_sets_download_error() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
         let cluster =
-            Cluster::new_file_download(test_config(), "uuid-err".into(), state.clone(), None, lock);
+            Cluster::new_file_download(test_config(), "uuid-err".into(), state.clone(), None);
 
         let mut msg = Message::new(FILE_ERROR, Priority::Highest, TEST_DOWNLOAD_FAILED_MSG);
 
@@ -1568,14 +1554,8 @@ mod tests {
     #[tokio::test]
     async fn test_handle_file_error_truncated_detail_sets_error() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
-        let cluster = Cluster::new_file_download(
-            test_config(),
-            "uuid-err-trunc".into(),
-            state.clone(),
-            None,
-            lock,
-        );
+        let cluster =
+            Cluster::new_file_download(test_config(), "uuid-err-trunc".into(), state.clone(), None);
 
         let mut msg = Message::new(FILE_ERROR, Priority::Highest, TEST_CLUSTER);
         // Claim more detail bytes than remain in the message.
@@ -1647,14 +1627,8 @@ mod tests {
     #[tokio::test]
     async fn test_handle_file_details_sets_download_state() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
-        let cluster = Cluster::new_file_download(
-            test_config(),
-            "uuid-details".into(),
-            state.clone(),
-            None,
-            lock,
-        );
+        let cluster =
+            Cluster::new_file_download(test_config(), "uuid-details".into(), state.clone(), None);
 
         let mut msg = Message::new(FILE_DETAILS, Priority::Highest, "test_cluster");
         msg.push_ulong(42);
@@ -1673,13 +1647,11 @@ mod tests {
     #[tokio::test]
     async fn test_handle_file_details_truncated_sets_error() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
         let cluster = Cluster::new_file_download(
             test_config(),
             "uuid-details-trunc".into(),
             state.clone(),
             None,
-            lock,
         );
 
         let mut msg = Message::new(FILE_DETAILS, Priority::Highest, "test_cluster");
@@ -2823,10 +2795,9 @@ mod tests {
     #[test]
     fn test_file_download_constructor_fields() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
         let uuid = "test-dl-uuid-constructor";
         let cluster =
-            Cluster::new_file_download(test_config(), uuid.to_string(), state.clone(), None, lock);
+            Cluster::new_file_download(test_config(), uuid.to_string(), state.clone(), None);
 
         // Verify 3 priority levels
         assert_eq!(cluster.queue.len(), 3);
@@ -3113,14 +3084,8 @@ mod tests {
     #[tokio::test]
     async fn test_handle_file_chunk_forwards_and_marks_ready() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
-        let cluster = Cluster::new_file_download(
-            test_config(),
-            "uuid-chunk".into(),
-            state.clone(),
-            None,
-            lock,
-        );
+        let cluster =
+            Cluster::new_file_download(test_config(), "uuid-chunk".into(), state.clone(), None);
 
         let chunk = vec![1u8, 2, 3, 4];
         let mut msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
@@ -3142,14 +3107,8 @@ mod tests {
     #[tokio::test]
     async fn test_handle_file_chunk_truncated_sets_error() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
-        let cluster = Cluster::new_file_download(
-            test_config(),
-            "uuid-chunk-trunc".into(),
-            state.clone(),
-            None,
-            lock,
-        );
+        let cluster =
+            Cluster::new_file_download(test_config(), "uuid-chunk".into(), state.clone(), None);
 
         let mut msg = Message::new(FILE_CHUNK, Priority::Highest, TEST_CLUSTER);
         msg.push_ulong(16);
@@ -3172,14 +3131,8 @@ mod tests {
     #[tokio::test]
     async fn test_handle_file_chunk_sets_error_when_receiver_dropped() {
         let state = Arc::new(FileDownloadState::new());
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
-        let cluster = Cluster::new_file_download(
-            test_config(),
-            "uuid-chunk".into(),
-            state.clone(),
-            None,
-            lock,
-        );
+        let cluster =
+            Cluster::new_file_download(test_config(), "uuid-chunk".into(), state.clone(), None);
 
         {
             let mut guard = state.chunk_receiver.lock().await;

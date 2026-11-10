@@ -51,14 +51,12 @@ async fn make_file_download_cluster() -> (
     Arc<FileDownloadState>,
 ) {
     let download_state = Arc::new(FileDownloadState::new());
-    let pause_lock = Arc::new(tokio::sync::Mutex::new(()));
     let db = common::make_db().await;
     let cluster = Cluster::new_file_download(
         test_cluster_config("test"),
         TEST_UUID.to_string(),
         Arc::clone(&download_state),
         Some(make_app_context(db)),
-        pause_lock,
     );
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();

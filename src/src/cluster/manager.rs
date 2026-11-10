@@ -97,9 +97,6 @@ pub struct ClusterManager {
     /// Consecutive missed pongs per connection (threshold = 2 before eviction)
     missed_pongs: DashMap<ConnectionId, u32>,
 
-    /// Pause/resume locks per cluster name (shared with file download clusters)
-    pause_resume_locks: DashMap<String, Arc<tokio::sync::Mutex<()>>>,
-
     /// Reconnect attempt counters per cluster for exponential backoff
     reconnect_attempts: DashMap<String, u32>,
     /// Timestamp of last reconnect attempt per cluster
@@ -122,11 +119,9 @@ impl ClusterManager {
         });
 
         let mut clusters = HashMap::new();
-        let pause_resume_locks = DashMap::new();
         for config in cluster_configs {
             let name = config.name.clone();
             let cluster = Cluster::new(config, Some(Arc::clone(&app_context)));
-            pause_resume_locks.insert(name.clone(), Arc::new(tokio::sync::Mutex::new(())));
             clusters.insert(name, cluster);
         }
 
@@ -146,7 +141,6 @@ impl ClusterManager {
             pong_times: DashMap::new(),
             ping_times: DashMap::new(),
             missed_pongs: DashMap::new(),
-            pause_resume_locks,
             reconnect_attempts: DashMap::new(),
             last_reconnect_attempt: DashMap::new(),
         });
@@ -1057,19 +1051,11 @@ impl ClusterManagerTrait for ClusterManager {
         let details = cluster.cluster_details();
         let download_state = Arc::new(FileDownloadState::new());
 
-        // Get or create the pause/resume lock for this cluster
-        let lock = self
-            .pause_resume_locks
-            .entry(details.name.clone())
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
-            .clone();
-
         let dl_cluster = Cluster::new_file_download(
             details,
             uuid.to_string(),
             Arc::clone(&download_state),
             Some(Arc::clone(&self.app_context)),
-            lock,
         );
         dl_cluster.start_tasks();
 
@@ -1435,7 +1421,6 @@ mod tests {
             uuid.to_string(),
             Arc::new(FileDownloadState::new()),
             Some(Arc::clone(&manager.app_context)),
-            Arc::new(tokio::sync::Mutex::new(())),
         );
 
         let conn_id: ConnectionId = 99;

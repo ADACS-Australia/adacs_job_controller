@@ -762,8 +762,6 @@ async fn test_upload_server_ready_timeout_returns_400() {
 async fn test_download_file_error_from_cluster_propagates() {
     let db = setup_test_db().await;
     let download_state = Arc::new(FileDownloadState::new());
-    let pause_lock = Arc::new(tokio::sync::Mutex::new(()));
-
     let app_ctx = Arc::new(AppContext {
         db: db.clone(),
         file_list_map: Arc::new(DashMap::new()),
@@ -774,7 +772,6 @@ async fn test_download_file_error_from_cluster_propagates() {
         "error-test-uuid".to_string(),
         Arc::clone(&download_state),
         Some(app_ctx),
-        pause_lock,
     );
 
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
