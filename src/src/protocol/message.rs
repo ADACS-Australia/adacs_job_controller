@@ -236,6 +236,9 @@ impl Message {
     /// length prefix) so a `None` return leaves the buffer in its prior state.
     pub fn try_pop_string(&mut self) -> Option<String> {
         let start = self.index;
+        if !self.check_remaining(std::mem::size_of::<u64>()) {
+            return None;
+        }
         let len = self.pop_ulong() as usize;
         if !self.check_remaining(len) {
             self.index = start;
@@ -275,6 +278,9 @@ impl Message {
     /// past the length prefix), matching [`try_pop_string`].
     pub fn try_pop_bytes(&mut self) -> Option<Vec<u8>> {
         let start = self.index;
+        if !self.check_remaining(std::mem::size_of::<u64>()) {
+            return None;
+        }
         let len = self.pop_ulong() as usize;
         if !self.check_remaining(len) {
             self.index = start;
@@ -896,6 +902,58 @@ mod tests {
         raw.extend_from_slice(b"abc");
         let mut msg = Message {
             data: raw,
+            index: 0,
+            id: 0,
+            source: String::new(),
+            priority: Priority::Lowest,
+        };
+        let before = msg.remaining();
+        assert_eq!(msg.try_pop_bytes(), None);
+        assert_eq!(msg.remaining(), before);
+    }
+
+    /// Verifies that `try_pop_string` returns `None` when the buffer is
+    /// truncated inside the 8-byte length prefix, without advancing the cursor.
+    ///
+    /// # Setup
+    /// Build a message whose raw buffer holds only 3 bytes, fewer than the
+    /// 8-byte length prefix.
+    ///
+    /// # Act
+    /// Call `try_pop_string` on the buffer.
+    ///
+    /// # Assert
+    /// `try_pop_string` returns `None` and `remaining()` is unchanged.
+    #[test]
+    fn test_try_pop_string_truncated_prefix_leaves_cursor_unchanged() {
+        let mut msg = Message {
+            data: b"abc".to_vec(),
+            index: 0,
+            id: 0,
+            source: String::new(),
+            priority: Priority::Lowest,
+        };
+        let before = msg.remaining();
+        assert_eq!(msg.try_pop_string(), None);
+        assert_eq!(msg.remaining(), before);
+    }
+
+    /// Verifies that `try_pop_bytes` returns `None` when the buffer is
+    /// truncated inside the 8-byte length prefix, without advancing the cursor.
+    ///
+    /// # Setup
+    /// Build a message whose raw buffer holds only 3 bytes, fewer than the
+    /// 8-byte length prefix.
+    ///
+    /// # Act
+    /// Call `try_pop_bytes` on the buffer.
+    ///
+    /// # Assert
+    /// `try_pop_bytes` returns `None` and `remaining()` is unchanged.
+    #[test]
+    fn test_try_pop_bytes_truncated_prefix_leaves_cursor_unchanged() {
+        let mut msg = Message {
+            data: b"abc".to_vec(),
             index: 0,
             id: 0,
             source: String::new(),
