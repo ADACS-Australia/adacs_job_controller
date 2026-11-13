@@ -51,16 +51,27 @@ impl ClusterJob {
     ///
     /// Returns `None` if either variable-length string (`bundle_hash` or
     /// `working_directory`) is truncated — i.e. its length prefix claims more
-    /// bytes than remain in the message.
+    /// bytes than remain in the message — or if fewer than the three trailing
+    /// bool bytes (`running`, `deleting`, `deleted`) remain after the strings.
     pub fn from_message(msg: &mut Message) -> Option<Self> {
+        let id = msg.pop_ulong().cast_signed();
+        let job_id = msg.pop_ulong().cast_signed();
+        let scheduler_id = msg.pop_ulong().cast_signed();
+        let submitting = msg.pop_bool();
+        let submitting_count = msg.pop_uint().cast_signed();
+        let bundle_hash = msg.try_pop_string()?;
+        let working_directory = msg.try_pop_string()?;
+        if msg.remaining() < 3 {
+            return None;
+        }
         Some(Self {
-            id: msg.pop_ulong().cast_signed(),
-            job_id: msg.pop_ulong().cast_signed(),
-            scheduler_id: msg.pop_ulong().cast_signed(),
-            submitting: msg.pop_bool(),
-            submitting_count: msg.pop_uint().cast_signed(),
-            bundle_hash: msg.try_pop_string()?,
-            working_directory: msg.try_pop_string()?,
+            id,
+            job_id,
+            scheduler_id,
+            submitting,
+            submitting_count,
+            bundle_hash,
+            working_directory,
             running: msg.pop_bool(),
             deleting: msg.pop_bool(),
             deleted: msg.pop_bool(),
@@ -95,12 +106,19 @@ impl ClusterJobStatus {
     /// Deserialize a cluster job status record from a binary protocol message body.
     ///
     /// Returns `None` if the variable-length string (`what`) is truncated —
-    /// i.e. its length prefix claims more bytes than remain in the message.
+    /// i.e. its length prefix claims more bytes than remain in the message — or
+    /// if fewer than the four trailing `state` bytes remain after the string.
     pub fn from_message(msg: &mut Message) -> Option<Self> {
+        let id = msg.pop_ulong().cast_signed();
+        let job_id = msg.pop_ulong().cast_signed();
+        let what = msg.try_pop_string()?;
+        if msg.remaining() < 4 {
+            return None;
+        }
         Some(Self {
-            id: msg.pop_ulong().cast_signed(),
-            job_id: msg.pop_ulong().cast_signed(),
-            what: msg.try_pop_string()?,
+            id,
+            job_id,
+            what,
             state: msg.pop_uint().cast_signed(),
         })
     }

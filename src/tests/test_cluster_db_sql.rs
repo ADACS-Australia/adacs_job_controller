@@ -2035,6 +2035,84 @@ async fn test_handle_jobstatus_save_bogus_what_length_is_dropped() {
     );
 }
 
+/// Verifies that a `DB_JOB_SAVE` message whose variable-length strings are
+/// intact but whose trailing `running`/`deleting`/`deleted` bools are truncated
+/// is dropped and records no cluster job row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the cluster job schema is created.
+///
+/// # Act
+/// Dispatch a `DB_JOB_SAVE` message with `db_request_id=101` whose non-empty
+/// `bundle_hash`/`working_directory` strings leave only one of the three
+/// trailing bool bytes, so the payload still passes the 48-byte minimum guard.
+///
+/// # Assert
+/// No row is inserted into `cluster_job`.
+#[tokio::test]
+async fn test_handle_job_save_truncated_trailing_bools_is_dropped() {
+    let db = make_cluster_db().await;
+
+    let (mock, _sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(101); // db_request_id
+        m.push_ulong(0); // id
+        m.push_ulong(42); // job_id
+        m.push_ulong(0); // scheduler_id
+        m.push_bool(false); // submitting
+        m.push_uint(0); // submitting_count
+        m.push_string("a"); // bundle_hash
+        m.push_string("b"); // working_directory
+        m.push_bool(false); // running (only 1 of 3 trailing bools present)
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOB_SAVE should be handled");
+
+    let count = cluster_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "DB_JOB_SAVE with truncated trailing bools should record no cluster job row"
+    );
+}
+
+/// Verifies that a `DB_JOBSTATUS_SAVE` message whose `what` string is intact
+/// but whose trailing `state` field is truncated is dropped and records no job
+/// status row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the cluster job status schema is created.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=702` whose
+/// non-empty `what` string leaves only one of the four `state` bytes, so the
+/// payload still passes the 28-byte minimum guard.
+///
+/// # Assert
+/// No row is inserted into `cluster_job_status`.
+#[tokio::test]
+async fn test_handle_jobstatus_save_truncated_state_is_dropped() {
+    let db = make_cluster_db().await;
+
+    let (mock, _sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(702); // db_request_id
+        m.push_ulong(0); // id
+        m.push_ulong(42); // job_id
+        m.push_string("abc"); // what
+        m.push_ubyte(0); // state (only 1 of 4 bytes present)
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOBSTATUS_SAVE should be handled");
+
+    let count = cluster_job_status::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "DB_JOBSTATUS_SAVE with truncated state should record no job status row"
+    );
+}
+
 /// Verifies that a `DB_BUNDLE_CREATE_OR_UPDATE_JOB` message whose `content`
 /// length prefix claims more bytes than remain is dropped and records no bundle
 /// row.
