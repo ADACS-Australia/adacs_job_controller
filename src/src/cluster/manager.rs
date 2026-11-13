@@ -1001,7 +1001,7 @@ impl ClusterManagerTrait for ClusterManager {
             if role == ClusterRole::FileUpload
                 && let Some(uuid) = cluster.uuid()
             {
-                self.file_upload_map.remove(uuid);
+                self.remove_file_upload(uuid);
             }
         }
     }
@@ -1170,7 +1170,9 @@ impl ClusterManagerTrait for ClusterManager {
     }
 
     fn remove_file_upload(&self, uuid: &str) {
-        self.file_upload_map.remove(uuid);
+        if let Some((_, (_, cluster))) = self.file_upload_map.remove(uuid) {
+            cluster.stop();
+        }
     }
 }
 impl ClusterManager {
@@ -1495,6 +1497,79 @@ mod tests {
 
         manager.remove_file_upload(uuid);
         assert!(manager.get_file_upload(uuid).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remove_file_upload_stops_cluster() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
+
+        let mut cluster = MockClusterTrait::new();
+        cluster
+            .expect_cluster_details()
+            .returning(|| test_configs().remove(0));
+        let cluster: Arc<dyn ClusterTrait> = Arc::new(cluster);
+
+        let uuid = "upload-uuid-stop";
+        manager.create_file_upload(&cluster, uuid).await;
+
+        let upload_cluster = manager
+            .file_upload_map
+            .get(uuid)
+            .map(|entry| Arc::clone(&entry.value().1))
+            .expect("upload cluster should be registered");
+        assert!(
+            upload_cluster.running(),
+            "upload cluster should be running after creation"
+        );
+
+        manager.remove_file_upload(uuid);
+
+        assert!(manager.get_file_upload(uuid).is_none());
+        assert!(
+            !upload_cluster.running(),
+            "removing the upload session should stop the cluster's background tasks"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_remove_connection_stops_file_upload_cluster() {
+        let db = make_db().await;
+        let manager = ClusterManager::new(test_configs(), db.clone(), Arc::new(DashMap::new()));
+
+        let mut cluster = MockClusterTrait::new();
+        cluster
+            .expect_cluster_details()
+            .returning(|| test_configs().remove(0));
+        let cluster: Arc<dyn ClusterTrait> = Arc::new(cluster);
+
+        let uuid = "upload-uuid-conn-stop";
+        manager.create_file_upload(&cluster, uuid).await;
+
+        let upload_cluster = manager
+            .file_upload_map
+            .get(uuid)
+            .map(|entry| Arc::clone(&entry.value().1))
+            .expect("upload cluster should be registered");
+
+        let conn_id = 4242;
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        assert!(
+            manager
+                .handle_new_connection(conn_id, tx, uuid)
+                .await
+                .is_some(),
+            "upload connection should be accepted"
+        );
+        assert!(upload_cluster.running());
+
+        manager.remove_connection(conn_id, true).await;
+
+        assert!(manager.get_file_upload(uuid).is_none());
+        assert!(
+            !upload_cluster.running(),
+            "closing the upload connection should stop the cluster's background tasks"
+        );
     }
 
     #[tokio::test]
