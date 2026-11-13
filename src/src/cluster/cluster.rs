@@ -892,7 +892,7 @@ impl Cluster {
                 state.client_paused.store(true, Ordering::Relaxed);
                 let uuid = self.uuid.as_deref().unwrap_or("");
                 let msg = Message::new(PAUSE_FILE_CHUNK_STREAM, Priority::Highest, uuid);
-                self.send_message_internal(msg).await;
+                self.send_message(msg).await;
                 tracing::debug!(
                     "Cluster[{}]: Sent PAUSE_FILE_CHUNK_STREAM (buffer full)",
                     self.name()
@@ -1936,6 +1936,60 @@ mod tests {
         assert_eq!(
             cluster.queued_message_size.load(Ordering::Relaxed),
             expected_size
+        );
+    }
+
+    /// Verifies that a backpressure PAUSE is queued under the same source key as
+    /// the RESUME that follows it, so the scheduler preserves PAUSE-before-RESUME
+    /// order instead of interleaving two same-priority sources arbitrarily.
+    #[tokio::test]
+    async fn test_backpressure_pause_and_resume_share_source_fifo() {
+        use crate::protocol::constants::RESUME_FILE_CHUNK_STREAM;
+
+        let state = Arc::new(FileDownloadState::new());
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let cluster =
+            Cluster::new_file_download(test_config(), "uuid-pause".into(), state, None, lock);
+        cluster.stop(); // keep queued messages in place for inspection
+
+        let max_buf = *MAX_FILE_BUFFER_SIZE;
+        let chunk = vec![0u8; usize::try_from(max_buf + 1024).unwrap()];
+        let mut msg = Message::new(FILE_CHUNK, Priority::Highest, "uuid-pause");
+        msg.push_bytes(&chunk);
+        let mut msg = Message::from_bytes(msg.into_data());
+        cluster.handle_file_chunk(&mut msg).await;
+
+        // The HTTP side queues RESUME with the session UUID as its source.
+        cluster
+            .send_message(Message::new(
+                RESUME_FILE_CHUNK_STREAM,
+                Priority::Highest,
+                "uuid-pause",
+            ))
+            .await;
+
+        let map = cluster
+            .queue
+            .get(&(Priority::Highest.as_u8()))
+            .unwrap()
+            .read()
+            .await;
+
+        assert_eq!(
+            map.len(),
+            1,
+            "PAUSE and RESUME must share one source FIFO, got sources {:?}",
+            map.keys().collect::<Vec<_>>()
+        );
+        let queue = map.get("uuid-pause").expect("session UUID source queue");
+        assert_eq!(queue.len(), 2, "expected PAUSE then RESUME");
+        assert_eq!(
+            Message::from_bytes(queue[0].clone()).id(),
+            PAUSE_FILE_CHUNK_STREAM
+        );
+        assert_eq!(
+            Message::from_bytes(queue[1].clone()).id(),
+            RESUME_FILE_CHUNK_STREAM
         );
     }
 
