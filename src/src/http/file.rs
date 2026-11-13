@@ -333,10 +333,13 @@ async fn purge_expired_file_downloads(db: &sea_orm::DatabaseConnection) {
     let expiry_dt = chrono::Utc::now().naive_utc()
         - chrono::Duration::try_seconds(expiry_secs).unwrap_or_default();
     tracing::trace!("HTTP: Expiring old download records (before {})", expiry_dt);
-    let _ = file_download::Entity::delete_many()
+    if let Err(e) = file_download::Entity::delete_many()
         .filter(file_download::Column::Timestamp.lte(expiry_dt))
         .exec(db)
-        .await;
+        .await
+    {
+        tracing::warn!("HTTP: Failed to purge expired file download records: {}", e);
+    }
 }
 
 /// Stream a file download from a remote cluster.
