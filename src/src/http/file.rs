@@ -323,6 +323,38 @@ impl Drop for PreResponseGuard {
     }
 }
 
+/// RAII guard covering the HTTP response body lifetime.
+///
+/// Holds a clone of the session trigger and is moved into the download stream.
+/// On `Drop` it fires the configured typed reason unless the stream already
+/// fired a terminal reason (the trigger transition is idempotent, so a normal
+/// completion, error, or timeout makes this a no-op). This covers a body that
+/// is dropped before the first poll as well as a client disconnect mid-stream,
+/// both of which would otherwise leave the dedicated session and WebSocket
+/// alive and buffering chunks.
+pub struct DownloadBodyGuard {
+    trigger: Option<DownloadCleanupTrigger>,
+    reason: DownloadShutdownReason,
+}
+
+impl DownloadBodyGuard {
+    /// Arm a new body guard with the given typed fallback reason.
+    pub fn new(trigger: DownloadCleanupTrigger, reason: DownloadShutdownReason) -> Self {
+        Self {
+            trigger: Some(trigger),
+            reason,
+        }
+    }
+}
+
+impl Drop for DownloadBodyGuard {
+    fn drop(&mut self) {
+        if let Some(trigger) = self.trigger.take() {
+            let _ = trigger.trigger(self.reason);
+        }
+    }
+}
+
 /// Delete expired `file_download` rows using the configured expiry window.
 ///
 /// Bounds the `file_download` table on both the create and download paths so
@@ -543,15 +575,24 @@ pub async fn download_file(
     }
 
     // The stream owns a clone of the trigger so it can fire typed terminal
-    // reasons. The body guard below owns another clone. All clones share the
-    // same session transition, so the first notification wins. The clone is
-    // taken from the guard itself, avoiding a manager re-lookup that could
-    // race with concurrent cleanup.
+    // reasons. The body guard below owns another clone and is moved into the
+    // stream, so dropping the response body before a terminal reason fires
+    // `HttpCancelled`. All clones share the same session transition, so the
+    // first notification wins and later calls are idempotent no-ops. The
+    // clone is taken from the guard itself, avoiding a manager re-lookup that
+    // could race with concurrent cleanup.
     let stream_trigger = pre_response_guard
         .as_ref()
         .and_then(PreResponseGuard::trigger_clone);
+    let body_guard = stream_trigger
+        .clone()
+        .map(|trigger| DownloadBodyGuard::new(trigger, DownloadShutdownReason::HttpCancelled));
 
     let stream = async_stream::stream! {
+        // Own the guard for the body lifetime. Dropping the stream (client
+        // disconnect) drops the guard, which fires `HttpCancelled` unless a
+        // terminal reason already won.
+        let _body_guard = body_guard;
         let mut receiver = fd_state_stream.chunk_receiver.lock().await;
         let mut sent: u64 = 0;
 
