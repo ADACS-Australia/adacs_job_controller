@@ -2677,8 +2677,8 @@ async fn test_upload_file_body_length_mismatch_returns_400() {
 ///
 /// # Act
 /// Sends PUT /job/apiv1/file/upload/ with `Content-Length: 5` but a body of
-/// 9 bytes, so `to_bytes` (limited to `content_length + 1` = 6) fails while
-/// reading the body.
+/// 9 bytes, so the streaming reader rejects the over-long body before
+/// buffering it in full.
 ///
 /// # Assert
 /// Response is 400 Bad Request; the mock upload cluster's `close` is called

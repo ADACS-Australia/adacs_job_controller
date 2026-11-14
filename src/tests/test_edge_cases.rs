@@ -1767,6 +1767,102 @@ async fn test_upload_large_body_is_chunked() {
 }
 
 // ===========================================================================
+// 15b. FILE UPLOAD — STREAMING BEFORE BODY COMPLETION
+//
+// Verifies the handler sends the first FILE_UPLOAD_CHUNK before the whole
+// request body has been read, so memory stays bounded by FILE_CHUNK_SIZE
+// rather than Content-Length.
+// ===========================================================================
+
+/// Verifies the upload handler streams the request body instead of buffering
+/// it in full before sending chunks.
+///
+/// # Setup
+/// Inserts a test job; mocks the upload cluster to signal when a
+/// `FILE_UPLOAD_CHUNK` is sent. The request body is a stream that yields one
+/// full chunk, then blocks until the test releases the remainder.
+///
+/// # Act
+/// Sends a PUT upload whose body is released only after the first chunk has
+/// been observed on the cluster.
+///
+/// # Assert
+/// The first `FILE_UPLOAD_CHUNK` arrives while the body stream is still
+/// blocked, proving the handler does not buffer the whole body first.
+#[tokio::test]
+async fn test_upload_streams_chunks_before_body_completes() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        fu_sim.complete.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+    let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
+
+    let upload_cluster = {
+        let mut c = master_cluster("ozstar-up", "ozstar");
+        c.expect_send_message().returning(move |msg| {
+            if msg.id() == FILE_UPLOAD_CHUNK {
+                let _ = chunk_tx.send(msg.id());
+            }
+            Box::pin(async {})
+        });
+        c.expect_wait_for_queue_drain()
+            .returning(|_| Box::pin(async { true }));
+        Arc::new(c)
+    };
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let chunk_size: usize = (*FILE_CHUNK_SIZE).try_into().unwrap();
+    let body_size = chunk_size * 2;
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+    let first = vec![0xABu8; chunk_size];
+    let tail = vec![0xCDu8; chunk_size];
+    let body_stream = async_stream::stream! {
+        yield Ok::<_, std::io::Error>(axum::body::Bytes::from(first));
+        let _ = release_rx.await;
+        yield Ok::<_, std::io::Error>(axum::body::Bytes::from(tail));
+    };
+
+    let request = Request::builder()
+        .method("PUT")
+        .uri(format!(
+            "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/stream.bin"
+        ))
+        .header("authorization", &token)
+        .header("content-length", body_size.to_string())
+        .body(Body::from_stream(body_stream))
+        .unwrap();
+
+    let handle = tokio::spawn(async move { app.oneshot(request).await });
+
+    let first_chunk = tokio::time::timeout(Duration::from_secs(2), chunk_rx.recv())
+        .await
+        .expect("handler should send the first chunk before the body completes");
+    assert_eq!(first_chunk, Some(FILE_UPLOAD_CHUNK));
+
+    release_tx.send(()).unwrap();
+
+    let resp = handle.await.unwrap().unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// ===========================================================================
 // 16. WS SERVER — CONCURRENT MESSAGE HANDLING
 //
 // Send multiple binary messages in rapid succession. Verify the server
