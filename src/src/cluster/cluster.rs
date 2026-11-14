@@ -656,7 +656,7 @@ impl Cluster {
 
                 let files = {
                     let locked = fl_state.lock().await;
-                    if !locked.error && locked.data_ready {
+                    if !locked.error && locked.data_ready && !locked.truncated {
                         Some(locked.files.clone())
                     } else {
                         None
@@ -773,6 +773,7 @@ impl Cluster {
             });
         }
 
+        state.truncated = files.len() < num_files as usize;
         state.files = files;
         state.data_ready = true;
         state.notify.notify_one();

@@ -1083,7 +1083,7 @@ pub async fn list_files(
     let cluster = get_online_cluster(&state, &s_cluster)?;
 
     // Request file list from cluster via WebSocket
-    let files = request_file_list(
+    let (files, truncated) = request_file_list(
         &state,
         cluster.as_ref(),
         &s_bundle,
@@ -1095,8 +1095,10 @@ pub async fn list_files(
 
     let filtered = filter_files(&files, &body.path, body.recursive);
 
-    // Cache if job is complete and this was a root recursive listing
-    if job_complete && body.path.is_empty() && body.recursive {
+    // Cache if job is complete and this was a root recursive listing. A
+    // truncated response is only a partial listing, so it must not replace the
+    // existing cache rows.
+    if job_complete && body.path.is_empty() && body.recursive && !truncated {
         cache_file_list(&state, job_id, &files).await;
     } else if job_complete {
         // Background: cache the full root recursive listing for this job
@@ -1166,7 +1168,7 @@ async fn request_file_list(
     job_id: u64,
     path: &str,
     recursive: bool,
-) -> Result<Vec<FileInfo>, (StatusCode, String)> {
+) -> Result<(Vec<FileInfo>, bool), (StatusCode, String)> {
     let uuid = generate_uuid();
     let job_id_u32 = job_id_to_u32(job_id)?;
     let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
@@ -1205,10 +1207,11 @@ async fn request_file_list(
     }
 
     let files = locked.files.clone();
+    let truncated = locked.truncated;
     drop(locked);
 
     state.file_list_map.remove(&uuid);
-    Ok(files)
+    Ok((files, truncated))
 }
 
 /// Spawn a background file-list request to populate the cache for a completed job.
@@ -1227,13 +1230,17 @@ pub async fn spawn_background_cache(
     }
 
     // Cache-on-success: any request failure is silently ignored so existing
-    // cached entries are preserved.
-    let Ok(files) = request_file_list(&state, cluster.as_ref(), &bundle, job_id, "", true).await
+    // cached entries are preserved. A truncated response is only a partial
+    // listing and must not replace the existing cache rows.
+    let Ok((files, truncated)) =
+        request_file_list(&state, cluster.as_ref(), &bundle, job_id, "", true).await
     else {
         return Ok(());
     };
 
-    cache_file_list(&state, job_id, &files).await;
+    if !truncated {
+        cache_file_list(&state, job_id, &files).await;
+    }
     Ok(())
 }
 
