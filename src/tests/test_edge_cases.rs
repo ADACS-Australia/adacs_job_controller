@@ -1863,6 +1863,535 @@ async fn test_upload_streams_chunks_before_body_completes() {
 }
 
 // ===========================================================================
+// 15c. FILE UPLOAD — STREAMING FAILURE BRANCHES
+//
+// The small-body failure tests above never enter the streaming loop, and the
+// chunking test only exercises the success path. These tests drive each
+// failure branch of the streaming reader: a body-stream error, an in-loop
+// queue-drain timeout, an in-loop cluster error, a partial-chunk cluster
+// error, a final queue-drain timeout, a final cluster error, and a
+// completion-confirmation timeout.
+// ===========================================================================
+
+/// Verifies a mid-body stream error tears down the session and returns 400.
+///
+/// # Setup
+/// Inserts a test job; the request body yields one frame then an I/O error.
+///
+/// # Act
+/// Sends a PUT upload whose body stream fails after the first frame.
+///
+/// # Assert
+/// Response is 400 Bad Request and the upload session is closed exactly once.
+#[tokio::test]
+async fn test_upload_stream_error_mid_body_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let mut upload_cluster = upload_cluster();
+    upload_cluster
+        .expect_close()
+        .times(1)
+        .returning(|_| Box::pin(async {}));
+    let upload_cluster = Arc::new(upload_cluster);
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let body_stream = async_stream::stream! {
+        yield Ok::<_, std::io::Error>(axum::body::Bytes::from_static(b"hello"));
+        yield Err(std::io::Error::other("simulated body read failure"));
+    };
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/err.bin"
+                ))
+                .header("authorization", &token)
+                .header("content-length", "10")
+                .body(Body::from_stream(body_stream))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Verifies an in-loop queue-drain timeout returns 400 and closes the session.
+///
+/// # Setup
+/// Inserts a test job; the body is one full chunk so the streaming loop runs.
+/// The upload cluster's `wait_for_queue_drain` always reports failure.
+///
+/// # Act
+/// Sends a PUT upload of exactly `FILE_CHUNK_SIZE` bytes.
+///
+/// # Assert
+/// Response is 400 Bad Request mentioning the queue drain, and the session is
+/// closed exactly once.
+#[tokio::test]
+async fn test_upload_queue_drain_timeout_mid_stream_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let upload_cluster = {
+        let mut c = master_cluster("ozstar-up", "ozstar");
+        c.expect_send_message().returning(|_| Box::pin(async {}));
+        c.expect_wait_for_queue_drain()
+            .returning(|_| Box::pin(async { false }));
+        c.expect_close().times(1).returning(|_| Box::pin(async {}));
+        Arc::new(c)
+    };
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let chunk_size: usize = (*FILE_CHUNK_SIZE).try_into().unwrap();
+    let payload = vec![0xABu8; chunk_size];
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/drain.bin"
+                ))
+                .header("authorization", &token)
+                .header("content-length", payload.len().to_string())
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("queue to drain"),
+        "expected queue-drain timeout message, got: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+/// Verifies an in-loop cluster error returns 400 and closes the session.
+///
+/// # Setup
+/// Inserts a test job; the body is one full chunk delivered after a short
+/// delay, and the cluster error is flagged while the handler waits for it.
+///
+/// # Act
+/// Sends a PUT upload of exactly `FILE_CHUNK_SIZE` bytes.
+///
+/// # Assert
+/// Response is 400 Bad Request carrying the cluster error, and the session is
+/// closed exactly once.
+#[tokio::test]
+async fn test_upload_cluster_error_mid_stream_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        *fu_sim.error_details.lock().await = "Disk full mid-stream".to_string();
+        fu_sim.error.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let upload_cluster = {
+        let mut c = master_cluster("ozstar-up", "ozstar");
+        c.expect_send_message().returning(|_| Box::pin(async {}));
+        c.expect_wait_for_queue_drain()
+            .returning(|_| Box::pin(async { true }));
+        c.expect_close().times(1).returning(|_| Box::pin(async {}));
+        Arc::new(c)
+    };
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let chunk_size: usize = (*FILE_CHUNK_SIZE).try_into().unwrap();
+    let first = vec![0xABu8; chunk_size];
+    let body_stream = async_stream::stream! {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        yield Ok::<_, std::io::Error>(axum::body::Bytes::from(first));
+    };
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/err.bin"
+                ))
+                .header("authorization", &token)
+                .header("content-length", chunk_size.to_string())
+                .body(Body::from_stream(body_stream))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("Disk full mid-stream"),
+        "expected cluster error message, got: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+/// Verifies a cluster error on the trailing partial chunk returns 400.
+///
+/// # Setup
+/// Inserts a test job; the body is smaller than one chunk and delivered after
+/// a short delay, with the cluster error flagged while the handler waits.
+///
+/// # Act
+/// Sends a PUT upload whose body is a single partial chunk.
+///
+/// # Assert
+/// Response is 400 Bad Request carrying the cluster error, and the session is
+/// closed exactly once.
+#[tokio::test]
+async fn test_upload_partial_chunk_cluster_error_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        *fu_sim.error_details.lock().await = "Disk full partial".to_string();
+        fu_sim.error.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let upload_cluster = {
+        let mut c = master_cluster("ozstar-up", "ozstar");
+        c.expect_send_message().returning(|_| Box::pin(async {}));
+        c.expect_wait_for_queue_drain()
+            .returning(|_| Box::pin(async { true }));
+        c.expect_close().times(1).returning(|_| Box::pin(async {}));
+        Arc::new(c)
+    };
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let payload = vec![0xCDu8; 100];
+    let body_stream = async_stream::stream! {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        yield Ok::<_, std::io::Error>(axum::body::Bytes::from(payload));
+    };
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/partial.bin"
+                ))
+                .header("authorization", &token)
+                .header("content-length", "100")
+                .body(Body::from_stream(body_stream))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("Disk full partial"),
+        "expected cluster error message, got: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+/// Verifies a final queue-drain timeout (after the last chunk) returns 400.
+///
+/// # Setup
+/// Inserts a test job; the body is exactly one chunk so no partial chunk
+/// remains. `wait_for_queue_drain(false)` succeeds but `(true)` fails.
+///
+/// # Act
+/// Sends a PUT upload of exactly `FILE_CHUNK_SIZE` bytes.
+///
+/// # Assert
+/// Response is 400 Bad Request mentioning the queue emptying, and the session
+/// is closed exactly once.
+#[tokio::test]
+async fn test_upload_final_queue_drain_timeout_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let upload_cluster = {
+        let mut c = master_cluster("ozstar-up", "ozstar");
+        c.expect_send_message().returning(|_| Box::pin(async {}));
+        c.expect_wait_for_queue_drain()
+            .returning(|wait_for_empty| Box::pin(async move { !wait_for_empty }));
+        c.expect_close().times(1).returning(|_| Box::pin(async {}));
+        Arc::new(c)
+    };
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let chunk_size: usize = (*FILE_CHUNK_SIZE).try_into().unwrap();
+    let payload = vec![0xABu8; chunk_size];
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/final.bin"
+                ))
+                .header("authorization", &token)
+                .header("content-length", payload.len().to_string())
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("queue to empty"),
+        "expected final queue-drain timeout message, got: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+/// Verifies a cluster error detected after the last chunk returns 400.
+///
+/// # Setup
+/// Inserts a test job; the body is exactly one chunk followed by a delay, and
+/// the cluster error is flagged while the handler waits for the stream to end.
+///
+/// # Act
+/// Sends a PUT upload of exactly `FILE_CHUNK_SIZE` bytes.
+///
+/// # Assert
+/// Response is 400 Bad Request carrying the cluster error, and the session is
+/// closed exactly once.
+#[tokio::test]
+async fn test_upload_final_cluster_error_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        *fu_sim.error_details.lock().await = "Disk full final".to_string();
+        fu_sim.error.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let upload_cluster = {
+        let mut c = master_cluster("ozstar-up", "ozstar");
+        c.expect_send_message().returning(|_| Box::pin(async {}));
+        c.expect_wait_for_queue_drain()
+            .returning(|_| Box::pin(async { true }));
+        c.expect_close().times(1).returning(|_| Box::pin(async {}));
+        Arc::new(c)
+    };
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let app = create_router(make_test_state(db, manager));
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let chunk_size: usize = (*FILE_CHUNK_SIZE).try_into().unwrap();
+    let first = vec![0xABu8; chunk_size];
+    let body_stream = async_stream::stream! {
+        yield Ok::<_, std::io::Error>(axum::body::Bytes::from(first));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/final-err.bin"
+                ))
+                .header("authorization", &token)
+                .header("content-length", chunk_size.to_string())
+                .body(Body::from_stream(body_stream))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("Disk full final"),
+        "expected cluster error message, got: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+/// Verifies a missing completion confirmation returns 400 after the timeout.
+///
+/// # Setup
+/// Inserts a test job; the cluster reports `SERVER_READY` but never confirms
+/// completion or reports an error. The client timeout is shortened to 1s.
+///
+/// # Act
+/// Sends a small PUT upload.
+///
+/// # Assert
+/// Response is 400 Bad Request mentioning the confirmation timeout, and the
+/// session is closed exactly once.
+#[tokio::test]
+async fn test_upload_completion_confirmation_timeout_returns_400() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let fu_state = Arc::new(FileUploadState::new());
+    let fu_sim = Arc::clone(&fu_state);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        fu_sim.data_ready.store(true, Ordering::Release);
+        fu_sim.data_notify.notify_waiters();
+    });
+
+    let fu_for_manager = Arc::clone(&fu_state);
+
+    let upload_cluster = {
+        let mut c = master_cluster("ozstar-up", "ozstar");
+        c.expect_send_message().returning(|_| Box::pin(async {}));
+        c.expect_wait_for_queue_drain()
+            .returning(|_| Box::pin(async { true }));
+        c.expect_close().times(1).returning(|_| Box::pin(async {}));
+        Arc::new(c)
+    };
+
+    let cluster_main = Arc::new(online_cluster_no_messages());
+    let manager =
+        manager_with_online_and_upload_clusters(&cluster_main, &upload_cluster, fu_for_manager);
+
+    let mut state = make_test_state(db, manager);
+    state.client_timeout_seconds = Some(1);
+    let app = create_router(state);
+    let token = encode_test_jwt(&serde_json::json!({"userId": 1}));
+
+    let payload = vec![0xEFu8; 100];
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/job/apiv1/file/upload/?jobId={job_id}&cluster=ozstar&bundle=b&targetPath=/confirm.bin"
+                ))
+                .header("authorization", &token)
+                .header("content-length", payload.len().to_string())
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&body).contains("completion confirmation timeout"),
+        "expected confirmation timeout message, got: {}",
+        String::from_utf8_lossy(&body)
+    );
+}
+
+// ===========================================================================
 // 16. WS SERVER — CONCURRENT MESSAGE HANDLING
 //
 // Send multiple binary messages in rapid succession. Verify the server
