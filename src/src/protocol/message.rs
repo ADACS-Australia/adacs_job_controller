@@ -75,7 +75,13 @@ impl Message {
             source: String::new(),
             priority: super::types::Priority::Lowest,
         };
-        msg.source = msg.pop_string();
+        let Some(source) = msg.try_pop_string() else {
+            return msg;
+        };
+        if msg.remaining() < std::mem::size_of::<u32>() {
+            return msg;
+        }
+        msg.source = source;
         msg.id = msg.pop_uint();
         msg
     }
@@ -223,6 +229,7 @@ impl Message {
     /// If there are insufficient bytes remaining to read the string length, a
     /// warning is logged and an empty string is returned. If the bytes do not
     /// form valid UTF-8, an empty string is returned.
+    #[allow(dead_code)]
     pub fn pop_string(&mut self) -> String {
         let bytes = self.pop_bytes();
         String::from_utf8(bytes).unwrap_or_default()
@@ -260,6 +267,7 @@ impl Message {
     ///
     /// If the length prefix claims more bytes than remain in the buffer, a
     /// warning is logged and an empty `Vec` is returned.
+    #[allow(dead_code)]
     pub fn pop_bytes(&mut self) -> Vec<u8> {
         let len = self.pop_ulong() as usize;
         if !self.check_remaining(len) {
@@ -981,6 +989,28 @@ mod tests {
         let mut raw = Vec::new();
         raw.extend_from_slice(&10u64.to_le_bytes());
         raw.extend_from_slice(&[1, 2, 3]);
+        let msg = Message::from_bytes(raw);
+        assert_eq!(msg.source(), "");
+        assert_eq!(msg.id(), 0);
+    }
+
+    /// Verifies that `from_bytes` rejects a truncated source prefix even when
+    /// at least 4 trailing bytes remain, instead of reading them as the ID.
+    ///
+    /// # Setup
+    /// Construct a raw byte vector with a source length prefix of 100 followed
+    /// by 4 bytes that would decode to a valid message ID.
+    ///
+    /// # Act
+    /// Parse with `from_bytes`.
+    ///
+    /// # Assert
+    /// `source()` is `""` and `id()` is 0, not the trailing bytes.
+    #[test]
+    fn test_from_bytes_truncated_source_prefix_with_enough_trailing_bytes_is_rejected() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&100u64.to_le_bytes());
+        raw.extend_from_slice(&1000u32.to_le_bytes());
         let msg = Message::from_bytes(raw);
         assert_eq!(msg.source(), "");
         assert_eq!(msg.id(), 0);
