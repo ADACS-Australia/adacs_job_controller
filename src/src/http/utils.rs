@@ -209,9 +209,11 @@ pub fn filter_files(files: &[FileInfo], file_path: &str, recursive: bool) -> Vec
     // Get the canonical path with leading and trailing slash
     let mut abs_path = weak_canonical(file_path);
 
-    // Ensure leading slash
-    if abs_path.is_empty() || !abs_path.starts_with('/') {
-        abs_path = format!("/{abs_path}");
+    // Root relative paths at `/` and re-canonicalise so a leading `..`
+    // resolves against the root (e.g. "../foo" -> "/foo") instead of being
+    // kept as a literal component ("/../foo").
+    if !abs_path.starts_with('/') {
+        abs_path = weak_canonical(&format!("/{abs_path}"));
     }
 
     // Ensure trailing slash
@@ -566,6 +568,27 @@ mod tests {
         let names = names(&result);
         assert!(names.contains(&"/project/file1.txt"));
         assert!(names.contains(&"/project/subdir/file2.txt"));
+    }
+
+    /// Regression test: a relative path with a leading `..` resolves against
+    /// the root instead of being kept as a literal `/..` component.
+    #[test]
+    fn test_filter_files_relative_leading_dotdot_resolves_to_project() {
+        let files = make_files();
+        let result = filter_files(&files, "../project", true);
+        let names = names(&result);
+        assert!(names.contains(&"/project/file1.txt"));
+        assert!(names.contains(&"/project/subdir/file2.txt"));
+        assert!(!names.contains(&"/other/file3.txt"));
+    }
+
+    /// Regression test: a bare relative `..` resolves to the root, returning
+    /// every file.
+    #[test]
+    fn test_filter_files_relative_dotdot_resolves_to_root() {
+        let files = make_files();
+        let result = filter_files(&files, "..", true);
+        assert_eq!(result.len(), files.len());
     }
 
     /// Verifies that filtering against a non-existent directory path returns an empty result.
