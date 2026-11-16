@@ -54,13 +54,12 @@ pub async fn run() -> anyhow::Result<()> {
     );
 
     tracing::debug!("Connecting to database");
-    let db_url = format!(
-        "mysql://{}:{}@{}:{}/{}?ssl-mode=disabled",
-        &*crate::config::settings::DATABASE_USER,
-        &*crate::config::settings::DATABASE_PASSWORD,
-        &*crate::config::settings::DATABASE_HOST,
-        &*crate::config::settings::DATABASE_PORT,
-        &*crate::config::settings::DATABASE_SCHEMA,
+    let db_url = build_database_url(
+        &crate::config::settings::DATABASE_USER,
+        &crate::config::settings::DATABASE_PASSWORD,
+        &crate::config::settings::DATABASE_HOST,
+        *crate::config::settings::DATABASE_PORT,
+        &crate::config::settings::DATABASE_SCHEMA,
     );
     tracing::trace!("Database URL constructed (credentials hidden)");
     let db = sea_orm::Database::connect(&db_url).await?;
@@ -150,6 +149,39 @@ pub async fn run() -> anyhow::Result<()> {
     )?;
 
     Ok(())
+}
+
+/// Build the `MySQL` connection URL from the configured parts.
+///
+/// Credentials are percent-encoded before interpolation because the URL is
+/// parsed as a WHATWG URL: reserved characters such as `/`, `?`, `#`, `@`, and
+/// `:` would otherwise terminate the authority or userinfo and corrupt the
+/// host, port, or database that the driver connects to.
+fn build_database_url(user: &str, password: &str, host: &str, port: u16, schema: &str) -> String {
+    format!(
+        "mysql://{}:{}@{}:{}/{}?ssl-mode=disabled",
+        encode_userinfo(user),
+        encode_userinfo(password),
+        host,
+        port,
+        schema,
+    )
+}
+
+/// Percent-encode a URL userinfo component, leaving only RFC 3986 unreserved
+/// characters (`ALPHA` / `DIGIT` / `-` / `.` / `_` / `~`) literal.
+fn encode_userinfo(value: &str) -> String {
+    use std::fmt::Write as _;
+
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            let _ = write!(encoded, "%{byte:02X}");
+        }
+    }
+    encoded
 }
 
 /// Compose the bounded application-shutdown future used by both
@@ -277,6 +309,33 @@ mod tests {
     fn test_app_state_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<AppState>();
+    }
+
+    #[test]
+    fn test_encode_userinfo_escapes_reserved_characters() {
+        assert_eq!(
+            encode_userinfo("p/ss?w#x@y:z%"),
+            "p%2Fss%3Fw%23x%40y%3Az%25"
+        );
+        assert_eq!(encode_userinfo("safe-user_1.0~"), "safe-user_1.0~");
+    }
+
+    #[test]
+    fn test_build_database_url_preserves_reserved_credentials() {
+        let url = build_database_url(
+            "user@example.com",
+            "p/ss?w#x@y:z",
+            "db.internal",
+            3306,
+            "jobs",
+        );
+
+        let options: sea_orm::sqlx::mysql::MySqlConnectOptions =
+            url.parse().expect("encoded URL must parse");
+        assert_eq!(options.get_username(), "user@example.com");
+        assert_eq!(options.get_host(), "db.internal");
+        assert_eq!(options.get_port(), 3306);
+        assert_eq!(options.get_database(), Some("jobs"));
     }
 
     /// Verifies that application shutdown drains all dedicated download
