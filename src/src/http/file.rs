@@ -598,67 +598,104 @@ pub async fn download_file(
         let mut sent: u64 = 0;
 
         while sent < file_size && !fd_state_stream.error.load(Ordering::Acquire) {
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(chunk_timeout_secs),
-                receiver.recv()
-            ).await {
-                Ok(Some(mut chunk)) => {
-                    // Slice the final chunk so the response never exceeds the
-                    // declared file size. If the chunk overshoots, truncate
-                    // before yielding.
-                    if sent + (chunk.len() as u64) > file_size {
-                        let remaining = (file_size - sent) as usize;
-                        chunk.truncate(remaining);
-                        sent += chunk.len() as u64;
-                        fd_state_stream.sent_bytes.store(sent, Ordering::Release);
-                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
-                        yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
-                        break;
-                    }
+            let notified = fd_state_stream.data_notify.notified();
+            // Register interest before re-checking so an error recorded between
+            // the loop condition and the await cannot be missed.
+            if fd_state_stream.error.load(Ordering::Acquire) {
+                break;
+            }
 
-                    sent += chunk.len() as u64;
-                    fd_state_stream.sent_bytes.store(sent, Ordering::Release);
+            tokio::select! {
+                biased;
+                // `record_transfer_error` fires this notification; waking on it
+                // lets a mid-stream cluster error end the body without waiting
+                // for the chunk timeout.
+                () = notified => {}
+                result = tokio::time::timeout(
+                    std::time::Duration::from_secs(chunk_timeout_secs),
+                    receiver.recv()
+                ) => {
+                    match result {
+                        Ok(Some(mut chunk)) => {
+                            // Slice the final chunk so the response never exceeds the
+                            // declared file size. If the chunk overshoots, truncate
+                            // before yielding.
+                            if sent + (chunk.len() as u64) > file_size {
+                                let remaining = (file_size - sent) as usize;
+                                chunk.truncate(remaining);
+                                sent += chunk.len() as u64;
+                                fd_state_stream.sent_bytes.store(sent, Ordering::Release);
+                                fire_stream_trigger(
+                                    &stream_trigger,
+                                    DownloadShutdownReason::Complete,
+                                );
+                                yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
+                                break;
+                            }
 
-                    // Backpressure: when buffer drains below MIN_FILE_BUFFER_SIZE, send RESUME
-                    // to the cluster so it resumes sending chunks. Synchronized via
-                    // compare_exchange to prevent races with the WS-side PAUSE logic.
-                    let received_bytes = fd_state_stream.received_bytes.load(Ordering::Acquire);
-                    if fd_state_stream.client_paused.load(Ordering::Acquire)
-                        && received_bytes.saturating_sub(sent) < min_buffer
-                        && fd_state_stream
-                            .client_paused
-                            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
-                            .is_ok()
-                    {
-                        let resume_msg = Message::new(
-                            RESUME_FILE_CHUNK_STREAM,
-                            Priority::Highest,
-                            &uuid_for_resume,
-                        );
-                        fd_cluster.send_message(resume_msg).await;
-                    }
+                            sent += chunk.len() as u64;
+                            fd_state_stream.sent_bytes.store(sent, Ordering::Release);
 
-                    if sent == file_size {
-                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
-                    }
+                            // Backpressure: when buffer drains below MIN_FILE_BUFFER_SIZE, send RESUME
+                            // to the cluster so it resumes sending chunks. Synchronized via
+                            // compare_exchange to prevent races with the WS-side PAUSE logic.
+                            let received_bytes =
+                                fd_state_stream.received_bytes.load(Ordering::Acquire);
+                            if fd_state_stream.client_paused.load(Ordering::Acquire)
+                                && received_bytes.saturating_sub(sent) < min_buffer
+                                && fd_state_stream
+                                    .client_paused
+                                    .compare_exchange(
+                                        true,
+                                        false,
+                                        Ordering::AcqRel,
+                                        Ordering::Relaxed,
+                                    )
+                                    .is_ok()
+                            {
+                                let resume_msg = Message::new(
+                                    RESUME_FILE_CHUNK_STREAM,
+                                    Priority::Highest,
+                                    &uuid_for_resume,
+                                );
+                                fd_cluster.send_message(resume_msg).await;
+                            }
 
-                    yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
-                }
-                Ok(None) => {
-                    if sent == file_size {
-                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::Complete);
-                    } else {
-                        fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
+                            if sent == file_size {
+                                fire_stream_trigger(
+                                    &stream_trigger,
+                                    DownloadShutdownReason::Complete,
+                                );
+                            }
+
+                            yield Ok::<_, std::io::Error>(bytes::Bytes::from(chunk));
+                        }
+                        Ok(None) => {
+                            if sent == file_size {
+                                fire_stream_trigger(
+                                    &stream_trigger,
+                                    DownloadShutdownReason::Complete,
+                                );
+                            } else {
+                                fire_stream_trigger(
+                                    &stream_trigger,
+                                    DownloadShutdownReason::ChunkTimeout,
+                                );
+                            }
+                            break;
+                        }
+                        Err(_) => {
+                            fire_stream_trigger(
+                                &stream_trigger,
+                                DownloadShutdownReason::ChunkTimeout,
+                            );
+                            yield Err(std::io::Error::new(
+                                std::io::ErrorKind::TimedOut,
+                                ERR_CLUSTER_TIMEOUT,
+                            ));
+                            break;
+                        }
                     }
-                    break;
-                }
-                Err(_) => {
-                    fire_stream_trigger(&stream_trigger, DownloadShutdownReason::ChunkTimeout);
-                    yield Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        ERR_CLUSTER_TIMEOUT,
-                    ));
-                    break;
                 }
             }
         }
