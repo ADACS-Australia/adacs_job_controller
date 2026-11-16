@@ -7,6 +7,7 @@ use axum::Json;
 use axum::body::Body;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
+use futures_util::StreamExt;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
 };
@@ -758,8 +759,6 @@ pub async fn upload_file(
     Query(params): Query<FileUploadQuery>,
     request: axum::extract::Request,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    use axum::body::to_bytes;
-
     tracing::debug!("HTTP: File upload request received");
 
     // Application shutdown: reject new upload sessions via the same typed
@@ -865,32 +864,76 @@ pub async fn upload_file(
 
     let chunk_size = (*settings::FILE_CHUNK_SIZE).max(1) as usize;
     let mut total_read: u64 = 0;
+    let mut buffer: Vec<u8> = Vec::with_capacity(chunk_size);
+    let mut stream = request.into_body().into_data_stream();
 
-    let body_bytes = match to_bytes(
-        request.into_body(),
-        (content_length as usize).saturating_add(1),
-    )
-    .await
-    {
-        Ok(b) => b,
-        Err(e) => {
+    while let Some(frame) = stream.next().await {
+        let frame = match frame {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!(
+                    "HTTP: File upload rejected - failed to read request body (uuid={})",
+                    uuid
+                );
+                state.cluster_manager.remove_file_upload(&uuid);
+                // Tear down the dedicated upload session so the remote cluster
+                // is not left waiting for FILE_UPLOAD_CHUNK messages,
+                // mirroring the body-length mismatch cleanup.
+                upload_cluster.close(false).await;
+                return Err(failed_to_read_body_msg(e));
+            }
+        };
+
+        // Reject a body longer than the declared Content-Length as soon as the
+        // excess is observed, without buffering the whole body.
+        if (frame.len() as u64) > content_length.saturating_sub(total_read) {
             tracing::warn!(
-                "HTTP: File upload rejected - failed to read request body (uuid={})",
-                uuid
+                "HTTP: File upload rejected - body length exceeds Content-Length {}",
+                content_length
             );
             state.cluster_manager.remove_file_upload(&uuid);
-            // Tear down the dedicated upload session so the remote cluster is
-            // not left waiting for FILE_UPLOAD_CHUNK messages, mirroring the
-            // body-length mismatch cleanup.
             upload_cluster.close(false).await;
-            return Err(failed_to_read_body_msg(e));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Request body length does not match Content-Length header".to_string(),
+            ));
         }
-    };
 
-    if body_bytes.len() as u64 != content_length {
+        buffer.extend_from_slice(&frame);
+        total_read += frame.len() as u64;
+
+        // Send each full chunk as soon as it is available so memory stays
+        // bounded by FILE_CHUNK_SIZE rather than the full body length.
+        while buffer.len() >= chunk_size {
+            if !upload_cluster.wait_for_queue_drain(false).await {
+                upload_cluster.close(false).await;
+                state.cluster_manager.remove_file_upload(&uuid);
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "Timeout waiting for queue to drain during upload".to_string(),
+                ));
+            }
+
+            if let Err(e) = check_upload_error(&fu_state).await {
+                state.cluster_manager.remove_file_upload(&uuid);
+                // Tear down the dedicated upload session so the file_upload_map
+                // entry is removed and the remote cluster is not left waiting,
+                // mirroring the body-length mismatch cleanup.
+                upload_cluster.close(false).await;
+                return Err(e);
+            }
+
+            let mut chunk_msg = Message::new(FILE_UPLOAD_CHUNK, Priority::Lowest, &uuid);
+            chunk_msg.push_bytes(&buffer[..chunk_size]);
+            upload_cluster.send_message(chunk_msg).await;
+            buffer.drain(..chunk_size);
+        }
+    }
+
+    if total_read != content_length {
         tracing::warn!(
             "HTTP: File upload rejected - body length {} does not match Content-Length {}",
-            body_bytes.len(),
+            total_read,
             content_length
         );
         state.cluster_manager.remove_file_upload(&uuid);
@@ -904,7 +947,7 @@ pub async fn upload_file(
         ));
     }
 
-    while total_read < content_length {
+    if !buffer.is_empty() {
         if !upload_cluster.wait_for_queue_drain(false).await {
             upload_cluster.close(false).await;
             state.cluster_manager.remove_file_upload(&uuid);
@@ -916,23 +959,13 @@ pub async fn upload_file(
 
         if let Err(e) = check_upload_error(&fu_state).await {
             state.cluster_manager.remove_file_upload(&uuid);
-            // Tear down the dedicated upload session so the file_upload_map
-            // entry is removed and the remote cluster is not left waiting,
-            // mirroring the body-length mismatch cleanup.
             upload_cluster.close(false).await;
             return Err(e);
         }
 
-        let remaining = (content_length - total_read) as usize;
-        let this_chunk = remaining.min(chunk_size);
-        let start = total_read as usize;
-        let end = start + this_chunk;
-
         let mut chunk_msg = Message::new(FILE_UPLOAD_CHUNK, Priority::Lowest, &uuid);
-        chunk_msg.push_bytes(&body_bytes[start..end]);
+        chunk_msg.push_bytes(&buffer);
         upload_cluster.send_message(chunk_msg).await;
-
-        total_read += this_chunk as u64;
     }
 
     if !upload_cluster.wait_for_queue_drain(true).await {
