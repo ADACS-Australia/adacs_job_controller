@@ -26,6 +26,7 @@ pub struct AccessSecret {
 /// - The file cannot be read
 /// - The JSON is invalid
 /// - Two or more secrets share the same name
+/// - Two or more secrets share the same value
 pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
     let secrets: Vec<AccessSecret> = super::load_json_file!(
         path,
@@ -33,6 +34,7 @@ pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
         "Access secrets file read ({} bytes)"
     );
     let mut seen = HashSet::with_capacity(secrets.len());
+    let mut seen_secrets = HashSet::with_capacity(secrets.len());
     for (i, secret) in secrets.iter().enumerate() {
         if !seen.insert(secret.name.as_str()) {
             anyhow::bail!(
@@ -50,6 +52,13 @@ pub fn load_access_secrets(path: &Path) -> anyhow::Result<Vec<AccessSecret>> {
         }
         if secret.name.is_empty() {
             anyhow::bail!("empty name in access secrets (entry #{})", i + 1);
+        }
+        if !seen_secrets.insert(secret.secret.as_str()) {
+            anyhow::bail!(
+                "duplicate secret value for access secret '{}' (entry #{})",
+                secret.name,
+                i + 1
+            );
         }
         tracing::trace!(
             "Secret #{}: name='{}', clusters={:?}, applications={:?}",
@@ -132,6 +141,27 @@ mod tests {
         let err = load_access_secrets(&config_path).unwrap_err();
         assert!(
             err.to_string().contains("duplicate secret name 'app1'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_access_secrets_duplicate_secret_value() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("access_secrets.json");
+        std::fs::write(
+            &config_path,
+            r#"[
+                {"name": "app1", "secret": "shared", "applications": ["a"], "clusters": ["c1"]},
+                {"name": "app2", "secret": "shared", "applications": ["b"], "clusters": ["c2"]}
+            ]"#,
+        )
+        .unwrap();
+
+        let err = load_access_secrets(&config_path).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("duplicate secret value for access secret 'app2'"),
             "unexpected error: {err}"
         );
     }
