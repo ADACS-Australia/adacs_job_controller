@@ -178,6 +178,8 @@ pub struct FileListState {
     pub error_details: String,
     /// Whether the WebSocket handler has finished populating `files` or set `error`.
     pub data_ready: bool,
+    /// Whether the response was truncated, so `files` is only a partial listing.
+    pub truncated: bool,
     /// Wakes the HTTP handler when `data_ready` becomes true.
     pub notify: std::sync::Arc<tokio::sync::Notify>,
 }
@@ -190,6 +192,7 @@ impl FileListState {
             error: false,
             error_details: String::new(),
             data_ready: false,
+            truncated: false,
             notify: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
     }

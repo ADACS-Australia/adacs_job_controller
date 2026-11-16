@@ -3315,6 +3315,108 @@ async fn test_job_finished_update_timeout_keeps_existing_cache() {
     cluster_obj.stop();
 }
 
+/// Regression test: a background `FILE_LIST` cache request whose response is
+/// truncated (fewer complete entries than the declared `num_files`) must NOT
+/// wipe the job's existing valid `file_list_cache` rows.
+///
+/// The parser intentionally returns partial results for a truncated response
+/// with `error=false` and `data_ready=true`. Before the fix, the cache guard
+/// only checked `!error && data_ready`, so the partial listing replaced the
+/// valid cache rows. The response here declares 2 entries but carries 1.
+#[tokio::test]
+async fn test_job_finished_update_truncated_response_keeps_existing_cache() {
+    let db = setup_test_db().await;
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    // Pre-populate the cache with a valid row for this job.
+    file_list_cache::ActiveModel {
+        job_id: Set(job_id),
+        path: Set("/existing.log".to_string()),
+        is_dir: Set(false),
+        file_size: Set(1024),
+        permissions: Set(644),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    // Shared file_list_map — used by both the real Cluster and the HTTP AppState.
+    let file_list_map: Arc<DashMap<String, Arc<TokioMutex<FileListState>>>> =
+        Arc::new(DashMap::new());
+    let flmap_for_cluster = Arc::clone(&file_list_map);
+
+    // Build a real Cluster (not mock) with the test DB and file_list_map.
+    let app_ctx = Arc::new(AppContext {
+        db: db.clone(),
+        file_list_map: flmap_for_cluster,
+    });
+    let cluster_obj = Cluster::new(test_cluster_config("ozstar"), Some(app_ctx));
+
+    // Give the cluster a WS sender so the FILE_LIST request is delivered.
+    let (ws_tx, mut ws_rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster_obj.set_connection(Some(ws_tx)).await;
+    cluster_obj.start_tasks();
+
+    // Respond with a truncated listing: 2 declared entries, 1 complete entry.
+    let cluster_for_bg = Arc::clone(&cluster_obj);
+    tokio::spawn(async move {
+        if let Some(WsOutbound::Binary(data)) = ws_rx.recv().await {
+            let mut decoded = Message::from_bytes(data);
+            if decoded.id() == FILE_LIST {
+                let _job_id = decoded.pop_uint();
+                let uuid = decoded.pop_string();
+
+                let mut response = Message::new(FILE_LIST, Priority::Medium, "test");
+                response.push_string(&uuid);
+                response.push_uint(2);
+                response.push_string("/partial.log");
+                response.push_bool(false);
+                response.push_ulong(512);
+                let routed = Message::from_bytes(response.into_data());
+                cluster_for_bg.handle_message(routed).await;
+            }
+        }
+    });
+
+    // Send UPDATE_JOB with _job_completion_ to trigger the background cache population.
+    let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
+    msg.push_uint(job_id.try_into().unwrap());
+    msg.push_string(JOB_COMPLETION_SOURCE);
+    msg.push_uint(90u32); // Deleted status — triggers the completion path
+    msg.push_string("Job completed");
+    let routed = Message::from_bytes(msg.into_data());
+    cluster_obj.handle_message(routed).await;
+
+    // Wait for the background task to finish (it removes its uuid from the map).
+    let start = std::time::Instant::now();
+    loop {
+        if file_list_map.is_empty() {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "Background cache task did not finish within 5s"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // The valid pre-existing cache row must survive the truncated response.
+    let cached = file_list_cache::Entity::find()
+        .filter(file_list_cache::Column::JobId.eq(job_id))
+        .all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        cached.len(),
+        1,
+        "Truncated FILE_LIST response must not wipe the existing cache"
+    );
+    assert_eq!(cached[0].path, "/existing.log");
+
+    cluster_obj.stop();
+}
+
 // ===========================================================================
 // 23. LARGE FILE TRANSFERS — full end-to-end with backpressure and memory monitoring
 //
