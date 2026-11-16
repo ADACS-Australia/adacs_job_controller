@@ -1116,6 +1116,109 @@ async fn test_download_file_overshoot_truncates_to_declared_size() {
     );
 }
 
+/// Tests that a cluster error arriving while the download stream is blocked
+/// waiting for the next chunk terminates the body promptly.
+///
+/// # Setup
+/// Inserts a download record. Wires a `FileDownloadState` whose `file_size` is
+/// two chunks, with one chunk already buffered. Uses a 2-second
+/// `client_timeout_seconds` so the chunk timeout is far longer than the
+/// assertion window.
+///
+/// # Act
+/// Sends GET /job/apiv1/file/?fileId={uuid}. Once the stream has consumed the
+/// buffered chunk and is waiting for the next one, sets `error` and fires
+/// `data_notify`, mirroring `record_transfer_error`.
+///
+/// # Assert
+/// Verifies the body completes well before the chunk timeout and contains only
+/// the chunk sent before the error.
+#[tokio::test]
+async fn test_download_file_mid_stream_error_terminates_body_promptly() {
+    const CHUNK_SIZE: usize = 1024;
+    const FILE_SIZE: u64 = (CHUNK_SIZE * 2) as u64;
+
+    let db = setup_test_db().await;
+    let uuid = "mid-stream-error-uuid".to_string();
+    insert_file_download(&db, &uuid, "").await;
+
+    let fd_state = Arc::new(FileDownloadState::new());
+    fd_state.file_size.store(FILE_SIZE, Ordering::Release);
+    fd_state.received_data.store(true, Ordering::Release);
+    fd_state.data_ready.store(true, Ordering::Release);
+    fd_state.data_notify.notify_waiters();
+    fd_state
+        .chunk_sender
+        .send(vec![7u8; CHUNK_SIZE])
+        .expect("chunk channel should accept the first chunk");
+
+    let fd_for_manager = Arc::clone(&fd_state);
+    let mut manager = download_manager_with_online_cluster();
+    manager.expect_begin_application_shutdown().returning(|| 0);
+    manager
+        .expect_dedicated_download_clusters()
+        .returning(Vec::new);
+    manager
+        .expect_get_file_download_cleanup_trigger()
+        .returning(|_| None);
+    manager
+        .expect_get_file_download()
+        .returning(move |_| Some(Arc::clone(&fd_for_manager)));
+
+    let state = adacs_job_controller::app::AppState {
+        db,
+        cluster_manager: Arc::new(manager),
+        file_list_map: Arc::new(dashmap::DashMap::new()),
+        jwt_secrets: Arc::new(test_jwt_secrets()),
+        client_timeout_seconds: Some(2),
+    };
+    let app = create_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/job/apiv1/file/?fileId={uuid}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Wait until the stream has consumed the buffered chunk, then let it settle
+    // into the receive await before recording the error.
+    let fd_for_error = Arc::clone(&fd_state);
+    let injector = tokio::spawn(async move {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while fd_for_error.sent_bytes.load(Ordering::Acquire) < CHUNK_SIZE as u64 {
+            assert!(
+                std::time::Instant::now() <= deadline,
+                "stream never consumed the buffered chunk"
+            );
+            tokio::task::yield_now().await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        fd_for_error.error.store(true, Ordering::Release);
+        fd_for_error.data_notify.notify_one();
+    });
+
+    let body = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        axum::body::to_bytes(resp.into_body(), usize::MAX),
+    )
+    .await
+    .expect("mid-stream error should end the body without waiting for the chunk timeout")
+    .unwrap();
+    injector.await.unwrap();
+
+    assert_eq!(
+        body.len(),
+        CHUNK_SIZE,
+        "body should contain only the chunk sent before the error"
+    );
+}
+
 /// Tests that the HTTP download stream sends a single `RESUME_FILE_CHUNK_STREAM`
 /// message and clears `client_paused` once the client has drained below
 /// `MIN_FILE_BUFFER_SIZE` after a pause.
