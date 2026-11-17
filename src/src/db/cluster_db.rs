@@ -105,7 +105,7 @@ pub async fn maybe_handle_cluster_db_message(
     db_dispatch!(DB_JOB_GET_BY_JOB_ID, handle_job_get_by_job_id);
     db_dispatch!(DB_JOB_GET_BY_ID, handle_job_get_by_id);
     db_dispatch!(DB_JOB_GET_RUNNING_JOBS, handle_job_get_running_jobs);
-    db_dispatch!(DB_JOB_DELETE, handle_delete_by_id::<cluster_job::Entity>);
+    db_dispatch!(DB_JOB_DELETE, handle_cluster_job_delete);
     db_dispatch!(DB_JOB_SAVE, handle_job_save);
     db_dispatch!(
         DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT,
@@ -122,10 +122,7 @@ pub async fn maybe_handle_cluster_db_message(
         handle_bundle_create_or_update
     );
     db_dispatch!(DB_BUNDLE_GET_JOB_BY_ID, handle_bundle_get_by_id);
-    db_dispatch!(
-        DB_BUNDLE_DELETE_JOB,
-        handle_delete_by_id::<bundle_job::Entity>
-    );
+    db_dispatch!(DB_BUNDLE_DELETE_JOB, handle_bundle_job_delete);
 
     tracing::trace!(
         "ClusterDB[{}]: Message ID {} not a DB message - not handled",
@@ -358,14 +355,41 @@ async fn handle_job_get_running_jobs(
     .await;
 }
 
+/// Deletes a cluster job row by primary key, scoped to the calling cluster.
+async fn handle_cluster_job_delete(
+    message: &mut Message,
+    cluster: &dyn ClusterTrait,
+    db: &sea_orm::DatabaseConnection,
+) {
+    handle_delete_by_id(message, cluster, db, |id, cluster_name| {
+        cluster_job::Entity::delete_many()
+            .filter(cluster_job::Column::Id.eq(id))
+            .filter(cluster_job::Column::Cluster.eq(cluster_name))
+    })
+    .await;
+}
+
+/// Deletes a bundle job row by primary key, scoped to the calling cluster.
+async fn handle_bundle_job_delete(
+    message: &mut Message,
+    cluster: &dyn ClusterTrait,
+    db: &sea_orm::DatabaseConnection,
+) {
+    handle_delete_by_id(message, cluster, db, |id, cluster_name| {
+        bundle_job::Entity::delete_many()
+            .filter(bundle_job::Column::Id.eq(id))
+            .filter(bundle_job::Column::Cluster.eq(cluster_name))
+    })
+    .await;
+}
+
 /// Deletes a row by primary key and sends an empty `DB_RESPONSE`.
 async fn handle_delete_by_id<E: EntityTrait>(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
-) where
-    <E::PrimaryKey as sea_orm::PrimaryKeyTrait>::ValueType: From<i64>,
-{
+    build_delete: impl FnOnce(i64, &str) -> sea_orm::DeleteMany<E>,
+) {
     // A valid delete-by-id request needs at least 12 bytes for the fixed-size
     // fields (db_request_id + id). If fewer remain, the message is
     // truncated; drop it rather than deleting with a defaulted 0 id and
@@ -379,9 +403,10 @@ async fn handle_delete_by_id<E: EntityTrait>(
     }
     let db_request_id = message.pop_uint();
     let id = message.pop_ulong().cast_signed();
+    let cluster_name = cluster.name();
 
-    if let Err(e) = E::delete_by_id(id).exec(db).await {
-        log_delete_failed(&cluster.name(), &e);
+    if let Err(e) = build_delete(id, &cluster_name).exec(db).await {
+        log_delete_failed(&cluster_name, &e);
     }
 
     let response = prepare_response(db_request_id);
