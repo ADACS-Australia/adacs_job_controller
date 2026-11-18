@@ -99,8 +99,16 @@ pub fn ltk_connection_timeout_ms() -> u32 {
 pub static MAX_FILE_BUFFER_SIZE: LazyLock<u64> =
     LazyLock::new(|| env_or_uint("MAX_FILE_BUFFER_SIZE", 50 * 1024 * 1024));
 /// Minimum buffer size before a file chunk is flushed (`MIN_FILE_BUFFER_SIZE`).
-pub static MIN_FILE_BUFFER_SIZE: LazyLock<u64> =
-    LazyLock::new(|| env_or_uint("MIN_FILE_BUFFER_SIZE", 10 * 1024 * 1024));
+///
+/// Clamped to at least 1 byte: a zero value would make the download RESUME
+/// condition unsatisfiable, stalling the stream until the chunk timeout.
+pub static MIN_FILE_BUFFER_SIZE: LazyLock<u64> = LazyLock::new(|| {
+    clamp_min_file_buffer_size(env_or_uint("MIN_FILE_BUFFER_SIZE", 10 * 1024 * 1024))
+});
+
+fn clamp_min_file_buffer_size(value: u64) -> u64 {
+    value.max(1)
+}
 /// Size of each file chunk sent over the WebSocket protocol (`FILE_CHUNK_SIZE`).
 pub static FILE_CHUNK_SIZE: LazyLock<u64> =
     LazyLock::new(|| env_or_uint("FILE_CHUNK_SIZE", 64 * 1024));
@@ -169,6 +177,16 @@ mod tests {
         assert_eq!(*MAX_FILE_BUFFER_SIZE, 50 * 1024 * 1024);
         assert_eq!(*MIN_FILE_BUFFER_SIZE, 10 * 1024 * 1024);
         assert_eq!(*FILE_CHUNK_SIZE, 64 * 1024);
+    }
+
+    #[test]
+    fn test_min_file_buffer_size_clamps_zero() {
+        assert_eq!(clamp_min_file_buffer_size(0), 1);
+        assert_eq!(clamp_min_file_buffer_size(1), 1);
+        assert_eq!(
+            clamp_min_file_buffer_size(10 * 1024 * 1024),
+            10 * 1024 * 1024
+        );
     }
 
     #[test]
