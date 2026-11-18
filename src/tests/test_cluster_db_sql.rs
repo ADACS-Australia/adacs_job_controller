@@ -59,9 +59,19 @@ async fn insert_bundle_job(
     content: &str,
     bundle_hash: &str,
 ) -> bundle_job::Model {
+    insert_bundle_job_for_cluster(db, content, bundle_hash, "ozstar").await
+}
+
+/// Insert a `bundle_job` row with the given content, hash, and owning cluster.
+async fn insert_bundle_job_for_cluster(
+    db: &DatabaseConnection,
+    content: &str,
+    bundle_hash: &str,
+    cluster: &str,
+) -> bundle_job::Model {
     bundle_job::ActiveModel {
         content: Set(content.to_string()),
-        cluster: Set("ozstar".to_string()),
+        cluster: Set(cluster.to_string()),
         bundle_hash: Set(bundle_hash.to_string()),
         ..Default::default()
     }
@@ -712,6 +722,54 @@ async fn test_handle_job_delete() {
 
     let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 600);
+}
+
+// ---------------------------------------------------------------------------
+// DB_JOB_DELETE — cluster scoping
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_JOB_DELETE` only deletes rows owned by the calling cluster.
+///
+/// # Setup
+/// In-memory DB with one "ozstar" row and one "nci" row.
+///
+/// # Act
+/// Dispatch a `DB_JOB_DELETE` from "ozstar" targeting the nci row's id.
+///
+/// # Assert
+/// Both rows survive; the `DB_RESPONSE` still echoes `db_request_id=601`.
+#[tokio::test]
+async fn test_handle_job_delete_cluster_scoping() {
+    let db = make_cluster_db().await;
+
+    let ozstar = insert_cluster_job_row(&db, 88, 0, false, 0, "", "", false, "ozstar").await;
+    let nci = insert_cluster_job_row(&db, 88, 0, false, 0, "", "", false, "nci").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_DELETE, |m| {
+        m.push_uint(601);
+        m.push_ulong(nci.id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let nci_count = cluster_job::Entity::find()
+        .filter(cluster_job::Column::Id.eq(nci.id))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(nci_count, 1, "ozstar must not delete an nci row");
+
+    let ozstar_count = cluster_job::Entity::find()
+        .filter(cluster_job::Column::Id.eq(ozstar.id))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(ozstar_count, 1, "the caller's own row must survive");
+
+    let (req_id, _) = first_response(&sent);
+    assert_eq!(req_id, 601);
 }
 
 // ---------------------------------------------------------------------------
@@ -1503,6 +1561,54 @@ async fn test_handle_bundle_delete() {
 
     let (req_id, _) = first_response(&sent);
     assert_eq!(req_id, 1300);
+}
+
+// ---------------------------------------------------------------------------
+// DB_BUNDLE_DELETE_JOB — cluster scoping
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_BUNDLE_DELETE_JOB` only deletes rows owned by the calling cluster.
+///
+/// # Setup
+/// In-memory DB with one "ozstar" bundle row and one "nci" bundle row.
+///
+/// # Act
+/// Dispatch a `DB_BUNDLE_DELETE_JOB` from "ozstar" targeting the nci row's id.
+///
+/// # Assert
+/// Both rows survive; the `DB_RESPONSE` still echoes `db_request_id=1301`.
+#[tokio::test]
+async fn test_handle_bundle_delete_cluster_scoping() {
+    let db = make_cluster_db().await;
+
+    let ozstar = insert_bundle_job_for_cluster(&db, "ozstar content", "h1", "ozstar").await;
+    let nci = insert_bundle_job_for_cluster(&db, "nci content", "h2", "nci").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_DELETE_JOB, |m| {
+        m.push_uint(1301);
+        m.push_ulong(nci.id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let nci_count = bundle_job::Entity::find()
+        .filter(bundle_job::Column::Id.eq(nci.id))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(nci_count, 1, "ozstar must not delete an nci row");
+
+    let ozstar_count = bundle_job::Entity::find()
+        .filter(bundle_job::Column::Id.eq(ozstar.id))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(ozstar_count, 1, "the caller's own row must survive");
+
+    let (req_id, _) = first_response(&sent);
+    assert_eq!(req_id, 1301);
 }
 
 // ---------------------------------------------------------------------------
