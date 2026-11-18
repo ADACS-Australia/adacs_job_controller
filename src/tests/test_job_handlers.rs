@@ -207,13 +207,13 @@ async fn test_create_job_parameters_too_long_returns_400() {
     assert_create_job_rejected(body, "parameters too long").await;
 }
 
-/// Tests that `create_job` rejects a bundle longer than `MAX_BUNDLE_LEN` (10,000).
+/// Tests that `create_job` rejects a bundle longer than `MAX_BUNDLE_LEN` (255).
 ///
 /// # Setup
 /// Wires a manager that returns no clusters (never reached — length validation runs first).
 ///
 /// # Act
-/// Sends POST /job/apiv1/job/ with a bundle string of 10,001 characters.
+/// Sends POST /job/apiv1/job/ with a bundle string of 256 characters.
 ///
 /// # Assert
 /// Verifies 400 Bad Request with body containing "bundle too long".
@@ -222,7 +222,7 @@ async fn test_create_job_bundle_too_long_returns_400() {
     let body = serde_json::json!({
         "cluster": "ozstar",
         "parameters": "{}",
-        "bundle": "b".repeat(10_001)
+        "bundle": "b".repeat(256)
     });
     assert_create_job_rejected(body, "bundle too long").await;
 }
