@@ -50,6 +50,7 @@ fn default_connection_type() -> String {
 /// - The JSON is invalid
 /// - Two or more clusters share the same name
 /// - A cluster has an empty `ltk`
+/// - Two or more clusters share the same non-empty `ltk`
 pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
     let configs: Vec<ClusterConfig> = super::load_json_file!(
         path,
@@ -57,6 +58,7 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
         "Cluster config file read ({} bytes)"
     );
     let mut seen = HashSet::with_capacity(configs.len());
+    let mut seen_ltks = HashSet::with_capacity(configs.len());
     for (i, config) in configs.iter().enumerate() {
         if !seen.insert(config.name.as_str()) {
             anyhow::bail!(
@@ -69,6 +71,16 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
             && ltk.is_empty()
         {
             anyhow::bail!("cluster config entry #{} has empty 'ltk'", i + 1);
+        }
+        if let Some(ltk) = config.ltk.as_deref()
+            && !ltk.is_empty()
+            && !seen_ltks.insert(ltk)
+        {
+            anyhow::bail!(
+                "duplicate ltk for cluster '{}' in cluster config (entry #{})",
+                config.name,
+                i + 1
+            );
         }
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
@@ -186,6 +198,38 @@ mod tests {
         let err = load_cluster_configs(&config_path).unwrap_err();
         assert!(
             err.to_string().contains("empty 'ltk'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_duplicate_ltk() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[
+                {
+                    "name": "cluster-a",
+                    "host": "a.example.com",
+                    "username": "jobclient",
+                    "path": "/path/a",
+                    "ltk": "shared-ltk"
+                },
+                {
+                    "name": "cluster-b",
+                    "host": "b.example.com",
+                    "username": "jobclient",
+                    "path": "/path/b",
+                    "ltk": "shared-ltk"
+                }
+            ]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate ltk"),
             "unexpected error: {err}"
         );
     }
