@@ -96,7 +96,7 @@ pub async fn create_job(
     LenientJson(body): LenientJson<CreateJobRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     const MAX_PARAMETERS_LEN: usize = 65_535;
-    const MAX_BUNDLE_LEN: usize = 10_000;
+    const MAX_BUNDLE_LEN: usize = 255;
 
     tracing::debug!(
         "HTTP: Create job request received for cluster '{}'",
