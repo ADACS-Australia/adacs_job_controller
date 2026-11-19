@@ -245,9 +245,6 @@ pub async fn create_job(
             source,
             msg.priority()
         );
-        cluster.send_message(msg).await;
-        tracing::trace!("HTTP: Submit job message queued");
-
         tracing::trace!("HTTP: Updating job history to Submitting");
         let record = job_history::ActiveModel {
             job_id: Set(job_id),
@@ -264,6 +261,9 @@ pub async fn create_job(
                 e
             );
         }
+
+        cluster.send_message(msg).await;
+        tracing::trace!("HTTP: Submit job message queued");
     } else {
         tracing::warn!(
             "HTTP: Cluster '{}' is offline - job {} will be submitted when cluster reconnects",
