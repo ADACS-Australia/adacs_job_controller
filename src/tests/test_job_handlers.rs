@@ -1186,6 +1186,60 @@ async fn test_get_jobs_returns_all_application_jobs() {
     assert!(!ids.contains(&other_job));
 }
 
+/// Tests that `get_jobs` scopes results to the caller's cluster allow-list.
+///
+/// # Setup
+/// Inserts two "app3" jobs, one on "ozstar" and one on "nci". app3's secret allows
+/// only "ozstar".
+///
+/// # Act
+/// Sends GET /job/apiv1/job/ with app3's token.
+///
+/// # Assert
+/// Verifies only the "ozstar" job is returned.
+#[tokio::test]
+async fn test_get_jobs_excludes_jobs_on_clusters_outside_allow_list() {
+    let secrets = test_jwt_secrets_multi();
+    let db = setup_test_db().await;
+
+    let allowed_job = insert_test_job(&db, "ozstar", "b1", "app3").await;
+    insert_job_history(&db, allowed_job, JobStatus::Pending as i32, "system").await;
+
+    let denied_job = insert_test_job(&db, "nci", "b2", "app3").await;
+    insert_job_history(&db, denied_job, JobStatus::Completed as i32, "system").await;
+
+    let app = create_router(make_test_state_with_secrets(
+        db,
+        mock_cluster_manager_no_clusters(),
+        secrets.clone(),
+    ));
+    let token = encode_jwt_for_secret(&secrets[2], &serde_json::json!({"userId": 10}));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/job/apiv1/job/")
+                .header("authorization", &token)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let jobs = body.as_array().unwrap();
+    assert_eq!(jobs.len(), 1, "should return only the ozstar job");
+    assert_eq!(jobs[0]["id"].as_i64().unwrap(), allowed_job);
+}
+
 /// Tests that the jobIds query parameter filters the result to only the specified job.
 ///
 /// # Setup
