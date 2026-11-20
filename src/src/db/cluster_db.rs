@@ -299,17 +299,21 @@ async fn handle_job_get_by_job_id(
     .await;
 }
 
-/// Looks up a cluster job by its primary key and returns zero or one row.
+/// Looks up a cluster job by its primary key, scoped to the calling cluster.
 async fn handle_job_get_by_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
+    let cluster_name = cluster.name();
     handle_get_by_id_impl(
         message,
         cluster,
         db,
-        cluster_job::Entity::find_by_id,
+        |id| {
+            cluster_job::Entity::find_by_id(id)
+                .filter(cluster_job::Column::Cluster.eq(&cluster_name))
+        },
         ClusterJob::from,
         |r, msg| r.to_message(msg),
     )
@@ -834,17 +838,21 @@ async fn handle_bundle_create_or_update(
     }
 }
 
-/// Fetches a bundle job by ID and sends a `DB_RESPONSE` with the row or count=0.
+/// Fetches a bundle job by ID, scoped to the calling cluster, and sends a
+/// `DB_RESPONSE` with the row or count=0.
 async fn handle_bundle_get_by_id(
     message: &mut Message,
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
+    let cluster_name = cluster.name();
     handle_get_by_id_impl(
         message,
         cluster,
         db,
-        bundle_job::Entity::find_by_id,
+        |id| {
+            bundle_job::Entity::find_by_id(id).filter(bundle_job::Column::Cluster.eq(&cluster_name))
+        },
         BundleJob::from,
         |r, msg| r.to_message(msg),
     )
