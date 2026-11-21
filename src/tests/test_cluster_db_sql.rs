@@ -487,6 +487,56 @@ async fn test_handle_job_get_by_id_found() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_JOB_GET_BY_ID — cluster scoping
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_JOB_GET_BY_ID` only returns rows owned by the calling cluster.
+///
+/// # Setup
+/// In-memory DB with one "ozstar" row and one "nci" row.
+///
+/// # Act
+/// Dispatch a `DB_JOB_GET_BY_ID` from "ozstar" targeting the nci row's id.
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=303` and count=0; the nci row is unchanged.
+#[tokio::test]
+async fn test_handle_job_get_by_id_cluster_scoping() {
+    let db = make_cluster_db().await;
+
+    let ozstar = insert_cluster_job_row(&db, 88, 0, false, 0, "", "", false, "ozstar").await;
+    let nci = insert_cluster_job_row(&db, 99, 0, false, 0, "", "", false, "nci").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_GET_BY_ID, |m| {
+        m.push_uint(303);
+        m.push_ulong(nci.id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 303);
+    assert_eq!(body.pop_uint(), 0, "ozstar must not read an nci row");
+
+    let nci_row = cluster_job::Entity::find_by_id(nci.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("nci row must survive");
+    assert_eq!(nci_row.job_id, 99);
+    assert_eq!(nci_row.cluster, "nci");
+
+    let ozstar_row = cluster_job::Entity::find_by_id(ozstar.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("ozstar row must survive");
+    assert_eq!(ozstar_row.cluster, "ozstar");
+}
+
+// ---------------------------------------------------------------------------
 // DB_JOB_GET_BY_ID — not found
 // ---------------------------------------------------------------------------
 
@@ -1499,6 +1549,56 @@ async fn test_handle_bundle_get_by_id_found() {
     let restored = BundleJob::from_message(&mut body).unwrap();
     assert_eq!(restored.id, bundle_id);
     assert_eq!(restored.content, "bundle_content");
+}
+
+// ---------------------------------------------------------------------------
+// DB_BUNDLE_GET_JOB_BY_ID — cluster scoping
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_BUNDLE_GET_JOB_BY_ID` only returns rows owned by the calling cluster.
+///
+/// # Setup
+/// In-memory DB with one "ozstar" bundle row and one "nci" bundle row.
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_GET_JOB_BY_ID` from "ozstar" targeting the nci bundle's id.
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=1202` and count=0; the nci row is unchanged.
+#[tokio::test]
+async fn test_handle_bundle_get_by_id_cluster_scoping() {
+    let db = make_cluster_db().await;
+
+    let ozstar = insert_bundle_job_for_cluster(&db, "ozstar content", "h1", "ozstar").await;
+    let nci = insert_bundle_job_for_cluster(&db, "nci content", "h2", "nci").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_GET_JOB_BY_ID, |m| {
+        m.push_uint(1202);
+        m.push_ulong(nci.id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 1202);
+    assert_eq!(body.pop_uint(), 0, "ozstar must not read an nci bundle");
+
+    let nci_row = bundle_job::Entity::find_by_id(nci.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("nci bundle must survive");
+    assert_eq!(nci_row.content, "nci content");
+    assert_eq!(nci_row.cluster, "nci");
+
+    let ozstar_row = bundle_job::Entity::find_by_id(ozstar.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("ozstar bundle must survive");
+    assert_eq!(ozstar_row.cluster, "ozstar");
 }
 
 // ---------------------------------------------------------------------------
