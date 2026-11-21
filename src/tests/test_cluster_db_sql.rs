@@ -436,6 +436,78 @@ async fn test_handle_job_save_update_missing_row_returns_zero() {
     assert_eq!(body.pop_ulong(), 0, "Failed update should return id=0");
 }
 
+/// Verifies that a `DB_JOB_SAVE` update is scoped to the calling cluster, so a
+/// cluster cannot overwrite another cluster's row by supplying its id.
+///
+/// # Setup
+/// In-memory DB with one "ozstar" row and one "nci" row; the payload carries the
+/// nci row's id with changed fields.
+///
+/// # Act
+/// Dispatch a `DB_JOB_SAVE` from "ozstar" with `db_request_id=202` targeting the
+/// nci row's id.
+///
+/// # Assert
+/// The nci row is unchanged, no row is created, and the `DB_RESPONSE` echoes
+/// `db_request_id=202` with id=0 (failed write).
+#[tokio::test]
+async fn test_handle_job_save_update_cluster_scoping() {
+    let db = make_cluster_db().await;
+
+    let ozstar =
+        insert_cluster_job_row(&db, 10, 0, false, 0, "ozhash", "/oz", false, "ozstar").await;
+    let nci = insert_cluster_job_row(&db, 20, 0, false, 0, "ncihash", "/nci", false, "nci").await;
+
+    let job = ClusterJob {
+        id: nci.id,
+        job_id: 20,
+        scheduler_id: 99,
+        submitting: false,
+        submitting_count: 2,
+        bundle_hash: "hijacked".to_string(),
+        working_directory: "/hijacked".to_string(),
+        running: true,
+        deleting: false,
+        deleted: false,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(202);
+        job.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let nci_model = cluster_job::Entity::find_by_id(nci.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        nci_model.scheduler_id, 0,
+        "ozstar must not update an nci row"
+    );
+    assert_eq!(nci_model.bundle_hash, "ncihash");
+    assert_eq!(nci_model.working_directory, "/nci");
+    assert!(!nci_model.running);
+
+    let ozstar_model = cluster_job::Entity::find_by_id(ozstar.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(ozstar_model.bundle_hash, "ozhash");
+
+    let total = cluster_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(total, 2, "A rejected update must not create a row");
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 202);
+    assert_eq!(body.pop_ulong(), 0, "Foreign update should return id=0");
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_GET_BY_ID — found
 // ---------------------------------------------------------------------------
