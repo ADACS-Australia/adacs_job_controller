@@ -141,6 +141,8 @@ pub async fn create_file_download(
     // TODO: Content-Type tolerance - remove when client sends proper headers
     LenientJson(body): LenientJson<CreateFileDownloadRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    const MAX_BUNDLE_LEN: usize = 255;
+
     tracing::debug!("HTTP: Create file download request received");
     tracing::trace!(
         "HTTP: Job ID: {:?}, paths: {:?}, cluster: {:?}",
@@ -198,6 +200,15 @@ pub async fn create_file_download(
     )
     .await?;
     log_cluster_bundle_resolved(&s_cluster, &s_bundle);
+
+    if s_bundle.len() > MAX_BUNDLE_LEN {
+        tracing::warn!(
+            "HTTP: File download rejected - bundle too long ({} > {})",
+            s_bundle.len(),
+            MAX_BUNDLE_LEN
+        );
+        return Err((StatusCode::BAD_REQUEST, "bundle too long".to_string()));
+    }
 
     let user_id = auth_user_id(&auth);
     tracing::trace!("HTTP: User ID: {}", user_id);
