@@ -13,18 +13,18 @@ use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};
 use tower::ServiceExt;
 
-use adacs_job_controller::cluster::traits::MockClusterManagerTrait;
+use adacs_job_controller::cluster::traits::{MockClusterManagerTrait, MockClusterTrait};
 use adacs_job_controller::db::entities::{job, job_history};
 use adacs_job_controller::http::server::create_router;
 use adacs_job_controller::protocol::constants::*;
 use adacs_job_controller::protocol::message::Message;
-use adacs_job_controller::protocol::types::JobStatus;
+use adacs_job_controller::protocol::types::{ClusterRole, JobStatus};
 
 use common::{
     encode_jwt_for_secret, encode_test_jwt, insert_job_history, insert_job_history_at,
     insert_test_job, insert_test_job_with_id, insert_test_job_with_state, make_test_state,
     make_test_state_with_secrets, mock_cluster_capturing_with_online,
-    mock_cluster_manager_no_clusters, setup_test_db, test_jwt_secrets_multi,
+    mock_cluster_manager_no_clusters, setup_test_db, test_cluster_config, test_jwt_secrets_multi,
 };
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -96,6 +96,67 @@ async fn test_create_job_cluster_online_inserts_and_submits() {
     assert_eq!(sent_msg.id(), SUBMIT_JOB);
     let sent_job_id = i64::from(sent_msg.pop_uint());
     assert_eq!(sent_job_id, job_id);
+}
+
+/// Regression test: the `Submitting` history row must be written before
+/// `SUBMIT_JOB` is sent, so a fast cluster response cannot be recorded ahead of
+/// it and leave `Submitting` as the newest history entry.
+#[tokio::test]
+async fn test_create_job_writes_submitting_before_sending_submit_job() {
+    let db = setup_test_db().await;
+    let observed_state = Arc::new(Mutex::new(None::<i32>));
+    let observed_state_clone = Arc::clone(&observed_state);
+    let db_clone = db.clone();
+
+    let mut cluster = MockClusterTrait::new();
+    cluster.expect_name().returning(|| "ozstar".to_string());
+    cluster.expect_is_online().returning(|| true);
+    cluster.expect_role().returning(|| ClusterRole::Master);
+    cluster
+        .expect_role_string()
+        .returning(|| "master".to_string());
+    cluster
+        .expect_cluster_details()
+        .returning(|| test_cluster_config("ozstar"));
+    cluster.expect_send_message().returning(move |msg| {
+        let db = db_clone.clone();
+        let observed_state = Arc::clone(&observed_state_clone);
+        Box::pin(async move {
+            if msg.id() == SUBMIT_JOB {
+                let latest = job_history::Entity::find()
+                    .order_by_desc(job_history::Column::Timestamp)
+                    .order_by_desc(job_history::Column::Id)
+                    .one(&db)
+                    .await
+                    .unwrap();
+                *observed_state.lock().unwrap() = latest.map(|h| h.state);
+            }
+        })
+    });
+    let cluster = Arc::new(cluster);
+    let mut manager = MockClusterManagerTrait::new();
+    let c = Arc::clone(&cluster);
+    manager
+        .expect_get_cluster_by_name()
+        .returning(move |_| Some(c.clone()));
+    manager
+        .expect_is_application_shutting_down()
+        .returning(|| false);
+
+    let resp = post_create_job(
+        &db,
+        manager,
+        1,
+        serde_json::json!({"cluster":"ozstar","parameters":"{}","bundle":"b"}),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        *observed_state.lock().unwrap(),
+        Some(JobStatus::Submitting as i32),
+        "latest history state when SUBMIT_JOB is sent should be Submitting"
+    );
 }
 
 /// Tests that creating a job when the cluster is offline stores only a PENDING history entry.
