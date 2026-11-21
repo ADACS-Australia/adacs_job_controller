@@ -3417,6 +3417,70 @@ async fn test_job_finished_update_truncated_response_keeps_existing_cache() {
     cluster_obj.stop();
 }
 
+/// Regression test: an `UPDATE_JOB` completion from a cluster that does not own
+/// the job must not trigger a `FILE_LIST` request or write `file_list_cache`
+/// rows for that job.
+///
+/// Before the fix, `cache_file_list_on_completion` loaded the job by id only, so
+/// any master cluster could request and cache another cluster's file listing
+/// (and learn its bundle id).
+#[tokio::test]
+async fn test_job_completion_from_non_owning_cluster_skips_cache() {
+    let db = setup_test_db().await;
+    // Job belongs to `ozstar`, but the UPDATE_JOB arrives from `setonix`.
+    let job_id = insert_test_job(&db, "ozstar", "b", "testapp").await;
+
+    let file_list_map: Arc<DashMap<String, Arc<TokioMutex<FileListState>>>> =
+        Arc::new(DashMap::new());
+    let app_ctx = Arc::new(AppContext {
+        db: db.clone(),
+        file_list_map: Arc::clone(&file_list_map),
+    });
+    let cluster_obj = Cluster::new(test_cluster_config("setonix"), Some(app_ctx));
+
+    let (ws_tx, mut ws_rx) = tokio::sync::mpsc::unbounded_channel::<WsOutbound>();
+    cluster_obj.set_connection(Some(ws_tx)).await;
+    cluster_obj.start_tasks();
+
+    let mut msg = Message::new(UPDATE_JOB, Priority::Highest, SYSTEM_SOURCE);
+    msg.push_uint(job_id.try_into().unwrap());
+    msg.push_string(JOB_COMPLETION_SOURCE);
+    msg.push_uint(90u32); // Deleted status — triggers the completion path
+    msg.push_string("Job completed");
+    let routed = Message::from_bytes(msg.into_data());
+    cluster_obj.handle_message(routed).await;
+
+    // Give the scheduler a chance to drain any queued FILE_LIST request.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    while let Ok(outbound) = ws_rx.try_recv() {
+        if let WsOutbound::Binary(data) = outbound {
+            let decoded = Message::from_bytes(data);
+            assert_ne!(
+                decoded.id(),
+                FILE_LIST,
+                "Non-owning cluster must not receive a FILE_LIST request for job {job_id}"
+            );
+        }
+    }
+
+    // No in-flight file-list state and no cache rows should have been created.
+    assert!(
+        file_list_map.is_empty(),
+        "Non-owning cluster must not start a file-list request"
+    );
+    let count = file_list_cache::Entity::find()
+        .filter(file_list_cache::Column::JobId.eq(job_id))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "Non-owning cluster must not write file_list_cache rows"
+    );
+
+    cluster_obj.stop();
+}
+
 // ===========================================================================
 // 23. LARGE FILE TRANSFERS — full end-to-end with backpressure and memory monitoring
 //
