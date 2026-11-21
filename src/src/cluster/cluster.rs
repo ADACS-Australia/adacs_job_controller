@@ -498,8 +498,8 @@ impl Cluster {
 
     /// Processes an `UPDATE_JOB` message by recording job history and caching the file list on completion.
     async fn handle_update_job(&self, message: &mut Message) {
-        use crate::db::entities::job_history;
-        use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+        use crate::db::entities::{job, job_history};
+        use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 
         let job_id = message.pop_uint();
         // A `what` whose length prefix claims more bytes than remain is a
@@ -563,6 +563,35 @@ impl Cluster {
                 status
             );
             return;
+        }
+
+        // Only the owning cluster may write history for an existing job. A
+        // master connection authenticated as another cluster must not inject
+        // state transitions into a job's user-visible history. A missing job
+        // keeps the historical orphan-history behaviour.
+        match job::Entity::find_by_id(i64::from(job_id))
+            .one(&ctx.db)
+            .await
+        {
+            Ok(Some(job)) if job.cluster != self.name() => {
+                tracing::warn!(
+                    "Cluster[{}]: Ignoring UPDATE_JOB for job {} owned by cluster {}",
+                    self.name(),
+                    job_id,
+                    job.cluster
+                );
+                return;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(
+                    "Cluster[{}]: Failed to load job {} for UPDATE_JOB ownership check: {}",
+                    self.name(),
+                    job_id,
+                    e
+                );
+                return;
+            }
         }
 
         tracing::trace!(
