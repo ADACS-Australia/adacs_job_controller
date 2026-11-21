@@ -372,7 +372,9 @@ pub async fn get_jobs(
     }
 
     // Build the main query, applying all filters as database-level subqueries
-    let mut job_query = job::Entity::find().filter(job::Column::Application.is_in(applications));
+    let mut job_query = job::Entity::find()
+        .filter(job::Column::Application.is_in(applications))
+        .filter(job::Column::Cluster.is_in(auth.secret.clusters.clone()));
 
     // Filter by explicit job_ids
     if let Some(ref ids_str) = params.job_ids {
