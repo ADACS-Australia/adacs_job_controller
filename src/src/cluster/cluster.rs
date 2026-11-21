@@ -621,6 +621,15 @@ impl Cluster {
             .flatten();
 
         if let Some(m) = model {
+            if m.cluster != self.name() {
+                tracing::warn!(
+                    "Cluster[{}]: Ignoring completion cache for job {} owned by cluster {}",
+                    self.name(),
+                    job_id,
+                    m.cluster
+                );
+                return;
+            }
             let bundle = m.bundle;
             let uuid = generate_uuid();
             let fl_state = Arc::new(tokio::sync::Mutex::new(FileListState::new()));
