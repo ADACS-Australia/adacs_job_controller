@@ -1892,6 +1892,50 @@ async fn test_handle_bundle_create_or_update_foreign_id_inserts() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_BUNDLE_CREATE_OR_UPDATE_JOB — content exceeds TEXT column limit
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` rejects bundle content larger than the
+/// `MySQL` `TEXT` column limit (65,535 bytes) without touching the database.
+///
+/// # Setup
+/// Empty in-memory DB with bundle job schema; `BundleJob` with id=0 and content of
+/// 65,536 bytes.
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` with `db_request_id=1103`, the over-limit
+/// `BundleJob`, and hash="myhash".
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=1103` and id=0; no row was inserted.
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_rejects_over_limit_content() {
+    let db = make_cluster_db().await;
+
+    let bundle = BundleJob {
+        id: 0,
+        content: "x".repeat(65_536),
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(1103);
+        bundle.to_message(m);
+        m.push_string("myhash");
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let count = bundle_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(count, 0, "over-limit bundle must not be inserted");
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 1103);
+    assert_eq!(body.pop_ulong(), 0);
+}
+
+// ---------------------------------------------------------------------------
 // DB_BUNDLE_GET_JOB_BY_ID — found
 // ---------------------------------------------------------------------------
 
