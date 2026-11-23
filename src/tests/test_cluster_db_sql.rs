@@ -1113,14 +1113,20 @@ async fn test_handle_jobstatus_save_update_failure() {
 async fn test_handle_jobstatus_get_by_job_id() {
     let db = make_cluster_db().await;
 
-    for (jid, what, state) in [(20i64, "a", 1i32), (20i64, "b", 2i32), (21i64, "c", 3i32)] {
+    let job20 = insert_cluster_job_row(&db, 100, 0, false, 0, "hash", "/work", false, "ozstar")
+        .await
+        .id;
+    let job21 = insert_cluster_job_row(&db, 101, 0, false, 0, "hash", "/work", false, "ozstar")
+        .await
+        .id;
+    for (jid, what, state) in [(job20, "a", 1i32), (job20, "b", 2i32), (job21, "c", 3i32)] {
         insert_cluster_job_status(&db, jid, what, state).await;
     }
 
     let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID, |m| {
         m.push_uint(800);
-        m.push_ulong(20);
+        m.push_ulong(job20.cast_unsigned());
     });
 
     let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
@@ -1133,11 +1139,51 @@ async fn test_handle_jobstatus_get_by_job_id() {
 
     let s1 = ClusterJobStatus::from_message(&mut body).unwrap();
     let s2 = ClusterJobStatus::from_message(&mut body).unwrap();
-    assert_eq!(s1.job_id, 20);
-    assert_eq!(s2.job_id, 20);
+    assert_eq!(s1.job_id, job20);
+    assert_eq!(s2.job_id, job20);
     let mut whats: Vec<String> = vec![s1.what, s2.what];
     whats.sort();
     assert_eq!(whats, vec!["a", "b"]);
+}
+
+/// Verifies that `DB_JOBSTATUS_GET_BY_JOB_ID` does not return status rows whose
+/// job belongs to a different cluster.
+///
+/// # Setup
+/// In-memory DB with an `nci` cluster job and one status row attached to it.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_GET_BY_JOB_ID` message from the `ozstar` cluster for
+/// the `nci` job id.
+///
+/// # Assert
+/// The `DB_RESPONSE` echoes `db_request_id=801` and returns count=0: the `nci`
+/// status row is not exposed to `ozstar`.
+#[tokio::test]
+async fn test_handle_jobstatus_get_by_job_id_is_cluster_scoped() {
+    let db = make_cluster_db().await;
+
+    let nci_job = insert_cluster_job_row(&db, 100, 0, false, 0, "hash", "/work", false, "nci")
+        .await
+        .id;
+    insert_cluster_job_status(&db, nci_job, "submitted", 1).await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID, |m| {
+        m.push_uint(801);
+        m.push_ulong(nci_job.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 801);
+    assert_eq!(
+        body.pop_uint(),
+        0,
+        "status rows owned by another cluster must not be returned"
+    );
 }
 
 /// Verifies that a truncated `DB_JOBSTATUS_GET_BY_JOB_ID` with fewer than 12
@@ -1203,10 +1249,16 @@ async fn test_handle_jobstatus_get_by_job_id_drops_truncated_header() {
 async fn test_handle_jobstatus_get_by_job_id_and_what() {
     let db = make_cluster_db().await;
 
+    let job30 = insert_cluster_job_row(&db, 100, 0, false, 0, "hash", "/work", false, "ozstar")
+        .await
+        .id;
+    let job31 = insert_cluster_job_row(&db, 101, 0, false, 0, "hash", "/work", false, "ozstar")
+        .await
+        .id;
     for (jid, what, state) in [
-        (30i64, "cpu_time", 42i32),
-        (30i64, "wall_time", 88i32),
-        (31i64, "cpu_time", 99i32),
+        (job30, "cpu_time", 42i32),
+        (job30, "wall_time", 88i32),
+        (job31, "cpu_time", 99i32),
     ] {
         insert_cluster_job_status(&db, jid, what, state).await;
     }
@@ -1214,7 +1266,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
     let (mock, sent) = ozstar_capturing_cluster();
     let mut msg = dispatch_message(DB_JOBSTATUS_GET_BY_JOB_ID_AND_WHAT, |m| {
         m.push_uint(900);
-        m.push_ulong(30);
+        m.push_ulong(job30.cast_unsigned());
         m.push_string("cpu_time");
     });
 
@@ -1226,7 +1278,7 @@ async fn test_handle_jobstatus_get_by_job_id_and_what() {
     let count = body.pop_uint();
     assert_eq!(count, 1, "Only job 30 with what='cpu_time'");
     let s = ClusterJobStatus::from_message(&mut body).unwrap();
-    assert_eq!(s.job_id, 30);
+    assert_eq!(s.job_id, job30);
     assert_eq!(s.what, "cpu_time");
     assert_eq!(s.state, 42);
 }
@@ -1337,10 +1389,13 @@ async fn test_handle_jobstatus_get_by_job_id_and_what_drops_what_with_truncated_
 async fn test_handle_jobstatus_delete_by_id_list() {
     let db = make_cluster_db().await;
 
+    let job_id = insert_cluster_job_row(&db, 100, 0, false, 0, "hash", "/work", false, "ozstar")
+        .await
+        .id;
     // Insert 4 statuses; we'll delete 2 of them
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
-        let inserted = insert_cluster_job_status(&db, 1, what, state).await;
+        let inserted = insert_cluster_job_status(&db, job_id, what, state).await;
         ids.push(inserted.id.cast_unsigned());
     }
 
@@ -1369,6 +1424,50 @@ async fn test_handle_jobstatus_delete_by_id_list() {
     assert_eq!(req_id, 1000);
 }
 
+/// Verifies that `DB_JOBSTATUS_DELETE_BY_ID_LIST` does not delete status rows
+/// whose job belongs to a different cluster.
+///
+/// # Setup
+/// In-memory DB with an `nci` cluster job and one status row attached to it.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_DELETE_BY_ID_LIST` message from the `ozstar` cluster
+/// naming the `nci` status row id.
+///
+/// # Assert
+/// The `nci` status row survives; the `DB_RESPONSE` echoes `db_request_id=1001`.
+#[tokio::test]
+async fn test_handle_jobstatus_delete_by_id_list_is_cluster_scoped() {
+    let db = make_cluster_db().await;
+
+    let nci_job = insert_cluster_job_row(&db, 100, 0, false, 0, "hash", "/work", false, "nci")
+        .await
+        .id;
+    let nci_status = insert_cluster_job_status(&db, nci_job, "submitted", 1).await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_DELETE_BY_ID_LIST, |m| {
+        m.push_uint(1001);
+        m.push_uint(1);
+        m.push_ulong(nci_status.id.cast_unsigned());
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let surviving = cluster_job_status::Entity::find_by_id(nci_status.id)
+        .one(&db)
+        .await
+        .unwrap();
+    assert!(
+        surviving.is_some(),
+        "status rows owned by another cluster must not be deleted"
+    );
+
+    let (req_id, _) = first_response(&sent);
+    assert_eq!(req_id, 1001);
+}
+
 /// Verifies that a truncated/malicious `DB_JOBSTATUS_DELETE_BY_ID_LIST` with an
 /// inflated `count` only deletes the IDs actually present in the message.
 ///
@@ -1386,9 +1485,12 @@ async fn test_handle_jobstatus_delete_by_id_list() {
 async fn test_handle_jobstatus_delete_by_id_list_bounds_to_remaining_bytes() {
     let db = make_cluster_db().await;
 
+    let job_id = insert_cluster_job_row(&db, 100, 0, false, 0, "hash", "/work", false, "ozstar")
+        .await
+        .id;
     let mut ids = Vec::new();
     for (what, state) in [("a", 1i32), ("b", 2i32), ("c", 3i32), ("d", 4i32)] {
-        let inserted = insert_cluster_job_status(&db, 1, what, state).await;
+        let inserted = insert_cluster_job_status(&db, job_id, what, state).await;
         ids.push(inserted.id.cast_unsigned());
     }
 
