@@ -298,6 +298,73 @@ async fn test_handle_update_job_truncated_what_records_no_history() {
     );
 }
 
+/// Verifies that `handle_update_job` rejects an `UPDATE_JOB` whose `what`
+/// exceeds the 255-byte `job_history.what` column capacity, recording no row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the required tables is created. An
+/// `UPDATE_JOB` message is built for `job_id=97` with a 256-byte `what`.
+///
+/// # Act
+/// `cluster.handle_message(msg).await` is called.
+///
+/// # Assert
+/// No row is inserted into `JobserverJobhistory` for `jobId=97`.
+#[tokio::test]
+async fn test_handle_update_job_what_too_long_records_no_history() {
+    let db = setup_test_db().await;
+
+    let cluster = make_offline_cluster(&db);
+
+    let what = "w".repeat(256);
+    let msg = make_update_job_message(97, &what, 10, "details");
+
+    cluster.handle_message(msg).await;
+
+    let count = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(97i64))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "UPDATE_JOB with oversized `what` should record no history row"
+    );
+}
+
+/// Verifies that `handle_update_job` accepts an `UPDATE_JOB` whose `what` is
+/// exactly 255 bytes, storing it intact.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the required tables is created. An
+/// `UPDATE_JOB` message is built for `job_id=96` with a 255-byte `what`.
+///
+/// # Act
+/// `cluster.handle_message(msg).await` is called.
+///
+/// # Assert
+/// A row is inserted into `JobserverJobhistory` for `jobId=96` with the full
+/// 255-byte `what`.
+#[tokio::test]
+async fn test_handle_update_job_what_at_limit_is_stored() {
+    let db = setup_test_db().await;
+
+    let cluster = make_offline_cluster(&db);
+
+    let what = "w".repeat(255);
+    let msg = make_update_job_message(96, &what, 10, "details");
+
+    cluster.handle_message(msg).await;
+
+    let row = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(96i64))
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("expected a job_history row for a 255-byte `what`");
+    assert_eq!(row.what, what);
+}
+
 /// Verifies that `handle_message` with an `UPDATE_JOB` message returns early without panicking
 /// when no `AppContext` is provided.
 ///
