@@ -177,6 +177,41 @@ async fn test_handle_update_job_multiple_updates() {
     assert_eq!(count, 3, "Should have 3 history rows");
 }
 
+/// Regression test: an `UPDATE_JOB` from a cluster that does not own the job
+/// must not insert a `JobserverJobhistory` row for it.
+///
+/// # Setup
+/// An in-memory `SQLite` DB is created with a job owned by `"ozstar"`. A
+/// `Cluster` for `"setonix"` is initialized with an `AppContext`.
+///
+/// # Act
+/// `cluster.handle_message(msg).await` is called with an `UPDATE_JOB` for the
+/// `"ozstar"` job.
+///
+/// # Assert
+/// No row is inserted into `JobserverJobhistory` for that job.
+#[tokio::test]
+async fn test_handle_update_job_from_non_owning_cluster_records_no_history() {
+    let db = setup_test_db().await;
+    insert_job(&db, 55, "ozstar", "b", "app", "{}").await;
+
+    let ctx = make_app_context(db.clone());
+    let cluster = Cluster::new(test_cluster_config("setonix"), Some(ctx));
+
+    let msg = make_update_job_message(55, "job_submission", 10, "injected");
+    cluster.handle_message(msg).await;
+
+    let count = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(55i64))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "Non-owning cluster must not write job history for another cluster's job"
+    );
+}
+
 /// Verifies that `handle_update_job` drops a truncated `UPDATE_JOB` message
 /// (one missing the fixed-size `status` field) without inserting a history row.
 ///
