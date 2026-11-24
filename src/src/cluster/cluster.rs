@@ -513,6 +513,20 @@ impl Cluster {
             );
             return;
         };
+        // `job_history.what` is an unannotated `String`, which SeaORM maps to
+        // `varchar(255)`. Reject an over-long `what` before the DB write rather
+        // than losing the row under strict MySQL or silently truncating it.
+        const MAX_WHAT_LEN: usize = 255;
+        if what.len() > MAX_WHAT_LEN {
+            tracing::warn!(
+                "Cluster[{}]: Rejecting UPDATE_JOB for job {} - what too long ({} > {})",
+                self.name(),
+                job_id,
+                what.len(),
+                MAX_WHAT_LEN
+            );
+            return;
+        }
         // A valid UPDATE_JOB needs at least 4 bytes for `status` after the
         // variable-length `what`. If fewer remain, the message is truncated;
         // drop it rather than recording a corrupted job-history row with a
