@@ -52,6 +52,7 @@ fn default_connection_type() -> String {
 /// - Two or more clusters share the same name
 /// - A cluster has an empty `ltk`
 /// - Two or more clusters share the same non-empty `ltk`
+/// - An SSH/Kerberos cluster has an empty `host` or `path`
 pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
     let configs: Vec<ClusterConfig> = super::load_json_file!(
         path,
@@ -85,6 +86,24 @@ pub fn load_cluster_configs(path: &Path) -> anyhow::Result<Vec<ClusterConfig>> {
                 config.name,
                 i + 1
             );
+        }
+        let connects_autonomously =
+            config.connection_type == CONNECTION_TYPE_MANUAL || config.ltk.is_some();
+        if !connects_autonomously {
+            if config.host.is_empty() {
+                anyhow::bail!(
+                    "cluster config entry #{} ('{}') has empty 'host'",
+                    i + 1,
+                    config.name
+                );
+            }
+            if config.path.is_empty() {
+                anyhow::bail!(
+                    "cluster config entry #{} ('{}') has empty 'path'",
+                    i + 1,
+                    config.name
+                );
+            }
         }
         tracing::trace!(
             "Cluster #{}: name='{}', host='{}@{}', type={}",
@@ -258,6 +277,79 @@ mod tests {
             err.to_string().contains("duplicate ltk"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_host() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "ssh-cluster",
+                "host": "",
+                "username": "jobclient",
+                "path": "/path/to/client"
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'host'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_rejects_empty_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[{
+                "name": "ssh-cluster",
+                "host": "cluster.example.com",
+                "username": "jobclient",
+                "path": ""
+            }]"#,
+        )
+        .unwrap();
+
+        let err = load_cluster_configs(&config_path).unwrap_err();
+        assert!(
+            err.to_string().contains("empty 'path'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_cluster_configs_allows_empty_host_path_for_autonomous_clusters() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("clusters.json");
+        std::fs::write(
+            &config_path,
+            r#"[
+                {
+                    "name": "manual-cluster",
+                    "host": "",
+                    "username": "jobclient",
+                    "path": "",
+                    "connection_type": "manual"
+                },
+                {
+                    "name": "ltk-cluster",
+                    "host": "",
+                    "username": "jobclient",
+                    "path": "",
+                    "ltk": "ltk-secret-123"
+                }
+            ]"#,
+        )
+        .unwrap();
+
+        let configs = load_cluster_configs(&config_path).unwrap();
+        assert_eq!(configs.len(), 2);
     }
 
     #[test]
