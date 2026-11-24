@@ -653,6 +653,18 @@ async fn handle_jobstatus_save(
         return;
     };
 
+    const MAX_WHAT_LEN: usize = 255;
+    if status.what.len() > MAX_WHAT_LEN {
+        tracing::warn!(
+            "Cluster[{}]: Rejecting DB_JOBSTATUS_SAVE - what too long ({} > {})",
+            cluster.name(),
+            status.what.len(),
+            MAX_WHAT_LEN
+        );
+        send_save_response(cluster, db_request_id, 0).await;
+        return;
+    }
+
     if status.id == 0 {
         // Insert
         let result = cluster_job_status::ActiveModel {

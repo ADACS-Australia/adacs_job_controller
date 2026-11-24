@@ -1142,6 +1142,99 @@ async fn test_handle_jobstatus_save_update_failure() {
     assert_eq!(body.pop_ulong(), 0, "failed update must report saved id 0");
 }
 
+/// Verifies that a `DB_JOBSTATUS_SAVE` whose `what` exceeds the 255-byte column
+/// capacity is rejected before any DB write and reports saved id `0`.
+///
+/// # Setup
+/// Empty in-memory DB with cluster job status schema; `ClusterJobStatus` with
+/// id=0, `job_id=42`, a 256-byte `what`, state=500.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=703` and the
+/// oversized payload.
+///
+/// # Assert
+/// No row is inserted into `cluster_job_status`; the `DB_RESPONSE` contains
+/// `db_request_id=703` and a saved id of `0`.
+#[tokio::test]
+async fn test_handle_jobstatus_save_what_too_long_is_rejected() {
+    let db = make_cluster_db().await;
+
+    let status = ClusterJobStatus {
+        id: 0,
+        job_id: 42,
+        what: "w".repeat(256),
+        state: 500,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(703);
+        status.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOBSTATUS_SAVE should be handled");
+
+    let count = cluster_job_status::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "DB_JOBSTATUS_SAVE with oversized what should record no job status row"
+    );
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 703);
+    assert_eq!(body.pop_ulong(), 0, "rejected save must report saved id 0");
+}
+
+/// Verifies that a `DB_JOBSTATUS_SAVE` whose `what` is exactly 255 bytes is
+/// accepted and inserted.
+///
+/// # Setup
+/// Empty in-memory DB with cluster job status schema; `ClusterJobStatus` with
+/// id=0, `job_id=42`, a 255-byte `what`, state=500.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=704` and the
+/// boundary-length payload.
+///
+/// # Assert
+/// A row is inserted with the full 255-byte `what`; the `DB_RESPONSE` contains
+/// `db_request_id=704` and the assigned row id.
+#[tokio::test]
+async fn test_handle_jobstatus_save_what_at_limit_is_inserted() {
+    let db = make_cluster_db().await;
+
+    let what = "w".repeat(255);
+    let status = ClusterJobStatus {
+        id: 0,
+        job_id: 42,
+        what: what.clone(),
+        state: 500,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(704);
+        status.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOBSTATUS_SAVE should be handled");
+
+    let model = cluster_job_status::Entity::find()
+        .filter(cluster_job_status::Column::JobId.eq(42i64))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.what, what);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 704);
+    assert_eq!(body.pop_ulong(), model.id.cast_unsigned());
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOBSTATUS_GET_BY_JOB_ID
 // ---------------------------------------------------------------------------
