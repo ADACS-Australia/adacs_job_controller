@@ -15,4 +15,4 @@ echo "MySQL is ready."
 
 echo "Starting ADACS Job Controller..."
 export RUST_LOG="${RUST_LOG:-info}"
-exec su -s /bin/bash jobserver -c "stdbuf -oL -eL /app/adacs_job_controller 2>&1 | stdbuf -oL tee /app/logs/logfile"
+exec su -s /bin/bash jobserver -c "set -o pipefail; stdbuf -oL -eL /app/adacs_job_controller 2>&1 | stdbuf -oL tee /app/logs/logfile"
