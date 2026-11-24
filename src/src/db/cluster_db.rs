@@ -4,6 +4,7 @@
 /// Handles database operation messages from remote cluster clients.
 /// Each message type corresponds to a SQL operation that the server
 /// executes on behalf of the cluster, returning the result via `DB_RESPONSE`.
+use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set, Unchanged},
@@ -551,8 +552,16 @@ async fn handle_jobstatus_get_by_job_id_impl(
         None
     };
 
-    let mut query =
-        cluster_job_status::Entity::find().filter(cluster_job_status::Column::JobId.eq(job_id));
+    let cluster_name = cluster.name();
+    let owned_job_ids = Query::select()
+        .column(cluster_job::Column::Id)
+        .from(cluster_job::Entity)
+        .and_where(Expr::col(cluster_job::Column::Cluster).eq(&cluster_name))
+        .to_owned();
+
+    let mut query = cluster_job_status::Entity::find()
+        .filter(cluster_job_status::Column::JobId.eq(job_id))
+        .filter(cluster_job_status::Column::JobId.in_subquery(owned_job_ids));
     if let Some(what) = what {
         query = query.filter(cluster_job_status::Column::What.eq(what));
     }
@@ -616,10 +625,21 @@ async fn handle_jobstatus_delete_by_id_list(
     // per ulong) rather than trusting the wire-supplied count, which can be
     // arbitrarily large on a truncated or malicious message.
     let ids_to_delete = (count as usize).min(message.remaining() / 8);
+    let cluster_name = cluster.name();
+    let owned_job_ids = Query::select()
+        .column(cluster_job::Column::Id)
+        .from(cluster_job::Entity)
+        .and_where(Expr::col(cluster_job::Column::Cluster).eq(&cluster_name))
+        .to_owned();
     for _ in 0..ids_to_delete {
         let id = message.pop_ulong().cast_signed();
-        if let Err(e) = cluster_job_status::Entity::delete_by_id(id).exec(db).await {
-            log_delete_failed(&cluster.name(), &e);
+        let result = cluster_job_status::Entity::delete_many()
+            .filter(cluster_job_status::Column::Id.eq(id))
+            .filter(cluster_job_status::Column::JobId.in_subquery(owned_job_ids.clone()))
+            .exec(db)
+            .await;
+        if let Err(e) = result {
+            log_delete_failed(&cluster_name, &e);
         }
     }
 
