@@ -1583,6 +1583,71 @@ async fn test_handle_bundle_create_or_update_existing_id_matching_hash() {
 }
 
 // ---------------------------------------------------------------------------
+// DB_BUNDLE_CREATE_OR_UPDATE_JOB — foreign id is not updated
+// ---------------------------------------------------------------------------
+
+/// Verifies that `DB_BUNDLE_CREATE_OR_UPDATE_JOB` does not update a bundle row owned by
+/// another cluster when the message carries that row's id and a matching hash.
+///
+/// # Setup
+/// In-memory DB with one "nci" bundle row (content="nci content", `bundle_hash="h2"`).
+///
+/// # Act
+/// Dispatch `DB_BUNDLE_CREATE_OR_UPDATE_JOB` from "ozstar" with `db_request_id=1103`, the
+/// nci row id, content="ozstar content", and hash="h2".
+///
+/// # Assert
+/// The nci row is unchanged; a new "ozstar" row exists with content="ozstar content" and
+/// hash="h2"; the `DB_RESPONSE` contains `db_request_id=1103` and the new row id.
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_foreign_id_inserts() {
+    let db = make_cluster_db().await;
+
+    let nci = insert_bundle_job_for_cluster(&db, "nci content", "h2", "nci").await;
+
+    let bundle = BundleJob {
+        id: nci.id,
+        content: "ozstar content".to_string(),
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(1103);
+        bundle.to_message(m);
+        m.push_string("h2");
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let nci_after = bundle_job::Entity::find_by_id(nci.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        nci_after.content, "nci content",
+        "nci row must not be updated"
+    );
+    assert_eq!(nci_after.cluster, "nci");
+    assert_eq!(nci_after.bundle_hash, "h2");
+
+    let ozstar = bundle_job::Entity::find()
+        .filter(bundle_job::Column::BundleHash.eq("h2"))
+        .filter(bundle_job::Column::Cluster.eq("ozstar"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(ozstar.content, "ozstar content");
+    assert_ne!(ozstar.id, nci.id);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 1103);
+    assert_eq!(body.pop_ulong(), ozstar.id.cast_unsigned());
+}
+
+// ---------------------------------------------------------------------------
 // DB_BUNDLE_GET_JOB_BY_ID — found
 // ---------------------------------------------------------------------------
 
