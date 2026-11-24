@@ -29,6 +29,9 @@ use crate::protocol::constants::{
 use crate::protocol::message::Message;
 use crate::protocol::types::Priority;
 
+/// Maximum length of a `bundle_hash`, matching the `varchar(255)` column.
+const MAX_BUNDLE_HASH_LEN: usize = 255;
+
 // Conversions from SeaORM models to wire structs
 
 /// Convert a persisted `cluster_job` row into the wire-format [`ClusterJob`].
@@ -781,6 +784,18 @@ async fn handle_bundle_create_or_update(
         );
         return;
     };
+    if bundle_hash.len() > MAX_BUNDLE_HASH_LEN {
+        tracing::warn!(
+            "Cluster[{}]: Rejecting DB_BUNDLE_CREATE_OR_UPDATE_JOB with bundle_hash of {} bytes (max {})",
+            cluster.name(),
+            bundle_hash.len(),
+            MAX_BUNDLE_HASH_LEN
+        );
+        let mut response = prepare_response(db_request_id);
+        response.push_ulong(0); // Error: bundle_hash too long
+        cluster.send_message(response).await;
+        return;
+    }
     let cluster_name = cluster.name();
 
     // If bundle has an ID, try to update existing bundle
