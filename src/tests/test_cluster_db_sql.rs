@@ -2634,3 +2634,51 @@ async fn test_handle_bundle_create_or_update_bogus_content_length_is_dropped() {
         "DB_BUNDLE_CREATE_OR_UPDATE_JOB with bogus content length should record no bundle row"
     );
 }
+
+/// Verifies that a `DB_BUNDLE_CREATE_OR_UPDATE_JOB` message whose `bundle_hash`
+/// exceeds the `varchar(255)` column limit is rejected with id=0 and records no
+/// bundle row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the bundle job schema is created.
+///
+/// # Act
+/// Dispatch a `DB_BUNDLE_CREATE_OR_UPDATE_JOB` message with `db_request_id=5007`
+/// and a 256-byte `bundle_hash`.
+///
+/// # Assert
+/// No row is inserted into `bundle_job`; the `DB_RESPONSE` returns id=0 (error).
+#[tokio::test]
+async fn test_handle_bundle_create_or_update_over_limit_hash_returns_error() {
+    let db = make_cluster_db().await;
+
+    let bundle = BundleJob {
+        id: 0,
+        content: r#"{"script":"run.sh"}"#.to_string(),
+    };
+    let long_hash = "h".repeat(256);
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_BUNDLE_CREATE_OR_UPDATE_JOB, |m| {
+        m.push_uint(5007);
+        bundle.to_message(m);
+        m.push_string(&long_hash);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_BUNDLE_CREATE_OR_UPDATE_JOB should be handled");
+
+    let count = bundle_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "Over-limit bundle_hash should record no bundle row"
+    );
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 5007);
+    let returned_id = body.pop_ulong();
+    assert_eq!(
+        returned_id, 0,
+        "Over-limit bundle_hash should return id=0 (error)"
+    );
+}
