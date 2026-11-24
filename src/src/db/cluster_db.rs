@@ -673,15 +673,23 @@ async fn handle_jobstatus_save(
         };
         send_save_response(cluster, db_request_id, saved_id).await;
     } else {
-        // Update
+        // Update, scoped to the existing row's job so a status row cannot be
+        // reassigned to a different job by supplying its id.
         let active = cluster_job_status::ActiveModel {
             id: Unchanged(status.id),
             job_id: Set(status.job_id),
             what: Set(status.what.clone()),
             state: Set(status.state),
         };
-        let saved_id = match active.update(db).await {
-            Ok(_) => status.id.cast_unsigned(),
+        let result = cluster_job_status::Entity::update_many()
+            .set(active)
+            .filter(cluster_job_status::Column::Id.eq(status.id))
+            .filter(cluster_job_status::Column::JobId.eq(status.job_id))
+            .exec(db)
+            .await;
+        let saved_id = match result {
+            Ok(res) if res.rows_affected > 0 => status.id.cast_unsigned(),
+            Ok(_) => 0,
             Err(e) => {
                 log_update_failed(&cluster.name(), &e);
                 0

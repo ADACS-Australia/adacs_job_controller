@@ -1056,6 +1056,55 @@ async fn test_handle_jobstatus_save_update() {
     assert_eq!(body.pop_ulong(), existing_id.cast_unsigned());
 }
 
+/// Verifies that a `DB_JOBSTATUS_SAVE` update cannot reassign an existing status row
+/// to a different job.
+///
+/// # Setup
+/// In-memory DB with one pre-inserted cluster job status row for `job_id=10`.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` message with `db_request_id=703`, the existing row id,
+/// and a mismatched `job_id=20`.
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=703` and a saved id of `0`; the stored row
+/// still belongs to `job_id=10`.
+#[tokio::test]
+async fn test_handle_jobstatus_save_update_rejects_job_mismatch() {
+    let db = make_cluster_db().await;
+
+    let existing_id = insert_cluster_job_status(&db, 10, "old_what", 1).await.id;
+
+    let status = ClusterJobStatus {
+        id: existing_id,
+        job_id: 20,
+        what: "new_what".to_string(),
+        state: 999,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(703);
+        status.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 703);
+    assert_eq!(body.pop_ulong(), 0, "mismatched job must report saved id 0");
+
+    let model = cluster_job_status::Entity::find_by_id(existing_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.job_id, 10);
+    assert_eq!(model.what, "old_what");
+    assert_eq!(model.state, 1);
+}
+
 /// Verifies that a `DB_JOBSTATUS_SAVE` update that fails reports `0` in the `DB_RESPONSE`
 /// instead of a stale non-zero row id.
 ///
