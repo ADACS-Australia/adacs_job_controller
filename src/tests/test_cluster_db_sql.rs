@@ -2560,6 +2560,103 @@ async fn test_handle_job_save_bogus_bundle_hash_length_is_dropped() {
     );
 }
 
+/// Verifies that `DB_JOB_SAVE` rejects a `bundle_hash` larger than the `MySQL`
+/// `TEXT` column limit (65,535 bytes) without touching the database.
+///
+/// # Setup
+/// Empty in-memory DB with cluster job schema; `ClusterJob` with id=0 and a
+/// 65,536-byte `bundle_hash`.
+///
+/// # Act
+/// Dispatch `DB_JOB_SAVE` with `db_request_id=101` and the over-limit payload.
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=101` and saved id `0`; no row was
+/// inserted.
+#[tokio::test]
+async fn test_handle_job_save_rejects_over_limit_bundle_hash() {
+    let db = make_cluster_db().await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let job = ClusterJob {
+        id: 0,
+        job_id: 42,
+        scheduler_id: 0,
+        submitting: true,
+        submitting_count: 1,
+        bundle_hash: "x".repeat(65_536),
+        working_directory: "/work/dir".to_string(),
+        running: false,
+        deleting: false,
+        deleted: false,
+    };
+
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(101);
+        job.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOB_SAVE should be handled");
+
+    let count = cluster_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(count, 0, "over-limit bundle_hash must not be inserted");
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 101);
+    assert_eq!(body.pop_ulong(), 0);
+}
+
+/// Verifies that `DB_JOB_SAVE` rejects a `working_directory` larger than the
+/// `MySQL` `TEXT` column limit (65,535 bytes) without touching the database.
+///
+/// # Setup
+/// Empty in-memory DB with cluster job schema; `ClusterJob` with id=0 and a
+/// 65,536-byte `working_directory`.
+///
+/// # Act
+/// Dispatch `DB_JOB_SAVE` with `db_request_id=102` and the over-limit payload.
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=102` and saved id `0`; no row was
+/// inserted.
+#[tokio::test]
+async fn test_handle_job_save_rejects_over_limit_working_directory() {
+    let db = make_cluster_db().await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let job = ClusterJob {
+        id: 0,
+        job_id: 42,
+        scheduler_id: 0,
+        submitting: true,
+        submitting_count: 1,
+        bundle_hash: "hash_abc".to_string(),
+        working_directory: "x".repeat(65_536),
+        running: false,
+        deleting: false,
+        deleted: false,
+    };
+
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(102);
+        job.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled, "DB_JOB_SAVE should be handled");
+
+    let count = cluster_job::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "over-limit working_directory must not be inserted"
+    );
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 102);
+    assert_eq!(body.pop_ulong(), 0);
+}
+
 /// Verifies that a truncated `DB_JOBSTATUS_SAVE` message (one missing the
 /// variable-length `what` field) is dropped and records no job status row.
 ///

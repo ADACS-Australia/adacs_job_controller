@@ -448,6 +448,28 @@ async fn handle_job_save(
     };
     let cluster_name = cluster.name();
 
+    const MAX_JOB_TEXT_LEN: usize = 65_535;
+    if job.bundle_hash.len() > MAX_JOB_TEXT_LEN {
+        tracing::warn!(
+            "Cluster[{}]: Rejecting DB_JOB_SAVE - bundle_hash too long ({} > {})",
+            cluster.name(),
+            job.bundle_hash.len(),
+            MAX_JOB_TEXT_LEN
+        );
+        send_save_response(cluster, db_request_id, 0).await;
+        return;
+    }
+    if job.working_directory.len() > MAX_JOB_TEXT_LEN {
+        tracing::warn!(
+            "Cluster[{}]: Rejecting DB_JOB_SAVE - working_directory too long ({} > {})",
+            cluster.name(),
+            job.working_directory.len(),
+            MAX_JOB_TEXT_LEN
+        );
+        send_save_response(cluster, db_request_id, 0).await;
+        return;
+    }
+
     if job.id == 0 {
         // Insert
         let result = cluster_job::ActiveModel {
