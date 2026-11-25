@@ -798,6 +798,7 @@ async fn handle_bundle_create_or_update(
     cluster: &dyn ClusterTrait,
     db: &sea_orm::DatabaseConnection,
 ) {
+    const MAX_BUNDLE_CONTENT_LEN: usize = 65_535;
     let db_request_id = message.pop_uint();
     // A valid DB_BUNDLE_CREATE_OR_UPDATE_JOB needs at least 24 bytes for the
     // fixed-size fields plus the variable-length string length prefixes
@@ -817,6 +818,18 @@ async fn handle_bundle_create_or_update(
         );
         return;
     };
+    if bundle.content.len() > MAX_BUNDLE_CONTENT_LEN {
+        tracing::warn!(
+            "Cluster[{}]: Rejecting DB_BUNDLE_CREATE_OR_UPDATE_JOB - bundle content too long ({} > {})",
+            cluster.name(),
+            bundle.content.len(),
+            MAX_BUNDLE_CONTENT_LEN
+        );
+        let mut response = prepare_response(db_request_id);
+        response.push_ulong(0);
+        cluster.send_message(response).await;
+        return;
+    }
     let Some(bundle_hash) = message.try_pop_string() else {
         tracing::warn!(
             "Cluster[{}]: Dropping truncated DB_BUNDLE_CREATE_OR_UPDATE_JOB (bundle_hash length prefix exceeds remaining bytes)",
