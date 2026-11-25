@@ -551,6 +551,20 @@ impl Cluster {
             );
             return;
         };
+        // `job_history.details` is a MySQL `TEXT` column (65,535 bytes). Reject
+        // an over-long `details` before the DB write rather than losing the row
+        // under strict MySQL or silently truncating it.
+        const MAX_DETAILS_LEN: usize = 65_535;
+        if details.len() > MAX_DETAILS_LEN {
+            tracing::warn!(
+                "Cluster[{}]: Rejecting UPDATE_JOB for job {} - details too long ({} > {})",
+                self.name(),
+                job_id,
+                details.len(),
+                MAX_DETAILS_LEN
+            );
+            return;
+        }
 
         tracing::trace!(
             "Cluster[{}]: Received UPDATE_JOB - job_id={}, what={}, status={}, details={}",

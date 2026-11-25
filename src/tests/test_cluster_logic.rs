@@ -400,6 +400,73 @@ async fn test_handle_update_job_what_at_limit_is_stored() {
     assert_eq!(row.what, what);
 }
 
+/// Verifies that `handle_update_job` rejects an `UPDATE_JOB` whose `details` is
+/// one byte over the `MySQL` `TEXT` limit, recording no history row.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the required tables is created. An
+/// `UPDATE_JOB` message is built for `job_id=95` with a 65,536-byte `details`.
+///
+/// # Act
+/// `cluster.handle_message(msg).await` is called.
+///
+/// # Assert
+/// No row is inserted into `JobserverJobhistory` for `jobId=95`.
+#[tokio::test]
+async fn test_handle_update_job_details_too_long_records_no_history() {
+    let db = setup_test_db().await;
+
+    let cluster = make_offline_cluster(&db);
+
+    let details = "d".repeat(65_536);
+    let msg = make_update_job_message(95, "job_submission", 10, &details);
+
+    cluster.handle_message(msg).await;
+
+    let count = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(95i64))
+        .count(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "UPDATE_JOB with oversized `details` should record no history row"
+    );
+}
+
+/// Verifies that `handle_update_job` accepts an `UPDATE_JOB` whose `details` is
+/// exactly the `MySQL` `TEXT` limit (65,535 bytes), storing it intact.
+///
+/// # Setup
+/// An in-memory `SQLite` DB with the required tables is created. An
+/// `UPDATE_JOB` message is built for `job_id=94` with a 65,535-byte `details`.
+///
+/// # Act
+/// `cluster.handle_message(msg).await` is called.
+///
+/// # Assert
+/// A row is inserted into `JobserverJobhistory` for `jobId=94` with the full
+/// 65,535-byte `details`.
+#[tokio::test]
+async fn test_handle_update_job_details_at_limit_is_stored() {
+    let db = setup_test_db().await;
+
+    let cluster = make_offline_cluster(&db);
+
+    let details = "d".repeat(65_535);
+    let msg = make_update_job_message(94, "job_submission", 10, &details);
+
+    cluster.handle_message(msg).await;
+
+    let row = job_history::Entity::find()
+        .filter(job_history::Column::JobId.eq(94i64))
+        .one(&db)
+        .await
+        .unwrap()
+        .expect("expected a job_history row for a 65,535-byte `details`");
+    assert_eq!(row.details, details);
+}
+
 /// Verifies that `handle_message` with an `UPDATE_JOB` message returns early without panicking
 /// when no `AppContext` is provided.
 ///
