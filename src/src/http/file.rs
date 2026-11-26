@@ -142,6 +142,7 @@ pub async fn create_file_download(
     LenientJson(body): LenientJson<CreateFileDownloadRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     const MAX_BUNDLE_LEN: usize = 255;
+    const MAX_PATH_LEN: usize = 65_535;
 
     tracing::debug!("HTTP: Create file download request received");
     tracing::trace!(
@@ -208,6 +209,15 @@ pub async fn create_file_download(
             MAX_BUNDLE_LEN
         );
         return Err((StatusCode::BAD_REQUEST, "bundle too long".to_string()));
+    }
+
+    if let Some(path) = file_paths.iter().find(|p| p.len() > MAX_PATH_LEN) {
+        tracing::warn!(
+            "HTTP: File download rejected - path too long ({} > {})",
+            path.len(),
+            MAX_PATH_LEN
+        );
+        return Err((StatusCode::BAD_REQUEST, "path too long".to_string()));
     }
 
     let user_id = auth_user_id(&auth);

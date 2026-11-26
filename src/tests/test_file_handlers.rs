@@ -3193,6 +3193,51 @@ async fn test_create_download_bundle_too_long_returns_400() {
     assert!(rows.is_empty(), "no file_download row should be inserted");
 }
 
+/// Tests that an explicit path longer than the TEXT column is rejected.
+///
+/// # Setup
+/// Empty DB. Uses multi-secret config. Wires an online cluster for app1's token.
+///
+/// # Act
+/// Sends POST /job/apiv1/file/ with a 65,536-character path (no jobId).
+///
+/// # Assert
+/// Verifies 400 Bad Request with body containing "path too long" and no
+/// `file_download` row inserted.
+#[tokio::test]
+async fn test_create_download_path_too_long_returns_400() {
+    let (app, db, token) = no_jobid_download_app(true, 0).await;
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/job/apiv1/file/")
+                .header("authorization", &token)
+                .header(CONTENT_TYPE_HEADER, common::JSON_CONTENT_TYPE)
+                .body(Body::from(
+                    serde_json::json!({
+                        "cluster": "ozstar",
+                        "bundle": "test_bundle",
+                        "path": "p".repeat(65_536)
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("path too long"));
+
+    let rows = file_download::Entity::find().all(&db).await.unwrap();
+    assert!(rows.is_empty(), "no file_download row should be inserted");
+}
+
 /// Tests that jobId=0 is treated the same as no-jobId and succeeds with cluster+bundle.
 ///
 /// # Setup
