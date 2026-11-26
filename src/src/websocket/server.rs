@@ -159,13 +159,6 @@ impl HandlerExitGuard {
         self.forced_fallback_triggered = true;
     }
 
-    /// Mark the closed event as already emitted (e.g. when an explicit
-    /// completion path has already logged it). Subsequent drops are no-ops
-    /// for the event emission.
-    fn mark_closed_emitted(&self) {
-        self.closed_event_emitted.store(true, Ordering::SeqCst);
-    }
-
     fn complete(&self) {
         if let (Some(session), Some(conn_id)) = (self.session.as_ref(), self.connection_id) {
             // Idempotent; only the first call transitions Closing -> Closed.
@@ -542,10 +535,8 @@ async fn handle_socket(socket: WebSocket, token: String, state: AppState) {
     // removes the last owner and the underlying `Sink` is dropped.
     drop(ws_sink);
 
-    // Explicit completion + closed-event emission is the guard's
-    // job. Mark the closed event as already emitted so Drop does
-    // not double-log, then let Drop run the completion.
-    guard.mark_closed_emitted();
+    // Completion and the single authoritative closed event are the
+    // guard's job; let Drop run both exactly once.
     guard.complete();
     drop(guard);
     // `ws_stream` is dropped at scope exit here, releasing the
@@ -711,6 +702,31 @@ mod tests {
 
     #[test]
     fn test_handler_exit_guard_drop_runs_completion_and_emits_event() {
+        struct CaptureWriter(Arc<std::sync::Mutex<String>>);
+
+        impl std::io::Write for CaptureWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("capture buffer lock")
+                    .push_str(&String::from_utf8_lossy(buf));
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let buf = Arc::new(std::sync::Mutex::new(String::new()));
+        let writer = Arc::clone(&buf);
+        let make_writer = move || CaptureWriter(Arc::clone(&writer));
+
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(make_writer)
+            .finish();
+
         let session = make_closing_session(11);
         let sent_count = Arc::new(AtomicU64::new(3));
         let g = HandlerExitGuard::new(
@@ -722,11 +738,18 @@ mod tests {
             5,
         );
         // Drop without explicit complete or emit.
-        drop(g);
+        tracing::subscriber::with_default(subscriber, || drop(g));
         match session.state() {
             DownloadSessionState::Closed { .. } => {}
             other => panic!("{NOT_CLOSED_PANIC}{other:?}"),
         }
+
+        let logs = buf.lock().expect("capture buffer lock");
+        assert_eq!(
+            logs.matches("WS: Closed connection").count(),
+            1,
+            "guard drop must emit the authoritative closed event exactly once; logs: {logs}"
+        );
     }
 
     #[test]

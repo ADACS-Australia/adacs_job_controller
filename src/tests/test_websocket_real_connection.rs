@@ -190,6 +190,74 @@ async fn test_real_websocket_connection_and_auth() {
     server_handle.abort();
 }
 
+/// Regression test: the handler-exit guard must emit the authoritative
+/// `WS: Closed connection` event on the normal handler-exit path.
+///
+/// Before the fix, `handle_socket` marked the closed event as already
+/// emitted before dropping the guard, so `HandlerExitGuard::drop`
+/// returned early and the documented teardown event was never logged.
+#[tokio::test]
+async fn test_handler_exit_emits_closed_connection_event() {
+    struct CaptureWriter(Arc<std::sync::Mutex<String>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("capture buffer lock")
+                .push_str(&String::from_utf8_lossy(buf));
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let buf = Arc::new(std::sync::Mutex::new(String::new()));
+    let writer = Arc::clone(&buf);
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_writer(move || CaptureWriter(Arc::clone(&writer)))
+        .finish();
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let (_cluster, port, server_handle) = start_server_with_real_cluster_accepting().await;
+    let token = test_token();
+    let (sink, stream) = connect_and_expect_server_ready(port, &token).await;
+
+    // Drop both client halves so the server's read loop observes EOF
+    // and the handler exits through the guard.
+    drop(sink);
+    drop(stream);
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if buf
+            .lock()
+            .expect("capture buffer lock")
+            .contains("WS: Closed connection")
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() <= deadline,
+            "handler exit must emit the authoritative closed event; logs: {}",
+            buf.lock().expect("capture buffer lock")
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    let logs = buf.lock().expect("capture buffer lock");
+    assert_eq!(
+        logs.matches("WS: Closed connection").count(),
+        1,
+        "closed event must be emitted exactly once; logs: {logs}"
+    );
+
+    server_handle.abort();
+}
+
 /// Regression test for the "stale WebSocket" bug.
 ///
 /// When the server's `ClusterManager` decides to drop a connection
