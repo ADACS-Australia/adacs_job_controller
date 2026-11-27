@@ -109,6 +109,27 @@ async fn test_replace_file_list_only_affects_target_job() {
     );
 }
 
+/// An over-limit path (beyond the `MySQL` `TEXT` 65,535-byte limit) must be
+/// rejected before the transaction starts, leaving the prior cache intact
+/// rather than replacing it with a truncated or failed write.
+#[tokio::test]
+async fn test_replace_file_list_over_limit_path_preserves_prior_cache() {
+    let db = setup_test_db().await;
+    let job_id = 55;
+
+    insert_cache_row(&db, job_id, "/old/keep.txt").await;
+
+    let over_limit = format!("/{}", "a".repeat(65_535));
+    assert!(over_limit.len() > 65_535);
+
+    replace_file_list(&db, job_id, &[file(&over_limit, false)]).await;
+
+    assert_eq!(
+        cached_paths(&db, job_id).await,
+        vec!["/old/keep.txt".to_string()]
+    );
+}
+
 /// A failed insert must roll back the whole replacement, leaving the prior
 /// cache intact (atomic replacement) rather than empty or partially populated.
 #[tokio::test]

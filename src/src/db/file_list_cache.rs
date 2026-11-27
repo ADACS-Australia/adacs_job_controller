@@ -13,6 +13,16 @@ use crate::protocol::types::FileInfo;
 /// replaced or left unchanged (atomic replacement); a mid-write failure rolls
 /// back the whole replacement instead of leaving a partial or empty cache.
 pub async fn replace_file_list(db: &DatabaseConnection, job_id: i64, files: &[FileInfo]) {
+    const MAX_PATH_LEN: usize = 65_535;
+    if let Some(file) = files.iter().find(|f| f.file_name.len() > MAX_PATH_LEN) {
+        tracing::warn!(
+            "replace_file_list: rejecting cache update for job {} - path too long ({} > {})",
+            job_id,
+            file.file_name.len(),
+            MAX_PATH_LEN
+        );
+        return;
+    }
     let files = files.to_vec();
     if let Err(e) = db
         .transaction::<_, _, sea_orm::DbErr>(|txn| {
