@@ -688,6 +688,34 @@ async fn handle_jobstatus_save(
         return;
     }
 
+    // Only the owning cluster may write status for an existing job. A master
+    // connection authenticated as another cluster must not inject status rows
+    // into another cluster's job. A missing job keeps the historical
+    // orphan-status behaviour.
+    match cluster_job::Entity::find_by_id(status.job_id).one(db).await {
+        Ok(Some(job)) if job.cluster != cluster.name() => {
+            tracing::warn!(
+                "Cluster[{}]: Rejecting DB_JOBSTATUS_SAVE for job {} owned by cluster {}",
+                cluster.name(),
+                status.job_id,
+                job.cluster
+            );
+            send_save_response(cluster, db_request_id, 0).await;
+            return;
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(
+                "Cluster[{}]: Failed to load job {} for DB_JOBSTATUS_SAVE ownership check: {}",
+                cluster.name(),
+                status.job_id,
+                e
+            );
+            send_save_response(cluster, db_request_id, 0).await;
+            return;
+        }
+    }
+
     if status.id == 0 {
         // Insert
         let result = cluster_job_status::ActiveModel {

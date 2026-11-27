@@ -1235,6 +1235,183 @@ async fn test_handle_jobstatus_save_what_at_limit_is_inserted() {
     assert_eq!(body.pop_ulong(), model.id.cast_unsigned());
 }
 
+/// Verifies that `DB_JOBSTATUS_SAVE` cannot insert a status row for another
+/// cluster's existing job.
+///
+/// # Setup
+/// In-memory DB with an `nci` cluster job.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` insert from the `ozstar` cluster referencing
+/// the `nci` job id.
+///
+/// # Assert
+/// No status row is inserted; the `DB_RESPONSE` echoes `db_request_id=705` and
+/// reports saved id `0`.
+#[tokio::test]
+async fn test_handle_jobstatus_save_insert_is_cluster_scoped() {
+    let db = make_cluster_db().await;
+
+    let nci_job = insert_cluster_job_row(&db, 100, 0, false, 0, "hash", "/work", false, "nci")
+        .await
+        .id;
+
+    let status = ClusterJobStatus {
+        id: 0,
+        job_id: nci_job,
+        what: "submitted".to_string(),
+        state: 1,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(705);
+        status.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let count = cluster_job_status::Entity::find().count(&db).await.unwrap();
+    assert_eq!(
+        count, 0,
+        "status rows for another cluster's job must not be inserted"
+    );
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 705);
+    assert_eq!(body.pop_ulong(), 0, "rejected save must report saved id 0");
+}
+
+/// Verifies that `DB_JOBSTATUS_SAVE` cannot update another cluster's existing
+/// status row.
+///
+/// # Setup
+/// In-memory DB with an `nci` cluster job and one status row attached to it.
+///
+/// # Act
+/// Dispatch a `DB_JOBSTATUS_SAVE` update from the `ozstar` cluster naming the
+/// `nci` status row id and its job id.
+///
+/// # Assert
+/// The `nci` status row is unchanged; the `DB_RESPONSE` echoes
+/// `db_request_id=706` and reports saved id `0`.
+#[tokio::test]
+async fn test_handle_jobstatus_save_update_is_cluster_scoped() {
+    let db = make_cluster_db().await;
+
+    let nci_job = insert_cluster_job_row(&db, 100, 0, false, 0, "hash", "/work", false, "nci")
+        .await
+        .id;
+    let nci_status = insert_cluster_job_status(&db, nci_job, "submitted", 1).await;
+
+    let status = ClusterJobStatus {
+        id: nci_status.id,
+        job_id: nci_job,
+        what: "hijacked".to_string(),
+        state: 999,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(706);
+        status.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let model = cluster_job_status::Entity::find_by_id(nci_status.id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.what, "submitted");
+    assert_eq!(model.state, 1);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 706);
+    assert_eq!(
+        body.pop_ulong(),
+        0,
+        "cross-cluster update must report saved id 0"
+    );
+}
+
+/// Verifies that `DB_JOBSTATUS_SAVE` still inserts and updates status rows for
+/// a job owned by the calling cluster.
+///
+/// # Setup
+/// In-memory DB with an `ozstar` cluster job.
+///
+/// # Act
+/// Dispatch an insert (`db_request_id=707`) then an update (`db_request_id=708`)
+/// from the `ozstar` cluster for its own job.
+///
+/// # Assert
+/// Both writes succeed, the update returns the inserted row id, and the stored
+/// row reflects the updated values.
+#[tokio::test]
+async fn test_handle_jobstatus_save_allows_owning_cluster() {
+    let db = make_cluster_db().await;
+
+    let ozstar_job =
+        insert_cluster_job_row(&db, 200, 0, false, 0, "hash", "/work", false, "ozstar")
+            .await
+            .id;
+
+    let insert_status = ClusterJobStatus {
+        id: 0,
+        job_id: ozstar_job,
+        what: "submitted".to_string(),
+        state: 1,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(707);
+        insert_status.to_message(m);
+    });
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 707);
+    let inserted_id = body.pop_ulong();
+    assert_ne!(inserted_id, 0, "owning cluster insert must succeed");
+
+    let update_status = ClusterJobStatus {
+        id: inserted_id.cast_signed(),
+        job_id: ozstar_job,
+        what: "completed".to_string(),
+        state: 2,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOBSTATUS_SAVE, |m| {
+        m.push_uint(708);
+        update_status.to_message(m);
+    });
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 708);
+    assert_eq!(
+        body.pop_ulong(),
+        inserted_id,
+        "owning cluster update must succeed"
+    );
+
+    let model = cluster_job_status::Entity::find_by_id(inserted_id.cast_signed())
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.what, "completed");
+    assert_eq!(model.state, 2);
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOBSTATUS_GET_BY_JOB_ID
 // ---------------------------------------------------------------------------
