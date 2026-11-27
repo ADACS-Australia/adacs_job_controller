@@ -508,6 +508,65 @@ async fn test_handle_job_save_update_cluster_scoping() {
     assert_eq!(body.pop_ulong(), 0, "Foreign update should return id=0");
 }
 
+/// Verifies that a `DB_JOB_SAVE` update cannot reassign an existing cluster job
+/// row to a different job.
+///
+/// # Setup
+/// In-memory DB with one pre-inserted "ozstar" row for `job_id=10`.
+///
+/// # Act
+/// Dispatch a `DB_JOB_SAVE` message from "ozstar" with `db_request_id=203`, the
+/// existing row id, a mismatched `job_id=20`, and changed fields.
+///
+/// # Assert
+/// The `DB_RESPONSE` contains `db_request_id=203` and a saved id of `0`; the stored
+/// row still belongs to `job_id=10` with its original fields.
+#[tokio::test]
+async fn test_handle_job_save_update_rejects_job_mismatch() {
+    let db = make_cluster_db().await;
+
+    let existing =
+        insert_cluster_job_row(&db, 10, 0, false, 0, "oldhash", "/old", false, "ozstar").await;
+    let existing_id = existing.id;
+
+    let job = ClusterJob {
+        id: existing_id,
+        job_id: 20,
+        scheduler_id: 99,
+        submitting: false,
+        submitting_count: 2,
+        bundle_hash: "newhash".to_string(),
+        working_directory: "/new/work".to_string(),
+        running: true,
+        deleting: false,
+        deleted: false,
+    };
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_SAVE, |m| {
+        m.push_uint(203);
+        job.to_message(m);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 203);
+    assert_eq!(body.pop_ulong(), 0, "mismatched job must report saved id 0");
+
+    let model = cluster_job::Entity::find_by_id(existing_id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(model.job_id, 10);
+    assert_eq!(model.scheduler_id, 0);
+    assert_eq!(model.bundle_hash, "oldhash");
+    assert_eq!(model.working_directory, "/old");
+    assert!(!model.running);
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_GET_BY_ID — found
 // ---------------------------------------------------------------------------

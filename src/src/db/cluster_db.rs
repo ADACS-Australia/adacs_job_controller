@@ -475,8 +475,9 @@ async fn handle_job_save(
         };
         send_save_response(cluster, db_request_id, saved_id).await;
     } else {
-        // Update, scoped to the calling cluster so a cluster cannot overwrite
-        // another cluster's row by supplying its id.
+        // Update, scoped to the calling cluster and the existing row's job so a
+        // cluster cannot overwrite another cluster's row or reassign a row to a
+        // different job by supplying its id.
         let active = cluster_job::ActiveModel {
             id: Unchanged(job.id),
             job_id: Set(job.job_id),
@@ -493,6 +494,7 @@ async fn handle_job_save(
         let result = cluster_job::Entity::update_many()
             .set(active)
             .filter(cluster_job::Column::Id.eq(job.id))
+            .filter(cluster_job::Column::JobId.eq(job.job_id))
             .filter(cluster_job::Column::Cluster.eq(&cluster_name))
             .exec(db)
             .await;
