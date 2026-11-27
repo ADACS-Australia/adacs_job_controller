@@ -805,6 +805,44 @@ async fn test_handle_job_get_running_jobs() {
     assert_eq!(row.job_id, 1);
 }
 
+/// Verifies that `DB_JOB_GET_RUNNING_JOBS` excludes placeholder and still-submitting rows.
+///
+/// # Setup
+/// In-memory DB with three running rows for "ozstar": one fully-assigned job
+/// (`job_id=1`, `submitting=false`), one placeholder (`job_id=0`), and one still
+/// being submitted (`submitting=true`).
+///
+/// # Act
+/// Dispatch a `DB_JOB_GET_RUNNING_JOBS` message with `db_request_id=501` from cluster "ozstar".
+///
+/// # Assert
+/// The `DB_RESPONSE` contains only the fully-assigned, non-submitting row (`job_id=1`),
+/// matching the legacy C++ `getRunningJobs` filter (`jobId != 0 AND submitting == 0`).
+#[tokio::test]
+async fn test_handle_job_get_running_jobs_excludes_placeholder_and_submitting() {
+    let db = make_cluster_db().await;
+
+    insert_cluster_job_row(&db, 1, 0, false, 0, "", "", true, "ozstar").await;
+    insert_cluster_job_row(&db, 0, 0, false, 0, "", "", true, "ozstar").await;
+    insert_cluster_job_row(&db, 2, 0, true, 1, "", "", true, "ozstar").await;
+
+    let (mock, sent) = ozstar_capturing_cluster();
+    let mut msg = dispatch_message(DB_JOB_GET_RUNNING_JOBS, |m| {
+        m.push_uint(501);
+    });
+
+    let handled = maybe_handle_cluster_db_message(&mut msg, &mock, &db).await;
+    assert!(handled);
+
+    let (req_id, mut body) = first_response(&sent);
+    assert_eq!(req_id, 501);
+    let count = body.pop_uint();
+    assert_eq!(count, 1, "Only the fully-assigned, non-submitting row");
+    let row = ClusterJob::from_message(&mut body).unwrap();
+    assert!(row.running);
+    assert_eq!(row.job_id, 1);
+}
+
 // ---------------------------------------------------------------------------
 // DB_JOB_DELETE
 // ---------------------------------------------------------------------------

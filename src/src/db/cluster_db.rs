@@ -347,6 +347,8 @@ async fn handle_job_get_running_jobs(
     let rows: Vec<ClusterJob> = cluster_job::Entity::find()
         .filter(cluster_job::Column::Cluster.eq(&cluster_name))
         .filter(cluster_job::Column::Running.eq(true))
+        .filter(cluster_job::Column::JobId.ne(0))
+        .filter(cluster_job::Column::Submitting.eq(false))
         .all(db)
         .await
         .inspect_err(|e| {
